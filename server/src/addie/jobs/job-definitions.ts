@@ -10,6 +10,8 @@ import { runDocumentIndexerJob, generateAssetDescriptions } from './committee-do
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runRelationshipOrchestratorCycle } from '../services/relationship-orchestrator.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
+import { researchDomain } from '../../services/brand-enrichment.js';
+import { query } from '../../db/client.js';
 import { runTaskReminderJob } from './task-reminder.js';
 // engagement-scoring job removed — old scoring replaced by person_relationships/person_events
 import {
@@ -441,6 +443,59 @@ export function registerAllJobs(): void {
     },
     shouldLogResult: (r) => r.remindersSent > 0,
   });
+
+  // Brand registry sweep - researches unmapped org domains to maintain 100% coverage
+  jobScheduler.register({
+    name: 'brand-registry-sweep',
+    description: 'Brand registry sweep for unmapped accounts',
+    interval: { value: 12, unit: 'hours' },
+    initialDelay: { value: 20, unit: 'minutes' },
+    runner: async (options: { limit?: number }) => {
+      const limit = options?.limit || 15;
+      const unmapped = await query<{
+        workos_organization_id: string;
+        name: string;
+        email_domain: string;
+      }>(
+        `SELECT o.workos_organization_id, o.name, o.email_domain
+         FROM organizations o
+         WHERE o.is_personal = false
+           AND o.email_domain IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM discovered_brands db
+             WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+           )
+         ORDER BY o.subscription_status = 'active' DESC,
+                  o.last_activity_at DESC NULLS LAST
+         LIMIT $1`,
+        [limit]
+      );
+
+      let researched = 0;
+      let stubbed = 0;
+      let failed = 0;
+
+      for (const org of unmapped.rows) {
+        try {
+          const result = await researchDomain(org.email_domain, {
+            org_id: org.workos_organization_id,
+          });
+          const wasStubbed = result.actions.some(a => a.source === 'stub');
+          const wasFetched = result.actions.some(a => a.action === 'fetched');
+          if (wasFetched) researched++;
+          else if (wasStubbed) stubbed++;
+        } catch {
+          failed++;
+        }
+        // Rate limit between calls
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      return { total: unmapped.rows.length, researched, stubbed, failed };
+    },
+    options: { limit: 15 },
+    shouldLogResult: (r) => r.total > 0,
+  });
 }
 
 /**
@@ -475,4 +530,5 @@ export const JOB_NAMES = {
   GEO_CONTENT_PLANNER: 'geo-content-planner',
   SHADOW_EVALUATOR: 'shadow-evaluator',
   KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
+  BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
 } as const;

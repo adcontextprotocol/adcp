@@ -237,10 +237,15 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         }>(
           `SELECT
             COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL) as total_with_domain,
-            COUNT(*) FILTER (WHERE db.domain IS NOT NULL) as mapped,
-            COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL AND db.domain IS NULL) as unmapped
+            COUNT(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM discovered_brands db
+              WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+            )) as mapped,
+            COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM discovered_brands db
+              WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+            )) as unmapped
           FROM organizations o
-          LEFT JOIN discovered_brands db ON db.domain = o.email_domain
           WHERE o.is_personal = false`
         );
         const row = result.rows[0];
@@ -277,10 +282,12 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           `SELECT o.workos_organization_id, o.name, o.email_domain,
                   o.subscription_status, o.prospect_status
            FROM organizations o
-           LEFT JOIN discovered_brands db ON db.domain = o.email_domain
            WHERE o.is_personal = false
              AND o.email_domain IS NOT NULL
-             AND db.domain IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM discovered_brands db
+               WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+             )
            ORDER BY o.subscription_status = 'active' DESC,
                     o.last_activity_at DESC NULLS LAST,
                     o.created_at DESC
@@ -314,10 +321,12 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         }>(
           `SELECT o.workos_organization_id, o.name, o.email_domain
            FROM organizations o
-           LEFT JOIN discovered_brands db ON db.domain = o.email_domain
            WHERE o.is_personal = false
              AND o.email_domain IS NOT NULL
-             AND db.domain IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM discovered_brands db
+               WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+             )
            ORDER BY o.subscription_status = 'active' DESC,
                     o.last_activity_at DESC NULLS LAST
            LIMIT $1`,
@@ -356,6 +365,77 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
     }
   );
 
+  // PATCH /api/admin/brand-enrichment/brand/:domain
+  // Update brand metadata (canonical_domain, house_domain, keller_type)
+  apiRouter.patch(
+    '/brand-enrichment/brand/:domain',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const { canonical_domain, house_domain, keller_type } = req.body;
+        const DOMAIN_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/;
+        const VALID_KELLER_TYPES = ['master', 'sub_brand', 'endorsed', 'independent'];
+
+        if (canonical_domain != null && canonical_domain !== '' && !DOMAIN_RE.test(canonical_domain)) {
+          return res.status(400).json({ error: 'Invalid canonical_domain format' });
+        }
+        if (house_domain != null && house_domain !== '' && !DOMAIN_RE.test(house_domain)) {
+          return res.status(400).json({ error: 'Invalid house_domain format' });
+        }
+        if (keller_type != null && keller_type !== '' && !VALID_KELLER_TYPES.includes(keller_type)) {
+          return res.status(400).json({ error: `Invalid keller_type. Must be one of: ${VALID_KELLER_TYPES.join(', ')}` });
+        }
+
+        const existing = await query(
+          `SELECT domain FROM discovered_brands WHERE domain = $1`,
+          [domain]
+        );
+        if (existing.rows.length === 0) {
+          return res.status(404).json({ error: 'Brand not found in registry' });
+        }
+
+        const setClauses: string[] = [];
+        const params: (string | null)[] = [];
+        let idx = 1;
+
+        if (canonical_domain !== undefined) {
+          setClauses.push(`canonical_domain = $${idx++}`);
+          params.push(canonical_domain || null);
+        }
+        if (house_domain !== undefined) {
+          setClauses.push(`house_domain = $${idx++}`);
+          params.push(house_domain || null);
+        }
+        if (keller_type !== undefined) {
+          setClauses.push(`keller_type = $${idx++}`);
+          params.push(keller_type || null);
+        }
+
+        if (setClauses.length === 0) {
+          return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        params.push(domain);
+        const result = await query(
+          `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING *`,
+          params
+        );
+
+        logger.info({ domain, canonical_domain, house_domain, keller_type }, 'Brand metadata updated');
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Error updating brand metadata');
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    }
+  );
+
   // POST /api/admin/brand-enrichment/research/:domain
   // Progressive enrichment: checks what's known, fills gaps from Brandfetch + Sonnet + Lusha
   apiRouter.post(
@@ -375,9 +455,10 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           org_id?: string;
         } = {};
 
-        if (req.body.skip_brandfetch === true) options.skip_brandfetch = true;
-        if (req.body.skip_lusha === true) options.skip_lusha = true;
-        if (typeof req.body.org_id === 'string') options.org_id = req.body.org_id;
+        const body = req.body || {};
+        if (body.skip_brandfetch === true) options.skip_brandfetch = true;
+        if (body.skip_lusha === true) options.skip_lusha = true;
+        if (typeof body.org_id === 'string') options.org_id = body.org_id;
 
         logger.info({ domain, options }, 'Starting domain research');
         const result = await researchDomain(domain, options);

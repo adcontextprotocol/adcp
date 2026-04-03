@@ -667,6 +667,7 @@
             <button class="btn btn-secondary" onclick="openPaymentLinkModal()">Pay Link</button>
             <button class="btn btn-secondary" onclick="openInvoiceModal()">Invoice</button>
             <button class="btn btn-secondary" onclick="openEditModal()">Edit</button>
+            <button class="btn btn-secondary" onclick="openMergeSearch()" title="Merge another organization into this one">Merge with...</button>
             <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
             <button class="btn btn-secondary" onclick="runAIEnrichment()" id="aiEnrichBtn" title="Research using AI">
               AI Enrich
@@ -907,6 +908,22 @@
               <div id="domainsList" class="empty-state">
                 No domains linked
               </div>
+            </div>
+          </div>
+
+          <!-- Corporate Hierarchy (shown when parent or subsidiaries exist) -->
+          <div class="card" id="hierarchyCard" style="display: none;">
+            <h2>Corporate Hierarchy</h2>
+            <div id="hierarchyContent"></div>
+          </div>
+
+          <!-- Brand Registry Mapping -->
+          <div class="card" id="brandRegistryCard">
+            <h2>Brand Registry
+              <span id="brandRegistryBadge" class="status-badge" style="margin-left: var(--space-2); font-size: var(--text-xs);"></span>
+            </h2>
+            <div id="brandRegistryContent">
+              <div class="empty-state">Loading...</div>
             </div>
           </div>
 
@@ -1689,6 +1706,12 @@
         renderDomains(a.domains);
       }
 
+      // Brand Registry mapping
+      renderBrandRegistry();
+
+      // Corporate Hierarchy
+      renderHierarchy();
+
       // Domain Health
       renderDomainHealth();
 
@@ -1723,6 +1746,480 @@
       const isWatching = accountData.stakeholders?.some(s => s.user_id === currentUserId && s.role === 'interested');
       watchBtn.textContent = isWatching ? '⭐' : '☆';
       watchBtn.className = `watch-btn ${isWatching ? 'watching' : ''}`;
+    }
+
+    function renderBrandRegistry() {
+      const a = accountData;
+      const badge = document.getElementById('brandRegistryBadge');
+      const content = document.getElementById('brandRegistryContent');
+      const domain = a.email_domain;
+
+      if (!domain) {
+        badge.textContent = 'No domain';
+        badge.style.background = 'var(--color-gray-100)';
+        badge.style.color = 'var(--color-text-muted)';
+        content.innerHTML = `
+          <p style="color: var(--color-text-muted); font-size: var(--text-sm);">
+            No email domain set for this account. Set a domain to link to the brand registry.
+          </p>
+        `;
+        return;
+      }
+
+      if (a.brand_mapped) {
+        badge.textContent = 'Mapped';
+        badge.style.background = 'var(--color-success-100)';
+        badge.style.color = 'var(--color-success-700)';
+
+        const sourceLabels = { brand_json: 'Authoritative', hosted: 'Hosted', community: 'Community', enriched: 'Enriched', stub: 'Auto-created' };
+        const sourceLabel = sourceLabels[a.brand_source] || a.brand_source || '';
+
+        // Collapsed by default — click header to expand
+        const heading = document.querySelector('#brandRegistryCard h2');
+        heading.classList.add('collapsible');
+        heading.style.marginBottom = '0';
+        heading.onclick = function() { toggleSection(this); };
+
+        content.classList.add('collapsible-content');
+        content.style.display = 'none';
+        content.style.marginTop = 'var(--space-4)';
+
+        content.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong>${escapeHtml(a.brand_registry_name || domain)}</strong>
+                <span style="color: var(--color-text-muted); font-size: var(--text-xs); margin-left: var(--space-2);">${escapeHtml(domain)}</span>
+              </div>
+              <a href="/brand/view/${encodeURIComponent(domain)}" class="btn btn-sm btn-secondary" target="_blank">View in Registry</a>
+            </div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-secondary); display: flex; gap: var(--space-3);">
+              ${a.brand_keller_type ? `<span>Type: <strong>${escapeHtml(a.brand_keller_type)}</strong></span>` : ''}
+              ${sourceLabel ? `<span>Source: <strong>${escapeHtml(sourceLabel)}</strong></span>` : ''}
+              ${a.brand_house_domain ? `<span>Parent: <strong>${escapeHtml(a.brand_house_domain)}</strong></span>` : ''}
+            </div>
+          </div>
+        `;
+      } else {
+        badge.textContent = 'Unmapped';
+        badge.style.background = 'var(--color-warning-100)';
+        badge.style.color = 'var(--color-warning-700)';
+
+        content.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <p style="color: var(--color-warning-700); font-size: var(--text-sm); margin: 0;">
+                <strong>${escapeHtml(domain)}</strong> is not in the brand registry.
+              </p>
+              <p style="color: var(--color-text-muted); font-size: var(--text-xs); margin: var(--space-1) 0 0;">
+                Hierarchy and membership inheritance require a brand registry entry.
+              </p>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="researchBrandDomain('${escapeHtml(domain)}')" id="researchDomainBtn">
+              Research Domain
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    async function researchBrandDomain(domain) {
+      const btn = document.getElementById('researchDomainBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Researching...';
+      }
+
+      try {
+        const response = await fetch(`/api/admin/brand-enrichment/research/${encodeURIComponent(domain)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_id: accountData.workos_organization_id }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || 'Research failed');
+        }
+
+        const result = await response.json();
+        const actions = result.actions || [];
+        const fetched = actions.some(a => a.action === 'fetched');
+
+        if (fetched) {
+          // Reload to show updated brand mapping
+          loadAccount();
+        } else {
+          const content = document.getElementById('brandRegistryContent');
+          content.innerHTML += `
+            <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+              <strong>Research complete</strong> — no brand data found for this domain.
+              <a href="/admin/brands" target="_blank">Create manually in brand registry</a>.
+            </div>
+          `;
+          if (btn) {
+            btn.textContent = 'No data found';
+            btn.disabled = true;
+          }
+        }
+      } catch (error) {
+        console.error('Error researching domain:', error);
+        if (btn) {
+          btn.textContent = 'Research failed';
+          btn.disabled = false;
+        }
+      }
+    }
+
+    function renderHierarchy() {
+      const a = accountData;
+      const card = document.getElementById('hierarchyCard');
+      const content = document.getElementById('hierarchyContent');
+
+      const hasParent = a.parent_name && a.parent_org_id;
+      const hasSubs = a.subsidiaries && a.subsidiaries.length > 0;
+
+      if (!hasParent && !hasSubs) {
+        card.style.display = 'none';
+        return;
+      }
+
+      card.style.display = '';
+      let html = '';
+
+      if (hasParent) {
+        html += `
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+            <span style="color: var(--color-text-muted); font-size: var(--text-sm);">Subsidiary of</span>
+            <a href="/admin/accounts/${encodeURIComponent(a.parent_org_id)}" style="font-weight: var(--font-semibold);">${escapeHtml(a.parent_name)}</a>
+            ${a.parent_domain ? `<span style="color: var(--color-text-muted); font-size: var(--text-xs);">(${escapeHtml(a.parent_domain)})</span>` : ''}
+          </div>
+        `;
+      }
+
+      if (hasSubs) {
+        html += `
+          <div style="font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); color: var(--color-text-heading);">
+            Subsidiaries
+            <span style="color: var(--color-text-muted); font-weight: normal;">(${a.subsidiaries.length})</span>
+          </div>
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            ${a.subsidiaries.map(sub => `
+              <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                <span>
+                  <a href="/admin/accounts/${encodeURIComponent(sub.id)}" style="font-weight: 500;">${escapeHtml(sub.name)}</a>
+                  ${sub.domain ? `<span style="color: var(--color-text-muted); font-size: var(--text-xs); margin-left: var(--space-2);">${escapeHtml(sub.domain)}</span>` : ''}
+                  <span class="status-badge ${sub.subscription_status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
+                    ${escapeHtml(sub.product_name || sub.subscription_status || 'prospect')}
+                  </span>
+                </span>
+              </li>
+            `).join('')}
+          </ul>
+        `;
+      }
+
+      content.innerHTML = html;
+    }
+
+    // Merge modal
+    let mergeModalEl = null;
+
+    function openMergeSearch() {
+      if (!mergeModalEl) {
+        mergeModalEl = document.createElement('div');
+        mergeModalEl.id = 'mergeModal';
+        document.body.appendChild(mergeModalEl);
+      }
+
+      mergeModalEl.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 95%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h3>Merge into ${escapeHtml(accountData.name)}</h3>
+              <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+            </div>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+              Search for an organization to merge into this account. The selected org will be dissolved and its data moved here.
+            </p>
+            <input type="text" id="mergeSearchInput" placeholder="Search by name or domain..."
+              style="width: 100%; padding: var(--space-2) var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm);"
+              oninput="debounce(searchMergeCandidates, 300)(this.value)">
+            <div id="mergeSearchResults" style="margin-top: var(--space-3); max-height: 300px; overflow-y: auto;"></div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('mergeSearchInput').focus();
+    }
+
+    let mergeSearchTimer = null;
+    function debounce(fn, ms) {
+      return function(...args) {
+        clearTimeout(mergeSearchTimer);
+        mergeSearchTimer = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    async function searchMergeCandidates(query) {
+      const resultsEl = document.getElementById('mergeSearchResults');
+      if (!query || query.length < 2) {
+        resultsEl.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-2);">Type at least 2 characters...</div>';
+        return;
+      }
+
+      resultsEl.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-2);">Searching...</div>';
+
+      try {
+        const response = await fetch(`/api/admin/accounts?view=all&search=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error('Search failed');
+        const orgs = await response.json();
+
+        // Exclude current org
+        const candidates = orgs.filter(o => o.id !== accountData.workos_organization_id);
+
+        if (candidates.length === 0) {
+          resultsEl.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-2);">No matching organizations found.</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = candidates.slice(0, 10).map(o => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); border-bottom: var(--border-1) solid var(--color-gray-100); cursor: pointer;"
+               onmouseover="this.style.background='var(--color-gray-50)'" onmouseout="this.style.background=''">
+            <div>
+              <div style="font-weight: 500;">${escapeHtml(o.name)}</div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
+                ${o.domain ? escapeHtml(o.domain) : 'No domain'}
+                <span class="status-badge ${o.status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
+                  ${escapeHtml(o.status || 'prospect')}
+                </span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); openMergeModal('${escapeHtml(accountData.workos_organization_id)}', '${escapeHtml(o.id)}')">
+              Select
+            </button>
+          </div>
+        `).join('');
+      } catch (error) {
+        resultsEl.innerHTML = `<div style="color: var(--color-error-600); font-size: var(--text-sm); padding: var(--space-2);">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function openMergeModal(primaryId, secondaryId) {
+      if (!mergeModalEl) {
+        mergeModalEl = document.createElement('div');
+        mergeModalEl.id = 'mergeModal';
+        document.body.appendChild(mergeModalEl);
+      }
+
+      mergeModalEl.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 700px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">Loading merge preview...</h3>
+            <div style="color: var(--color-text-muted);">Fetching details...</div>
+          </div>
+        </div>
+      `;
+
+      loadMergePreview(primaryId, secondaryId);
+    }
+
+    function closeMergeModal() {
+      if (mergeModalEl) mergeModalEl.innerHTML = '';
+    }
+
+    async function loadMergePreview(primaryId, secondaryId) {
+      try {
+        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${encodeURIComponent(primaryId)}&secondary=${encodeURIComponent(secondaryId)}`);
+        if (!response.ok) throw new Error('Failed to load preview');
+        const preview = await response.json();
+
+        const warningsHtml = preview.warnings.length > 0 ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-warning-700);">Warnings:</strong>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+              ${preview.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+            </ul>
+          </div>
+        ` : '';
+
+        const stripeConflict = preview.stripe_customer_conflict || {};
+        const stripeConflictHtml = stripeConflict.has_conflict ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-error-700);">Stripe Customer Conflict</strong>
+            <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
+            <div style="margin-top: var(--space-3);">
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="keep_primary" checked>
+                <strong>Keep Primary</strong> - Keep primary's Stripe customer
+              </label>
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="use_secondary">
+                <strong>Use Secondary</strong> - Use secondary's Stripe customer
+              </label>
+              <label style="display: block;">
+                <input type="radio" name="stripe_resolution" value="keep_both_unlinked">
+                <strong>Unlink Both</strong> - Manual resolution later
+              </label>
+            </div>
+          </div>
+        ` : '';
+
+        const changesHtml = preview.estimated_changes.length > 0 ? `
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Data to be moved:</strong>
+            <table style="width: 100%; margin-top: var(--space-2); border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--color-bg-subtle);">
+                  <th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th>
+                  <th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${preview.estimated_changes.map(c => `
+                  <tr>
+                    <td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${escapeHtml(c.table_name)}</td>
+                    <td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<p>No data to move - secondary organization appears empty.</p>';
+
+        mergeModalEl.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>Merge Preview</h3>
+                <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
+                <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.primary_org.member_count || 0}</div>
+                    ${preview.primary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.primary_org.company_type)}</div>` : ''}
+                  </div>
+                </div>
+
+                <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.secondary_org.member_count || 0}</div>
+                    ${preview.secondary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.secondary_org.company_type)}</div>` : ''}
+                  </div>
+                </div>
+              </div>
+
+              ${stripeConflictHtml}
+              ${warningsHtml}
+              ${changesHtml}
+
+              <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+                <strong style="color: var(--color-warning-700);">Warning:</strong>
+                <span style="color: var(--color-warning-800);">Merging cannot be undone. All data from the secondary organization will be moved to the primary.</span>
+              </div>
+
+              <div style="display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
+                <button class="btn btn-primary" id="confirmMergeBtn" style="background: var(--color-error-600);"
+                        data-primary-id="${encodeURIComponent(primaryId)}"
+                        data-secondary-id="${encodeURIComponent(secondaryId)}"
+                        data-has-stripe-conflict="${stripeConflict.has_conflict || false}">
+                  Confirm Merge
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('confirmMergeBtn').addEventListener('click', function() {
+          const pId = decodeURIComponent(this.dataset.primaryId);
+          const sId = decodeURIComponent(this.dataset.secondaryId);
+          const hasConflict = this.dataset.hasStripeConflict === 'true';
+          executeMerge(pId, sId, hasConflict);
+        });
+
+      } catch (error) {
+        console.error('Error loading merge preview:', error);
+        mergeModalEl.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 500px; width: 95%;">
+              <h3 style="color: var(--color-error-600);">Error</h3>
+              <p>Failed to load merge preview: ${escapeHtml(error.message)}</p>
+              <button class="btn btn-secondary" onclick="closeMergeModal()">Close</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function executeMerge(primaryId, secondaryId, hasStripeConflict) {
+      document.querySelectorAll('#mergeModal button, #confirmMergeBtn').forEach(btn => {
+        btn.disabled = true;
+      }
+
+      let stripeCustomerResolution = null;
+      if (hasStripeConflict) {
+        const selected = document.querySelector('input[name="stripe_resolution"]:checked');
+        stripeCustomerResolution = selected ? selected.value : 'keep_primary';
+      }
+
+      mergeModalEl.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+            <h3 style="margin-bottom: var(--space-4);">Merging organizations...</h3>
+            <div style="color: var(--color-text-muted);">Please wait...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const body = { primary_org_id: primaryId, secondary_org_id: secondaryId };
+        if (stripeCustomerResolution) {
+          body.stripe_customer_resolution = stripeCustomerResolution;
+        }
+        const response = await fetch('/api/admin/cleanup/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Merge failed');
+        }
+
+        const result = await response.json();
+        const tablesMerged = result.tables_merged || [];
+        const totalMoved = tablesMerged.reduce((sum, t) => sum + (t.rows_moved || 0), 0);
+
+        mergeModalEl.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
+              <p>${totalMoved} record${totalMoved !== 1 ? 's' : ''} moved, secondary organization deleted.</p>
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="btn btn-primary" onclick="closeMergeModal(); loadAccount();">Done</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        mergeModalEl.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 500px; width: 95%;">
+              <h3 style="color: var(--color-error-600);">Merge Failed</h3>
+              <p>${escapeHtml(error.message)}</p>
+              <button class="btn btn-secondary" onclick="closeMergeModal()">Close</button>
+            </div>
+          </div>
+        `;
+      }
     }
 
     function renderDomainHealth() {
@@ -1842,9 +2339,6 @@
                 </li>
               `).join('')}
             </ul>
-            <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-              <a href="/admin/domain-health">View full domain health dashboard</a> to merge organizations.
-            </p>
           </div>
         `;
       }

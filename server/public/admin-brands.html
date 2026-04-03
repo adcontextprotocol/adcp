@@ -372,6 +372,15 @@
           </div>
 
           <div class="filter-group">
+            <label>House (Parent)</label>
+            <select id="filterHouse" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="_parents_only">Parents only</option>
+              <option value="_children_only">Sub-brands only</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
             <label>Search</label>
             <input type="text" id="filterSearch" placeholder="Domain or brand name..." oninput="applyFilters()">
           </div>
@@ -467,6 +476,43 @@
     </div>
   </div>
 
+  <!-- Set Parent / Alias Modal -->
+  <div id="setParentModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Edit Brand Hierarchy</h2>
+        <button class="modal-close" onclick="closeSetParentModal()">&times;</button>
+      </div>
+      <div id="setParentError" class="error-message" style="display: none;"></div>
+
+      <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
+        Editing <strong id="setParentDomain"></strong>
+      </p>
+
+      <div class="form-group">
+        <label>Parent Domain (house_domain)</label>
+        <input type="text" id="setParentInput" placeholder="e.g. omnicomgroup.com" list="parentDomainList">
+        <datalist id="parentDomainList"></datalist>
+        <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+          Leave empty to remove parent. Type to search existing brands.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Domain Alias (canonical_domain)</label>
+        <input type="text" id="setAliasInput" placeholder="e.g. omc.com">
+        <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+          Alternate email domain that maps to this brand (e.g. omc.com for omnicomgroup.com).
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeSetParentModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveParentBrand()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- View Brand Modal -->
   <div id="viewModal" class="modal">
     <div class="modal-content">
@@ -497,6 +543,7 @@
         document.getElementById('statHosted').textContent = stats.hosted || 0;
         document.getElementById('statEnriched').textContent = stats.enriched || 0;
 
+        populateHouseFilter();
         applyFilters();
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -513,6 +560,7 @@
     function applyFilters() {
       const source = document.getElementById('filterSource').value;
       const hasManifest = document.getElementById('filterManifest').value;
+      const house = document.getElementById('filterHouse').value;
       const search = document.getElementById('filterSearch').value.toLowerCase();
 
       let filtered = allBrands;
@@ -525,6 +573,13 @@
       } else if (hasManifest === 'false') {
         filtered = filtered.filter(b => !b.has_manifest);
       }
+      if (house === '_parents_only') {
+        filtered = filtered.filter(b => (b.sub_brand_count || 0) > 0);
+      } else if (house === '_children_only') {
+        filtered = filtered.filter(b => b.house_domain);
+      } else if (house) {
+        filtered = filtered.filter(b => b.house_domain === house || b.domain === house);
+      }
       if (search) {
         filtered = filtered.filter(b =>
           b.domain.toLowerCase().includes(search) ||
@@ -533,6 +588,37 @@
       }
 
       renderBrands(filtered);
+    }
+
+    function filterByHouse(domain) {
+      const select = document.getElementById('filterHouse');
+      let found = false;
+      for (const opt of select.options) {
+        if (opt.value === domain) { found = true; break; }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = domain;
+        opt.textContent = domain;
+        select.appendChild(opt);
+      }
+      select.value = domain;
+      applyFilters();
+    }
+
+    function populateHouseFilter() {
+      const select = document.getElementById('filterHouse');
+      const houses = new Map();
+      for (const b of allBrands) {
+        if ((b.sub_brand_count || 0) > 0) houses.set(b.domain, b.brand_name || b.domain);
+      }
+      const sorted = Array.from(houses.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+      for (const [domain, name] of sorted) {
+        const opt = document.createElement('option');
+        opt.value = domain;
+        opt.textContent = `${name} (${domain})`;
+        select.appendChild(opt);
+      }
     }
 
     function renderBrands(brands) {
@@ -544,10 +630,18 @@
         return;
       }
 
-      tbody.innerHTML = brands.map(brand => `
+      tbody.innerHTML = brands.map(brand => {
+        const subCount = brand.sub_brand_count || 0;
+        const houseHtml = brand.house_domain
+          ? `<a href="#" onclick="filterByHouse('${escapeHtml(brand.house_domain)}'); return false;" style="color: var(--color-brand); text-decoration: none;" title="Filter sub-brands of ${escapeHtml(brand.house_domain)}">${escapeHtml(brand.house_domain)}</a>`
+          : (subCount > 0
+            ? `<a href="#" onclick="filterByHouse('${escapeHtml(brand.domain)}'); return false;" style="color: var(--color-brand); text-decoration: none;" title="Show ${subCount} sub-brands"><strong>${subCount} sub-brand${subCount !== 1 ? 's' : ''}</strong></a>`
+            : '-');
+
+        return `
         <tr>
           <td>
-            <a href="https://${encodeURIComponent(brand.domain)}" target="_blank" class="domain-link">${escapeHtml(brand.domain)}</a>
+            <a href="/brand/view/${encodeURIComponent(brand.domain)}" class="domain-link" title="View in brand viewer">${escapeHtml(brand.domain)}</a>
           </td>
           <td>${escapeHtml(brand.brand_name) || '-'}</td>
           <td>
@@ -556,7 +650,7 @@
           <td>
             ${brand.keller_type ? `<span class="keller-badge">${escapeHtml(brand.keller_type)}</span>` : '-'}
           </td>
-          <td>${escapeHtml(brand.house_domain) || '-'}</td>
+          <td>${houseHtml}</td>
           <td>
             <span class="${brand.has_manifest ? 'has-manifest' : 'no-manifest'}">
               ${brand.has_manifest ? 'Yes' : 'No'}
@@ -564,11 +658,12 @@
           </td>
           <td>
             <button class="btn-icon" onclick="viewBrand('${encodeURIComponent(brand.domain)}')" title="View Details">View</button>
-            ${['community', 'enriched'].includes(brand.source) ? `<button class="btn-icon" onclick="window.location.href='/brand/view/${encodeURIComponent(brand.domain)}'" title="History">History</button>` : ''}
+            <button class="btn-icon" onclick="openSetParentModal('${encodeURIComponent(brand.domain)}', '${escapeHtml(brand.house_domain || '')}')" title="Set Parent">Parent</button>
+            ${subCount > 0 || !brand.house_domain ? `<button class="btn-icon" onclick="expandHouse('${encodeURIComponent(brand.domain)}')" title="Discover sub-brands via AI">Expand</button>` : ''}
             ${brand.source === 'hosted' ? `<button class="btn-icon" onclick="deleteBrand('${encodeURIComponent(brand.domain)}')" title="Delete">Delete</button>` : ''}
           </td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     }
 
     function formatSource(source) {
@@ -576,7 +671,8 @@
         'brand_json': 'Authoritative',
         'hosted': 'Hosted',
         'community': 'Community Contributed',
-        'enriched': 'Enriched'
+        'enriched': 'Enriched',
+        'stub': 'Auto-created'
       };
       return labels[source] || source;
     }
@@ -821,6 +917,96 @@
           throw new Error(data.error || 'Failed to delete');
         }
 
+        loadBrands();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Set Parent modal
+    function openSetParentModal(domain, currentHouse) {
+      domain = decodeURIComponent(domain);
+      const modal = document.getElementById('setParentModal');
+      document.getElementById('setParentDomain').textContent = domain;
+      document.getElementById('setParentInput').value = currentHouse || '';
+      document.getElementById('setParentInput').dataset.domain = domain;
+      document.getElementById('setParentError').style.display = 'none';
+
+      // Populate datalist with known parent domains
+      const datalist = document.getElementById('parentDomainList');
+      datalist.innerHTML = '';
+      const parents = new Set();
+      for (const b of allBrands) {
+        if ((b.sub_brand_count || 0) > 0 || !b.house_domain) {
+          parents.add(b.domain);
+        }
+      }
+      for (const d of Array.from(parents).sort()) {
+        const opt = document.createElement('option');
+        opt.value = d;
+        const brand = allBrands.find(b => b.domain === d);
+        if (brand && brand.brand_name) opt.label = brand.brand_name;
+        datalist.appendChild(opt);
+      }
+
+      modal.style.display = 'block';
+    }
+
+    function closeSetParentModal() {
+      document.getElementById('setParentModal').style.display = 'none';
+    }
+
+    async function saveParentBrand() {
+      const input = document.getElementById('setParentInput');
+      const aliasInput = document.getElementById('setAliasInput');
+      const domain = input.dataset.domain;
+      const houseDomain = input.value.trim() || null;
+      const canonicalDomain = aliasInput.value.trim() || null;
+      const errorEl = document.getElementById('setParentError');
+
+      try {
+        const body = {};
+        if (houseDomain !== undefined) body.house_domain = houseDomain;
+        if (canonicalDomain) body.canonical_domain = canonicalDomain;
+
+        const editResp = await fetch(`/api/admin/brand-enrichment/brand/${encodeURIComponent(domain)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!editResp.ok) {
+          const data = await editResp.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to update');
+        }
+
+        closeSetParentModal();
+        loadBrands();
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
+    async function expandHouse(domain) {
+      domain = decodeURIComponent(domain);
+      if (!confirm(`Discover sub-brands for ${domain} using AI? This may take a moment.`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/brand-enrichment/expand-house/${encodeURIComponent(domain)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrich: true }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Expansion failed');
+        }
+
+        const result = await response.json();
+        const count = result.sub_brands_found || 0;
+        alert(`Found ${count} sub-brand${count !== 1 ? 's' : ''} for ${domain}.`);
         loadBrands();
       } catch (error) {
         alert('Error: ' + error.message);
