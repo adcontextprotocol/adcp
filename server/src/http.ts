@@ -6176,6 +6176,39 @@ Disallow: /api/admin/
       }
     });
 
+    // PUT /api/me/name - Update current user's display name
+    this.app.put('/api/me/name', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const firstName = (req.body.first_name as string)?.trim();
+        const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+        if (!firstName) {
+          return res.status(400).json({ error: 'first_name is required' });
+        }
+
+        const pool = getPool();
+
+        // Update users table
+        await pool.query(
+          `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        // Update across all memberships
+        await pool.query(
+          `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        res.json({ first_name: firstName, last_name: lastName });
+      } catch (error) {
+        logger.error({ err: error }, 'Update user name error');
+        res.status(500).json({ error: 'Failed to update name' });
+      }
+    });
+
     // GET /api/me/agreements - Get user's agreement acceptance history
     this.app.get('/api/me/agreements', requireAuth, async (req, res) => {
       try {
