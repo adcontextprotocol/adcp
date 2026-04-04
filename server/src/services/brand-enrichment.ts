@@ -152,22 +152,21 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       // May not exist, that's fine
     }
 
-    // Set canonical_domain on the target brand so accounts using this domain alias still map
-    // e.g. omc.com → omnicomgroup.com: set canonical_domain='omc.com' on omnicomgroup.com
+    // Add domain alias so accounts using this variant domain still map
+    // e.g. omc.com → omnicomgroup.com: insert alias omc.com → omnicomgroup.com
     try {
-      const canonicalBrand = await brandDb.getDiscoveredBrandByDomain(canonicalDomain);
-      if (canonicalBrand && !canonicalBrand.canonical_domain) {
-        await brandDb.upsertDiscoveredBrand({
-          ...canonicalBrand,
-          canonical_domain: domain.toLowerCase(),
-        });
-        logger.info(
-          { domain, canonical: canonicalDomain },
-          'Set canonical_domain alias on target brand'
-        );
-      }
+      await query(
+        `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source)
+         VALUES ($1, $2, 'classifier')
+         ON CONFLICT (alias_domain) DO UPDATE SET brand_domain = $2`,
+        [domain.toLowerCase(), canonicalDomain]
+      );
+      logger.info(
+        { domain, canonical: canonicalDomain },
+        'Added domain alias for variant brand'
+      );
     } catch (err) {
-      logger.warn({ err, domain, canonical: canonicalDomain }, 'Failed to set canonical_domain on target brand');
+      logger.warn({ err, domain, canonical: canonicalDomain }, 'Failed to add domain alias');
     }
 
     logger.info(

@@ -499,10 +499,14 @@
       </div>
 
       <div class="form-group">
-        <label>Domain Alias (canonical_domain)</label>
-        <input type="text" id="setAliasInput" placeholder="e.g. omc.com">
+        <label>Domain Aliases</label>
+        <div id="aliasChips" style="display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-2);"></div>
+        <div style="display: flex; gap: var(--space-2);">
+          <input type="text" id="addAliasInput" placeholder="e.g. omc.com" style="flex: 1;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addAliasChip()">Add</button>
+        </div>
         <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
-          Alternate email domain that maps to this brand (e.g. omc.com for omnicomgroup.com).
+          Alternate email domains that map to this brand (e.g. omc.com, omnicom.com for omnicomgroup.com).
         </div>
       </div>
 
@@ -949,6 +953,17 @@
         datalist.appendChild(opt);
       }
 
+      // Load existing aliases for this brand
+      currentAliases = [];
+      fetch(`/api/admin/brand-enrichment/brand/${encodeURIComponent(domain)}/aliases`)
+        .then(r => r.ok ? r.json() : { aliases: [] })
+        .then(data => {
+          currentAliases = data.aliases || [];
+          renderAliasChips();
+        })
+        .catch(() => {});
+      renderAliasChips();
+
       modal.style.display = 'block';
     }
 
@@ -956,18 +971,42 @@
       document.getElementById('setParentModal').style.display = 'none';
     }
 
+    let currentAliases = [];
+
+    function addAliasChip(value) {
+      const input = document.getElementById('addAliasInput');
+      const alias = (value || input.value).trim().toLowerCase();
+      if (!alias || currentAliases.includes(alias)) {
+        if (input) input.value = '';
+        return;
+      }
+      currentAliases.push(alias);
+      if (input) input.value = '';
+      renderAliasChips();
+    }
+
+    function removeAliasChip(alias) {
+      currentAliases = currentAliases.filter(a => a !== alias);
+      renderAliasChips();
+    }
+
+    function renderAliasChips() {
+      const container = document.getElementById('aliasChips');
+      container.innerHTML = currentAliases.map(a =>
+        `<span style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px 8px; background: var(--color-gray-100); border-radius: var(--radius-full); font-size: var(--text-xs);">${escapeHtml(a)} <button onclick="removeAliasChip('${escapeHtml(a)}')" style="background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-muted); padding: 0;">&times;</button></span>`
+      ).join('');
+    }
+
     async function saveParentBrand() {
       const input = document.getElementById('setParentInput');
-      const aliasInput = document.getElementById('setAliasInput');
       const domain = input.dataset.domain;
       const houseDomain = input.value.trim() || null;
-      const canonicalDomain = aliasInput.value.trim() || null;
       const errorEl = document.getElementById('setParentError');
 
       try {
         const body = {};
         if (houseDomain !== undefined) body.house_domain = houseDomain;
-        if (canonicalDomain) body.canonical_domain = canonicalDomain;
+        body.aliases = currentAliases;
 
         const editResp = await fetch(`/api/admin/brand-enrichment/brand/${encodeURIComponent(domain)}`, {
           method: 'PATCH',

@@ -463,7 +463,11 @@ export function registerAllJobs(): void {
            AND o.email_domain IS NOT NULL
            AND NOT EXISTS (
              SELECT 1 FROM discovered_brands db
-             WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+             WHERE db.domain = o.email_domain
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM brand_domain_aliases bda
+             WHERE bda.alias_domain = o.email_domain
            )
          ORDER BY o.subscription_status = 'active' DESC,
                   o.last_activity_at DESC NULLS LAST

@@ -239,11 +239,13 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
             COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL) as total_with_domain,
             COUNT(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM discovered_brands db
-              WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+              WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             )) as mapped,
             COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL AND NOT EXISTS (
               SELECT 1 FROM discovered_brands db
-              WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+              WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             )) as unmapped
           FROM organizations o
           WHERE o.is_personal = false`
@@ -286,7 +288,8 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
              AND o.email_domain IS NOT NULL
              AND NOT EXISTS (
                SELECT 1 FROM discovered_brands db
-               WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+               WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
              )
            ORDER BY o.subscription_status = 'active' DESC,
                     o.last_activity_at DESC NULLS LAST,
@@ -325,7 +328,8 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
              AND o.email_domain IS NOT NULL
              AND NOT EXISTS (
                SELECT 1 FROM discovered_brands db
-               WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+               WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
              )
            ORDER BY o.subscription_status = 'active' DESC,
                     o.last_activity_at DESC NULLS LAST
@@ -365,8 +369,28 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
     }
   );
 
+  // GET /api/admin/brand-enrichment/brand/:domain/aliases
+  apiRouter.get(
+    '/brand-enrichment/brand/:domain/aliases',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const result = await query(
+          `SELECT alias_domain FROM brand_domain_aliases WHERE brand_domain = $1 ORDER BY alias_domain`,
+          [domain]
+        );
+        res.json({ aliases: result.rows.map((r: { alias_domain: string }) => r.alias_domain) });
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching brand aliases');
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    }
+  );
+
   // PATCH /api/admin/brand-enrichment/brand/:domain
-  // Update brand metadata (canonical_domain, house_domain, keller_type)
+  // Update brand metadata (aliases, house_domain, keller_type)
   apiRouter.patch(
     '/brand-enrichment/brand/:domain',
     requireAuth,
@@ -378,12 +402,19 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           return res.status(400).json({ error: 'Invalid domain format' });
         }
 
-        const { canonical_domain, house_domain, keller_type } = req.body;
+        const { aliases, canonical_domain, house_domain, keller_type } = req.body;
         const DOMAIN_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/;
         const VALID_KELLER_TYPES = ['master', 'sub_brand', 'endorsed', 'independent'];
 
-        if (canonical_domain != null && canonical_domain !== '' && !DOMAIN_RE.test(canonical_domain)) {
-          return res.status(400).json({ error: 'Invalid canonical_domain format' });
+        // Normalize aliases: accept array or single canonical_domain for backward compat
+        const aliasArray: string[] = Array.isArray(aliases)
+          ? aliases.map((a: string) => a.toLowerCase().trim()).filter(Boolean)
+          : (canonical_domain ? [canonical_domain.toLowerCase().trim()] : []);
+
+        for (const alias of aliasArray) {
+          if (!DOMAIN_RE.test(alias)) {
+            return res.status(400).json({ error: `Invalid alias domain format: ${alias}` });
+          }
         }
         if (house_domain != null && house_domain !== '' && !DOMAIN_RE.test(house_domain)) {
           return res.status(400).json({ error: 'Invalid house_domain format' });
@@ -400,14 +431,11 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           return res.status(404).json({ error: 'Brand not found in registry' });
         }
 
+        // Update brand fields
         const setClauses: string[] = [];
         const params: (string | null)[] = [];
         let idx = 1;
 
-        if (canonical_domain !== undefined) {
-          setClauses.push(`canonical_domain = $${idx++}`);
-          params.push(canonical_domain || null);
-        }
         if (house_domain !== undefined) {
           setClauses.push(`house_domain = $${idx++}`);
           params.push(house_domain || null);
@@ -417,18 +445,42 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           params.push(keller_type || null);
         }
 
-        if (setClauses.length === 0) {
-          return res.status(400).json({ error: 'No fields to update' });
+        let brandRow;
+        if (setClauses.length > 0) {
+          params.push(domain);
+          const result = await query(
+            `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, house_domain, keller_type, brand_name, source_type`,
+            params
+          );
+          brandRow = result.rows[0];
+        } else {
+          const result = await query(
+            `SELECT domain, house_domain, keller_type, brand_name, source_type FROM discovered_brands WHERE domain = $1`,
+            [domain]
+          );
+          brandRow = result.rows[0];
         }
 
-        params.push(domain);
-        const result = await query(
-          `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, canonical_domain, house_domain, keller_type, brand_name, source_type`,
-          params
+        // Update aliases if provided
+        if (aliases !== undefined || canonical_domain !== undefined) {
+          // Replace all aliases for this brand
+          await query(`DELETE FROM brand_domain_aliases WHERE brand_domain = $1`, [domain]);
+          for (const alias of aliasArray) {
+            await query(
+              `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source) VALUES ($1, $2, 'admin') ON CONFLICT (alias_domain) DO UPDATE SET brand_domain = $2`,
+              [alias, domain]
+            );
+          }
+        }
+
+        // Fetch current aliases
+        const aliasResult = await query(
+          `SELECT alias_domain FROM brand_domain_aliases WHERE brand_domain = $1 ORDER BY alias_domain`,
+          [domain]
         );
 
-        logger.info({ domain, canonical_domain, house_domain, keller_type }, 'Brand metadata updated');
-        res.json(result.rows[0]);
+        logger.info({ domain, aliases: aliasArray, house_domain, keller_type }, 'Brand metadata updated');
+        res.json({ ...brandRow, aliases: aliasResult.rows.map((r: { alias_domain: string }) => r.alias_domain) });
       } catch (error) {
         logger.error({ err: error }, 'Error updating brand metadata');
         res.status(500).json({ error: 'Internal server error' });

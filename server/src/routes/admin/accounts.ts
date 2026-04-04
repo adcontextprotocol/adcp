@@ -281,7 +281,7 @@ export function setupAccountRoutes(
             WHERE o.subscription_status IN (${churnedStatusList})
           `),
 
-          // Unmapped - accounts with email_domain not in brand registry (checks domain + canonical_domain)
+          // Unmapped - accounts with email_domain not in brand registry (checks domain + aliases)
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
@@ -289,7 +289,11 @@ export function setupAccountRoutes(
               AND o.email_domain IS NOT NULL
               AND NOT EXISTS (
                 SELECT 1 FROM discovered_brands db
-                WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+                WHERE db.domain = o.email_domain
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM brand_domain_aliases bda
+                WHERE bda.alias_domain = o.email_domain
               )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
@@ -348,7 +352,8 @@ export function setupAccountRoutes(
           LEFT JOIN LATERAL (
             SELECT db.domain, db.brand_name, db.keller_type, db.house_domain, db.source_type
             FROM discovered_brands db
-            WHERE db.domain = o.email_domain OR db.canonical_domain = o.email_domain
+            WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             ORDER BY (db.domain = o.email_domain) DESC
             LIMIT 1
           ) db_parent ON true
@@ -894,14 +899,14 @@ export function setupAccountRoutes(
 
       // Brand registry hierarchy join (house_domain → parent org)
       // Uses LATERAL + LIMIT 1 to avoid duplicate rows when multiple orgs share an email_domain
-      // Matches on domain first, falls back to canonical_domain for aliases (e.g. omc.com → omnicomgroup.com)
+      // Matches on domain first, falls back to brand_domain_aliases for aliases (e.g. omc.com → omnicomgroup.com)
       const hierarchyJoin = `
         LEFT JOIN LATERAL (
           SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
                  db.keller_type as brand_keller_type, db.source_type as brand_source
           FROM discovered_brands db
           WHERE db.domain = o.email_domain
-             OR db.canonical_domain = o.email_domain
+             OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
           ORDER BY (db.domain = o.email_domain) DESC
           LIMIT 1
         ) db_hier ON true
