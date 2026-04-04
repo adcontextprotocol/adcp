@@ -4,10 +4,10 @@
  * Tests that Addie routes admin queries to the correct tools.
  * These tests validate the tool selection logic based on prompt patterns.
  *
- * Run with: npx jest tests/addie/admin-prompt-routing.test.ts
+ * Run with: npx vitest run tests/addie/admin-prompt-routing.test.ts
  */
 
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Expected tool routing for different admin query patterns.

@@ -1,23 +1,64 @@
 import { query } from './client.js';
 
-export interface DigestRecord {
-  id: number;
-  edition_date: Date;
-  status: 'draft' | 'approved' | 'sent' | 'skipped';
-  approved_by: string | null;
-  approved_at: Date | null;
-  review_channel_id: string | null;
-  review_message_ts: string | null;
-  content: DigestContent;
-  created_at: Date;
-  sent_at: Date | null;
-  send_stats: DigestSendStats | null;
+// ─── Current ("The Prompt") content shape ────────────────────────────────
+
+export interface DigestContent {
+  contentVersion: 2;
+  openingTake: string;
+  whatToWatch: DigestNewsItem[];
+  fromTheInside: DigestInsiderGroup[];
+  voices: DigestMemberPerspective[];
+  newMembers: DigestNewMember[];
+  shareableTake?: string;
+  whatShipped?: DigestShipment[];
+  editorsNote?: string;
+  emailSubject?: string;
+  editHistory?: DigestEditEntry[];
+  generatedAt: string;
 }
 
-export interface DigestSocialPostIdea {
+export interface DigestShipment {
   title: string;
   url: string;
-  description: string;
+  summary: string;
+}
+
+export interface DigestInsiderGroup {
+  name: string;
+  groupId: string;
+  summary: string;
+  meetingRecaps: DigestMeetingRecap[];
+  activeThreads: DigestThread[];
+  nextMeeting?: string;
+}
+
+export interface DigestMeetingRecap {
+  title: string;
+  date: string;
+  summary: string | null;
+  meetingUrl: string;
+}
+
+export interface DigestThread {
+  summary: string;
+  replyCount: number;
+  threadUrl: string;
+  starter?: string;
+  participantCount?: number;
+}
+
+export interface DigestNewsItem {
+  title: string;
+  url: string;
+  summary: string;
+  whyItMatters: string;
+  tags: string[];
+  knowledgeId?: number;
+  suggestionId?: number;
+}
+
+export interface DigestNewMember {
+  name: string;
 }
 
 export interface DigestMemberPerspective {
@@ -35,52 +76,81 @@ export interface DigestEditEntry {
   description: string;
 }
 
-export interface DigestSpotlightAction {
-  text: string;
-  linkUrl?: string;
-  linkLabel?: string;
-}
+// ─── Legacy content shape (for rendering old sent digests) ──────────────
 
-export interface DigestContent {
+export interface LegacyDigestContent {
   intro: string;
   memberPerspectives?: DigestMemberPerspective[];
   news: DigestNewsItem[];
   newMembers: DigestNewMember[];
-  conversations: DigestConversation[];
-  workingGroups: DigestWorkingGroup[];
-  perspectives?: DigestPerspective[];
-  socialPostIdeas?: DigestSocialPostIdea[];
-  spotlightAction?: DigestSpotlightAction;
+  conversations: LegacyDigestConversation[];
+  workingGroups: LegacyDigestWorkingGroup[];
+  perspectives?: LegacyDigestPerspective[];
+  socialPostIdeas?: LegacyDigestSocialPostIdea[];
+  spotlightAction?: LegacyDigestSpotlightAction;
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: DigestEditEntry[];
   generatedAt: string;
 }
 
-export interface DigestNewsItem {
-  title: string;
-  url: string;
-  summary: string;
-  whyItMatters: string;
-  tags: string[];
-  knowledgeId?: number;
-}
-
-export interface DigestNewMember {
-  name: string;
-}
-
-export interface DigestConversation {
+export interface LegacyDigestConversation {
   summary: string;
   channelName: string;
   threadUrl: string;
   participants: string[];
 }
 
-export interface DigestWorkingGroup {
+export interface LegacyDigestWorkingGroup {
   name: string;
   summary: string;
   nextMeeting?: string;
+}
+
+interface LegacyDigestPerspective {
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  author_name: string | null;
+  published_at: Date | null;
+}
+
+interface LegacyDigestSocialPostIdea {
+  title: string;
+  url: string;
+  description: string;
+}
+
+interface LegacyDigestSpotlightAction {
+  text: string;
+  linkUrl?: string;
+  linkLabel?: string;
+}
+
+/**
+ * Type guard: returns true for old-format digest content (pre-"The Prompt").
+ */
+export function isLegacyContent(
+  content: DigestContent | LegacyDigestContent,
+): content is LegacyDigestContent {
+  return !('contentVersion' in content) || (content as DigestContent).contentVersion !== 2;
+}
+
+// ─── Shared types ───────────────────────────────────────────────────────
+
+export interface DigestRecord {
+  id: number;
+  edition_date: Date;
+  status: 'draft' | 'approved' | 'sent' | 'skipped';
+  approved_by: string | null;
+  approved_at: Date | null;
+  review_channel_id: string | null;
+  review_message_ts: string | null;
+  content: DigestContent | LegacyDigestContent;
+  created_at: Date;
+  sent_at: Date | null;
+  send_stats: DigestSendStats | null;
+  perspective_id: string | null;
 }
 
 export interface DigestSendStats {
@@ -94,6 +164,29 @@ export interface DigestEmailRecipient {
   email: string;
   first_name: string | null;
   has_slack: boolean;
+  persona: string | null;
+  journey_stage: string | null;
+}
+
+/**
+ * Persona clusters for email personalization.
+ * Groups 7 personas into 3 clusters to avoid over-segmentation.
+ */
+export type PersonaCluster = 'builder' | 'strategist' | 'newcomer';
+
+const PERSONA_CLUSTERS: Record<string, PersonaCluster> = {
+  molecule_builder: 'builder',
+  pragmatic_builder: 'builder',
+  data_decoder: 'strategist',
+  resops_integrator: 'strategist',
+  ladder_climber: 'strategist',
+  pureblood_protector: 'strategist',
+  simple_starter: 'newcomer',
+};
+
+export function getPersonaCluster(persona: string | null): PersonaCluster {
+  if (!persona) return 'newcomer';
+  return PERSONA_CLUSTERS[persona] || 'newcomer';
 }
 
 export interface DigestArticle {
@@ -107,13 +200,15 @@ export interface DigestArticle {
   published_at: Date | null;
 }
 
-export interface DigestPerspective {
+export interface DigestPerspectiveRow {
   slug: string;
   title: string;
   excerpt: string | null;
   author_name: string | null;
   published_at: Date | null;
 }
+
+// ─── Database functions ─────────────────────────────────────────────────
 
 /**
  * Create a new digest draft. Returns null if one already exists for this date.
@@ -257,8 +352,19 @@ export async function getDigestByReviewMessage(
 }
 
 /**
+ * Link a sent digest to its published perspective article.
+ */
+export async function setPerspectiveId(digestId: number, perspectiveId: string): Promise<void> {
+  await query(
+    `UPDATE weekly_digests SET perspective_id = $2 WHERE id = $1`,
+    [digestId, perspectiveId],
+  );
+}
+
+/**
  * Get recent high-quality articles from addie_knowledge for digest inclusion.
- * Excludes articles already included in a previous sent digest.
+ * Excludes articles already included in a previous sent digest (checks both
+ * legacy 'news' and current 'whatToWatch' field names).
  */
 export async function getRecentArticlesForDigest(
   days: number = 7,
@@ -277,7 +383,10 @@ export async function getRecentArticlesForDigest(
        AND NOT EXISTS (
          SELECT 1 FROM weekly_digests wd
          WHERE wd.status = 'sent'
-           AND wd.content::jsonb -> 'news' @> jsonb_build_array(jsonb_build_object('knowledgeId', k.id))
+           AND (
+             wd.content::jsonb -> 'news' @> jsonb_build_array(jsonb_build_object('knowledgeId', k.id))
+             OR wd.content::jsonb -> 'whatToWatch' @> jsonb_build_array(jsonb_build_object('knowledgeId', k.id))
+           )
        )
      ORDER BY k.quality_score DESC, k.published_at DESC NULLS LAST
      LIMIT $2`,
@@ -288,13 +397,14 @@ export async function getRecentArticlesForDigest(
 
 /**
  * Get recent published member perspectives for digest inclusion.
- * Excludes items already included in a previously sent digest.
+ * Excludes items already included in a previously sent digest (checks both
+ * legacy 'memberPerspectives' and current 'voices' field names).
  */
 export async function getRecentMemberPerspectivesForDigest(
   days: number = 7,
   limit: number = 5,
-): Promise<DigestPerspective[]> {
-  const result = await query<DigestPerspective>(
+): Promise<DigestPerspectiveRow[]> {
+  const result = await query<DigestPerspectiveRow>(
     `SELECT
         p.slug,
         p.title,
@@ -312,8 +422,12 @@ export async function getRecentMemberPerspectivesForDigest(
        AND NOT EXISTS (
          SELECT 1 FROM weekly_digests wd
          WHERE wd.status = 'sent'
-           AND COALESCE(wd.content::jsonb -> 'memberPerspectives', '[]'::jsonb)
-             @> jsonb_build_array(jsonb_build_object('slug', p.slug))
+           AND (
+             COALESCE(wd.content::jsonb -> 'memberPerspectives', '[]'::jsonb)
+               @> jsonb_build_array(jsonb_build_object('slug', p.slug))
+             OR COALESCE(wd.content::jsonb -> 'voices', '[]'::jsonb)
+               @> jsonb_build_array(jsonb_build_object('slug', p.slug))
+           )
        )
      ORDER BY p.published_at DESC
      LIMIT $2`,
@@ -346,24 +460,30 @@ export async function getNewOrganizations(days: number = 7): Promise<Array<{
 }
 
 /**
- * Get users eligible to receive the weekly digest email.
- * Returns users with email who haven't opted out of the weekly_digest category.
+ * Get users eligible to receive The Prompt email.
+ * Returns users with email who haven't opted out of the_prompt (or legacy weekly_digest) category.
  */
 export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]> {
   const result = await query<DigestEmailRecipient>(
-    `SELECT
+    `SELECT DISTINCT ON (u.workos_user_id)
        u.workos_user_id,
        u.email,
        u.first_name,
-       (u.primary_slack_user_id IS NOT NULL) AS has_slack
+       (u.primary_slack_user_id IS NOT NULL) AS has_slack,
+       o.persona,
+       o.journey_stage
      FROM users u
+     LEFT JOIN organization_memberships om
+       ON om.workos_user_id = u.workos_user_id
+     LEFT JOIN organizations o
+       ON o.workos_organization_id = om.workos_organization_id
      WHERE u.email IS NOT NULL
        AND u.email != ''
        AND NOT EXISTS (
          SELECT 1 FROM user_email_preferences uep
          JOIN user_email_category_preferences uecp ON uecp.user_preference_id = uep.id
          WHERE uep.workos_user_id = u.workos_user_id
-           AND uecp.category_id = 'weekly_digest'
+           AND uecp.category_id IN ('the_prompt', 'weekly_digest')
            AND uecp.enabled = FALSE
        )
        AND NOT EXISTS (

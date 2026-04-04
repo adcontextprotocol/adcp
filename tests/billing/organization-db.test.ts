@@ -1,37 +1,38 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 
 // Mock the database client
-jest.mock('../../server/src/db/client.js', () => ({
-  getPool: jest.fn(),
+vi.mock('../../server/src/db/client.js', () => ({
+  getPool: vi.fn(),
 }));
 
 // Mock the Stripe client
-jest.mock('../../server/src/billing/stripe-client.js', () => ({
-  getStripeSubscriptionInfo: jest.fn(),
+vi.mock('../../server/src/billing/stripe-client.js', () => ({
+  getStripeSubscriptionInfo: vi.fn(),
 }));
 
 describe('organization-db', () => {
   let mockPool: any;
   let mockGetStripeSubscriptionInfo: any;
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.resetModules();
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
 
     // Setup mock pool with connection support for transactional queries
     const mockClient = {
-      query: jest.fn(),
-      release: jest.fn(),
+      query: vi.fn(),
+      release: vi.fn(),
     };
     mockPool = {
-      query: jest.fn(),
-      connect: jest.fn().mockResolvedValue(mockClient),
+      query: vi.fn(),
+      connect: vi.fn().mockResolvedValue(mockClient),
       _mockClient: mockClient,
     };
 
     // Setup mocks
-    const { getPool } = require('../../server/src/db/client.js');
-    mockGetStripeSubscriptionInfo = require('../../server/src/billing/stripe-client.js').getStripeSubscriptionInfo;
+    const { getPool } = await import('../../server/src/db/client.js') as any;
+    const stripeClient = await import('../../server/src/billing/stripe-client.js') as any;
+    mockGetStripeSubscriptionInfo = stripeClient.getStripeSubscriptionInfo;
     getPool.mockReturnValue(mockPool);
   });
 

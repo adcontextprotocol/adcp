@@ -239,9 +239,10 @@ function notifyErrorChannel(module: string, message: string, error?: Error): voi
       const errorDetail = error?.message && error.message !== message
         ? sanitizeForSlack(`${message}: ${error.message}`)
         : sanitizeForSlack(message);
+      const stack = error?.stack ? `\n\`\`\`${sanitizeForSlack(error.stack.slice(0, 500))}\`\`\`` : '';
       notifySystemError({
         source: module || 'unknown',
-        errorMessage: errorDetail,
+        errorMessage: errorDetail + stack,
       });
     })
     .catch(() => {})

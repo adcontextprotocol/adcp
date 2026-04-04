@@ -23,6 +23,7 @@ request.
    - testing section
    - risks or follow-ups
 8. Create the PR, resolve merge conflicts if needed, and make sure CI passes.
+9. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and fix any CodeQL findings (unused imports, XSS, polynomial regex, etc.). These block merge.
 
 ## Output Shape
 

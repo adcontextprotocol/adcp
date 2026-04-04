@@ -1,8 +1,12 @@
-import { describe, test, expect, jest } from '@jest/globals';
+import { describe, test, expect, vi } from 'vitest';
 import type Stripe from 'stripe';
+import type { MockedClass } from 'vitest';
 
-// Mock the Stripe module
-jest.mock('stripe');
+// Mock the Stripe module with a constructor
+vi.mock('stripe', () => {
+  const MockStripe = vi.fn();
+  return { default: MockStripe };
+});
 
 describe('Webhook Security', () => {
   describe('Stripe webhook signature verification', () => {
@@ -23,11 +27,11 @@ describe('Webhook Security', () => {
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
       // Mock webhook signature verification to throw error
       const mockWebhooks = {
-        constructEvent: jest.fn().mockImplementation(() => {
+        constructEvent: vi.fn().mockImplementation(() => {
           throw new Error('Invalid signature');
         }),
       };
@@ -36,7 +40,7 @@ describe('Webhook Security', () => {
         webhooks: mockWebhooks,
       };
 
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       // Simulate invalid webhook request
       const invalidBody = Buffer.from(JSON.stringify({ type: 'test.event' }));
@@ -52,7 +56,7 @@ describe('Webhook Security', () => {
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
       // Mock successful signature verification
       const mockEvent = {
@@ -67,14 +71,14 @@ describe('Webhook Security', () => {
       };
 
       const mockWebhooks = {
-        constructEvent: jest.fn().mockReturnValue(mockEvent),
+        constructEvent: vi.fn().mockReturnValue(mockEvent),
       };
 
       const mockStripeInstance = {
         webhooks: mockWebhooks,
       };
 
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       // Simulate valid webhook request
       const validBody = Buffer.from(JSON.stringify(mockEvent));

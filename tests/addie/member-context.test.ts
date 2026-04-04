@@ -6,7 +6,7 @@
  * and is tested via integration tests.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 
 // Define the MemberContext type locally to avoid importing the module
 // (which has side-effects requiring WorkOS API keys)
