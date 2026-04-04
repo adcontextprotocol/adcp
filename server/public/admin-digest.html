@@ -20,10 +20,10 @@
     .section h2 { font-size: 16px; color: var(--color-text-heading, #1a1a2e); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
     .section h2 .count { font-size: 12px; color: #888; font-weight: normal; }
 
-    .editable { cursor: pointer; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; margin: -4px -8px; transition: border-color 0.15s; }
-    .editable:hover { border-color: #d1d5db; background: #f9fafb; }
-    .editable:focus { outline: none; border-color: #2563eb; background: #fff; }
-    .editable[contenteditable="true"] { border-color: #2563eb; background: #fff; }
+    .editable { cursor: pointer; border: 1px dashed #d1d5db; border-radius: 4px; padding: 8px 12px; transition: all 0.15s; min-height: 24px; line-height: 1.5; }
+    .editable:hover { border-color: #93c5fd; background: #f0f4ff; }
+    .editable:focus { outline: none; border-color: #2563eb; border-style: solid; background: #fff; }
+    .editable[contenteditable="true"] { border-color: #2563eb; border-style: solid; background: #fff; }
 
     .article-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; position: relative; }
     .article-card:hover { border-color: #d1d5db; }
@@ -91,7 +91,7 @@
   </style>
 </head>
 <body>
-  <div id="app">
+  <div id="app" style="padding: 24px 32px;">
     <div class="digest-header">
       <div>
         <h1>The Prompt</h1>
@@ -261,6 +261,21 @@
     }
 
     // ─── Load ───────────────────────────────────────────────────
+    /**
+     * Render Slack-format links (<url|label>) as clickable HTML.
+     * Falls back to escaping non-link text.
+     */
+    function renderSlackLinks(text) {
+      if (!text) return '';
+      return esc(text).replace(
+        /&lt;(https?:\/\/[^|&]+)\|([^&]+)&gt;/g,
+        '<a href="$1" target="_blank" style="color:#2563eb;">$2</a>'
+      ).replace(
+        /&lt;(https?:\/\/[^&]+)&gt;/g,
+        '<a href="$1" target="_blank" style="color:#2563eb;">$1</a>'
+      );
+    }
+
     async function loadDigest() {
       try {
         const res = await api('/digests/current');
@@ -313,13 +328,19 @@
       document.getElementById('editSubject').onclick = function() { startEdit(this, 'emailSubject'); };
 
       // Opening take
-      document.getElementById('editOpening').textContent = c.openingTake || '';
+      const openEl = document.getElementById('editOpening');
+      openEl.textContent = c.openingTake || '';
+      if (!c.openingTake) { openEl.textContent = 'Click to write the opening take...'; openEl.style.color = '#aaa'; } else { openEl.style.color = '#333'; }
 
-      // Editor's note
+      // Editor's note (render Slack links as clickable HTML)
       const noteEl = document.getElementById('editNote');
-      noteEl.textContent = c.editorsNote || '';
-      noteEl.style.color = c.editorsNote ? '#333' : '#aaa';
-      if (!c.editorsNote) noteEl.textContent = 'Click to add an editor\'s note...';
+      if (c.editorsNote) {
+        noteEl.innerHTML = renderSlackLinks(c.editorsNote);
+        noteEl.style.color = '#333';
+      } else {
+        noteEl.textContent = 'Click to add an editor\'s note...';
+        noteEl.style.color = '#aaa';
+      }
 
       // Shareable take
       const shareEl = document.getElementById('editShareable');
@@ -330,7 +351,9 @@
       // Articles
       const articles = c.whatToWatch || [];
       document.getElementById('articleCount').textContent = `(${articles.length})`;
-      document.getElementById('articlesList').innerHTML = articles.map((a, i) => `
+      document.getElementById('articlesList').innerHTML = articles.length === 0
+        ? '<p style="color:#aaa;font-size:13px;">No articles yet. Use the instruction bar to add content, or community suggestions will appear here.</p>'
+        : articles.map((a, i) => `
         <div class="article-card" id="article-${i}">
           <div class="article-actions">
             <button class="btn btn-sm btn-secondary" onclick="editArticle(${i})">Edit</button>
