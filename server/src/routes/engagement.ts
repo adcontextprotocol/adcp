@@ -26,24 +26,44 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
   router.get('/', requireAuth, async (req, res) => {
     try {
       const userId = req.user!.id;
+      const rawOrg = req.query.org;
+      const requestedOrgId = typeof rawOrg === 'string' ? rawOrg : undefined;
 
-      // Resolve user's organization — check memberships table first, then users.primary_organization_id
-      const membershipResult = await query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM (
-           SELECT om.workos_organization_id, 1 AS priority
-           FROM organization_memberships om
-           WHERE om.workos_user_id = $1
-           UNION ALL
-           SELECT u.primary_organization_id, 2 AS priority
-           FROM users u
-           WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
-         ) ranked
-         ORDER BY priority, workos_organization_id
-         LIMIT 1`,
-        [userId]
-      );
+      let orgId: string | undefined;
 
-      const orgId = membershipResult.rows[0]?.workos_organization_id;
+      if (requestedOrgId) {
+        // Validate the user belongs to the requested org
+        const memberCheck = await query<{ workos_organization_id: string }>(
+          `SELECT workos_organization_id FROM organization_memberships
+           WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [userId, requestedOrgId]
+        );
+        if (memberCheck.rows.length > 0) {
+          orgId = requestedOrgId;
+        } else {
+          return res.status(403).json({ error: 'Not a member of the requested organization' });
+        }
+      }
+
+      if (!orgId) {
+        // Fallback: resolve from memberships (no explicit org requested)
+        const membershipResult = await query<{ workos_organization_id: string }>(
+          `SELECT workos_organization_id FROM (
+             SELECT om.workos_organization_id, 1 AS priority
+             FROM organization_memberships om
+             WHERE om.workos_user_id = $1
+             UNION ALL
+             SELECT u.primary_organization_id, 2 AS priority
+             FROM users u
+             WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
+           ) ranked
+           ORDER BY priority, workos_organization_id
+           LIMIT 1`,
+          [userId]
+        );
+        orgId = membershipResult.rows[0]?.workos_organization_id;
+      }
+
       if (!orgId) {
         return res.status(404).json({ error: 'No organization found for user' });
       }

@@ -49,11 +49,13 @@ import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
+import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
+const bulkCheckService = new BulkPropertyCheckService();
 const complianceDb = new ComplianceDatabase();
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
@@ -1859,6 +1861,45 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.json(results);
     } catch (error) {
       logger.error({ error }, "Failed to retrieve property check report");
+      return res.status(500).json({ error: "Failed to retrieve report" });
+    }
+  });
+
+  // ── Bulk Property Check ─────────────────────────────────────────
+
+  router.post("/properties/check/bulk", bulkResolveRateLimiter, async (req, res) => {
+    try {
+      const { identifiers } = req.body;
+      if (!Array.isArray(identifiers) || !identifiers.every((i: unknown) => typeof i === 'string')) {
+        return res.status(400).json({ error: "identifiers must be an array of strings" });
+      }
+      if (identifiers.length > 10000) {
+        return res.status(400).json({ error: "Maximum 10,000 identifiers per request" });
+      }
+
+      const results = await bulkCheckService.check(identifiers);
+      const reportId = await bulkCheckService.saveReport(results);
+
+      return res.json({ ...results, report_id: reportId });
+    } catch (error) {
+      logger.error({ error }, "Failed to run bulk property check");
+      return res.status(500).json({ error: "Failed to run bulk property check" });
+    }
+  });
+
+  router.get("/properties/check/bulk/:reportId", async (req, res) => {
+    try {
+      const { reportId } = req.params;
+      if (!REPORT_UUID_RE.test(reportId)) {
+        return res.status(404).json({ error: "Report not found or expired" });
+      }
+      const results = await bulkCheckService.getReport(reportId);
+      if (!results) {
+        return res.status(404).json({ error: "Report not found or expired" });
+      }
+      return res.json(results);
+    } catch (error) {
+      logger.error({ error }, "Failed to retrieve bulk check report");
       return res.status(500).json({ error: "Failed to retrieve report" });
     }
   });
