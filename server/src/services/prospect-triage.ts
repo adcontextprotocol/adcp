@@ -376,8 +376,6 @@ export async function triageEmailDomain(
     };
   }
 
-  const pool = getPool();
-
   // 3. Enrich via Lusha (best-effort — don't fail triage if unavailable)
   let enrichmentContext = 'No enrichment data available.';
   let enrichedCompanyName: string | undefined;

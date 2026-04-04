@@ -93,19 +93,19 @@ export async function createProspect(
   if (normalizedDomain) {
     const resolved = await resolveOrgByDomain(normalizedDomain);
     if (resolved) {
-      const methodDesc = resolved.matchedDomain !== normalizedDomain
-        ? `Domain ${normalizedDomain} resolves to ${resolved.matchedDomain} via ${resolved.method}`
-        : `Domain ${normalizedDomain} already tracked`;
-      logger.info({ domain: normalizedDomain, matchedDomain: resolved.matchedDomain, method: resolved.method, orgId: resolved.orgId }, methodDesc);
+      const isAlias = resolved.matchedDomain !== normalizedDomain;
+      logger.info({ domain: normalizedDomain, matchedDomain: resolved.matchedDomain, method: resolved.method, orgId: resolved.orgId },
+        isAlias ? 'Domain resolves to existing org via alias' : 'Domain already tracked');
 
       // Fetch actual org details so callers have useful info
       const orgRow = await pool.query<{ name: string; prospect_status: string | null }>(
         `SELECT name, prospect_status FROM organizations WHERE workos_organization_id = $1`,
         [resolved.orgId]
       );
+      const orgName = orgRow.rows[0]?.name ?? resolved.matchedDomain;
       return {
         success: false,
-        error: methodDesc,
+        error: isAlias ? `Domain resolves to ${orgName} via ${resolved.method}` : `Domain already tracked (${orgName})`,
         alreadyExists: true,
         organization: {
           workos_organization_id: resolved.orgId,
