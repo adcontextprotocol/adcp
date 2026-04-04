@@ -58,6 +58,7 @@ export async function sendNewsletter(
       category: config.emailCategory,
       workosUserId: recipient.workos_user_id,
       metadata: { edition_date: editionDate, segment },
+      from: config.fromEmail,
     });
 
     bySegment[segment] = (bySegment[segment] || 0) + 1;

@@ -196,12 +196,13 @@ export const thePromptConfig: NewsletterConfig = {
   authorTitle: 'AI at AgenticAdvertising.org',
   authorSystemId: 'system:addie',
   emailCategory: 'weekly_digest',
+  fromEmail: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
   palette: PROMPT_PALETTE,
   cadence: {
     generateHourET: 7,
     sendHourET: 9,
-    shouldRunToday: () => {
-      const now = new Date();
+    shouldRunToday: (dateOverride?: Date) => {
+      const now = dateOverride || new Date();
       const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
       if (et.getDay() !== 2) return false; // Tuesday only
 

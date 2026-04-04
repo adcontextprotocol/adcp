@@ -517,6 +517,7 @@ export async function sendMarketingEmail(data: {
   workosUserId: string;
   workosOrganizationId?: string;
   campaignId?: string;
+  from?: string;
 }): Promise<boolean> {
   if (!resend) {
     logger.debug('Resend not configured, skipping marketing email');
@@ -555,7 +556,7 @@ export async function sendMarketingEmail(data: {
     const footerText = generateFooterText(unsubscribeToken, data.category);
 
     const { data: sendData, error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: data.from || FROM_EMAIL,
       to: data.to,
       subject: data.subject,
       headers: {
@@ -633,6 +634,7 @@ export async function sendBatchMarketingEmails(
     text: string;
     headers: Record<string, string>;
     trackingId: string;
+    from?: string;
   }> = [];
 
   for (const email of emails) {
@@ -692,7 +694,7 @@ export async function sendBatchMarketingEmails(
     try {
       const { data: batchData, error } = await resend.batch.send(
         batch.map((e) => ({
-          from: FROM_EMAIL,
+          from: e.from || FROM_EMAIL,
           to: e.to,
           subject: e.subject,
           html: e.html,
@@ -1208,6 +1210,7 @@ export interface TrackedBatchMarketingEmail {
   category: string;
   workosUserId: string;
   metadata?: Record<string, unknown>;
+  from?: string;
 }
 
 /**
@@ -1231,6 +1234,7 @@ export async function sendTrackedBatchMarketingEmails(
     text: string;
     headers: Record<string, string>;
     trackingId: string;
+    from?: string;
   }> = [];
 
   for (const email of emails) {
@@ -1265,6 +1269,7 @@ export async function sendTrackedBatchMarketingEmails(
       prepared.push({
         to: email.to,
         subject: email.subject,
+        from: email.from,
         html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -1294,7 +1299,7 @@ export async function sendTrackedBatchMarketingEmails(
     try {
       const { data: batchData, error } = await resend.batch.send(
         batch.map((e) => ({
-          from: FROM_EMAIL,
+          from: e.from || FROM_EMAIL,
           to: e.to,
           subject: e.subject,
           html: e.html,

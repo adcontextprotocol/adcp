@@ -20,10 +20,10 @@
     .section h2 { font-size: 16px; color: var(--color-text-heading, #1a1a2e); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
     .section h2 .count { font-size: 12px; color: #888; font-weight: normal; }
 
-    .editable { cursor: pointer; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; margin: -4px -8px; transition: border-color 0.15s; }
-    .editable:hover { border-color: #d1d5db; background: #f9fafb; }
-    .editable:focus { outline: none; border-color: #2563eb; background: #fff; }
-    .editable[contenteditable="true"] { border-color: #2563eb; background: #fff; }
+    .editable { cursor: pointer; border: 1px dashed #d1d5db; border-radius: 4px; padding: 8px 12px; transition: all 0.15s; min-height: 24px; line-height: 1.5; }
+    .editable:hover { border-color: #93c5fd; background: #f0f4ff; }
+    .editable:focus { outline: none; border-color: #2563eb; border-style: solid; background: #fff; }
+    .editable[contenteditable="true"] { border-color: #2563eb; border-style: solid; background: #fff; }
 
     .article-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; position: relative; }
     .article-card:hover { border-color: #d1d5db; }
@@ -91,7 +91,7 @@
   </style>
 </head>
 <body>
-  <div id="app">
+  <div id="app" style="padding: 24px 32px;">
     <div class="digest-header">
       <div>
         <h1>The Prompt</h1>
@@ -116,12 +116,25 @@
 
       <!-- EDIT TAB -->
       <div id="panelEdit">
+        <!-- How this works (collapsible) -->
+        <div id="helpBanner" style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.6;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>How this works</strong>
+            <button onclick="document.getElementById('helpBanner').style.display='none';localStorage.setItem('hideDigestHelp','1')" style="background:none;border:none;color:#1e40af;cursor:pointer;font-size:16px;">&times;</button>
+          </div>
+          <div style="margin-top:8px;">
+            Addie generates a draft from community activity, suggestions, and industry feeds. <strong>Click any text</strong> to edit inline (Enter to save, Escape to cancel). Use the <strong>instruction bar</strong> at the bottom to ask Addie for broader changes. Preview by persona/segment before sending a test email. When ready, <strong>Approve & Queue</strong> to schedule the send.
+          </div>
+        </div>
+        <script>if(localStorage.getItem('hideDigestHelp')==='1')document.getElementById('helpBanner').style.display='none';</script>
+
         <div id="lockedBanner"></div>
         <div id="subjectLine" class="subject-line"></div>
 
         <!-- Opening Take -->
         <div class="section" id="sectionOpening">
           <h2>Opening Take</h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">The lead-in that sets the theme for this edition</p>
           <div class="editable" id="editOpening" contenteditable="false" onclick="startEdit(this, 'openingTake')"></div>
         </div>
 
@@ -134,6 +147,7 @@
         <!-- Worth Your Time -->
         <div class="section">
           <h2>Worth Your Time <span class="count" id="articleCount"></span></h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Curated articles, videos, and community suggestions</p>
           <div id="articlesList"></div>
         </div>
 
@@ -141,12 +155,14 @@
           <!-- What Shipped -->
           <div class="section">
             <h2>What Shipped <span class="count" id="shippedCount"></span></h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Protocol and platform releases</p>
             <div id="shippedList"></div>
           </div>
 
           <!-- Shareable Take -->
           <div class="section">
             <h2>Shareable Take</h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">A standalone quote designed for social sharing</p>
             <div class="editable" id="editShareable" contenteditable="false" onclick="startEdit(this, 'shareableTake')"></div>
           </div>
         </div>
@@ -155,6 +171,7 @@
           <!-- From the Inside -->
           <div class="section">
             <h2>From the Inside <span class="count" id="insiderCount"></span></h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Working group updates and community activity</p>
             <div id="insiderList"></div>
           </div>
 
@@ -173,8 +190,11 @@
 
         <!-- Instruction bar -->
         <div class="instruction-bar">
-          <input type="text" id="instructionInput" placeholder="Tell Addie what to change... e.g. 'remove the Google article' or 'make the opening take shorter'" onkeydown="if(event.key==='Enter')applyInstruction()">
+          <input type="text" id="instructionInput" placeholder="Tell Addie what to change..." onkeydown="if(event.key==='Enter')applyInstruction()">
           <button class="btn btn-primary" onclick="applyInstruction()" id="instructionBtn">Apply</button>
+        </div>
+        <div style="padding:4px 16px 8px;font-size:11px;color:#888;background:#f8fafc;">
+          Try: "remove the first article" &middot; "make the opening shorter" &middot; "rewrite the shareable take about measurement" &middot; "add a note about next week's Town Hall" &middot; "set the subject to..."
         </div>
       </div>
 
@@ -192,9 +212,13 @@
             <option value="newcomer">Newcomer</option>
           </select>
           <input type="text" id="previewName" placeholder="First name..." value="Mary" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:120px;" onchange="updatePreview()">
+          <div style="display:flex;gap:2px;margin-left:auto;">
+            <button onclick="setPreviewWidth('100%')" class="btn btn-sm btn-secondary" title="Desktop">🖥</button>
+            <button onclick="setPreviewWidth('375px')" class="btn btn-sm btn-secondary" title="Mobile">📱</button>
+          </div>
         </div>
         <div class="preview-frame">
-          <iframe id="previewIframe" src="about:blank"></iframe>
+          <iframe id="previewIframe" src="about:blank" style="transition:width 0.2s;"></iframe>
         </div>
       </div>
 
@@ -241,6 +265,21 @@
     }
 
     // ─── Load ───────────────────────────────────────────────────
+    /**
+     * Render Slack-format links (<url|label>) as clickable HTML.
+     * Falls back to escaping non-link text.
+     */
+    function renderSlackLinks(text) {
+      if (!text) return '';
+      return esc(text).replace(
+        /&lt;(https?:\/\/[^|&]+)\|([^&]+)&gt;/g,
+        '<a href="$1" target="_blank" style="color:#2563eb;">$2</a>'
+      ).replace(
+        /&lt;(https?:\/\/[^&]+)&gt;/g,
+        '<a href="$1" target="_blank" style="color:#2563eb;">$1</a>'
+      );
+    }
+
     async function loadDigest() {
       try {
         const res = await api('/digests/current');
@@ -293,13 +332,19 @@
       document.getElementById('editSubject').onclick = function() { startEdit(this, 'emailSubject'); };
 
       // Opening take
-      document.getElementById('editOpening').textContent = c.openingTake || '';
+      const openEl = document.getElementById('editOpening');
+      openEl.textContent = c.openingTake || '';
+      if (!c.openingTake) { openEl.textContent = 'Click to write the opening take...'; openEl.style.color = '#aaa'; } else { openEl.style.color = '#333'; }
 
-      // Editor's note
+      // Editor's note (render Slack links as clickable HTML)
       const noteEl = document.getElementById('editNote');
-      noteEl.textContent = c.editorsNote || '';
-      noteEl.style.color = c.editorsNote ? '#333' : '#aaa';
-      if (!c.editorsNote) noteEl.textContent = 'Click to add an editor\'s note...';
+      if (c.editorsNote) {
+        noteEl.innerHTML = renderSlackLinks(c.editorsNote);
+        noteEl.style.color = '#333';
+      } else {
+        noteEl.textContent = 'Click to add an editor\'s note...';
+        noteEl.style.color = '#aaa';
+      }
 
       // Shareable take
       const shareEl = document.getElementById('editShareable');
@@ -308,10 +353,14 @@
       if (!c.shareableTake) shareEl.textContent = 'Click to add a shareable take...';
 
       // Articles
-      document.getElementById('articleCount').textContent = `(${c.whatToWatch.length})`;
-      document.getElementById('articlesList').innerHTML = c.whatToWatch.map((a, i) => `
-        <div class="article-card" id="article-${i}">
+      const articles = c.whatToWatch || [];
+      document.getElementById('articleCount').textContent = `(${articles.length})`;
+      document.getElementById('articlesList').innerHTML = articles.length === 0
+        ? '<p style="color:#aaa;font-size:13px;">No articles yet. Use the instruction bar to add content, or community suggestions will appear here.</p>'
+        : articles.map((a, i) => `
+        <div class="article-card" id="article-${i}" draggable="true" ondragstart="dragArticle(event,${i})" ondragover="event.preventDefault();this.style.borderTop='3px solid #2563eb'" ondragleave="this.style.borderTop=''" ondrop="dropArticle(event,${i});this.style.borderTop=''">
           <div class="article-actions">
+            <span style="cursor:grab;margin-right:8px;color:#aaa;" title="Drag to reorder">⠿</span>
             <button class="btn btn-sm btn-secondary" onclick="editArticle(${i})">Edit</button>
             <button class="btn btn-sm btn-danger" onclick="removeArticle(${i})">Remove</button>
           </div>
@@ -330,8 +379,9 @@
         : '<p style="color:#aaa;font-size:13px;">No releases this week.</p>';
 
       // From the inside
-      document.getElementById('insiderCount').textContent = `(${c.fromTheInside.length})`;
-      document.getElementById('insiderList').innerHTML = c.fromTheInside.map(g => `
+      const insider = c.fromTheInside || [];
+      document.getElementById('insiderCount').textContent = `(${insider.length})`;
+      document.getElementById('insiderList').innerHTML = insider.map(g => `
         <div class="wg-card">
           <h3>${esc(g.name)}</h3>
           <p>${esc(g.summary)}</p>
@@ -340,8 +390,9 @@
       `).join('') || '<p style="color:#aaa;font-size:13px;">No group activity this week.</p>';
 
       // Voices
-      document.getElementById('voicesCount').textContent = `(${c.voices.length})`;
-      document.getElementById('voicesList').innerHTML = c.voices.map(v => `
+      const voices = c.voices || [];
+      document.getElementById('voicesCount').textContent = `(${voices.length})`;
+      document.getElementById('voicesList').innerHTML = voices.map(v => `
         <div class="voice-card">
           <div style="font-size:14px;font-weight:600;">${esc(v.title)}</div>
           <div style="font-size:12px;color:#888;">by ${esc(v.authorName)}</div>
@@ -349,9 +400,10 @@
       `).join('') || '<p style="color:#aaa;font-size:13px;">No member perspectives this week.</p>';
 
       // New members
-      if (c.newMembers.length > 0) {
+      const members = c.newMembers || [];
+      if (members.length > 0) {
         document.getElementById('sectionMembers').style.display = 'block';
-        document.getElementById('membersList').innerHTML = c.newMembers.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
+        document.getElementById('membersList').innerHTML = members.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
       }
 
       // Hide instruction bar when locked
@@ -579,6 +631,36 @@
       if (persona) previewUrl.searchParams.set('persona', persona);
       if (name) previewUrl.searchParams.set('firstName', name);
       document.getElementById('previewIframe').src = previewUrl.pathname + previewUrl.search; // lgtm[js/xss-through-dom]
+    }
+
+    // ─── Drag and Drop Reorder ──────────────────────────────────
+    let dragFromIndex = -1;
+    function dragArticle(e, index) { dragFromIndex = index; e.dataTransfer.effectAllowed = 'move'; }
+    async function dropArticle(e, toIndex) {
+      e.preventDefault();
+      if (dragFromIndex === toIndex || dragFromIndex === -1) return;
+      const articles = currentDigest.content.whatToWatch || [];
+      const indices = articles.map((_, i) => i);
+      const [moved] = indices.splice(dragFromIndex, 1);
+      indices.splice(toIndex, 0, moved);
+      try {
+        const res = await api('/digests/' + currentDigest.id + '/articles/reorder', {
+          method: 'POST', body: JSON.stringify({ indices }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || currentSubject;
+        render();
+        toast('Articles reordered');
+      } catch (err) { toast('Reorder failed: ' + esc(err.message)); }
+      dragFromIndex = -1;
+    }
+
+    function setPreviewWidth(width) {
+      document.getElementById('previewIframe').style.width = width;
+      document.getElementById('previewIframe').style.margin = width === '100%' ? '0' : '0 auto';
+      document.getElementById('previewIframe').style.display = 'block';
     }
 
     // ─── Send Test Email ───────────────────────────────────────

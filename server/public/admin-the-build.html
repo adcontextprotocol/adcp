@@ -64,6 +64,18 @@
     </div>
 
     <div id="editorContent" style="display:none;">
+      <!-- How this works (collapsible) -->
+      <div id="helpBanner" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#0f766e;line-height:1.6;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>How this works</strong>
+          <button onclick="document.getElementById('helpBanner').style.display='none';localStorage.setItem('hideBuildHelp','1')" style="background:none;border:none;color:#0f766e;cursor:pointer;font-size:16px;">&times;</button>
+        </div>
+        <div style="margin-top:8px;">
+          Sage assembles The Build from working group activity, releases, and community contributions. <strong>Click any text</strong> to edit inline (Enter to save, Escape to cancel). Review the sections, then <strong>Send Test</strong> to preview in your inbox before approving.
+        </div>
+      </div>
+      <script>if(localStorage.getItem('hideBuildHelp')==='1')document.getElementById('helpBanner').style.display='none';</script>
+
       <div id="subjectLine" class="subject-line"></div>
 
       <!-- Status Line -->
