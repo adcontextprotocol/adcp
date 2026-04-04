@@ -10,6 +10,7 @@ import { AAO_HOST } from "./config/aao.js";
 import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
+import { query } from "./db/client.js";
 
 const log = createLogger('crawler');
 
@@ -739,5 +740,175 @@ export class CrawlerService {
       log.error({ domain, err }, 'Single domain crawl failed');
       throw err;
     }
+  }
+
+  // ── Catalog Domain Crawl ──────────────────────────────────────
+
+  private catalogCrawlIntervalId: NodeJS.Timeout | null = null;
+  private catalogCrawling = false;
+
+  startPeriodicCatalogCrawl(intervalMinutes: number = 30) {
+    // Don't run immediately — let the main crawl finish first
+    this.catalogCrawlIntervalId = setInterval(() => {
+      this.crawlCatalogDomains();
+    }, intervalMinutes * 60 * 1000);
+
+    log.info({ intervalMinutes }, 'Periodic catalog domain crawl started');
+  }
+
+  async crawlCatalogDomains(): Promise<{ checked: number; found: number }> {
+    if (this.catalogCrawling || this.crawling) {
+      log.debug('Crawl already in progress, skipping catalog crawl');
+      return { checked: 0, found: 0 };
+    }
+
+    this.catalogCrawling = true;
+    const BATCH_SIZE = 100;
+    const CONCURRENCY = 20;
+
+    try {
+      // Pull domains from queue, oldest requests first, respecting backoff
+      const rows = await query<{ identifier_type: string; identifier_value: string }>(
+        `SELECT identifier_type, identifier_value
+         FROM catalog_crawl_queue
+         WHERE identifier_type = 'domain'
+           AND next_crawl_after <= NOW()
+           AND found_adagents = FALSE
+         ORDER BY crawl_requested_at ASC
+         LIMIT $1`,
+        [BATCH_SIZE]
+      );
+
+      if (rows.rows.length === 0) {
+        this.catalogCrawling = false;
+        return { checked: 0, found: 0 };
+      }
+
+      log.info({ count: rows.rows.length }, 'Catalog domain crawl batch');
+
+      let found = 0;
+      const domains = rows.rows.map(r => r.identifier_value);
+
+      // Process with concurrency limit
+      const results = await this.processWithConcurrency(
+        domains,
+        CONCURRENCY,
+        async (domain) => {
+          try {
+            const validation = await this.adAgentsManager.validateDomain(domain);
+            return { domain, valid: validation.valid && !!validation.raw_data?.authorized_agents };
+          } catch {
+            return { domain, valid: false };
+          }
+        }
+      );
+
+      for (const { domain, valid } of results) {
+        if (valid) {
+          found++;
+          // Run full single-domain crawl to record agents/properties
+          try {
+            await this.crawlSingleDomainForCatalog(domain);
+          } catch (err) {
+            log.error({ domain, err }, 'Catalog domain crawl failed for domain');
+          }
+
+          // Mark as found in queue
+          await query(
+            `UPDATE catalog_crawl_queue
+             SET found_adagents = TRUE, last_crawled_at = NOW()
+             WHERE identifier_type = 'domain' AND identifier_value = $1`,
+            [domain]
+          );
+
+          // Upgrade catalog property source to discovered
+          await query(
+            `UPDATE catalog_properties SET source = 'discovered', updated_at = NOW()
+             WHERE property_rid IN (
+               SELECT property_rid FROM catalog_identifiers
+               WHERE identifier_type = 'domain' AND identifier_value = $1
+             ) AND source = 'contributed'`,
+            [domain]
+          );
+        } else {
+          // Exponential backoff: 1 day, 1 week, 1 month
+          await query(
+            `UPDATE catalog_crawl_queue
+             SET last_crawled_at = NOW(),
+                 next_crawl_after = NOW() + CASE
+                   WHEN last_crawled_at IS NULL THEN INTERVAL '1 day'
+                   WHEN last_crawled_at > NOW() - INTERVAL '2 days' THEN INTERVAL '7 days'
+                   ELSE INTERVAL '30 days'
+                 END
+             WHERE identifier_type = 'domain' AND identifier_value = $1`,
+            [domain]
+          );
+        }
+      }
+
+      log.info({ checked: domains.length, found }, 'Catalog domain crawl batch complete');
+      return { checked: domains.length, found };
+    } finally {
+      this.catalogCrawling = false;
+    }
+  }
+
+  private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
+    const validation = await this.adAgentsManager.validateDomain(domain);
+    if (!validation.valid || !validation.raw_data?.authorized_agents) return;
+
+    for (const authorizedAgent of validation.raw_data.authorized_agents) {
+      if (!authorizedAgent.url) continue;
+
+      await this.federatedIndex.recordAgentFromAdagentsJson(
+        authorizedAgent.url,
+        domain,
+        authorizedAgent.authorized_for,
+        authorizedAgent.property_ids
+      );
+
+      await this.recordPropertiesForAgent(
+        validation.raw_data.properties || [],
+        domain,
+        authorizedAgent.url,
+        authorizedAgent.authorized_for,
+        authorizedAgent.property_ids
+      );
+    }
+
+    if (this.eventsDb) {
+      await this.eventsDb.writeEvent({
+        event_type: 'publisher.adagents_discovered',
+        entity_type: 'publisher',
+        entity_id: domain,
+        payload: {
+          publisher_domain: domain,
+          agent_count: validation.raw_data.authorized_agents.length,
+          property_count: validation.raw_data.properties?.length ?? 0,
+          source: 'catalog_crawl',
+        },
+        actor: 'pipeline:catalog_crawl',
+      });
+    }
+  }
+
+  private async processWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>
+  ): Promise<R[]> {
+    const results: R[] = [];
+    let index = 0;
+
+    async function worker() {
+      while (index < items.length) {
+        const i = index++;
+        results[i] = await fn(items[i]);
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+    await Promise.all(workers);
+    return results;
   }
 }

@@ -1959,6 +1959,11 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'registry-tools.html');
     });
 
+    // Bulk property check tool
+    this.app.get("/tools/property-check", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'property-check.html');
+    });
+
     // Backward-compatible tools alias
     this.app.get("/tools", (_req, res) => {
       res.redirect(301, '/registry/tools');
@@ -7792,6 +7797,9 @@ Disallow: /api/admin/
       logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
       this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
     }
+
+    // Crawl catalog domains for adagents.json (demand-driven queue)
+    this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
 
     // Register and start all scheduled jobs
     registerAllJobs();
