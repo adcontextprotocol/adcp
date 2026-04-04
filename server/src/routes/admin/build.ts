@@ -11,7 +11,6 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import {
   getCurrentBuildEdition,
   getRecentBuildEditions,
-  getBuildByDate,
   createBuildEdition,
   updateBuildContent,
   approveBuildEdition,
