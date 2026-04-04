@@ -153,6 +153,10 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
       if (localPart.startsWith('feed-')) {
         return { type: 'feed', slug: localPart };
       }
+      // Replies to newsletter/marketing emails (addie@, sage@, hello@) — treat as prospect replies
+      if (localPart === 'addie' || localPart === 'sage' || localPart === 'hello') {
+        return { type: 'prospect' };
+      }
     }
 
     // Check if this is an addie address (either domain)
@@ -163,8 +167,8 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
     // Check for subaddressing (addie+context)
     const plusIndex = localPart.indexOf('+');
     if (plusIndex === -1) {
-      // Plain addie@ address
-      continue;
+      // Plain addie@ address — route as prospect (someone is replying to Addie)
+      return { type: 'prospect' };
     }
 
     const context = localPart.substring(plusIndex + 1);
@@ -857,15 +861,24 @@ async function handleFeedEmail(
  * without a clear routing context.
  */
 async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<void> {
-  // Just log for now - no processing
-  logger.info({
+  // Log with ERROR level so it's visible in monitoring — unrouted emails should not happen
+  // after the routing fix. If we're seeing these, there's a new from-address we need to handle.
+  logger.error({
     emailId: data.email_id,
     messageId: data.message_id,
     from: data.from,
     to: data.to,
     cc: data.cc,
     subject: data.subject,
-  }, 'Received unrouted email (no context) - logging only');
+  }, 'Received unrouted inbound email — no handler matched. This email was NOT processed.');
+
+  // Store as a prospect email so it doesn't get lost
+  try {
+    await handleProspectEmail(data);
+    logger.info({ emailId: data.email_id }, 'Unrouted email saved as prospect activity (fallback)');
+  } catch (err) {
+    logger.error({ error: err, emailId: data.email_id }, 'Failed to save unrouted email as fallback prospect activity');
+  }
 }
 
 // ============================================================================

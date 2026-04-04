@@ -99,6 +99,8 @@ export interface NewsletterConfig {
   authorSystemId: string;
   /** Email category for opt-out */
   emailCategory: string;
+  /** From address for emails (e.g. 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>') */
+  fromEmail?: string;
   /** Color palette for email and illustrations */
   palette: NewsletterPalette;
   /** Cadence configuration */

@@ -164,6 +164,7 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
         textContent: text,
         category: 'the_build',
         workosUserId: req.user?.id || 'admin',
+        from: 'Sage from AgenticAdvertising.org <sage@updates.agenticadvertising.org>',
       });
 
       logger.info({ email, editionDate, user: req.user?.email }, 'Build test email sent');

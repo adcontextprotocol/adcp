@@ -373,6 +373,7 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
         textContent: text,
         category: 'weekly_digest',
         workosUserId: req.user?.id || 'admin',
+        from: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
       });
 
       logger.info({ id, email, sentBy: req.user?.email }, 'Digest test email sent');

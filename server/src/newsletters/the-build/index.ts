@@ -205,6 +205,7 @@ export const theBuildConfig: NewsletterConfig = {
   authorTitle: 'AdCP Protocol',
   authorSystemId: 'system:sage',
   emailCategory: 'the_build',
+  fromEmail: 'Sage from AgenticAdvertising.org <sage@updates.agenticadvertising.org>',
   palette: BUILD_PALETTE,
   cadence: {
     generateHourET: 7,

@@ -196,6 +196,7 @@ export const thePromptConfig: NewsletterConfig = {
   authorTitle: 'AI at AgenticAdvertising.org',
   authorSystemId: 'system:addie',
   emailCategory: 'weekly_digest',
+  fromEmail: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
   palette: PROMPT_PALETTE,
   cadence: {
     generateHourET: 7,
