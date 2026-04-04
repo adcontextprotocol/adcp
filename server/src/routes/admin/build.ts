@@ -144,8 +144,7 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
 
       const { email } = req.body;
-      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!email || typeof email !== 'string' || !EMAIL_RE.test(email)) {
+      if (!email || typeof email !== 'string' || !email.includes('@') || email.length > 254 || email.indexOf('@') < 1 || email.indexOf('@') === email.length - 1) {
         return res.status(400).json({ error: 'Valid email address required' });
       }
 
