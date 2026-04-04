@@ -45,7 +45,6 @@
         items: [
           { href: '/admin/digest', label: 'The Prompt', icon: '📨' },
           { href: '/admin/the-build', label: 'The Build', icon: '🔧' },
-          { href: '/admin/email', label: 'Email Settings', icon: '📧' },
         ]
       },
       {
@@ -72,6 +71,7 @@
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
+          { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
           { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
           { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
