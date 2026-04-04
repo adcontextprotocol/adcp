@@ -6,7 +6,7 @@
  * the new behavior is intended, then update the snapshots.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { PERSONAS, simulate, type SimulationResult } from '../../server/src/addie/services/outreach-simulator.js';
 import {
   STAGE_COOLDOWNS,

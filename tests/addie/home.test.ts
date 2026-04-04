@@ -4,7 +4,7 @@
  * Tests the pure functions: cache and slack-renderer
  */
 
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { HomeContentCache } from '../../server/src/addie/home/cache.js';
 import { renderHomeView, renderErrorView } from '../../server/src/addie/home/slack-renderer.js';
 import type { HomeContent, AlertSection, QuickAction, ActivityItem, UserStats, AdminPanel } from '../../server/src/addie/home/types.js';

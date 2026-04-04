@@ -8,7 +8,7 @@
  * the expected sentiment for each interaction pattern, so any rule change breaks a test.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import {
   TEST_PERSONAS,
   generateJourney,

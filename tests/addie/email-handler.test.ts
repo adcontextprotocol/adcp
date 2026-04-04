@@ -1,104 +1,105 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
-// --- Shared mock state ---
-const mockMemberContext: MemberContext = {
-  is_mapped: true,
-  is_member: true,
-  slack_linked: false,
-  organization: {
-    workos_organization_id: 'org_test_123',
-    name: 'Responsible Media Ltd',
-    subscription_status: null,
-    is_personal: false,
-  },
-  workos_user: {
-    workos_user_id: 'user_emily_123',
-    email: 'emily@responsiblem.com',
-    first_name: 'Emily',
-    last_name: 'Roberts',
-  },
-};
-
-// Track what createBillingToolHandlers was called with
-let billingHandlersCalledWith: unknown[] = [];
+const { mockMemberContext, state } = vi.hoisted(() => {
+  const mockMemberContext: MemberContext = {
+    is_mapped: true,
+    is_member: true,
+    slack_linked: false,
+    organization: {
+      workos_organization_id: 'org_test_123',
+      name: 'Responsible Media Ltd',
+      subscription_status: null,
+      is_personal: false,
+    },
+    workos_user: {
+      workos_user_id: 'user_emily_123',
+      email: 'emily@responsiblem.com',
+      first_name: 'Emily',
+      last_name: 'Roberts',
+    },
+  } as MemberContext;
+  return { mockMemberContext, state: { billingHandlersCalledWith: [] as unknown[] } };
+});
 
 // --- Mock modules (must be before imports) ---
-jest.mock('../../server/src/addie/claude-client.js', () => ({
-  AddieClaudeClient: jest.fn().mockImplementation(() => ({
-    processMessage: jest.fn<any>().mockResolvedValue({
-      text: 'Here is your payment link.',
-      tools_used: ['create_payment_link'],
-      flagged: false,
-    }),
-  })),
+vi.mock('../../server/src/addie/claude-client.js', () => ({
+  AddieClaudeClient: vi.fn().mockImplementation(function () {
+    return {
+      processMessage: vi.fn<any>().mockResolvedValue({
+        text: 'Here is your payment link.',
+        tools_used: ['create_payment_link'],
+        flagged: false,
+      }),
+    };
+  }),
 }));
 
-jest.mock('../../server/src/addie/security.js', () => ({
-  sanitizeInput: jest.fn().mockImplementation((input: string) => ({
+vi.mock('../../server/src/addie/security.js', () => ({
+  sanitizeInput: vi.fn().mockImplementation((input: string) => ({
     sanitized: input,
     flagged: false,
   })),
-  validateOutput: jest.fn().mockImplementation((input: string) => ({
+  validateOutput: vi.fn().mockImplementation((input: string) => ({
     sanitized: input,
     flagged: false,
   })),
-  generateInteractionId: jest.fn().mockReturnValue('test-interaction-id'),
+  generateInteractionId: vi.fn().mockReturnValue('test-interaction-id'),
 }));
 
-jest.mock('../../server/src/addie/member-context.js', () => ({
-  getWebMemberContext: jest.fn<any>().mockResolvedValue(mockMemberContext),
-  formatMemberContextForPrompt: jest.fn().mockReturnValue('Member context summary'),
+vi.mock('../../server/src/addie/member-context.js', () => ({
+  getWebMemberContext: vi.fn<any>().mockResolvedValue(mockMemberContext),
+  formatMemberContextForPrompt: vi.fn().mockReturnValue('Member context summary'),
 }));
 
-jest.mock('../../server/src/addie/mcp/admin-tools.js', () => ({
-  isWebUserAAOAdmin: jest.fn<any>().mockResolvedValue(false),
+vi.mock('../../server/src/addie/mcp/admin-tools.js', () => ({
+  isWebUserAAOAdmin: vi.fn<any>().mockResolvedValue(false),
   ADMIN_TOOLS: [],
-  createAdminToolHandlers: jest.fn().mockReturnValue(new Map()),
+  createAdminToolHandlers: vi.fn().mockReturnValue(new Map()),
 }));
 
-jest.mock('../../server/src/addie/mcp/member-tools.js', () => ({
+vi.mock('../../server/src/addie/mcp/member-tools.js', () => ({
   MEMBER_TOOLS: [],
-  createMemberToolHandlers: jest.fn().mockReturnValue(new Map()),
+  createMemberToolHandlers: vi.fn().mockReturnValue(new Map()),
 }));
 
-jest.mock('../../server/src/addie/mcp/billing-tools.js', () => ({
+vi.mock('../../server/src/addie/mcp/billing-tools.js', () => ({
   BILLING_TOOLS: [],
-  createBillingToolHandlers: jest.fn<any>().mockImplementation((...args: unknown[]) => {
-    billingHandlersCalledWith = args;
+  createBillingToolHandlers: vi.fn<any>().mockImplementation((...args: unknown[]) => {
+    state.billingHandlersCalledWith = args;
     return new Map();
   }),
 }));
 
-jest.mock('../../server/src/notifications/email.js', () => ({
-  sendEmailReply: jest.fn<any>().mockResolvedValue({ success: true, messageId: 'msg_123' }),
+vi.mock('../../server/src/notifications/email.js', () => ({
+  sendEmailReply: vi.fn<any>().mockResolvedValue({ success: true, messageId: 'msg_123' }),
 }));
 
-jest.mock('../../server/src/db/addie-db.js', () => ({
-  AddieDatabase: jest.fn().mockImplementation(() => ({
-    logInteraction: jest.fn<any>().mockResolvedValue(undefined),
-  })),
+vi.mock('../../server/src/db/addie-db.js', () => ({
+  AddieDatabase: vi.fn().mockImplementation(function () {
+    return { logInteraction: vi.fn<any>().mockResolvedValue(undefined) };
+  }),
 }));
 
-jest.mock('../../server/src/config/models.js', () => ({
+vi.mock('../../server/src/config/models.js', () => ({
   AddieModelConfig: { chat: 'claude-sonnet-4-20250514' },
 }));
 
-jest.mock('../../server/src/utils/markdown.js', () => ({
-  markdownToEmailHtml: jest.fn().mockImplementation((md: string) => `<p>${md}</p>`),
+vi.mock('../../server/src/utils/markdown.js', () => ({
+  markdownToEmailHtml: vi.fn().mockImplementation((md: string) => `<p>${md}</p>`),
 }));
 
-jest.mock('../../server/src/logger.js', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
-  createLogger: jest.fn().mockReturnValue({
-    info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(),
+vi.mock('../../server/src/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  createLogger: vi.fn().mockReturnValue({
+    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
   }),
 }));
 
 describe('email-handler', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    billingHandlersCalledWith = [];
+    vi.clearAllMocks();
+    state.billingHandlersCalledWith = [];
   });
 
   describe('handleEmailInvocation', () => {
@@ -126,8 +127,8 @@ describe('email-handler', () => {
 
       // The key assertion: createBillingToolHandlers must receive the member context,
       // not be called with no arguments (which was the bug)
-      expect(billingHandlersCalledWith).toHaveLength(1);
-      expect(billingHandlersCalledWith[0]).toEqual(mockMemberContext);
+      expect(state.billingHandlersCalledWith).toHaveLength(1);
+      expect(state.billingHandlersCalledWith[0]).toEqual(mockMemberContext);
     });
   });
 });

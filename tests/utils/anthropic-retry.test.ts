@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { APIError, APIConnectionError } from '@anthropic-ai/sdk';
 import { isRetryableError, withRetry, withStreamRetry, RetriesExhaustedError, isRetriesExhaustedError } from '../../server/src/utils/anthropic-retry.js';
 
@@ -74,15 +75,15 @@ describe('anthropic-retry utilities', () => {
 
   describe('withRetry', () => {
     beforeEach(() => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
     });
 
     afterEach(() => {
-      jest.useRealTimers();
+      vi.useRealTimers();
     });
 
     it('returns result on successful first attempt', async () => {
-      const fn = jest.fn().mockResolvedValue('success');
+      const fn = vi.fn().mockResolvedValue('success');
       const promise = withRetry(fn);
 
       const result = await promise;
@@ -92,18 +93,17 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('retries on retryable errors and succeeds', async () => {
-      const fn = jest
-        .fn()
+      const fn = vi.fn()
         .mockRejectedValueOnce(new APIConnectionError({ message: 'Connection failed' }))
         .mockResolvedValueOnce('success');
 
       const promise = withRetry(fn, { maxRetries: 2, initialDelayMs: 100, jitter: false });
 
       // First attempt fails immediately
-      await jest.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
 
       // Wait for the delay
-      await jest.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(100);
 
       const result = await promise;
 
@@ -112,7 +112,7 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('throws non-retryable errors immediately', async () => {
-      const fn = jest.fn().mockRejectedValue(new Error('Test network error'));
+      const fn = vi.fn().mockRejectedValue(new Error('Test network error'));
 
       // Since a generic Error is not retryable, it should throw immediately without delay
       await expect(
@@ -126,10 +126,10 @@ describe('anthropic-retry utilities', () => {
       // Use 500 error which is retryable
       // Create error once to avoid multiple instances
       const serverError = new APIError(500, {}, 'Server error', new Headers());
-      const fn = jest.fn().mockRejectedValue(serverError);
+      const fn = vi.fn().mockRejectedValue(serverError);
 
       // Don't use fake timers for this test - they interact poorly with unhandled rejection tracking
-      jest.useRealTimers();
+      vi.useRealTimers();
 
       // withRetry throws RetriesExhaustedError when all retries are exhausted
       await expect(
@@ -139,19 +139,19 @@ describe('anthropic-retry utilities', () => {
       expect(fn).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
 
       // Restore fake timers for next test
-      jest.useFakeTimers();
+      vi.useFakeTimers();
     });
 
     it('RetriesExhaustedError has user-friendly reason', async () => {
-      jest.useRealTimers();
+      vi.useRealTimers();
 
       // Test overloaded error gives appropriate reason
       const overloadedError = new APIError(529, { type: 'overloaded_error' }, 'Overloaded', new Headers());
-      const fn = jest.fn().mockRejectedValue(overloadedError);
+      const fn = vi.fn().mockRejectedValue(overloadedError);
 
       try {
         await withRetry(fn, { maxRetries: 1, initialDelayMs: 10, jitter: false });
-        fail('Should have thrown');
+        expect.unreachable('Should have thrown');
       } catch (error) {
         expect(isRetriesExhaustedError(error)).toBe(true);
         if (isRetriesExhaustedError(error)) {
@@ -160,12 +160,12 @@ describe('anthropic-retry utilities', () => {
         }
       }
 
-      jest.useFakeTimers();
+      vi.useFakeTimers();
     });
 
     it('does not retry non-retryable errors', async () => {
       const error = new APIError(400, { type: 'error' }, 'Bad request', new Headers());
-      const fn = jest.fn().mockRejectedValue(error);
+      const fn = vi.fn().mockRejectedValue(error);
 
       const promise = withRetry(fn, { maxRetries: 3 });
 
@@ -174,8 +174,7 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('uses exponential backoff', async () => {
-      const fn = jest
-        .fn()
+      const fn = vi.fn()
         .mockRejectedValueOnce(new APIConnectionError({ message: 'fail' }))
         .mockRejectedValueOnce(new APIConnectionError({ message: 'fail' }))
         .mockResolvedValueOnce('success');
@@ -188,13 +187,13 @@ describe('anthropic-retry utilities', () => {
       });
 
       // First attempt
-      await jest.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
 
       // First retry after 100ms
-      await jest.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(100);
 
       // Second retry after 200ms (100 * 2)
-      await jest.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(200);
 
       const result = await promise;
 
@@ -203,8 +202,7 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('respects maxDelayMs cap', async () => {
-      const fn = jest
-        .fn()
+      const fn = vi.fn()
         .mockRejectedValueOnce(new APIConnectionError({ message: 'fail' }))
         .mockRejectedValueOnce(new APIConnectionError({ message: 'fail' }))
         .mockRejectedValueOnce(new APIConnectionError({ message: 'fail' }))
@@ -219,27 +217,27 @@ describe('anthropic-retry utilities', () => {
       });
 
       // First attempt
-      await jest.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
       // 1000ms
-      await jest.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
       // 2000ms (capped, would be 10000)
-      await jest.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(2000);
       // 2000ms (capped, would be 100000)
-      await jest.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(2000);
 
       const result = await promise;
       expect(result).toBe('success');
     });
 
     it('RetriesExhaustedError.cause contains original error', async () => {
-      jest.useRealTimers();
+      vi.useRealTimers();
 
       const originalError = new APIError(500, { type: 'server_error' }, 'Server Error', new Headers());
-      const fn = jest.fn().mockRejectedValue(originalError);
+      const fn = vi.fn().mockRejectedValue(originalError);
 
       try {
         await withRetry(fn, { maxRetries: 1, initialDelayMs: 10, jitter: false });
-        fail('Should have thrown');
+        expect.unreachable('Should have thrown');
       } catch (error) {
         expect(isRetriesExhaustedError(error)).toBe(true);
         if (isRetriesExhaustedError(error)) {
@@ -247,7 +245,7 @@ describe('anthropic-retry utilities', () => {
         }
       }
 
-      jest.useFakeTimers();
+      vi.useFakeTimers();
     });
   });
 
@@ -270,7 +268,7 @@ describe('anthropic-retry utilities', () => {
 
     it('yields all items on successful first attempt', async () => {
       const items = ['a', 'b', 'c'];
-      const fn = jest.fn(() => arrayToGenerator(items));
+      const fn = vi.fn(() => arrayToGenerator(items));
 
       const result = await collectGenerator(withStreamRetry(fn));
 
@@ -279,10 +277,10 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('retries on retryable errors and succeeds', async () => {
-      jest.useRealTimers();
+      vi.useRealTimers();
 
       let callCount = 0;
-      const fn = jest.fn(async function* () {
+      const fn = vi.fn(async function* () {
         callCount++;
         if (callCount === 1) {
           throw new APIConnectionError({ message: 'Connection failed' });
@@ -299,7 +297,7 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('throws non-retryable errors immediately', async () => {
-      const fn = jest.fn(async function* () {
+      const fn = vi.fn(async function* () {
         throw new APIError(400, { type: 'error' }, 'Bad request', new Headers());
       });
 
@@ -311,9 +309,9 @@ describe('anthropic-retry utilities', () => {
     });
 
     it('throws RetriesExhaustedError when retries exhausted', async () => {
-      jest.useRealTimers();
+      vi.useRealTimers();
 
-      const fn = jest.fn(async function* () {
+      const fn = vi.fn(async function* () {
         throw new APIError(500, { type: 'server_error' }, 'Server Error', new Headers());
       });
 
@@ -321,7 +319,7 @@ describe('anthropic-retry utilities', () => {
         await collectGenerator(
           withStreamRetry(fn, { maxRetries: 2, initialDelayMs: 10, jitter: false })
         );
-        fail('Should have thrown');
+        expect.unreachable('Should have thrown');
       } catch (error) {
         expect(isRetriesExhaustedError(error)).toBe(true);
         if (isRetriesExhaustedError(error)) {

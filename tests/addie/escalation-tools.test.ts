@@ -1,36 +1,38 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
-// Mock escalation-db
-const mockListEscalationsForUser = jest.fn<any>();
-jest.mock('../../server/src/db/escalation-db.js', () => ({
-  createEscalation: jest.fn(),
-  markNotificationSent: jest.fn(),
+const { mockListEscalationsForUser } = vi.hoisted(() => ({
+  mockListEscalationsForUser: vi.fn<any>(),
+}));
+
+vi.mock('../../server/src/db/escalation-db.js', () => ({
+  createEscalation: vi.fn(),
+  markNotificationSent: vi.fn(),
   listEscalationsForUser: (...args: unknown[]) => mockListEscalationsForUser(...args),
 }));
 
 // Mock slack client
-jest.mock('../../server/src/slack/client.js', () => ({
-  sendChannelMessage: jest.fn<any>().mockResolvedValue({ ok: true }),
+vi.mock('../../server/src/slack/client.js', () => ({
+  sendChannelMessage: vi.fn<any>().mockResolvedValue({ ok: true }),
 }));
 
 // Mock system settings
-jest.mock('../../server/src/db/system-settings-db.js', () => ({
-  getEscalationChannel: jest.fn<any>().mockResolvedValue({ channel_id: 'C_ESCALATION' }),
+vi.mock('../../server/src/db/system-settings-db.js', () => ({
+  getEscalationChannel: vi.fn<any>().mockResolvedValue({ channel_id: 'C_ESCALATION' }),
 }));
 
 // Mock thread service
-jest.mock('../../server/src/addie/thread-service.js', () => ({
-  getThreadService: jest.fn().mockReturnValue({
-    flagThread: jest.fn(),
-    getThreadWithMessages: jest.fn(),
+vi.mock('../../server/src/addie/thread-service.js', () => ({
+  getThreadService: vi.fn().mockReturnValue({
+    flagThread: vi.fn(),
+    getThreadWithMessages: vi.fn(),
   }),
 }));
 
 // Mock addie-db
-jest.mock('../../server/src/db/addie-db.js', () => ({
-  AddieDatabase: jest.fn().mockImplementation(() => ({
-    createInsightSource: jest.fn(),
+vi.mock('../../server/src/db/addie-db.js', () => ({
+  AddieDatabase: vi.fn().mockImplementation(() => ({
+    createInsightSource: vi.fn(),
   })),
 }));
 
@@ -53,8 +55,8 @@ const mockMemberContext: MemberContext = {
 };
 
 beforeEach(() => {
-  jest.resetModules();
-  jest.clearAllMocks();
+  vi.resetModules();
+  vi.clearAllMocks();
   mockListEscalationsForUser.mockResolvedValue([]);
 });
 
