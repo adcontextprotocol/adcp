@@ -518,9 +518,9 @@
       try {
         const res = await api('/digests/generate', { method: 'POST' });
         const data = await res.json();
-        if (res.status === 409 && data.edition) {
+        if (res.status === 409 && data.digest) {
           // Edition already exists — load it instead of showing error
-          currentDigest = data.edition;
+          currentDigest = data.digest;
           currentSubject = data.subject || '';
           document.getElementById('emptyState').style.display = 'none';
           document.getElementById('editorContent').style.display = 'block';
