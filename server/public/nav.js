@@ -153,20 +153,8 @@
     // AAO logo is white, needs invert on light background
     const logoNeedsInvert = true;
 
-    // Founding member banner — show for anonymous users only, dismissible
-    const foundingBanner = !user ? `
-      <div class="founding-banner" id="foundingBanner">
-        <div class="founding-banner__inner">
-          <span class="founding-banner__text"><strong>Founding member window closes March 31.</strong> Lock in permanent rates and shape the standards from day one.</span>
-          <a href="${membershipUrl}" class="founding-banner__cta">Learn more &rarr;</a>
-          <button class="founding-banner__close" id="foundingBannerClose" aria-label="Dismiss">&times;</button>
-        </div>
-      </div>
-    ` : '';
-
     return `
-      ${foundingBanner}
-      <nav class="navbar" ${!user ? 'style="top: var(--founding-banner-height, 0px)"' : ''}>
+      <nav class="navbar">
         <div class="navbar__inner">
           <div class="navbar__items">
             <a class="navbar__brand" href="${homeUrl}">
@@ -213,59 +201,6 @@
   // Navigation CSS
   const navCSS = `
     <style>
-      /* Founding member banner */
-      :root {
-        --founding-banner-height: 0px;
-      }
-      .founding-banner {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1001;
-        background: linear-gradient(90deg, var(--color-primary-700, #1a36b4) 0%, var(--color-primary-600, #2d4eb4) 100%);
-        color: #fff;
-        font-size: 0.8125rem;
-        line-height: 1.4;
-      }
-      .founding-banner__inner {
-        max-width: 1140px;
-        margin: 0 auto;
-        padding: 0.5rem 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
-      }
-      .founding-banner__text {
-        text-align: center;
-      }
-      .founding-banner__text strong {
-        font-weight: 700;
-      }
-      .founding-banner__cta {
-        color: #fff;
-        text-decoration: none;
-        font-weight: 600;
-        white-space: nowrap;
-        opacity: 0.9;
-      }
-      .founding-banner__cta:hover { opacity: 1; text-decoration: underline; }
-      .founding-banner__close {
-        background: none;
-        border: none;
-        color: rgba(255,255,255,0.6);
-        font-size: 1.25rem;
-        cursor: pointer;
-        padding: 0 0.25rem;
-        line-height: 1;
-      }
-      .founding-banner__close:hover { color: #fff; }
-      .founding-banner--hidden { display: none; }
-      @media (max-width: 600px) {
-        .founding-banner__inner { flex-wrap: wrap; font-size: 0.75rem; padding: 0.375rem 0.75rem; }
-      }
-
       /* Add padding to body to prevent navbar overlap */
       body {
         padding-top: 60px;
@@ -1349,41 +1284,6 @@
     // Load avatar image asynchronously
     loadNavAvatar();
 
-    // Founding member banner — adjust body padding and handle dismiss
-    setupFoundingBanner();
-  }
-
-  function setupFoundingBanner() {
-    const banner = document.getElementById('foundingBanner');
-    if (!banner) return;
-
-    // Hide after deadline or if previously dismissed
-    if (new Date() > new Date('2026-04-01T00:00:00Z') || localStorage.getItem('founding-banner-dismissed')) {
-      banner.remove();
-      return;
-    }
-
-    // Measure and set CSS variable for body padding offset
-    function updateBannerHeight() {
-      const h = banner.offsetHeight;
-      document.documentElement.style.setProperty('--founding-banner-height', h + 'px');
-      document.body.style.paddingTop = (60 + h) + 'px';
-    }
-    updateBannerHeight();
-    window.addEventListener('resize', updateBannerHeight);
-
-    // Dismiss
-    const closeBtn = document.getElementById('foundingBannerClose');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        banner.classList.add('founding-banner--hidden');
-        document.body.style.paddingTop = '60px';
-        document.querySelector('.navbar').style.top = '0';
-        document.documentElement.style.setProperty('--founding-banner-height', '0px');
-        localStorage.setItem('founding-banner-dismissed', '1');
-      });
-    }
   }
 
   function isSafeImageUrl(url) {

@@ -1332,6 +1332,7 @@ For logo changes, use update_member_logo instead.`,
         },
         is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
         show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
+        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Use to grant founding status to members who joined late due to billing or other issues.' },
       },
     },
   },
@@ -7753,6 +7754,11 @@ Use add_committee_leader to assign a leader.`;
       if (input.show_in_carousel !== undefined) {
         updates.show_in_carousel = input.show_in_carousel;
         updatedFields.push('show_in_carousel');
+      }
+
+      if (input.is_founding_member !== undefined) {
+        updates.is_founding_member = input.is_founding_member;
+        updatedFields.push('is_founding_member');
       }
 
       if (updatedFields.length === 0) {

@@ -684,6 +684,7 @@ export interface UpdateMemberProfileInput {
   tags?: string[];
   is_public?: boolean;
   show_in_carousel?: boolean;
+  is_founding_member?: boolean;
 }
 
 export interface ListMemberProfilesOptions {
