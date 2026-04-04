@@ -14,7 +14,10 @@ import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
+import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
+import { comply } from "../addie/services/compliance-testing.js";
+import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import {
@@ -2425,6 +2428,251 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
 
+
+  // ── Storyboards ────────────────────────────────────────────────
+
+  router.get("/storyboards", async (req, res) => {
+    try {
+      const category = typeof req.query.category === "string" ? req.query.category : undefined;
+      const results = listStoryboards(category);
+      res.json({ storyboards: results, count: results.length });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to list storyboards");
+      res.status(500).json({ error: "Failed to list storyboards" });
+    }
+  });
+
+  router.get("/storyboards/:id", async (req, res) => {
+    try {
+      const storyboard = getStoryboard(req.params.id);
+      if (!storyboard) {
+        return res.status(404).json({ error: "Storyboard not found" });
+      }
+
+      const testKit = getTestKitForStoryboard(req.params.id);
+      res.json({ storyboard, test_kit: testKit || null });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get storyboard");
+      res.status(500).json({ error: "Failed to get storyboard" });
+    }
+  });
+
+  router.post(
+    "/registry/agents/:encodedUrl/storyboard/:storyboardId/run",
+    storyboardEvalRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const storyboard = getStoryboard(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        // Resolve agent auth
+        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+
+        // Run comply with the storyboard's referenced scenarios
+        const complyResult = await comply(agentUrl, {
+          dry_run: true,
+          timeout_ms: 90_000,
+          ...(auth && { auth }),
+        });
+
+        // Record the run
+        const tracksSummary = complyResult.tracks.map((t) => ({
+          track: t.track,
+          status: t.status,
+          scenario_count: t.scenarios.length,
+          passed_count: t.scenarios.filter((s) => s.overall_passed).length,
+          duration_ms: t.duration_ms,
+        }));
+
+        // Look up lifecycle stage for this agent
+        const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+
+        await complianceDb.recordComplianceRun({
+          agent_url: agentUrl,
+          lifecycle_stage: metadata?.lifecycle_stage || "development",
+          overall_status: complyResult.v3_gate_failed
+            ? "failing"
+            : complyResult.summary.tracks_failed > 0
+              ? "failing"
+              : complyResult.summary.tracks_partial > 0
+                ? "partial"
+                : "passing",
+          headline: complyResult.summary.headline,
+          total_duration_ms: complyResult.total_duration_ms,
+          tracks_json: tracksSummary,
+          tracks_passed: complyResult.summary.tracks_passed,
+          tracks_failed: complyResult.summary.tracks_failed,
+          tracks_skipped: complyResult.summary.tracks_skipped,
+          tracks_partial: complyResult.summary.tracks_partial,
+          agent_profile_json: complyResult.agent_profile,
+          observations_json: complyResult.observations,
+          triggered_by: "manual",
+          dry_run: complyResult.dry_run,
+        });
+
+        // Annotate storyboard phases with comply results
+        const annotatedPhases = storyboard.phases.map((phase) => ({
+          ...phase,
+          steps: phase.steps.map((step) => {
+            // Find matching comply scenario results
+            const matchingScenarios = step.comply_scenario
+              ? complyResult.tracks.flatMap((t) =>
+                  t.scenarios.filter((s) => s.scenario === step.comply_scenario),
+                )
+              : [];
+
+            const passed = matchingScenarios.length > 0
+              ? matchingScenarios.every((s) => s.overall_passed)
+              : null;
+
+            return {
+              ...step,
+              result: {
+                passed,
+                scenarios: matchingScenarios,
+              },
+            };
+          }),
+        }));
+
+        const testKit = getTestKitForStoryboard(req.params.storyboardId);
+
+        res.json({
+          storyboard: {
+            id: storyboard.id,
+            title: storyboard.title,
+            category: storyboard.category,
+            narrative: storyboard.narrative,
+          },
+          agent: {
+            url: agentUrl,
+            profile: complyResult.agent_profile,
+          },
+          phases: annotatedPhases,
+          summary: complyResult.summary,
+          observations: complyResult.observations,
+          total_duration_ms: complyResult.total_duration_ms,
+          test_kit: testKit || null,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to run storyboard");
+        res.status(500).json({ error: "Failed to run storyboard evaluation" });
+      }
+    },
+  );
+
+  router.post(
+    "/registry/agents/:encodedUrl/storyboard/:storyboardId/compare",
+    storyboardEvalRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const storyboard = getStoryboard(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        // Run comply against both the user's agent and the reference test agent
+        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+
+        const [userResult, referenceResult] = await Promise.all([
+          comply(agentUrl, {
+            dry_run: true,
+            timeout_ms: 90_000,
+            ...(auth && { auth }),
+          }),
+          comply(PUBLIC_TEST_AGENT.url, {
+            dry_run: true,
+            timeout_ms: 90_000,
+            auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
+          }),
+        ]);
+
+        // Annotate storyboard steps with both results
+        const comparisonPhases = storyboard.phases.map((phase) => ({
+          ...phase,
+          steps: phase.steps.map((step) => {
+            const findScenarios = (result: typeof userResult) =>
+              step.comply_scenario
+                ? result.tracks.flatMap((t) =>
+                    t.scenarios.filter((s) => s.scenario === step.comply_scenario),
+                  )
+                : [];
+
+            const userScenarios = findScenarios(userResult);
+            const refScenarios = findScenarios(referenceResult);
+
+            return {
+              ...step,
+              user_result: {
+                passed: userScenarios.length > 0 ? userScenarios.every((s) => s.overall_passed) : null,
+                scenarios: userScenarios,
+              },
+              reference_result: {
+                passed: refScenarios.length > 0 ? refScenarios.every((s) => s.overall_passed) : null,
+                scenarios: refScenarios,
+              },
+            };
+          }),
+        }));
+
+        res.json({
+          storyboard: {
+            id: storyboard.id,
+            title: storyboard.title,
+            category: storyboard.category,
+          },
+          user_agent: {
+            url: agentUrl,
+            profile: userResult.agent_profile,
+            summary: userResult.summary,
+          },
+          reference_agent: {
+            url: PUBLIC_TEST_AGENT.url,
+            name: PUBLIC_TEST_AGENT.name,
+            profile: referenceResult.agent_profile,
+            summary: referenceResult.summary,
+          },
+          phases: comparisonPhases,
+          total_duration_ms: Math.max(userResult.total_duration_ms, referenceResult.total_duration_ms),
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to run storyboard comparison");
+        res.status(500).json({ error: "Failed to run storyboard comparison" });
+      }
+    },
+  );
 
   // ── Publishers ──────────────────────────────────────────────────
 

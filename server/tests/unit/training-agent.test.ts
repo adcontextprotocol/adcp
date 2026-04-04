@@ -844,7 +844,9 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_rights');
     expect(toolNames).toContain('get_adcp_capabilities');
     expect(toolNames).toContain('comply_test_controller');
-    expect(toolNames).toHaveLength(21);
+    expect(toolNames).toContain('build_creative');
+    expect(toolNames).toContain('preview_creative');
+    expect(toolNames).toHaveLength(23);
   });
 
   it('returns error for unknown tool', async () => {
@@ -3456,7 +3458,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'governance', 'signals']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {

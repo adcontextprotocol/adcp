@@ -33,6 +33,12 @@ import type {
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
+/** Escape HTML special characters to prevent injection in generated HTML responses. */
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
 function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }) {
   const errorObj = { code, ...opts };
@@ -534,6 +540,45 @@ const TOOLS = [
         media_buy_ids: { type: 'array', items: { type: 'string' } },
         creative_ids: { type: 'array', items: { type: 'string' } },
         max_variants: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'build_creative',
+    description: 'Build a creative from assets and a target format. Supports two modes: (1) Stateless transformation — pass a creative_manifest with inline assets and a target_format_id to produce a serving tag. (2) Library retrieval — pass a creative_id referencing a synced creative to generate a tag. Returns a creative manifest with an HTML/JavaScript/VAST serving tag.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        creative_id: { type: 'string', description: 'Reference to a synced creative (ad server mode)' },
+        creative_manifest: { type: 'object', description: 'Inline manifest with assets (transformation mode)' },
+        target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Target output format' },
+        target_format_ids: { type: 'array', items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Multiple target formats' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for identity resolution' },
+        media_buy_id: { type: 'string', description: 'Media buy context for placement-level tags' },
+        package_id: { type: 'string', description: 'Package context for placement-level tags' },
+        quality: { type: 'string', enum: ['draft', 'production'] },
+        message: { type: 'string', description: 'Natural language instructions for generative builds' },
+      },
+    },
+  },
+  {
+    name: 'preview_creative',
+    description: 'Preview a creative to see how it will render. Accepts a creative manifest (inline assets) or creative_id (from library). Returns a preview URL or inline HTML. Supports single and batch modes.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        request_type: { type: 'string', enum: ['single', 'batch'], description: 'Single or batch preview' },
+        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview' },
+        creative_id: { type: 'string', description: 'Reference to a synced creative to preview' },
+        creatives: { type: 'array', description: 'Array of manifests for batch preview' },
+        output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
+        quality: { type: 'string', enum: ['draft', 'production'] },
       },
     },
   },
@@ -1726,7 +1771,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { ad
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'governance', 'signals'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -2119,6 +2164,210 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
+// ── Build creative handler ──────────────────────────────────────
+
+interface BuildCreativeArgs {
+  account?: unknown;
+  creative_id?: string;
+  creative_manifest?: { format_id?: FormatID; assets?: Array<Record<string, unknown>> };
+  target_format_id?: FormatID;
+  target_format_ids?: FormatID[];
+  brand?: { domain?: string };
+  media_buy_id?: string;
+  package_id?: string;
+  quality?: 'draft' | 'production';
+  message?: string;
+}
+
+function getDimensions(format: { renders: Array<Record<string, unknown>> } | undefined): { w: number; h: number } {
+  const dims = format?.renders?.[0]?.dimensions as { width?: number; height?: number } | undefined;
+  return { w: dims?.width || 300, h: dims?.height || 250 };
+}
+
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as BuildCreativeArgs;
+  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const agentUrl = getAgentUrl();
+  const formats = getFormats();
+  const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
+
+  // Determine target formats
+  const targetIds: FormatID[] = req.target_format_ids?.length
+    ? req.target_format_ids
+    : req.target_format_id
+      ? [req.target_format_id]
+      : [];
+
+  // Mode 1: Library retrieval (creative_id)
+  if (req.creative_id) {
+    const creative = session.creatives.get(req.creative_id);
+    if (!creative) {
+      return {
+        errors: [{ code: 'NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
+      };
+    }
+
+    const formatId = targetIds[0] || creative.formatId;
+    const format = validFormatIds.get(formatId.id);
+    const { w, h } = getDimensions(format);
+
+    return {
+      creative_manifest: {
+        creative_id: req.creative_id,
+        format_id: { agent_url: agentUrl, id: formatId.id },
+        assets: [
+          {
+            asset_id: 'serving_tag',
+            asset_type: 'html',
+            html: `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`,
+          },
+        ],
+      },
+      sandbox: true,
+    };
+  }
+
+  // Mode 2: Stateless transformation (creative_manifest + target_format_id)
+  if (req.creative_manifest) {
+    const inputAssets = req.creative_manifest.assets || [];
+
+    if (targetIds.length === 0) {
+      // Use the manifest's own format_id if no target specified
+      const fmtId = req.creative_manifest.format_id;
+      if (fmtId) targetIds.push(fmtId);
+    }
+
+    // Generate output for each target format
+    if (targetIds.length > 1) {
+      // Multi-format response
+      const results = targetIds.map(fmtId => {
+        const format = validFormatIds.get(fmtId.id);
+        const { w, h } = getDimensions(format);
+
+        return {
+          creative_manifest: {
+            format_id: { agent_url: agentUrl, id: fmtId.id },
+            assets: [
+              {
+                asset_id: 'serving_tag',
+                asset_type: 'html',
+                html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
+              },
+            ],
+          },
+        };
+      });
+
+      return { results, sandbox: true };
+    }
+
+    // Single format response
+    const fmtId = targetIds[0] || { agent_url: agentUrl, id: 'display_300x250' };
+    const format = validFormatIds.get(fmtId.id);
+    const { w, h } = getDimensions(format);
+
+    return {
+      creative_manifest: {
+        format_id: { agent_url: agentUrl, id: fmtId.id },
+        assets: [
+          {
+            asset_id: 'serving_tag',
+            asset_type: 'html',
+            html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssets.length}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
+          },
+        ],
+      },
+      sandbox: true,
+    };
+  }
+
+  return {
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide either creative_id (library mode) or creative_manifest (transformation mode).' }],
+  };
+}
+
+// ── Preview creative handler ────────────────────────────────────
+
+interface PreviewCreativeArgs {
+  account?: unknown;
+  request_type?: 'single' | 'batch';
+  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> };
+  creative_id?: string;
+  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }>;
+  output_format?: 'url' | 'html' | 'both';
+  quality?: 'draft' | 'production';
+}
+
+function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as PreviewCreativeArgs;
+  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const agentUrl = getAgentUrl();
+  const formats = getFormats();
+  const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
+  const outputFormat = req.output_format || 'url';
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }) {
+    // Resolve format
+    let formatId = manifest.format_id;
+    let creativeName = 'Preview';
+
+    // If creative_id provided, look up from library
+    if (manifest.creative_id) {
+      const creative = session.creatives.get(manifest.creative_id);
+      if (creative) {
+        formatId = creative.formatId;
+        creativeName = creative.name || manifest.creative_id;
+      }
+    }
+
+    const fmtId = formatId?.id || 'display_300x250';
+    const format = validFormatIds.get(fmtId);
+    const { w, h } = getDimensions(format);
+
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
+
+    const render: Record<string, unknown> = {
+      dimensions: { width: w, height: h },
+    };
+
+    if (outputFormat === 'url' || outputFormat === 'both') {
+      // Generate a data URI as the preview URL (the training agent doesn't host files)
+      render.url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
+    }
+    if (outputFormat === 'html' || outputFormat === 'both') {
+      render.html = previewHtml;
+    }
+
+    return {
+      format_id: { agent_url: agentUrl, id: fmtId },
+      renders: [render],
+      expires_at: expiresAt,
+    };
+  }
+
+  // Batch mode
+  if (req.request_type === 'batch' && req.creatives?.length) {
+    return {
+      previews: req.creatives.map(buildPreview),
+      sandbox: true,
+    };
+  }
+
+  // Single mode
+  const manifest = req.creative_manifest || (req.creative_id ? { creative_id: req.creative_id } : null);
+  if (!manifest) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest (with inline assets) or creative_id (from library).' }],
+    };
+  }
+
+  return {
+    previews: [buildPreview(manifest)],
+    sandbox: true,
+  };
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
 type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
@@ -2132,6 +2381,8 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   get_creative_delivery: handleGetCreativeDelivery,
   sync_creatives: handleSyncCreatives,
   list_creatives: handleListCreatives,
+  build_creative: handleBuildCreative,
+  preview_creative: handlePreviewCreative,
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,

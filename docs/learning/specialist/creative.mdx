@@ -17,9 +17,11 @@ Passing earns the **AdCP specialist — Creative** credential.
 
 ## What you'll demonstrate
 
-- Discover format requirements and produce compliant creative assets
+- Identify the three creative agent interaction models and explain when each applies
+- Work with stateless agents (template/transformers): discover formats, preview with inline assets, build serving tags
+- Work with stateful ad servers: browse a creative library, generate tags per media buy, track delivery
+- Work with stateful sales agents: push creatives, preview in the publisher's environment
 - Adapt a single creative concept across multiple channels and formats
-- Sync creatives to publisher platforms and verify delivery
 - Reason about format edge cases, accessibility, and provenance
 
 ## Prerequisite reading
@@ -95,19 +97,26 @@ Passing earns the **AdCP specialist — Creative** credential.
 
 ## Lab exercises
 
-1. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
-2. **Creative production** — Build a creative asset that meets a specific publisher's format specs
-3. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats
-4. **Sync and verify** — Sync creatives to a sandbox publisher and check delivery status
+### Interaction models
+
+1. **Stateless transformation** — Connect to a template agent, discover its formats, preview a template with sample brand assets (inline), and build a serving tag. No `sync_creatives` — everything is passed in the call.
+2. **Ad server workflow** — Connect to a pre-loaded ad server, browse the creative library with `list_creatives`, generate tags for multiple media buys using `build_creative`, and check delivery metrics.
+3. **Push-and-preview** — Connect to a sales agent, discover its accepted formats, push catalog assets with `sync_creatives`, and preview how they render in the publisher's environment.
+
+### Cross-platform skills
+
+4. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
+5. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+6. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Protocol mastery | 30% | Complete creative lifecycle mastery |
+| Interaction models | 30% | Correctly identifies and works with all three creative agent types |
 | Cross-platform | 25% | Adapts creatives across channels and formats |
-| Compliance | 25% | Configures disclosures and regulatory requirements |
-| Analytical skill | 20% | Interprets creative feature evaluation results |
+| Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
+| Analytical skill | 20% | Interprets creative feature evaluation and delivery results |
 
 Passing threshold: 70%.
 
