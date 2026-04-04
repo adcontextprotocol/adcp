@@ -35,18 +35,94 @@
     /* Page-specific: narrower container for article content */
     .container { max-width: 980px; }
 
+    /* Article header — clean white, compact, matching site hero style */
+    .article-header {
+      text-align: center;
+      padding: var(--space-6) var(--space-6) var(--space-4);
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .article-header-breadcrumb {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-3);
+    }
+    .article-header-breadcrumb a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    .article-header-breadcrumb a:hover {
+      text-decoration: underline;
+    }
+    .article-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      letter-spacing: var(--tracking-tight);
+      line-height: var(--leading-tight);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-2);
+    }
+    .article-header-subtitle {
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin: 0 auto;
+      max-width: 640px;
+    }
+    .article-header-meta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .article-header-author {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+      color: var(--color-text-heading);
+      font-weight: var(--font-semibold);
+    }
+    .article-header-author:hover {
+      color: var(--color-brand);
+    }
+    .article-header-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: linear-gradient(145deg, var(--color-primary-100), var(--color-gray-100));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--color-brand);
+      flex-shrink: 0;
+    }
+    .article-header-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .article-header-dot {
+      color: var(--color-text-muted);
+    }
+
     .article-shell {
       display: grid;
-      gap: 2rem;
+      gap: 1.5rem;
     }
 
     .article-feature {
-      margin-top: -1rem;
-      border-radius: 20px;
+      border-radius: 16px;
       overflow: hidden;
       border: 1px solid var(--color-border);
       background: var(--color-bg-card);
-      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
     }
 
     .article-feature[hidden] {
@@ -60,91 +136,77 @@
       background: var(--color-gray-100);
     }
 
-    .article-meta-card {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 1rem;
-      align-items: center;
-      padding: 1.25rem 1.4rem;
-      border: 1px solid var(--color-border);
-      border-radius: 18px;
-      background:
-        radial-gradient(circle at top right, rgba(4, 120, 87, 0.08), transparent 32%),
-        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
-      box-shadow: 0 10px 35px rgba(15, 23, 42, 0.05);
+    /* Report CTA — prominent banner below the featured image */
+    .report-cta-wrap {
+      position: relative;
+      display: block;
+      text-decoration: none;
+      color: inherit;
     }
-
-    .author-card {
+    .report-cta-wrap:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+      border-radius: 16px;
+    }
+    .report-cta-banner {
       display: flex;
       align-items: center;
       gap: 1rem;
-      min-width: 0;
+      padding: 1rem 1.5rem;
+      background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+      color: white;
+      transition: filter 0.15s;
     }
-
-    .author-avatar {
-      width: 64px;
-      height: 64px;
-      border-radius: 18px;
-      overflow: hidden;
-      flex: 0 0 auto;
-      background: linear-gradient(145deg, var(--color-primary-100), var(--color-gray-100));
-      border: 1px solid var(--color-border);
+    .report-cta-wrap:hover .report-cta-banner {
+      filter: brightness(1.1);
+    }
+    .report-cta-icon {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--color-brand);
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
     }
-
-    .author-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
+    .report-cta-icon svg {
+      width: 22px;
+      height: 22px;
     }
-
-    .author-avatar-text {
-      text-transform: uppercase;
-    }
-
-    .author-copy {
+    .report-cta-text {
+      flex: 1;
       min-width: 0;
     }
-
-    .author-eyebrow {
-      font-size: 0.72rem;
+    .report-cta-label {
+      font-size: var(--text-base);
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--color-text-secondary);
-      margin-bottom: 0.2rem;
+      line-height: 1.3;
+    }
+    .report-cta-hint {
+      font-size: var(--text-xs);
+      opacity: 0.8;
+      margin-top: 0.1rem;
+    }
+    .report-cta-arrow {
+      flex-shrink: 0;
+      font-size: var(--text-lg);
+      opacity: 0.7;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    .report-cta-wrap:hover .report-cta-arrow {
+      transform: translateX(3px);
+      opacity: 1;
     }
 
-    .author-name {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: var(--color-text-heading);
-      line-height: 1.2;
+    .article-meta-card {
+      display: none !important;
     }
 
-    .author-name-link {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .author-name-link:hover {
-      color: var(--color-brand);
-      text-decoration: underline;
-    }
-
-    .author-role {
-      font-size: 0.92rem;
-      color: var(--color-text-secondary);
-      margin-top: 0.15rem;
-      line-height: 1.45;
-    }
+    /* Legacy author card — kept for JS compatibility, hidden via article-meta-card display:none */
+    .author-card, .author-avatar, .author-copy,
+    .author-eyebrow, .author-name, .author-name-link,
+    .author-role, .author-avatar-text { /* no-op */ }
 
     /* Loading state */
     .loading-state {
@@ -225,16 +287,7 @@
     }
 
     .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--color-brand);
-      text-decoration: none;
-      font-weight: 500;
-      margin-bottom: 2rem;
-    }
-    .back-link:hover {
-      text-decoration: underline;
+      display: none;
     }
 
     /* Article actions bar */
@@ -242,8 +295,8 @@
       display: flex;
       align-items: center;
       gap: 1rem;
-      padding: 0.25rem 0 1rem;
-      margin-bottom: 2rem;
+      padding: 0 0 0.75rem;
+      margin-bottom: 1.5rem;
       border-bottom: 1px solid var(--color-border);
       flex-wrap: wrap;
     }
@@ -365,11 +418,11 @@
     }
 
     .article-section {
-      padding: 2rem 2.25rem 2.5rem;
+      padding: 1.5rem 2.25rem 2.5rem;
       border: 1px solid var(--color-border);
-      border-radius: 22px;
+      border-radius: 18px;
       background: var(--color-bg-card);
-      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.05);
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
     }
 
     .related-section {
@@ -443,19 +496,14 @@
     }
 
     @media (max-width: 600px) {
-      .article-meta-card {
-        grid-template-columns: 1fr;
-      }
-
-      .author-avatar {
-        width: 56px;
-        height: 56px;
-        border-radius: 16px;
-      }
+      .article-header { padding: var(--space-4) var(--space-4) var(--space-3); }
+      .article-header h1 { font-size: var(--text-2xl); }
+      .article-header-subtitle { font-size: var(--text-base); }
+      .article-header-meta { flex-wrap: wrap; }
 
       .article-section {
-        padding: 1.4rem;
-        border-radius: 18px;
+        padding: 1.25rem;
+        border-radius: 14px;
       }
 
       .related-layout {
@@ -472,6 +520,14 @@
       .share-buttons {
         margin-left: 0;
         margin-top: 0.5rem;
+      }
+
+      .report-cta-banner {
+        padding: 0.875rem 1rem;
+      }
+      .report-cta-icon {
+        width: 36px;
+        height: 36px;
       }
     }
   </style>
@@ -511,16 +567,22 @@
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
 
-  <!-- Dynamic Hero Section -->
-  <section class="hero hero--article" id="heroSection" style="display: none;">
-    <div class="hero-container">
-      <div class="hero-breadcrumb">
-        <a href="/stories" id="heroBackLink">Stories</a> / <span id="heroCategory">Article</span>
-      </div>
-      <h1 id="heroTitle">Loading...</h1>
-      <p class="hero-subtitle" id="heroSubtitle"></p>
+  <!-- Article Header — clean white, compact, matching site style -->
+  <header class="article-header" id="heroSection" style="display: none;">
+    <div class="article-header-breadcrumb">
+      <a href="/stories" id="heroBackLink">Stories</a> / <span id="heroCategory">Article</span>
     </div>
-  </section>
+    <h1 id="heroTitle">Loading...</h1>
+    <p class="article-header-subtitle" id="heroSubtitle"></p>
+    <div class="article-header-meta" id="articleHeaderMeta" style="display: none;">
+      <a id="headerAuthorLink" class="article-header-author" href="#">
+        <span id="headerAuthorAvatar" class="article-header-avatar"></span>
+        <span id="headerAuthorName"></span>
+      </a>
+      <span class="article-header-dot" id="headerMetaDot">&middot;</span>
+      <span id="headerDate"></span>
+    </div>
+  </header>
 
   <!-- Loading State -->
   <div id="loadingState" class="loading-state">
@@ -530,10 +592,8 @@
   <!-- Main Content -->
   <div class="container" id="mainContent" style="display: none;">
     <div class="article-shell">
+      <!-- Back link hidden, breadcrumb in header instead -->
       <a href="/stories" class="back-link" id="articleBackLink">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
         <span id="articleBackLabel">Back to Stories</span>
       </a>
 
@@ -541,6 +601,7 @@
         <img id="articleFeatureImage" alt="">
       </figure>
 
+      <!-- Legacy meta card — hidden, replaced by inline header meta -->
       <div id="articleMetaCard" class="article-meta-card" style="display: none;">
         <div class="author-card">
           <div id="authorAvatar" class="author-avatar">
@@ -592,6 +653,18 @@
             </svg>
             <span id="likeCount">0</span>
           </button>
+          <div class="share-buttons" id="inlineShareButtons">
+            <span class="share-label">Share:</span>
+            <a id="shareTwitter2" class="share-btn" href="#" target="_blank" rel="noopener" title="Share on Twitter/X">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </a>
+            <a id="shareLinkedIn2" class="share-btn" href="#" target="_blank" rel="noopener" title="Share on LinkedIn">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+            </a>
+            <button id="copyLink2" class="share-btn" onclick="copyArticleLink()" title="Copy link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </button>
+          </div>
         </div>
 
         <div id="articleContent" class="article-content">
@@ -662,16 +735,25 @@
 
       const title = article.author_title || article.author_headline || '';
       primaryName.textContent = article.author_name;
-      primaryName.href = `/stories?author=${encodeURIComponent(article.author_name)}`;
+      primaryName.href = article.author_slug
+        ? `/community/people/${encodeURIComponent(article.author_slug)}`
+        : '/community/';
       authorRole.textContent = title;
       authorRole.style.display = title ? 'block' : 'none';
 
       avatarText.textContent = getInitials(article.author_name);
       const avatarUrl = article.author_avatar_url;
+      avatar.textContent = '';
       if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('https://'))) {
-        avatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(article.author_name)}">`;
+        const img = document.createElement('img');
+        img.src = avatarUrl;
+        img.alt = article.author_name || '';
+        avatar.appendChild(img);
       } else {
-        avatar.innerHTML = `<span id="authorAvatarText" class="author-avatar-text">${escapeHtml(getInitials(article.author_name))}</span>`;
+        const span = document.createElement('span');
+        span.className = 'author-avatar-text';
+        span.textContent = getInitials(article.author_name);
+        avatar.appendChild(span);
       }
 
       metaCard.style.display = 'grid';
@@ -687,6 +769,37 @@
 
       image.src = url;
       image.alt = article.title || 'Perspective image';
+
+      if (article.report_url) {
+        const reportHref = `/api/perspectives/${encodeURIComponent(article.slug)}/report`;
+        const wrap = document.createElement('a');
+        wrap.href = reportHref;
+        wrap.className = 'report-cta-wrap';
+        wrap.target = '_blank';
+        wrap.rel = 'noopener';
+        image.parentNode.insertBefore(wrap, image);
+        wrap.appendChild(image);
+
+        const banner = document.createElement('div');
+        banner.className = 'report-cta-banner';
+        // PDF icon: recognizable red/white file icon
+        banner.innerHTML = `
+          <div class="report-cta-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="rgba(255,255,255,0.15)" stroke="white" stroke-width="1.5"/>
+              <path d="M14 2v6h6" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+              <text x="12" y="17.5" text-anchor="middle" fill="white" font-size="5.5" font-weight="700" font-family="system-ui, sans-serif">PDF</text>
+            </svg>
+          </div>
+          <div class="report-cta-text">
+            <div class="report-cta-label">Download the full report</div>
+            <div class="report-cta-hint">PDF &mdash; free, no sign-up required</div>
+          </div>
+          <span class="report-cta-arrow">&rarr;</span>
+        `;
+        wrap.appendChild(banner);
+      }
+
       feature.hidden = false;
     }
 
@@ -780,7 +893,7 @@
     function copyArticleLink() {
       const url = window.location.href;
       navigator.clipboard.writeText(url).then(() => {
-        const btn = document.getElementById('copyLink');
+        const btn = document.getElementById('copyLink2') || document.getElementById('copyLink');
         btn.classList.add('copied');
         btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M20 6L9 17l-5-5"/>
@@ -798,16 +911,17 @@
     function updateSocialShareLinks(article) {
       const url = encodeURIComponent(window.location.href);
       const title = encodeURIComponent(article.title);
-      const description = encodeURIComponent(article.excerpt || article.subtitle || '');
 
-      document.getElementById('shareTwitter').href =
-        `https://twitter.com/intent/tweet?url=${url}&text=${title}`;
+      const twitterHref = `https://twitter.com/intent/tweet?url=${url}&text=${title}`;
+      const linkedInHref = `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
 
-      document.getElementById('shareLinkedIn').href =
-        `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
-
-      document.getElementById('shareFacebook').href =
-        `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+      // Update both the legacy (hidden meta card) and inline share buttons
+      document.getElementById('shareTwitter').href = twitterHref;
+      document.getElementById('shareLinkedIn').href = linkedInHref;
+      const tw2 = document.getElementById('shareTwitter2');
+      const li2 = document.getElementById('shareLinkedIn2');
+      if (tw2) tw2.href = twitterHref;
+      if (li2) li2.href = linkedInHref;
     }
 
     function updateMetaTags(article) {
@@ -903,7 +1017,7 @@
         // Update social share links
         updateSocialShareLinks(article);
 
-        // Update hero section
+        // Update header
         document.getElementById('heroTitle').textContent = article.title;
         if (article.subtitle) {
           document.getElementById('heroSubtitle').textContent = article.subtitle;
@@ -911,6 +1025,36 @@
         }
         if (article.category) {
           document.getElementById('heroCategory').textContent = article.category;
+        }
+
+        // Populate inline header meta (author byline + date)
+        const headerMeta = document.getElementById('articleHeaderMeta');
+        if (article.author_name || article.published_at) {
+          if (article.author_name) {
+            const authorLink = document.getElementById('headerAuthorLink');
+            authorLink.href = article.author_slug
+              ? `/community/people/${encodeURIComponent(article.author_slug)}`
+              : '/community/';
+            document.getElementById('headerAuthorName').textContent = article.author_name;
+            const avatarEl = document.getElementById('headerAuthorAvatar');
+            const avatarUrl = article.author_avatar_url;
+            avatarEl.textContent = '';
+            if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('https://'))) {
+              const img = document.createElement('img');
+              img.src = avatarUrl;
+              img.alt = '';
+              avatarEl.appendChild(img);
+            } else {
+              avatarEl.textContent = getInitials(article.author_name);
+            }
+          } else {
+            document.getElementById('headerAuthorLink').style.display = 'none';
+            document.getElementById('headerMetaDot').style.display = 'none';
+          }
+          if (article.published_at) {
+            document.getElementById('headerDate').textContent = formatDate(article.published_at);
+          }
+          headerMeta.style.display = 'flex';
         }
 
         // Display tags
@@ -922,7 +1066,7 @@
           tagsContainer.style.display = 'flex';
         }
 
-        // Display date
+        // Display date in actions bar
         if (article.published_at) {
           document.getElementById('articleDate').textContent = formatDate(article.published_at);
         }
