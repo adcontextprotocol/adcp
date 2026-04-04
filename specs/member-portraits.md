@@ -156,9 +156,9 @@ audit but not served).
 
 ## UI
 
-### Profile Page (`/community/profile/edit`)
+### Profile Page (`/account`)
 
-Individual members edit their profile at `/community/profile/edit` (not
+Individual members edit their profile at `/account` (not
 `/member-profile.html`, which is the company profile page). The portrait
 section goes here, alongside the existing avatar URL field.
 

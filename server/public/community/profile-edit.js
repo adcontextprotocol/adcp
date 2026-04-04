@@ -26,7 +26,7 @@
   // === Auth check ===
   const config = window.__APP_CONFIG__ || {};
   if (!config.user) {
-    window.location.href = '/auth/login?return_to=/community/profile/edit';
+    window.location.href = '/auth/login?return_to=/account';
   }
 
   // === State ===
@@ -42,7 +42,7 @@
   const portraitOrgParam = new URLSearchParams(window.location.search).get('org');
 
   // === Init ===
-  document.addEventListener('DOMContentLoaded', function() {
+  function initProfileEdit() {
     loadProfile();
     document.getElementById('profile-form').addEventListener('submit', handleSubmit);
     document.getElementById('field-slug').addEventListener('input', updateSlugPreview);
@@ -50,7 +50,13 @@
     setupTagInput('expertise');
     setupTagInput('interests');
     document.getElementById('field-linkedin-url').addEventListener('change', suggestSlugFromLinkedIn);
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initProfileEdit);
+  } else {
+    initProfileEdit();
+  }
 
   // === LinkedIn slug suggestion ===
   function suggestSlugFromLinkedIn() {
@@ -129,7 +135,7 @@
 
       if (!hubResponse.ok) {
         if (hubResponse.status === 401) {
-          window.location.href = '/auth/login?return_to=/community/profile/edit';
+          window.location.href = '/auth/login?return_to=/account';
           return;
         }
         throw new Error('Failed to load profile');
@@ -176,7 +182,7 @@
     } catch (error) {
       console.error('Load profile error:', error);
       document.getElementById('edit-loading').innerHTML =
-        '<p>Failed to load profile. <a href="/community/profile/edit">Try again</a></p>';
+        '<p>Failed to load profile. <a href="/account">Try again</a></p>';
     }
   }
 
@@ -239,6 +245,11 @@
 
   // === Form population ===
   function populateForm(profile) {
+    // Populate name fields from userData (sourced from /api/me)
+    if (userData) {
+      document.getElementById('field-first-name').value = userData.first_name || '';
+      document.getElementById('field-last-name').value = userData.last_name || '';
+    }
     document.getElementById('field-is-public').checked = !!profile.is_public;
     let slug = profile.slug || '';
     if (!slug && userData && userData.first_name) {
@@ -616,14 +627,36 @@
         payload.contact_website = fieldValue('field-contact-website') || undefined;
       }
 
-      const response = await fetch('/api/me/community-profile', {
+      // Save name first (if changed) so that the profile sync reads the updated name
+      var newFirstName = fieldValue('field-first-name');
+      var newLastName = fieldValue('field-last-name');
+      var nameChanged = userData && (
+        newFirstName !== (userData.first_name || '') ||
+        newLastName !== (userData.last_name || '')
+      );
+
+      if (nameChanged) {
+        var nameResponse = await fetch('/api/me/name', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first_name: newFirstName, last_name: newLastName || null }),
+        });
+        if (!nameResponse.ok) {
+          var nameError = await nameResponse.json().catch(function() { return null; });
+          throw new Error(nameError?.error || 'Failed to update name');
+        }
+        userData.first_name = newFirstName;
+        userData.last_name = newLastName;
+      }
+
+      var response = await fetch('/api/me/community-profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(function() { return null; });
+        var errorData = await response.json().catch(function() { return null; });
         throw new Error(errorData?.error || 'Failed to save profile');
       }
 
@@ -827,5 +860,6 @@
     // Toggle for testing personal account branching in handleSubmit.
     // Cannot be set via public API without a full loadProfile mock.
     setPersonalAccount: function(val) { isPersonalAccount = val; },
+    setUserData: function(val) { userData = val; },
   };
 })(window, document);

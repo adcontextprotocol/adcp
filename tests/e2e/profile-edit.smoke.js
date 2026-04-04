@@ -10,12 +10,13 @@
  *   TARGET_URL=http://localhost:3000 node tests/e2e/profile-edit.smoke.js
  */
 
-const { chromium } = require('playwright');
+import { chromium } from 'playwright';
 
 const TARGET_URL = process.env.TARGET_URL || 'http://localhost:55020';
 
 // Fields that must survive DOM restructuring for personal accounts
 const PERSONAL_ACCOUNT_FIELDS = [
+  'field-first-name', 'field-last-name',
   'field-is-public', 'field-slug', 'field-headline', 'field-bio',
   'field-city', 'field-linkedin-url', 'field-twitter-url',
   'field-github-username', 'field-coffee-chat', 'field-intros',
@@ -24,6 +25,7 @@ const PERSONAL_ACCOUNT_FIELDS = [
 ];
 
 const ORG_ACCOUNT_FIELDS = [
+  'field-first-name', 'field-last-name',
   'field-slug', 'field-headline', 'field-bio', 'field-city',
   'field-linkedin-url', 'field-twitter-url', 'field-github-username',
 ];
@@ -56,7 +58,7 @@ async function testPersonalAccount(page, consoleErrors) {
   console.log('\n=== Personal account: profile edit ===');
   await login(page, 'personal');
 
-  await page.goto(`${TARGET_URL}/community/profile/edit`);
+  await page.goto(`${TARGET_URL}/account`);
   await page.waitForSelector('#edit-content', { state: 'visible', timeout: 15000 });
   await page.waitForTimeout(2000);
 
@@ -109,7 +111,7 @@ async function testOrgAccount(page, consoleErrors) {
   console.log('\n=== Org account: profile edit ===');
   await login(page, 'admin');
 
-  await page.goto(`${TARGET_URL}/community/profile/edit`);
+  await page.goto(`${TARGET_URL}/account`);
   await page.waitForSelector('#edit-content', { state: 'visible', timeout: 15000 });
   await page.waitForTimeout(2000);
 
@@ -141,6 +143,89 @@ async function testOrgAccount(page, consoleErrors) {
   await page.screenshot({ path: '/tmp/smoke-profile-org.png', fullPage: true });
 }
 
+async function testNameUpdate(page) {
+  console.log('\n=== Name update flow ===');
+  await login(page, 'personal');
+
+  await page.goto(`${TARGET_URL}/account`);
+  await page.waitForSelector('#edit-content', { state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(1000);
+
+  // Name fields are populated
+  const firstName = await page.$eval('#field-first-name', el => el.value);
+  const lastName = await page.$eval('#field-last-name', el => el.value);
+  assert(firstName.length > 0, `First name populated: "${firstName}"`);
+
+  // Update name and save
+  const ts = Date.now();
+  await page.fill('#field-first-name', 'SmokeTest');
+  await page.fill('#field-last-name', `User${ts}`);
+  await page.click('#save-btn');
+  const toast = await page.waitForSelector('.toast--visible', { timeout: 5000 }).catch(() => null);
+  assert(toast !== null, 'Save toast appeared after name change');
+
+  // Reload and verify name persisted
+  await page.goto(`${TARGET_URL}/account`);
+  await page.waitForSelector('#edit-content', { state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(1000);
+  const updatedFirst = await page.$eval('#field-first-name', el => el.value);
+  assert(updatedFirst === 'SmokeTest', `Name persisted after reload: "${updatedFirst}"`);
+
+  // Restore original name
+  await page.fill('#field-first-name', firstName);
+  await page.fill('#field-last-name', lastName);
+  await page.click('#save-btn');
+  await page.waitForSelector('.toast--visible', { timeout: 5000 }).catch(() => null);
+
+  await page.screenshot({ path: '/tmp/smoke-profile-name.png', fullPage: true });
+}
+
+async function testAccountSections(page) {
+  console.log('\n=== Account sections (linked emails, notifications) ===');
+  await login(page, 'personal');
+
+  await page.goto(`${TARGET_URL}/account`);
+  await page.waitForSelector('#edit-content', { state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(2000);
+
+  // Linked emails section exists as collapsed details
+  const linkedEmails = await page.$('details#linked-emails');
+  assert(linkedEmails !== null, 'Linked emails section exists');
+
+  // Notifications section exists as collapsed details
+  const notifications = await page.$('details#notifications');
+  assert(notifications !== null, 'Notifications section exists');
+
+  // Open linked emails and check content loaded
+  await page.click('details#linked-emails > summary');
+  await page.waitForTimeout(1000);
+  const emailsContent = await page.$eval('#linkedEmailsList', el => el.textContent);
+  assert(!emailsContent.includes('Loading'), 'Linked emails loaded');
+
+  // Open notifications and check content loaded
+  await page.click('details#notifications > summary');
+  await page.waitForTimeout(1000);
+  const notifsContent = await page.$eval('#categoriesContainer', el => el.textContent);
+  assert(!notifsContent.includes('Loading'), 'Notifications loaded');
+
+  await page.screenshot({ path: '/tmp/smoke-profile-sections.png', fullPage: true });
+}
+
+async function testRedirect(page) {
+  console.log('\n=== Old URL redirect ===');
+  await login(page, 'personal');
+
+  // Visit old profile edit URL
+  const resp = await page.goto(`${TARGET_URL}/community/profile/edit`, { waitUntil: 'domcontentloaded' });
+  const finalUrl = page.url();
+  assert(finalUrl.includes('/account'), `Redirected to /account (got: ${finalUrl})`);
+
+  // With query param
+  const resp2 = await page.goto(`${TARGET_URL}/community/profile/edit?org=test123`, { waitUntil: 'domcontentloaded' });
+  const finalUrl2 = page.url();
+  assert(finalUrl2.includes('/account') && finalUrl2.includes('org=test123'), `Redirect preserves query params (got: ${finalUrl2})`);
+}
+
 (async () => {
   console.log(`Profile edit smoke tests against ${TARGET_URL}\n`);
 
@@ -167,8 +252,11 @@ async function testOrgAccount(page, consoleErrors) {
       process.exit(1);
     }
 
+    await testRedirect(page);
     await testPersonalAccount(page, consoleErrors);
     await testOrgAccount(page, consoleErrors);
+    await testNameUpdate(page);
+    await testAccountSections(page);
 
     console.log(`\n${'='.repeat(40)}`);
     if (failures === 0) {

@@ -108,7 +108,7 @@ export function createPortraitToolHandlers(
         'They upload a headshot photo, pick a vibe setting, and get an illustrated ' +
         'graphic novel portrait in amber/gold tones — matching the AAO art style. ' +
         'The original photo is used only for reference and is never stored.',
-      profile_url: '/community/profile/edit',
+      profile_url: '/account',
       vibe_options: vibeList,
       context,
     });
