@@ -1200,7 +1200,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (context.community_profile.github_username) {
       lines.push(`GitHub: ${context.community_profile.github_username}`);
     } else {
-      lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/community/profile/edit to make it visible on their community profile.');
+      lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/account to make it visible on their community profile.');
     }
   }
 

@@ -2100,8 +2100,9 @@ export class HTTPServer {
     this.app.get("/community/notifications", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/notifications.html');
     });
-    this.app.get("/community/profile/edit", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');
+    this.app.get("/community/profile/edit", (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, '/account' + query);
     });
 
     // brand.json project landing page
@@ -6348,12 +6349,20 @@ Disallow: /api/admin/
             is_personal: row.is_personal || false,
           }));
 
+          // Read DB names (user may have updated their display name)
+          const devNameResult = await pool.query<{ first_name: string | null; last_name: string | null }>(
+            'SELECT first_name, last_name FROM users WHERE workos_user_id = $1',
+            [user.id]
+          );
+          const devFirstName = devNameResult.rows[0]?.first_name?.trim() || user.firstName;
+          const devLastName = devNameResult.rows[0]?.last_name?.trim() || user.lastName;
+
           return res.json({
             user: {
               id: user.id,
               email: user.email,
-              first_name: user.firstName,
-              last_name: user.lastName,
+              first_name: devFirstName,
+              last_name: devLastName,
               isAdmin: devUser.isAdmin,
             },
             organizations,
@@ -6462,11 +6471,23 @@ Disallow: /api/admin/
     this.app.put('/api/me/name', requireAuth, async (req, res) => {
       try {
         const user = req.user!;
-        const firstName = (req.body.first_name as string)?.trim();
-        const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+        if (typeof req.body.first_name !== 'string') {
+          return res.status(400).json({ error: 'first_name must be a string' });
+        }
+
+        const sanitize = (s: string) => s.trim().replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
+        const firstName = sanitize(req.body.first_name);
+        const lastName = typeof req.body.last_name === 'string' ? sanitize(req.body.last_name) || null : null;
 
         if (!firstName) {
           return res.status(400).json({ error: 'first_name is required' });
+        }
+        if (firstName.length > 255) {
+          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
+        }
+        if (lastName && lastName.length > 255) {
+          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
         }
 
         const pool = getPool();
@@ -6483,6 +6504,7 @@ Disallow: /api/admin/
           [firstName, lastName, user.id]
         );
 
+        invalidateMemberContextCache();
         logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
         res.json({ first_name: firstName, last_name: lastName });
       } catch (error) {

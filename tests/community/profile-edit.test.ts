@@ -27,6 +27,7 @@ interface ProfileEditWindow extends Window {
     adaptForMemberState: () => void;
     showToast: (message: string, type: string) => void;
     setPersonalAccount: (val: boolean) => void;
+    setUserData: (val: Record<string, unknown> | null) => void;
   };
   fetch: (...args: unknown[]) => Promise<unknown>;
 }
@@ -38,7 +39,7 @@ function createDOM(): JSDOM & { window: ProfileEditWindow } {
     ''
   );
   const dom = new JSDOM(html, {
-    url: 'https://agenticadvertising.org/community/profile/edit',
+    url: 'https://agenticadvertising.org/account',
     runScripts: 'dangerously',
     pretendToBeVisual: true,
   });
@@ -112,6 +113,7 @@ describe('profile-edit: restructureForIndividual', () => {
     win.ProfileEdit.restructureForIndividual();
 
     const expectedIds = [
+      'field-first-name', 'field-last-name',
       'field-is-public', 'field-slug', 'field-headline', 'field-bio',
       'field-city', 'field-linkedin-url', 'field-twitter-url',
       'field-github-username', 'field-coffee-chat', 'field-intros',
@@ -266,6 +268,69 @@ describe('profile-edit: handleSubmit', () => {
     const btn = win.document.getElementById('save-btn') as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     expect(btn.textContent).toBe('Save changes');
+  });
+});
+
+describe('profile-edit: name fields', () => {
+  let win: ProfileEditWindow;
+
+  beforeEach(() => {
+    const dom = createDOM();
+    win = dom.window;
+  });
+
+  it('populateForm fills name fields from userData', () => {
+    win.ProfileEdit.setUserData({ first_name: 'Ben', last_name: 'Massé' });
+    win.ProfileEdit.populateForm({});
+
+    expect((win.document.getElementById('field-first-name') as HTMLInputElement).value).toBe('Ben');
+    expect((win.document.getElementById('field-last-name') as HTMLInputElement).value).toBe('Massé');
+  });
+
+  it('handleSubmit calls PUT /api/me/name when name changes', async () => {
+    win.ProfileEdit.setUserData({ first_name: 'Old', last_name: 'Name' });
+    (win.document.getElementById('field-first-name') as HTMLInputElement).value = 'New';
+    (win.document.getElementById('field-last-name') as HTMLInputElement).value = 'Name';
+
+    let namePayload: Record<string, unknown> | null = null;
+    win.fetch = async (url: unknown, opts: { body?: string }) => {
+      if (url === '/api/me/name') {
+        namePayload = JSON.parse(opts.body!);
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url === '/api/me/community-profile') {
+        return { ok: true, json: async () => ({}) };
+      }
+      return { ok: false };
+    };
+
+    const event = new win.Event('submit', { cancelable: true });
+    await win.ProfileEdit.handleSubmit(event);
+
+    expect(namePayload).toEqual({ first_name: 'New', last_name: 'Name' });
+  });
+
+  it('handleSubmit does not call PUT /api/me/name when name is unchanged', async () => {
+    win.ProfileEdit.setUserData({ first_name: 'Same', last_name: 'Name' });
+    (win.document.getElementById('field-first-name') as HTMLInputElement).value = 'Same';
+    (win.document.getElementById('field-last-name') as HTMLInputElement).value = 'Name';
+
+    let nameCalled = false;
+    win.fetch = async (url: unknown, opts: { body?: string }) => {
+      if (url === '/api/me/name') {
+        nameCalled = true;
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url === '/api/me/community-profile') {
+        return { ok: true, json: async () => ({}) };
+      }
+      return { ok: false };
+    };
+
+    const event = new win.Event('submit', { cancelable: true });
+    await win.ProfileEdit.handleSubmit(event);
+
+    expect(nameCalled).toBe(false);
   });
 });
 
