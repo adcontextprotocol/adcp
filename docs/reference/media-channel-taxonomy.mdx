@@ -524,13 +524,14 @@ Property types describe addressable inventory surfaces with verifiable ownership
 | `dooh` | Digital out-of-home screen networks | `dooh` |
 | `podcast` | Podcast feeds and episodes | `podcast` |
 | `radio` | Radio station properties | `radio` |
+| `linear_tv` | Linear television stations and networks | `linear_tv` |
 | `streaming_audio` | Digital audio streaming properties | `streaming_audio` |
+| `ai_assistant` | AI-powered conversational interfaces | `sponsored_intelligence` |
 
 ### Channels Without Property Types
 
 The following channels do not have corresponding property types because they lack addressable, verifiable inventory surfaces in the traditional sense:
 
-- `linear_tv` - Broadcast/cable inventory is managed through different authorization mechanisms
 - `ooh` - Physical inventory lacks digital identifiers
 - `print` - Physical publication inventory
 - `cinema` - Theater inventory management systems
@@ -561,7 +562,7 @@ The following channels do not have corresponding property types because they lac
 │   Addressable inventory with verifiable ownership (technical)   │
 │                                                                 │
 │   website, mobile_app, ctv_app, desktop_app, dooh,             │
-│   podcast, radio, streaming_audio                               │
+│   podcast, radio, linear_tv, streaming_audio, ai_assistant     │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -786,7 +787,7 @@ The following channels may be added in future versions based on market evolution
 
 - Initial draft specification
 - 19 channels defined (planning-oriented approach)
-- 8 property types defined
+- 10 property types defined
 - Clear distinction between channel (planning abstraction), property_type (technical surface), and format
 - Multi-channel support for properties
 - Migration guide from legacy values
