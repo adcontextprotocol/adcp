@@ -26,6 +26,7 @@ import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
+import { isFreeEmailDomain } from '../utils/email-domain.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import {
@@ -773,15 +774,26 @@ export function createWorkOSWebhooksRouter(): Router {
                 'Auto-linked new website user to Slack account'
               );
             }
-            // Fire-and-forget prospect triage for business emails.
-            // Assess + notify only — don't create an org. The user creates their
-            // own org during onboarding; enrichment runs on organization.created.
-            if (user.email && process.env.ANTHROPIC_API_KEY) {
-              const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
+            // Fire-and-forget prospect triage + brand research for business emails.
+            if (user.email) {
               const domain = user.email.split('@')[1];
-              triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
-                logger.error({ err, domain }, 'Prospect triage failed for new website user');
-              });
+              if (domain) {
+                // Assess prospect value and notify Slack
+                if (process.env.ANTHROPIC_API_KEY) {
+                  const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
+                  triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
+                    logger.error({ err, domain }, 'Prospect triage failed for new website user');
+                  });
+                }
+                // Classify brand hierarchy before the user finishes onboarding
+                const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
+                  && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
+                if (isValidDomain && !isFreeEmailDomain(domain)) {
+                  researchDomain(domain).catch(err => {
+                    logger.warn({ err, domain }, 'Background domain research failed for new user');
+                  });
+                }
+              }
             }
             invalidateUnifiedUsersCache();
             break;

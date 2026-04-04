@@ -88,6 +88,10 @@
       background: var(--color-success-100);
       color: var(--color-success-700);
     }
+    .section-badge.neutral {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
     .section-description {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -240,26 +244,63 @@
       color: var(--color-warning-700);
     }
 
-    /* Match source badges */
-    .match-badge {
+    /* Signal badges for Review Relationships */
+    .signal-badge {
       display: inline-block;
       padding: var(--space-0.5) var(--space-2);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
       font-weight: var(--font-semibold);
-      margin-left: var(--space-2);
     }
-    .match-badge.brand-hierarchy {
+    .signal-badge.signal-domain {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+    .signal-badge.signal-hierarchy {
       background: var(--color-success-100);
       color: var(--color-success-700);
     }
-    .match-badge.brand-alias {
+    .signal-badge.signal-alias {
       background: var(--color-primary-100, var(--color-success-100));
       color: var(--color-primary-700, var(--color-success-700));
     }
-    .match-badge.root-domain-heuristic {
+    .signal-badge.signal-names {
       background: var(--color-warning-100);
       color: var(--color-warning-700);
+    }
+    .signal-badge.signal-members {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .signal-badge.signal-heuristic {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+
+    /* Sub-section headers within Review Relationships */
+    .review-subsection {
+      margin-top: var(--space-5);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--color-border);
+    }
+    .review-subsection:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    .review-subsection-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* Dismissed cluster styling */
+    .dismissed-row {
+      opacity: 0.4;
     }
 
     /* Empty State */
@@ -279,6 +320,15 @@
       padding: var(--space-12);
       color: var(--color-text-muted);
     }
+
+    /* Maintenance toggle */
+    .maintenance-toggle {
+      cursor: pointer;
+      user-select: none;
+    }
+    .maintenance-toggle:hover {
+      opacity: 0.8;
+    }
   </style>
 </head>
 <body>
@@ -288,151 +338,157 @@
 
   <div id="content" style="display: none;">
     <div class="container">
+      <!-- Header + Summary -->
       <div class="card">
         <h1>Domain Health</h1>
-        <p class="subtitle">Monitor domain coverage and data quality across the membership system</p>
-
-        <!-- Summary Stats -->
-        <div class="summary-grid" id="summaryGrid">
-          <!-- Populated by JS -->
-        </div>
-
-        <!-- Maintenance Actions -->
-        <div style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);">
-          <div style="display: flex; align-items: center; gap: var(--space-4);">
-            <div style="flex: 1;">
-              <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
-                Backfill Slack User Links
-                <span id="backfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
-              </div>
-              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Link unmapped Slack users to existing organizations based on their email domain</div>
-            </div>
-            <button class="btn btn-secondary" id="backfillSlackBtn" disabled>Run Backfill</button>
-          </div>
-          <div id="backfillPreview" style="margin-top: var(--space-3); display: none;"></div>
-          <div id="backfillResult" style="margin-top: var(--space-3); display: none;"></div>
-        </div>
-
-        <!-- Add Domain Users as Members -->
-        <div style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);">
-          <div style="display: flex; align-items: center; gap: var(--space-4);">
-            <div style="flex: 1;">
-              <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
-                Auto-Add Domain Users as Members
-                <span id="memberBackfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
-              </div>
-              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Add users with verified domain emails directly as organization members (they have accounts but aren't members yet)</div>
-            </div>
-            <button class="btn btn-primary" id="memberBackfillBtn" disabled>Add All Members</button>
-          </div>
-          <div id="memberBackfillPreview" style="margin-top: var(--space-3); display: none;"></div>
-          <div id="memberBackfillResult" style="margin-top: var(--space-3); display: none;"></div>
-        </div>
+        <p class="subtitle">Pipeline: user signs up &rarr; domain classified &rarr; user placed &rarr; healthy</p>
+        <div class="summary-grid" id="summaryGrid"></div>
       </div>
 
-      <!-- Orphan Domains Section -->
-      <div class="card" id="orphanDomainsSection">
+      <!-- Section 1: Classify Domains -->
+      <div class="card" id="classifySection">
         <div class="section-header">
           <div>
             <div class="section-title">
-              Unlinked Corporate Domains
-              <span class="section-badge" id="orphanBadge">0</span>
+              Classify Domains
+              <span class="section-badge" id="classifyBadge">0</span>
             </div>
-            <p class="section-description">Corporate email domains not linked to any organization. Link these domains to consolidate users.</p>
+            <p class="section-description">Email domains the system couldn't classify automatically. Research to add to the brand registry.</p>
           </div>
+          <button class="btn btn-primary" id="researchAllBtn" style="display: none;">Research All</button>
         </div>
-        <div id="orphanDomainsContent"></div>
+        <div id="classifyContent"></div>
       </div>
 
-      <!-- Misaligned Users Section -->
-      <div class="card" id="misalignedUsersSection">
+      <!-- Section 2: Place Users -->
+      <div class="card" id="placeUsersSection">
         <div class="section-header">
           <div>
             <div class="section-title">
-              Users Who Should Join Their Company
-              <span class="section-badge" id="misalignedBadge">0</span>
+              Place Users
+              <span class="section-badge" id="placeBadge">0</span>
             </div>
-            <p class="section-description">Users in personal workspaces whose company already has an organization. Consider inviting them to join.</p>
+            <p class="section-description">Users in personal workspaces whose company already has an organization.</p>
           </div>
           <button class="btn btn-primary" id="linkAllMisalignedBtn" style="display: none;">Link All</button>
         </div>
-        <div id="misalignedUsersContent"></div>
+        <div id="placeUsersContent"></div>
       </div>
 
-      <!-- Unverified Orgs Section -->
-      <div class="card" id="unverifiedOrgsSection">
+      <!-- Section 3: Review Relationships -->
+      <div class="card" id="reviewSection">
         <div class="section-header">
           <div>
             <div class="section-title">
-              Organizations Without Verified Domains
-              <span class="section-badge" id="unverifiedBadge">0</span>
+              Review Relationships
+              <span class="section-badge" id="reviewBadge">0</span>
             </div>
-            <p class="section-description">Organizations with members but no verified domain mapping. Verify domain ownership for these orgs.</p>
+            <p class="section-description">Organizations the system thinks are related. These may be duplicates, subsidiaries, or unrelated — review and classify.</p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-secondary btn-sm" id="showDismissedBtn" style="display: none;">Show Dismissed</button>
           </div>
         </div>
-        <div id="unverifiedOrgsContent"></div>
+        <div id="reviewContent"></div>
       </div>
 
-      <!-- Domain Conflicts Section -->
-      <div class="card" id="domainConflictsSection">
-        <div class="section-header">
+      <!-- Section 4: Maintenance (collapsible) -->
+      <div class="card" id="maintenanceSection">
+        <div class="section-header maintenance-toggle" id="maintenanceToggle">
           <div>
             <div class="section-title">
-              Domain Conflicts
-              <span class="section-badge" id="conflictsBadge">0</span>
+              Maintenance
+              <span class="section-badge neutral" id="maintenanceBadge">0</span>
             </div>
-            <p class="section-description">Multiple organizations claiming the same email domain. Merge these duplicates.</p>
+            <p class="section-description" style="margin-bottom: 0;">Background data quality tasks and bulk operations.</p>
           </div>
+          <span id="maintenanceChevron" style="font-size: var(--text-lg); color: var(--color-text-muted); transition: transform 0.2s;">&#9656;</span>
         </div>
-        <div id="domainConflictsContent"></div>
-      </div>
+        <div id="maintenanceContent" style="display: none; margin-top: var(--space-4);">
+          <!-- Backfill Slack User Links -->
+          <div style="padding-bottom: var(--space-5); border-bottom: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--space-4);">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
+                  Backfill Slack User Links
+                  <span id="backfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
+                </div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Link unmapped Slack users to existing organizations based on their email domain</div>
+              </div>
+              <button class="btn btn-secondary" id="backfillSlackBtn" disabled>Run Backfill</button>
+            </div>
+            <div id="backfillPreview" style="margin-top: var(--space-3); display: none;"></div>
+            <div id="backfillResult" style="margin-top: var(--space-3); display: none;"></div>
+          </div>
 
-      <!-- Related Domains Section -->
-      <div class="card" id="relatedDomainsSection">
-        <div class="section-header">
-          <div>
-            <div class="section-title">
-              Related Organizations (Potential Duplicates)
-              <span class="section-badge" id="relatedBadge">0</span>
+          <!-- Auto-Add Domain Users as Members -->
+          <div style="padding: var(--space-5) 0; border-bottom: 1px solid var(--color-border);">
+            <div style="display: flex; align-items: center; gap: var(--space-4);">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
+                  Auto-Add Domain Users as Members
+                  <span id="memberBackfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
+                </div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Add users with verified domain emails directly as organization members (they have accounts but aren't members yet)</div>
+              </div>
+              <button class="btn btn-primary" id="memberBackfillBtn" disabled>Add All Members</button>
             </div>
-            <p class="section-description">Organizations linked through the brand registry (hierarchy and aliases) or domain similarity. Brand-based matches are high confidence; root-domain heuristic matches should be reviewed.</p>
+            <div id="memberBackfillPreview" style="margin-top: var(--space-3); display: none;"></div>
+            <div id="memberBackfillResult" style="margin-top: var(--space-3); display: none;"></div>
           </div>
-        </div>
-        <div id="relatedDomainsContent"></div>
-      </div>
 
-      <!-- Similar Names Section -->
-      <div class="card" id="similarNamesSection">
-        <div class="section-header">
-          <div>
-            <div class="section-title">
-              Similar Organization Names
-              <span class="section-badge" id="similarNamesBadge">0</span>
+          <!-- Domain Sync Issues -->
+          <div style="padding: var(--space-5) 0; border-bottom: 1px solid var(--color-border);">
+            <div class="review-subsection-title">
+              Domain Sync Issues
+              <span class="section-badge neutral" id="syncBadge">0</span>
             </div>
-            <p class="section-description">Organizations with similar names that may be duplicates. Review and merge if they represent the same company.</p>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with email_domain set but not in the organization_domains table.</p>
+            <div id="domainSyncContent"></div>
           </div>
-        </div>
-        <div id="similarNamesContent"></div>
-      </div>
 
-      <!-- Duplicate Organizations Section -->
-      <div class="card" id="duplicateOrgsSection">
-        <div class="section-header">
-          <div>
-            <div class="section-title">
-              Shared Members
-              <span class="section-badge" id="duplicateOrgsBadge">0</span>
+          <!-- Unverified Organizations -->
+          <div style="padding-top: var(--space-5);">
+            <div class="review-subsection-title">
+              Unverified Organizations
+              <span class="section-badge neutral" id="unverifiedBadge">0</span>
             </div>
-            <p class="section-description">Organizations that share the same member email address. This may indicate duplicate organizations that should be merged.</p>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with members but no verified domain mapping.</p>
+            <div id="unverifiedOrgsContent"></div>
           </div>
         </div>
-        <div id="duplicateOrgsContent"></div>
       </div>
     </div>
   </div>
 
   <script>
     let healthData = null;
+    let mergeModalElement = null;
+
+    // Dismissed clusters stored in localStorage
+    const DISMISSED_KEY = 'domain-health-dismissed';
+    let showDismissed = false;
+
+    function getDismissed() {
+      try {
+        return JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]');
+      } catch { return []; }
+    }
+
+    function dismissCluster(key) {
+      const dismissed = getDismissed();
+      if (!dismissed.includes(key)) {
+        dismissed.push(key);
+        localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed));
+      }
+      renderReviewRelationships();
+    }
+
+    function undismissAll() {
+      localStorage.removeItem(DISMISSED_KEY);
+      showDismissed = false;
+      renderReviewRelationships();
+    }
 
     async function loadDomainHealth() {
       try {
@@ -445,7 +501,7 @@
           throw new Error('Failed to load domain health');
         }
         healthData = await response.json();
-        renderDomainHealth();
+        renderAll();
       } catch (error) {
         console.error('Error loading domain health:', error);
         document.getElementById('loading').innerHTML = 'Error loading data. Please refresh.';
@@ -463,33 +519,28 @@
         .replace(/'/g, '&#039;');
     }
 
-    // Validate org ID format (alphanumeric, underscores, hyphens only)
     function isValidOrgId(id) {
       return /^[a-zA-Z0-9_-]+$/.test(id);
     }
 
-    // Safe org ID for use in JS strings - validates and returns or throws
     function safeOrgId(id) {
-      if (!isValidOrgId(id)) {
-        throw new Error('Invalid org ID format');
-      }
+      if (!isValidOrgId(id)) throw new Error('Invalid org ID format');
       return id;
     }
 
-    function renderDomainHealth() {
+    // ─── Main render orchestrator ───────────────────────────────────────────
+
+    function renderAll() {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block';
 
       renderSummary();
-      renderOrphanDomains();
-      renderMisalignedUsers();
-      renderUnverifiedOrgs();
-      renderDomainConflicts();
-      renderRelatedDomains();
-      renderSimilarNames();
-      renderDuplicateOrgs();
+      renderClassifyDomains();
+      renderPlaceUsers();
+      renderReviewRelationships();
+      renderMaintenance();
 
-      // Set up event delegation for merge buttons (avoiding inline onclick for XSS safety)
+      // Event delegation for merge buttons
       document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const orgIds = btn.dataset.orgIds.split(',').map(decodeURIComponent);
@@ -498,7 +549,7 @@
         });
       });
 
-      // Set up event handlers for link domain buttons
+      // Link domain buttons (used by maintenance/unverified orgs section)
       document.querySelectorAll('.link-domain-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const orgId = btn.dataset.orgId;
@@ -506,46 +557,561 @@
           const domain = btn.dataset.domain;
           const reassignFrom = btn.dataset.reassignFrom;
           if (reassignFrom) {
-            if (!confirm(`Reassign ${domain} from ${reassignFrom} to ${orgName}?\n\nThis will remove the domain from the personal workspace.`)) {
-              return;
-            }
+            if (!confirm(`Reassign ${domain} from ${reassignFrom} to ${orgName}?\n\nThis will remove the domain from the personal workspace.`)) return;
           }
           linkDomainToOrg(btn, orgId, orgName, domain);
         });
       });
 
-      // Set up event handlers for link domain selects
-      document.querySelectorAll('.link-domain-select').forEach(select => {
-        select.addEventListener('change', () => {
-          const orgId = select.value;
-          if (!orgId) return;
-          const option = select.options[select.selectedIndex];
-          const orgName = option.dataset.orgName;
-          const domain = select.dataset.domain;
-          linkDomainToOrg(select, orgId, orgName, domain);
-        });
-      });
-
-      // Set up event handlers for mark as personal buttons
+      // Mark as personal buttons
       document.querySelectorAll('.mark-personal-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          const domain = btn.dataset.domain;
-          markDomainAsPersonal(btn, domain);
+          markDomainAsPersonal(btn, btn.dataset.domain);
         });
       });
 
-      // Set up event handlers for create prospect buttons
+      // Create prospect buttons
       document.querySelectorAll('.create-prospect-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+          createProspectFromDomain(btn, btn.dataset.domain);
+        });
+      });
+
+      // Research brand buttons
+      document.querySelectorAll('.research-brand-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          researchBrandFromOrphan(btn, btn.dataset.domain);
+        });
+      });
+
+      // Research cluster buttons
+      document.querySelectorAll('.research-cluster-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
           const domain = btn.dataset.domain;
-          createProspectFromDomain(btn, domain);
+          researchBrandFromOrphan(btn, domain);
+        });
+      });
+
+      // Dismiss buttons
+      document.querySelectorAll('.dismiss-cluster-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          dismissCluster(btn.dataset.clusterKey);
         });
       });
     }
 
+    // ─── Summary Cards ──────────────────────────────────────────────────────
+
+    function renderSummary() {
+      const { summary } = healthData;
+
+      // Count items for each pipeline stage
+      const orphanDomains = (healthData.orphan_domains || []).filter(d => {
+        return (d.existing_orgs || []).some(o => !o.is_personal);
+      });
+      const classifyCount = orphanDomains.length;
+
+      const misalignedUsers = healthData.misaligned_users || [];
+      const placeCount = misalignedUsers.reduce((sum, d) => sum + d.user_count, 0);
+
+      const dismissed = getDismissed();
+      const allReviewCount = (healthData.domain_conflicts || []).length +
+                             (healthData.related_domains || []).length +
+                             (healthData.similar_names || []).length +
+                             (healthData.duplicate_organizations || []).length;
+      const reviewCount = Math.max(0, allReviewCount - dismissed.length);
+
+      const grid = document.getElementById('summaryGrid');
+      grid.innerHTML = `
+        <div class="summary-card ${classifyCount === 0 ? 'good' : 'warning'}">
+          <div class="label">Domains to Classify</div>
+          <div class="value">${classifyCount}</div>
+          <div class="detail">${classifyCount === 0 ? 'All domains classified' : 'Need brand research'}</div>
+        </div>
+        <div class="summary-card ${placeCount === 0 ? 'good' : 'warning'}">
+          <div class="label">Users to Place</div>
+          <div class="value">${placeCount}</div>
+          <div class="detail">${placeCount === 0 ? 'All users placed' : 'In personal workspaces'}</div>
+        </div>
+        <div class="summary-card ${reviewCount === 0 ? 'good' : 'warning'}">
+          <div class="label">Relationships to Review</div>
+          <div class="value">${reviewCount}</div>
+          <div class="detail">${reviewCount === 0 ? 'No ambiguous relationships' : 'Possible duplicates or subsidiaries'}</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Total Organizations</div>
+          <div class="value">${summary.total_organizations}</div>
+          <div class="detail">${summary.verified_domains} verified domains</div>
+        </div>
+      `;
+    }
+
+    // ─── Section 1: Classify Domains ────────────────────────────────────────
+
+    function renderClassifyDomains() {
+      const { orphan_domains } = healthData;
+      const badge = document.getElementById('classifyBadge');
+      const content = document.getElementById('classifyContent');
+      const researchAllBtn = document.getElementById('researchAllBtn');
+
+      const domainsWithCorpOrgs = (orphan_domains || []).filter(d => {
+        return (d.existing_orgs || []).some(o => !o.is_personal);
+      });
+
+      badge.textContent = domainsWithCorpOrgs.length;
+      badge.className = domainsWithCorpOrgs.length === 0 ? 'section-badge success' : 'section-badge';
+
+      if (domainsWithCorpOrgs.length > 0) {
+        researchAllBtn.style.display = 'block';
+        researchAllBtn.textContent = `Research All (${domainsWithCorpOrgs.length})`;
+      } else {
+        researchAllBtn.style.display = 'none';
+      }
+
+      if (domainsWithCorpOrgs.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>All corporate domains have been classified in the brand registry.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Domain</th>
+              <th>Users</th>
+              <th>Current Orgs</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${domainsWithCorpOrgs.map(d => {
+              const nonPersonalOrgs = (d.existing_orgs || []).filter(o => !o.is_personal);
+              return `
+              <tr>
+                <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
+                <td><span class="user-count">${d.user_count}</span></td>
+                <td>
+                  <ul class="org-list">
+                    ${nonPersonalOrgs.map(o => `
+                      <li>
+                        <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
+                        <span class="user-count">${o.user_count} users</span>
+                      </li>
+                    `).join('')}
+                  </ul>
+                </td>
+                <td>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    <button class="btn btn-primary btn-sm research-brand-btn"
+                      data-domain="${escapeHtml(d.domain)}">Research Brand</button>
+                    <button class="btn btn-secondary btn-sm create-prospect-btn"
+                      data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    <button class="btn btn-secondary btn-sm mark-personal-btn"
+                      data-domain="${escapeHtml(d.domain)}"
+                      title="Mark as personal email domain">Mark as Personal</button>
+                  </div>
+                </td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // ─── Section 2: Place Users ─────────────────────────────────────────────
+
+    function renderPlaceUsers() {
+      const { misaligned_users } = healthData;
+      const badge = document.getElementById('placeBadge');
+      const content = document.getElementById('placeUsersContent');
+      const linkAllBtn = document.getElementById('linkAllMisalignedBtn');
+
+      const totalUsers = misaligned_users.reduce((sum, d) => sum + d.user_count, 0);
+      badge.textContent = totalUsers;
+      badge.className = totalUsers === 0 ? 'section-badge success' : 'section-badge';
+
+      const linkableEntries = misaligned_users.filter(d => d.target_org_id);
+      const linkableUsers = linkableEntries.reduce((sum, d) => sum + d.user_count, 0);
+
+      if (linkableUsers > 0) {
+        linkAllBtn.style.display = 'block';
+        linkAllBtn.textContent = `Link All (${linkableUsers} users)`;
+        linkAllBtn.onclick = () => linkAllMisalignedUsers(linkableEntries);
+      } else {
+        linkAllBtn.style.display = 'none';
+      }
+
+      if (misaligned_users.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>All users are in the right organization.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Domain</th>
+              <th>Users</th>
+              <th>Details</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${misaligned_users.map(d => {
+              const userRows = d.users.slice(0, 3).map(u => `
+                <li>${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')} <span style="color: var(--color-text-muted);">${escapeHtml(u.email)}</span></li>
+              `).join('');
+              const remaining = d.user_count - Math.min(3, d.users.length);
+
+              return `
+              <tr>
+                <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
+                <td><span class="user-count">${d.user_count}</span></td>
+                <td>
+                  <ul class="user-list">
+                    ${userRows}
+                    ${remaining > 0 ? `<li style="color: var(--color-text-muted);">+${remaining} more</li>` : ''}
+                  </ul>
+                </td>
+                <td>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${d.target_org_id ? `
+                      <button class="btn btn-primary btn-sm add-users-btn"
+                        data-org-id="${escapeHtml(d.target_org_id)}"
+                        data-org-name="${escapeHtml(d.target_org_name)}"
+                        data-user-ids="${d.users.map(u => encodeURIComponent(u.user_id)).join(',')}">Add to ${escapeHtml(d.target_org_name)}</button>
+                    ` : `
+                      <button class="btn btn-secondary btn-sm create-prospect-btn"
+                        data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    `}
+                    <button class="btn btn-secondary btn-sm mark-personal-btn"
+                      data-domain="${escapeHtml(d.domain)}"
+                      title="Mark as personal email domain">Mark as Personal</button>
+                  </div>
+                </td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Bind add-users buttons
+      document.querySelectorAll('.add-users-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgId = btn.dataset.orgId;
+          const orgName = btn.dataset.orgName;
+          const userIds = btn.dataset.userIds.split(',').map(decodeURIComponent);
+          addUsersToOrg(btn, orgId, orgName, userIds);
+        });
+      });
+    }
+
+    // ─── Section 3: Review Relationships ────────────────────────────────────
+
+    function renderReviewRelationships() {
+      const badge = document.getElementById('reviewBadge');
+      const content = document.getElementById('reviewContent');
+      const showDismissedBtn = document.getElementById('showDismissedBtn');
+      const dismissed = getDismissed();
+
+      // Build unified cluster list from all signals
+      const clusters = [];
+
+      // 1. Shared Email Domains (from domain_conflicts)
+      for (const c of (healthData.domain_conflicts || [])) {
+        clusters.push({
+          key: `domain:${c.domain}`,
+          signal: 'Shared Email Domain',
+          signalClass: 'signal-domain',
+          label: c.domain,
+          orgCount: c.org_count,
+          organizations: c.organizations.map(o => ({
+            id: o.id, name: o.name, status: o.subscription_status
+          })),
+          researchDomain: c.domain,
+        });
+      }
+
+      // 2. Brand Hierarchy and Alias matches (from related_domains)
+      for (const r of (healthData.related_domains || [])) {
+        let signal, signalClass;
+        if (r.match_source === 'brand_hierarchy') {
+          signal = 'Brand Hierarchy';
+          signalClass = 'signal-hierarchy';
+        } else if (r.match_source === 'brand_alias') {
+          signal = 'Known Alias';
+          signalClass = 'signal-alias';
+        } else {
+          signal = 'Domain Similarity';
+          signalClass = 'signal-heuristic';
+        }
+        clusters.push({
+          key: `related:${r.root_domain}`,
+          signal,
+          signalClass,
+          label: r.root_domain,
+          orgCount: r.org_count,
+          organizations: r.organizations.map(o => ({
+            id: o.org_id, name: o.name, status: o.subscription_status,
+            domains: o.domains
+          })),
+          researchDomain: r.root_domain,
+        });
+      }
+
+      // 3. Similar Names
+      for (const s of (healthData.similar_names || [])) {
+        clusters.push({
+          key: `names:${s.base_name}`,
+          signal: 'Similar Names',
+          signalClass: 'signal-names',
+          label: s.base_name,
+          orgCount: s.org_count,
+          organizations: s.organizations.map(o => ({
+            id: o.org_id, name: o.name, status: o.subscription_status
+          })),
+          researchDomain: null,
+        });
+      }
+
+      // 4. Shared Members
+      for (const d of (healthData.duplicate_organizations || [])) {
+        const emails = d.shared_emails || [];
+        clusters.push({
+          key: `members:${emails.slice(0, 3).join(',')}`,
+          signal: 'Shared Members',
+          signalClass: 'signal-members',
+          label: emails.slice(0, 3).join(', ') + (emails.length > 3 ? ` +${emails.length - 3}` : ''),
+          orgCount: d.org_count,
+          organizations: d.organizations.map(o => ({
+            id: o.org_id, name: o.name, status: o.subscription_status,
+            memberCount: o.member_count
+          })),
+          researchDomain: null,
+        });
+      }
+
+      // Filter dismissed
+      const visible = showDismissed ? clusters : clusters.filter(c => !dismissed.includes(c.key));
+      const dismissedCount = clusters.length - clusters.filter(c => !dismissed.includes(c.key)).length;
+
+      badge.textContent = visible.length;
+      badge.className = visible.length === 0 ? 'section-badge success' : 'section-badge';
+
+      if (dismissedCount > 0) {
+        showDismissedBtn.style.display = 'block';
+        showDismissedBtn.textContent = showDismissed ? 'Hide Dismissed' : `Show ${dismissedCount} Dismissed`;
+        showDismissedBtn.onclick = () => {
+          showDismissed = !showDismissed;
+          renderReviewRelationships();
+          // Re-bind event handlers for new buttons
+          document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const orgIds = btn.dataset.orgIds.split(',').map(decodeURIComponent);
+              const domain = decodeURIComponent(btn.dataset.domain || btn.dataset.baseName || '');
+              showMergeModal(orgIds, domain);
+            });
+          });
+          document.querySelectorAll('.research-cluster-btn').forEach(btn => {
+            btn.addEventListener('click', () => researchBrandFromOrphan(btn, btn.dataset.domain));
+          });
+          document.querySelectorAll('.dismiss-cluster-btn').forEach(btn => {
+            btn.addEventListener('click', () => dismissCluster(btn.dataset.clusterKey));
+          });
+        };
+      } else {
+        showDismissedBtn.style.display = 'none';
+      }
+
+      if (visible.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>No ambiguous organization relationships found.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Signal</th>
+              <th>Key</th>
+              <th>Organizations</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${visible.map(c => {
+              const isDismissed = dismissed.includes(c.key);
+              return `
+              <tr class="${isDismissed ? 'dismissed-row' : ''}">
+                <td><span class="signal-badge ${c.signalClass}">${escapeHtml(c.signal)}</span></td>
+                <td>
+                  <span class="domain-name">${escapeHtml(c.label)}</span>
+                  <br><small style="color: var(--color-text-muted);">${c.orgCount} organizations</small>
+                </td>
+                <td>
+                  <ul class="org-list">
+                    ${c.organizations.map(o => `
+                      <li>
+                        <a href="/admin/accounts/${encodeURIComponent(o.id)}" class="org-link">${escapeHtml(o.name)}</a>
+                        <span class="status-badge ${o.status === 'active' ? 'status-active' : 'status-prospect'}">
+                          ${escapeHtml(o.status || 'prospect')}
+                        </span>
+                        ${o.domains ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted);"> ${o.domains.map(escapeHtml).join(', ')}</span>` : ''}
+                      </li>
+                    `).join('')}
+                  </ul>
+                </td>
+                <td>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${c.researchDomain ? `
+                      <a class="btn btn-primary btn-sm" href="/admin/brands?search=${encodeURIComponent(c.researchDomain)}" style="text-align: center;">
+                        Review in Brands
+                      </a>
+                    ` : ''}
+                    <button class="btn btn-secondary btn-sm merge-orgs-btn"
+                      data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}"
+                      data-domain="${encodeURIComponent(c.label)}">Merge</button>
+                    ${!isDismissed ? `
+                      <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
+                        data-cluster-key="${escapeHtml(c.key)}"
+                        style="font-size: 10px; color: var(--color-text-muted);">Dismiss</button>
+                    ` : ''}
+                  </div>
+                </td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // ─── Section 4: Maintenance ─────────────────────────────────────────────
+
+    function renderMaintenance() {
+      const { domain_sync_issues, unverified_orgs } = healthData;
+      const syncCount = (domain_sync_issues || []).length;
+      const unverifiedCount = (unverified_orgs || []).length;
+      const maintenanceTotal = syncCount + unverifiedCount;
+
+      document.getElementById('maintenanceBadge').textContent = maintenanceTotal;
+      document.getElementById('syncBadge').textContent = syncCount;
+      document.getElementById('unverifiedBadge').textContent = unverifiedCount;
+
+      // Domain Sync Issues
+      const syncContent = document.getElementById('domainSyncContent');
+      if (syncCount === 0) {
+        syncContent.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No sync issues found.</div>';
+      } else {
+        syncContent.innerHTML = `
+          <table class="issue-table">
+            <thead>
+              <tr><th>Organization</th><th>Email Domain</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              ${domain_sync_issues.map(d => `
+                <tr>
+                  <td><a href="/admin/accounts/${encodeURIComponent(d.org_id)}" class="org-link">${escapeHtml(d.name)}</a></td>
+                  <td><span class="domain-name">${escapeHtml(d.email_domain)}</span></td>
+                  <td>
+                    <span class="status-badge ${d.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
+                      ${escapeHtml(d.subscription_status || d.prospect_status || 'prospect')}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      // Unverified Organizations
+      const unverifiedContent = document.getElementById('unverifiedOrgsContent');
+      if (unverifiedCount === 0) {
+        unverifiedContent.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">All organizations with members have verified domains.</div>';
+      } else {
+        // Free email domains for tagging
+        const freeDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'protonmail.com', 'me.com', 'live.com', 'msn.com'];
+
+        unverifiedContent.innerHTML = `
+          <table class="issue-table">
+            <thead>
+              <tr><th>Organization</th><th>Members</th><th>User Domains</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              ${unverified_orgs.map(o => {
+                const userDomains = (o.user_domains || []).filter(d => d);
+                const claimedByOthers = o.claimed_by_others || [];
+
+                // Find a suggested domain to link
+                let suggestedDomain = null;
+                let reassignFrom = null;
+                for (const d of userDomains) {
+                  if (freeDomains.includes(d)) continue;
+                  const claimInfo = claimedByOthers.find(c => c.domain === d && !c.is_personal);
+                  if (claimInfo) continue; // Claimed by another corporate org
+                  const personalClaim = claimedByOthers.find(c => c.domain === d && c.is_personal);
+                  suggestedDomain = d;
+                  if (personalClaim) reassignFrom = personalClaim.org_name;
+                  break;
+                }
+
+                return `
+                <tr>
+                  <td>
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
+                    ${o.email_domain ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(o.email_domain)}</div>` : ''}
+                  </td>
+                  <td><span class="user-count">${o.user_count}</span></td>
+                  <td>
+                    ${userDomains.map(d => {
+                      const isFree = freeDomains.includes(d);
+                      if (isFree) return `<span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(d)}</span> <span class="personal-tag">personal</span>`;
+                      const claim = claimedByOthers.find(c => c.domain === d);
+                      if (claim) return `<span style="font-size: var(--text-xs);">${escapeHtml(d)}</span> <a href="/admin/accounts/${encodeURIComponent(claim.org_id)}" class="claimed-tag">&rarr; ${escapeHtml(claim.org_name)}</a>`;
+                      return `<span style="font-size: var(--text-xs); font-weight: var(--font-semibold);">${escapeHtml(d)}</span>`;
+                    }).join('<br>')}
+                  </td>
+                  <td>
+                    ${suggestedDomain ? `
+                      <button class="btn btn-primary btn-sm link-domain-btn"
+                        data-org-id="${escapeHtml(o.org_id)}"
+                        data-org-name="${escapeHtml(o.name)}"
+                        data-domain="${escapeHtml(suggestedDomain)}"
+                        ${reassignFrom ? `data-reassign-from="${escapeHtml(reassignFrom)}"` : ''}>
+                        ${reassignFrom ? 'Reassign' : 'Link'} ${escapeHtml(suggestedDomain)}
+                      </button>
+                    ` : `
+                      <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm" style="text-align: center;">View Org</a>
+                    `}
+                  </td>
+                </tr>
+              `}).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    }
+
+    // ─── Action Functions ───────────────────────────────────────────────────
+
     async function markDomainAsPersonal(button, domain) {
       const reason = prompt(`Mark "${domain}" as a personal domain?\n\nEnter a reason (e.g., "alumni email", "forwarding service"):`, 'personal email domain');
-      if (reason === null) return; // User cancelled
+      if (reason === null) return;
 
       const originalText = button.textContent;
       button.disabled = true;
@@ -559,29 +1125,20 @@
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || 'Failed to mark domain as personal');
         }
 
-        // Success
         button.classList.remove('btn-secondary');
         button.classList.add('btn-success');
         button.textContent = 'Marked!';
-
-        // Reload after brief delay
-        setTimeout(() => {
-          loadDomainHealth();
-        }, 1000);
+        setTimeout(() => { loadDomainHealth(); }, 1000);
       } catch (error) {
         button.classList.remove('btn-secondary');
         button.classList.add('btn-error');
         button.textContent = 'Failed';
         button.title = error.message;
-
         setTimeout(() => {
           button.disabled = false;
           button.classList.remove('btn-error');
@@ -593,7 +1150,6 @@
     }
 
     async function linkDomainToOrg(element, orgId, orgName, domain) {
-      // Validate orgId format before using in URL
       if (!isValidOrgId(orgId)) {
         alert('Invalid organization ID format');
         return;
@@ -602,11 +1158,8 @@
       const originalText = element.tagName === 'BUTTON' ? element.textContent : null;
       const originalDisabled = element.disabled;
 
-      // Disable and show loading state
       element.disabled = true;
-      if (element.tagName === 'BUTTON') {
-        element.textContent = 'Linking...';
-      }
+      if (element.tagName === 'BUTTON') element.textContent = 'Linking...';
 
       try {
         const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/domains`, {
@@ -616,44 +1169,22 @@
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || errorData.error || 'Failed to link domain');
         }
 
-        // Success - show success state briefly then reload data
         element.classList.remove('btn-primary');
         element.classList.add('btn-success');
-        if (element.tagName === 'BUTTON') {
-          element.textContent = 'Linked!';
-        } else {
-          // For select, reset and disable
-          element.value = '';
-          const firstOption = element.options[0];
-          if (firstOption) firstOption.textContent = 'Linked!';
-        }
-
-        // Reload after brief delay to show success
-        setTimeout(() => {
-          loadDomainHealth();
-        }, 1000);
+        if (element.tagName === 'BUTTON') element.textContent = 'Linked!';
+        setTimeout(() => { loadDomainHealth(); }, 1000);
       } catch (error) {
-        // Show error state
         element.classList.remove('btn-primary');
         element.classList.add('btn-error');
         if (element.tagName === 'BUTTON') {
           element.textContent = 'Failed';
           element.title = error.message;
-        } else {
-          element.value = '';
-          const firstOption = element.options[0];
-          if (firstOption) firstOption.textContent = 'Failed: ' + error.message;
         }
-
-        // Reset after delay
         setTimeout(() => {
           element.disabled = originalDisabled;
           element.classList.remove('btn-error');
@@ -661,16 +1192,12 @@
           if (element.tagName === 'BUTTON') {
             element.textContent = originalText;
             element.title = '';
-          } else {
-            const firstOption = element.options[0];
-            if (firstOption) firstOption.textContent = 'Link to org...';
           }
         }, 3000);
       }
     }
 
     async function createProspectFromDomain(button, domain) {
-      // Validate domain format
       if (!domain || !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(domain)) {
         console.error('Invalid domain format:', domain);
         return;
@@ -684,22 +1211,15 @@
       // Generate org name from domain
       const parts = domain.split('.');
       let orgName = parts
-        .slice(0, -1)  // Remove TLD
-        .filter(part => part.length > 2 || parts.length <= 2)  // Filter short parts like 'co' unless simple domain
-        .map(part => {
-          // Handle hyphens and capitalize each word
-          return part.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-        })
+        .slice(0, -1)
+        .filter(part => part.length > 2 || parts.length <= 2)
+        .map(part => part.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '))
         .join(' ')
         .trim();
-
-      // Fallback if name generation produced empty result
-      if (!orgName) {
-        orgName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-      }
+      if (!orgName) orgName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
 
       try {
-        const response = await fetch('/api/admin/prospects', {
+        const response = await fetch('/api/admin/accounts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -711,34 +1231,20 @@
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || errorData.error || 'Failed to create prospect');
         }
 
-        const org = await response.json();
-
-        // Success - show success state and link to org
         button.classList.remove('btn-primary', 'btn-secondary');
         button.classList.add('btn-success');
         button.textContent = 'Created!';
-        button.title = `Created ${org.name}. Enrichment running in background.`;
-
-        // Reload after brief delay to show the domain is now linked
-        setTimeout(() => {
-          loadDomainHealth();
-        }, 1500);
+        setTimeout(() => { loadDomainHealth(); }, 1500);
       } catch (error) {
-        // Show error state
         button.classList.remove('btn-primary', 'btn-secondary');
         button.classList.add('btn-error');
         button.textContent = 'Failed';
         button.title = error.message;
-
-        // Reset after delay
         setTimeout(() => {
           button.disabled = false;
           button.classList.remove('btn-error');
@@ -749,8 +1255,94 @@
       }
     }
 
+    async function researchBrandFromOrphan(button, domain) {
+      if (!domain || !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(domain)) {
+        console.error('Invalid domain format:', domain);
+        return;
+      }
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Researching...';
+
+      try {
+        const response = await fetch(`/api/admin/brand-enrichment/research/${encodeURIComponent(domain)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Research failed');
+        }
+
+        const result = await response.json();
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        if (result.brand) {
+          const type = result.brand.keller_type || 'classified';
+          const house = result.brand.house_domain ? ` \u2192 ${result.brand.house_domain}` : '';
+          button.textContent = `${result.brand.brand_name} (${type}${house})`;
+        } else {
+          button.textContent = 'Researched';
+        }
+        setTimeout(() => { loadDomainHealth(); }, 2000);
+      } catch (error) {
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-primary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
+    }
+
+    async function researchAllOrphanDomains() {
+      const btn = document.getElementById('researchAllBtn');
+      const orphanDomains = (healthData.orphan_domains || []).filter(d =>
+        (d.existing_orgs || []).some(o => !o.is_personal)
+      );
+
+      if (orphanDomains.length === 0) return;
+
+      btn.disabled = true;
+      let completed = 0;
+      const total = orphanDomains.length;
+
+      for (const d of orphanDomains) {
+        btn.textContent = `Researching ${completed + 1}/${total}...`;
+        try {
+          const resp = await fetch(`/api/admin/brand-enrichment/research/${encodeURIComponent(d.domain)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        } catch (err) {
+          console.warn('Research failed for', d.domain, err);
+        }
+        completed++;
+        // Small delay between requests
+        if (completed < total) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-success');
+      btn.textContent = `Researched ${completed} domains`;
+
+      setTimeout(() => { loadDomainHealth(); }, 1500);
+    }
+
     async function addUsersToOrg(button, orgId, orgName, userIds) {
-      // Validate inputs
       if (!isValidOrgId(orgId)) {
         alert('Invalid organization ID format');
         return;
@@ -765,38 +1357,27 @@
       button.textContent = 'Adding...';
 
       try {
-        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/add-users`, {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/add-members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_ids: userIds })
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || errorData.error || 'Failed to add users');
+          throw new Error(errorData.message || 'Failed to add users');
         }
 
-        const result = await response.json();
-
-        // Success
         button.classList.remove('btn-primary');
         button.classList.add('btn-success');
-        button.textContent = `Added ${result.added_count || userIds.length}!`;
-
-        // Reload after brief delay
-        setTimeout(() => {
-          loadDomainHealth();
-        }, 1500);
+        button.textContent = 'Added!';
+        setTimeout(() => { loadDomainHealth(); }, 1000);
       } catch (error) {
         button.classList.remove('btn-primary');
         button.classList.add('btn-error');
         button.textContent = 'Failed';
         button.title = error.message;
-
         setTimeout(() => {
           button.disabled = false;
           button.classList.remove('btn-error');
@@ -808,679 +1389,35 @@
     }
 
     async function linkAllMisalignedUsers(entries) {
-      const totalUsers = entries.reduce((sum, d) => sum + d.user_count, 0);
-      const totalOrgs = entries.length;
-
-      if (!confirm(`Add ${totalUsers} user(s) to their ${totalOrgs} respective company org(s)?\n\nThis will add all listed users to their company organizations. They will keep access to their personal workspaces.`)) {
-        return;
-      }
-
       const linkAllBtn = document.getElementById('linkAllMisalignedBtn');
-      const originalText = linkAllBtn.textContent;
       linkAllBtn.disabled = true;
-      linkAllBtn.textContent = 'Linking...';
+      let completed = 0;
+      const total = entries.length;
 
-      let successCount = 0;
-      let errorCount = 0;
-      const errors = [];
-
-      // Group users by target org to minimize API calls
-      const usersByOrg = {};
       for (const entry of entries) {
-        if (!entry.target_org_id) continue;
-        if (!usersByOrg[entry.target_org_id]) {
-          usersByOrg[entry.target_org_id] = {
-            orgId: entry.target_org_id,
-            orgName: entry.target_org_name,
-            userIds: []
-          };
-        }
-        for (const user of entry.users) {
-          if (user.user_id) {
-            usersByOrg[entry.target_org_id].userIds.push(user.user_id);
-          }
-        }
-      }
-
-      // Process each org
-      for (const orgData of Object.values(usersByOrg)) {
-        if (!isValidOrgId(orgData.orgId)) {
-          errors.push(`Invalid org ID: ${orgData.orgId}`);
-          errorCount += orgData.userIds.length;
-          continue;
-        }
-
+        linkAllBtn.textContent = `Linking ${completed + 1}/${total}...`;
         try {
-          const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgData.orgId)}/add-users`, {
+          const userIds = entry.users.map(u => u.user_id);
+          await fetch(`/api/admin/organizations/${encodeURIComponent(entry.target_org_id)}/add-members`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_ids: orgData.userIds })
+            body: JSON.stringify({ user_ids: userIds })
           });
-
-          if (!response.ok) {
-            if (response.status === 401) {
-              window.AdminSidebar?.redirectToLogin();
-              return;
-            }
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || errorData.error || 'Failed');
-          }
-
-          const result = await response.json();
-          successCount += result.added_count || orgData.userIds.length;
-          if (Array.isArray(result.errors)) {
-            errors.push(...result.errors);
-            errorCount += result.errors.length;
-          } else if (result.errors) {
-            errors.push(String(result.errors));
-            errorCount++;
-          }
-        } catch (error) {
-          errors.push(`${orgData.orgName}: ${error.message}`);
-          errorCount += orgData.userIds.length;
+        } catch (err) {
+          console.warn('Failed to link users for', entry.domain, err);
         }
+        completed++;
       }
 
-      // Show result
-      if (errorCount === 0) {
-        linkAllBtn.classList.remove('btn-primary');
-        linkAllBtn.classList.add('btn-success');
-        linkAllBtn.textContent = `Linked ${successCount} users!`;
-      } else {
-        linkAllBtn.classList.remove('btn-primary');
-        linkAllBtn.classList.add('btn-error');
-        linkAllBtn.textContent = `${successCount} linked, ${errorCount} failed`;
-        linkAllBtn.title = errors.join('\n');
-      }
-
-      // Reload after brief delay
-      setTimeout(() => {
-        loadDomainHealth();
-      }, 1500);
+      linkAllBtn.classList.remove('btn-primary');
+      linkAllBtn.classList.add('btn-success');
+      linkAllBtn.textContent = `Linked ${completed} domains`;
+      setTimeout(() => { loadDomainHealth(); }, 1500);
     }
 
-    function renderSummary() {
-      const { summary, orphan_domains } = healthData;
-      // Count orphan domains that have non-personal orgs (filtered version)
-      const filteredOrphanCount = (orphan_domains || []).filter(d => {
-        const nonPersonalOrgs = (d.existing_orgs || []).filter(o => !o.is_personal);
-        return nonPersonalOrgs.length > 0;
-      }).length;
-
-      const totalIssues = filteredOrphanCount +
-                          (summary.issues.misaligned_users || 0) +
-                          (summary.issues.unverified_orgs || 0) +
-                          (summary.issues.domain_conflicts || 0) +
-                          (summary.issues.related_domains || 0) +
-                          (summary.issues.similar_names || 0) +
-                          (summary.issues.duplicate_organizations || 0);
-
-      const grid = document.getElementById('summaryGrid');
-      grid.innerHTML = `
-        <div class="summary-card ${totalIssues === 0 ? 'good' : 'warning'}">
-          <div class="label">Total Issues</div>
-          <div class="value">${totalIssues}</div>
-          <div class="detail">${totalIssues === 0 ? 'All domains healthy' : 'Needs attention'}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">Organizations</div>
-          <div class="value">${summary.total_organizations}</div>
-          <div class="detail">Non-personal workspaces</div>
-        </div>
-        <div class="summary-card good">
-          <div class="label">Verified Domains</div>
-          <div class="value">${summary.verified_domains}</div>
-          <div class="detail">Domains with verified ownership</div>
-        </div>
-        <div class="summary-card ${summary.unverified_domains > 0 ? 'warning' : 'good'}">
-          <div class="label">Unverified Domains</div>
-          <div class="value">${summary.unverified_domains}</div>
-          <div class="detail">Domains pending verification</div>
-        </div>
-      `;
-    }
-
-    function renderOrphanDomains() {
-      const { orphan_domains } = healthData;
-      const badge = document.getElementById('orphanBadge');
-      const content = document.getElementById('orphanDomainsContent');
-
-      // Filter to only show domains where users are in NON-personal orgs
-      // (i.e., exclude cases where users are only in personal workspaces)
-      const domainsWithCorpOrgs = (orphan_domains || []).filter(d => {
-        const nonPersonalOrgs = (d.existing_orgs || []).filter(o => !o.is_personal);
-        return nonPersonalOrgs.length > 0;
-      });
-
-      badge.textContent = domainsWithCorpOrgs.length;
-      badge.className = domainsWithCorpOrgs.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (domainsWithCorpOrgs.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No unlinked corporate domains found. All corporate domains are properly linked to organizations.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Users</th>
-              <th>Existing Organizations</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${domainsWithCorpOrgs.map(d => {
-              // Filter to non-personal orgs first
-              // Sort by value: Stripe customers first, then active subscriptions, then by user count
-              const scoreOrg = (o) => {
-                let score = 0;
-                if (o.has_stripe) score += 100;
-                if (o.subscription_status === 'active') score += 50;
-                score += (o.user_count || 0) * 5;
-                return score;
-              };
-              const nonPersonalOrgs = (d.existing_orgs || [])
-                .filter(o => !o.is_personal)
-                .sort((a, b) => scoreOrg(b) - scoreOrg(a));
-              const hasMultipleOrgs = nonPersonalOrgs.length > 1;
-
-              return `
-              <tr>
-                <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
-                <td><span class="user-count">${d.user_count}</span></td>
-                <td>
-                  <ul class="org-list">
-                    ${nonPersonalOrgs.map(o => `
-                      <li>
-                        <a href="/admin/accounts/${o.org_id}" class="org-link">${escapeHtml(o.name)}</a>
-                        <span class="user-count">${o.user_count} users</span>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    ${nonPersonalOrgs.length === 1 ? `
-                      <button class="btn btn-primary btn-sm link-domain-btn" data-org-id="${escapeHtml(nonPersonalOrgs[0].org_id)}" data-org-name="${escapeHtml(nonPersonalOrgs[0].name)}" data-domain="${escapeHtml(d.domain)}">Link to ${escapeHtml(nonPersonalOrgs[0].name)}</button>
-                    ` : `
-                      <select class="btn btn-sm link-domain-select" data-domain="${escapeHtml(d.domain)}" style="padding: var(--space-1) var(--space-2); cursor: pointer;">
-                        <option value="">Link to org...</option>
-                        ${nonPersonalOrgs.map(o => `
-                          <option value="${escapeHtml(o.org_id)}" data-org-name="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>
-                        `).join('')}
-                      </select>
-                    `}
-                    ${hasMultipleOrgs ? `
-                      <button class="btn btn-secondary btn-sm merge-orgs-btn" data-org-ids="${nonPersonalOrgs.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(d.domain)}">Merge ${nonPersonalOrgs.length} orgs</button>
-                    ` : ''}
-                  </div>
-                </td>
-              </tr>
-            `}).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    function renderMisalignedUsers() {
-      const { misaligned_users } = healthData;
-      const badge = document.getElementById('misalignedBadge');
-      const content = document.getElementById('misalignedUsersContent');
-      const linkAllBtn = document.getElementById('linkAllMisalignedBtn');
-
-      const totalUsers = misaligned_users.reduce((sum, d) => sum + d.user_count, 0);
-      badge.textContent = totalUsers;
-      badge.className = totalUsers === 0 ? 'section-badge success' : 'section-badge';
-
-      // Filter to only entries that have a target org (can be linked)
-      const linkableEntries = misaligned_users.filter(d => d.target_org_id);
-      const linkableUsers = linkableEntries.reduce((sum, d) => sum + d.user_count, 0);
-
-      // Show/hide Link All button
-      if (linkableUsers > 0) {
-        linkAllBtn.style.display = 'block';
-        linkAllBtn.textContent = `Link All (${linkableUsers} users)`;
-        linkAllBtn.onclick = () => linkAllMisalignedUsers(linkableEntries);
-      } else {
-        linkAllBtn.style.display = 'none';
-      }
-
-      if (misaligned_users.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No users found who should join their company. Personal workspace users with corporate emails are only flagged when their company already has an organization.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Users</th>
-              <th>User Details</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${misaligned_users.map(d => `
-              <tr>
-                <td>
-                  <span class="domain-name">${escapeHtml(d.domain)}</span>
-                  ${d.target_org_name ? `<br><small style="color: var(--color-text-muted);">→ <a href="/admin/accounts/${escapeHtml(d.target_org_id)}" class="org-link">${escapeHtml(d.target_org_name)}</a></small>` : ''}
-                </td>
-                <td><span class="user-count">${d.user_count}</span></td>
-                <td>
-                  <ul class="user-list">
-                    ${d.users.slice(0, 3).map(u => `
-                      <li>${escapeHtml(u.email)} (${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')})</li>
-                    `).join('')}
-                    ${d.user_count > 3 ? `<li>... and ${d.user_count - 3} more</li>` : ''}
-                  </ul>
-                </td>
-                <td>
-                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    ${d.target_org_id ? `
-                      <button class="btn btn-primary btn-sm add-to-org-btn"
-                              data-domain="${escapeHtml(d.domain)}"
-                              data-org-id="${escapeHtml(d.target_org_id)}"
-                              data-org-name="${escapeHtml(d.target_org_name)}"
-                              data-user-ids="${d.users.map(u => escapeHtml(u.user_id)).join(',')}"
-                              title="Add all ${d.user_count} user(s) to ${escapeHtml(d.target_org_name)}">
-                        Add to ${escapeHtml(d.target_org_name)}
-                      </button>
-                    ` : `
-                      <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
-                    `}
-                    <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-
-      // Set up event handlers for add to org buttons
-      document.querySelectorAll('.add-to-org-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const orgId = btn.dataset.orgId;
-          const orgName = btn.dataset.orgName;
-          const userIds = btn.dataset.userIds.split(',').filter(Boolean);
-          addUsersToOrg(btn, orgId, orgName, userIds);
-        });
-      });
-    }
-
-    function renderUnverifiedOrgs() {
-      const { unverified_orgs } = healthData;
-      const badge = document.getElementById('unverifiedBadge');
-      const content = document.getElementById('unverifiedOrgsContent');
-
-      badge.textContent = unverified_orgs.length;
-      badge.className = unverified_orgs.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (unverified_orgs.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>All organizations with users have verified domains.</p>
-          </div>
-        `;
-        return;
-      }
-
-      // Common personal email domains to filter out
-      const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'protonmail.com', 'me.com', 'live.com', 'msn.com'];
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Organization</th>
-              <th>Users</th>
-              <th>User Domains</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${unverified_orgs.map(o => {
-              // Build a map of claimed domains to their claiming org info
-              const claimedDomainsMap = new Map();
-              (o.claimed_by_others || []).forEach(claim => {
-                if (claim && claim.domain) {
-                  claimedDomainsMap.set(claim.domain.toLowerCase(), claim);
-                }
-              });
-
-              // Find the first corporate domain (not a personal email domain AND not claimed by a corporate org)
-              // Domains claimed by personal orgs can be reassigned
-              const corporateDomains = (o.user_domains || []).filter(d => {
-                if (!d || personalDomains.includes(d.toLowerCase())) return false;
-                const claim = claimedDomainsMap.get(d.toLowerCase());
-                // Allow if unclaimed, or claimed by a personal org (reassignable)
-                return !claim || claim.is_personal;
-              });
-              const suggestedDomain = corporateDomains[0] || null;
-              const suggestedDomainClaim = suggestedDomain ? claimedDomainsMap.get(suggestedDomain.toLowerCase()) : null;
-
-              return `
-              <tr>
-                <td>
-                  <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
-                  ${o.email_domain ? `<br><small style="color: var(--color-text-muted);">${escapeHtml(o.email_domain)}</small>` : ''}
-                </td>
-                <td><span class="user-count">${o.user_count}</span></td>
-                <td>
-                  <ul class="user-list">
-                    ${o.user_domains.slice(0, 3).map(d => {
-                      const claim = claimedDomainsMap.get(d.toLowerCase());
-                      if (claim) {
-                        return `<li>${escapeHtml(d)} <span class="claimed-tag" title="Claimed by ${escapeHtml(claim.org_name)}"><a href="/admin/accounts/${encodeURIComponent(claim.org_id)}" style="color: inherit; text-decoration: none;">→ ${escapeHtml(claim.org_name)}</a></span></li>`;
-                      }
-                      if (personalDomains.includes(d.toLowerCase())) {
-                        return `<li>${escapeHtml(d)} <span class="personal-tag">personal</span></li>`;
-                      }
-                      return `<li>${escapeHtml(d)}</li>`;
-                    }).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
-                    ${escapeHtml(o.subscription_status || 'prospect')}
-                  </span>
-                </td>
-                <td>
-                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    ${suggestedDomain ? `
-                      <button class="btn btn-primary btn-sm link-domain-btn"
-                              data-org-id="${escapeHtml(o.org_id)}"
-                              data-org-name="${escapeHtml(o.name)}"
-                              data-domain="${escapeHtml(suggestedDomain)}"
-                              ${suggestedDomainClaim ? `data-reassign-from="${escapeHtml(suggestedDomainClaim.org_name)}"` : ''}
-                              title="${suggestedDomainClaim ? `Reassign ${escapeHtml(suggestedDomain)} from ${escapeHtml(suggestedDomainClaim.org_name)} to ${escapeHtml(o.name)}` : `Link ${escapeHtml(suggestedDomain)} to ${escapeHtml(o.name)}`}">
-                        ${suggestedDomainClaim ? 'Reassign' : 'Link'} ${escapeHtml(suggestedDomain)}
-                      </button>
-                    ` : ''}
-                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
-                  </div>
-                </td>
-              </tr>
-            `}).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    function renderDomainConflicts() {
-      const { domain_conflicts } = healthData;
-      const badge = document.getElementById('conflictsBadge');
-      const content = document.getElementById('domainConflictsContent');
-
-      badge.textContent = domain_conflicts.length;
-      badge.className = domain_conflicts.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (domain_conflicts.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No domain conflicts found. Each domain maps to exactly one organization.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Organizations</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${domain_conflicts.map(c => `
-              <tr>
-                <td>
-                  <span class="domain-name">${escapeHtml(c.domain)}</span>
-                  <br><small style="color: var(--color-text-muted);">${c.org_count} organizations</small>
-                </td>
-                <td>
-                  <ul class="org-list">
-                    ${c.organizations.map(o => `
-                      <li>
-                        <a href="/admin/org/${encodeURIComponent(o.id)}" class="org-link">${escapeHtml(o.name)}</a>
-                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
-                          ${escapeHtml(o.subscription_status || 'prospect')}
-                        </span>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}" data-domain="${encodeURIComponent(c.domain)}">
-                    Merge Orgs
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    function matchSourceBadge(source) {
-      if (source === 'brand_hierarchy') {
-        return '<span class="match-badge brand-hierarchy">Brand hierarchy</span>';
-      }
-      if (source === 'brand_alias') {
-        return '<span class="match-badge brand-alias">Known alias</span>';
-      }
-      return '<span class="match-badge root-domain-heuristic">Possible match</span>';
-    }
-
-    function renderRelatedDomains() {
-      const relatedDomains = healthData.related_domains || [];
-      const badge = document.getElementById('relatedBadge');
-      const content = document.getElementById('relatedDomainsContent');
-
-      badge.textContent = relatedDomains.length;
-      badge.className = relatedDomains.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (relatedDomains.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No related organizations found based on domain similarity.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Root Domain</th>
-              <th>Confidence</th>
-              <th>Related Organizations</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${relatedDomains.map(r => `
-              <tr>
-                <td>
-                  <span class="domain-name">${escapeHtml(r.root_domain)}</span>
-                  <br><small style="color: var(--color-text-muted);">${r.org_count} organizations</small>
-                </td>
-                <td>
-                  ${matchSourceBadge(r.match_source)}
-                  ${r.match_source !== 'root_domain_heuristic' ? `<br><a href="/admin/brand-enrichment" style="font-size: var(--text-xs); color: var(--color-brand);">View in brand registry</a>` : ''}
-                </td>
-                <td>
-                  <ul class="org-list">
-                    ${r.organizations.map(o => `
-                      <li>
-                        <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
-                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
-                          ${escapeHtml(o.subscription_status || 'prospect')}
-                        </span>
-                        ${o.domains && o.domains.length > 0 ? `<br><small style="color: var(--color-text-muted);">${o.domains.filter(Boolean).map(d => escapeHtml(d)).join(', ')}</small>` : ''}
-                      </li>
-                    `).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${r.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(r.root_domain)}">
-                    Review &amp; Merge
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    function renderSimilarNames() {
-      const similarNames = healthData.similar_names || [];
-      const badge = document.getElementById('similarNamesBadge');
-      const content = document.getElementById('similarNamesContent');
-
-      badge.textContent = similarNames.length;
-      badge.className = similarNames.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (similarNames.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No organizations found with similar names.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Name Pattern</th>
-              <th>Similar Organizations</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${similarNames.map(s => `
-              <tr>
-                <td>
-                  <span class="domain-name">${escapeHtml(s.base_name)}</span>
-                  <br><small style="color: var(--color-text-muted);">${s.org_count} organizations</small>
-                </td>
-                <td>
-                  <ul class="org-list">
-                    ${s.organizations.map(o => `
-                      <li>
-                        <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
-                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
-                          ${escapeHtml(o.subscription_status || 'prospect')}
-                        </span>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${s.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-base-name="${encodeURIComponent(s.base_name)}">
-                    Review &amp; Merge
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    function renderDuplicateOrgs() {
-      const duplicateOrgs = healthData.duplicate_organizations || [];
-      const badge = document.getElementById('duplicateOrgsBadge');
-      const content = document.getElementById('duplicateOrgsContent');
-
-      badge.textContent = duplicateOrgs.length;
-      badge.className = duplicateOrgs.length === 0 ? 'section-badge success' : 'section-badge';
-
-      if (duplicateOrgs.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No organizations found with shared members.</p>
-          </div>
-        `;
-        return;
-      }
-
-      content.innerHTML = `
-        <table class="issue-table">
-          <thead>
-            <tr>
-              <th>Shared Emails</th>
-              <th>Organizations</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${duplicateOrgs.map(d => `
-              <tr>
-                <td>
-                  <ul class="user-list">
-                    ${d.shared_emails.slice(0, 5).map(email => `
-                      <li><span class="domain-name">${escapeHtml(email)}</span></li>
-                    `).join('')}
-                    ${d.shared_emails.length > 5 ? `<li style="color: var(--color-text-muted);">+${d.shared_emails.length - 5} more</li>` : ''}
-                  </ul>
-                </td>
-                <td>
-                  <ul class="org-list">
-                    ${d.organizations.map(o => `
-                      <li>
-                        <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
-                        <span class="user-count">${o.member_count || 0} members</span>
-                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
-                          ${escapeHtml(o.subscription_status || 'prospect')}
-                        </span>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </td>
-                <td>
-                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${d.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-base-name="${encodeURIComponent((d.shared_emails && d.shared_emails[0]) || 'shared-member')}">
-                    Review &amp; Merge
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    // Merge modal functionality
-    let mergeModalElement = null;
+    // ─── Merge Modal ────────────────────────────────────────────────────────
 
     function showMergeModal(orgIds, domain) {
-      // Create modal if doesn't exist
       if (!mergeModalElement) {
         mergeModalElement = document.createElement('div');
         mergeModalElement.id = 'mergeModal';
@@ -1496,13 +1433,11 @@
         </div>
       `;
 
-      // Fetch org details
       loadMergePreview(orgIds, domain);
     }
 
     async function loadMergePreview(orgIds, domain) {
       try {
-        // Fetch all org details in parallel
         const responses = await Promise.all(
           orgIds.map(id => fetch(`/api/admin/organizations/${id}`))
         );
@@ -1512,7 +1447,6 @@
           return await r.json();
         }));
 
-        // Score orgs to recommend the best primary based on financial and engagement signals
         function scoreMergeCandidate(org) {
           let score = 0;
           if (org.stripe_customer_id) score += 100;
@@ -1531,35 +1465,26 @@
                 <h3>Merge Organizations for ${escapeHtml(domain)}</h3>
                 <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
               </div>
-
               <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
                 Select which organization should be the <strong>primary</strong> (kept). All others will be merged into it.
               </p>
-
               <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4);">
                 ${orgs.map((org, i) => {
                   const memberNames = (org.members || []).slice(0, 3).map(m => {
-                    const name = m.firstName || m.lastName
-                      ? `${m.firstName || ''} ${m.lastName || ''}`.trim()
-                      : m.email;
+                    const name = m.firstName || m.lastName ? `${m.firstName || ''} ${m.lastName || ''}`.trim() : m.email;
                     return escapeHtml(name);
                   });
                   const remainingMembers = Math.max(0, (org.member_count || 0) - memberNames.length);
-
                   const hasStripe = !!org.stripe_customer_id;
                   const hasSubscription = !!org.subscription_status;
                   const wgCount = (org.working_groups || []).length;
-
-                  // Build detail tags
                   const tags = [];
                   tags.push(`${org.member_count || 0} members`);
                   if (hasSubscription) {
                     const subColor = org.subscription_status === 'active' ? 'var(--color-success-700)' : 'var(--color-warning-700)';
                     tags.push(`<span style="color: ${subColor}; font-weight: var(--font-semibold);">${escapeHtml(org.subscription_status)} subscription</span>`);
                   }
-                  if (hasStripe && !hasSubscription) {
-                    tags.push('Stripe customer (no subscription)');
-                  }
+                  if (hasStripe && !hasSubscription) tags.push('Stripe customer (no subscription)');
                   const pendingInvoices = org.pending_invoices || [];
                   if (pendingInvoices.length > 0) {
                     const totalDue = pendingInvoices.reduce((sum, inv) => sum + (inv.amount_due || 0), 0);
@@ -1574,9 +1499,7 @@
                     <input type="radio" name="primaryOrg" value="${escapeHtml(org.workos_organization_id || org.id)}" ${i === 0 ? 'checked' : ''} style="margin-top: 4px;">
                     <div style="flex: 1;">
                       <div style="font-weight: var(--font-semibold);">${escapeHtml(org.name)}</div>
-                      <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
-                        ${tags.join(' · ')}
-                      </div>
+                      <div style="font-size: var(--text-xs); color: var(--color-text-muted);">${tags.join(' · ')}</div>
                       ${memberNames.length > 0 ? `
                         <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">
                           ${memberNames.join(', ')}${remainingMembers > 0 ? `, +${remainingMembers} more` : ''}
@@ -1587,12 +1510,10 @@
                   </label>
                 `}).join('')}
               </div>
-
               <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
                 <strong style="color: var(--color-warning-700);">Warning:</strong>
                 <span style="color: var(--color-warning-800);">Merging cannot be undone. All data from secondary organizations will be moved to the primary.</span>
               </div>
-
               <div style="display: flex; justify-content: space-between;">
                 <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
                 <button class="btn btn-primary" id="previewMergeBtn" data-org-ids="${orgs.map(o => encodeURIComponent(o.workos_organization_id || o.id)).join(',')}">
@@ -1603,23 +1524,18 @@
           </div>
         `;
 
-        // Add click handler for preview merge button
         document.getElementById('previewMergeBtn').addEventListener('click', function() {
           const orgIds = this.dataset.orgIds.split(',').map(decodeURIComponent).join(',');
           executeMergeFromModal(orgIds);
         });
 
-        // Add click handlers for radio buttons to update styling
         document.querySelectorAll('.merge-org-option').forEach(label => {
           label.addEventListener('click', () => {
-            document.querySelectorAll('.merge-org-option').forEach(l => {
-              l.style.borderColor = 'var(--color-border)';
-            });
+            document.querySelectorAll('.merge-org-option').forEach(l => l.style.borderColor = 'var(--color-border)');
             label.style.borderColor = 'var(--color-brand)';
           });
         });
 
-        // Initialize first option as selected
         const firstOption = document.querySelector('.merge-org-option');
         if (firstOption) firstOption.style.borderColor = 'var(--color-brand)';
 
@@ -1639,20 +1555,12 @@
 
     async function executeMergeFromModal(allOrgIds) {
       const primaryOrgId = document.querySelector('input[name="primaryOrg"]:checked')?.value;
-      if (!primaryOrgId) {
-        alert('Please select a primary organization');
-        return;
-      }
+      if (!primaryOrgId) { alert('Please select a primary organization'); return; }
 
       const orgIds = allOrgIds.split(',');
       const secondaryOrgIds = orgIds.filter(id => id !== primaryOrgId);
+      if (secondaryOrgIds.length === 0) { alert('No organizations to merge'); return; }
 
-      if (secondaryOrgIds.length === 0) {
-        alert('No organizations to merge');
-        return;
-      }
-
-      // Preview the first merge
       const secondaryOrgId = secondaryOrgIds[0];
 
       try {
@@ -1663,35 +1571,23 @@
         const warningsHtml = preview.warnings.length > 0 ? `
           <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
             <strong style="color: var(--color-warning-700);">Warnings:</strong>
-            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
-              ${preview.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
-            </ul>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">${preview.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
           </div>
         ` : '';
 
-        // Stripe customer conflict handling
         const stripeConflict = preview.stripe_customer_conflict || {};
         const stripeConflictHtml = stripeConflict.has_conflict ? `
           <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
-            <strong style="color: var(--color-error-700);">🔴 Stripe Customer Conflict</strong>
+            <strong style="color: var(--color-error-700);">Stripe Customer Conflict</strong>
             <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
             <ul style="margin: var(--space-2) 0 var(--space-2) var(--space-4); font-size: var(--text-sm);">
               <li><strong>Primary:</strong> ${escapeHtml(stripeConflict.primary_customer_id || 'None')}</li>
               <li><strong>Secondary:</strong> ${escapeHtml(stripeConflict.secondary_customer_id || 'None')}</li>
             </ul>
             <div style="margin-top: var(--space-3);">
-              <label style="display: block; margin-bottom: var(--space-2);">
-                <input type="radio" name="stripe_resolution" value="keep_primary" checked>
-                <strong>Keep Primary</strong> - Keep primary's Stripe customer, orphan secondary's
-              </label>
-              <label style="display: block; margin-bottom: var(--space-2);">
-                <input type="radio" name="stripe_resolution" value="use_secondary">
-                <strong>Use Secondary</strong> - Replace primary's with secondary's Stripe customer
-              </label>
-              <label style="display: block;">
-                <input type="radio" name="stripe_resolution" value="keep_both_unlinked">
-                <strong>Unlink Both</strong> - Unlink both for manual resolution later
-              </label>
+              <label style="display: block; margin-bottom: var(--space-2);"><input type="radio" name="stripe_resolution" value="keep_primary" checked> <strong>Keep Primary</strong></label>
+              <label style="display: block; margin-bottom: var(--space-2);"><input type="radio" name="stripe_resolution" value="use_secondary"> <strong>Use Secondary</strong></label>
+              <label style="display: block;"><input type="radio" name="stripe_resolution" value="keep_both_unlinked"> <strong>Unlink Both</strong></label>
             </div>
           </div>
         ` : '';
@@ -1700,20 +1596,8 @@
           <div style="margin-bottom: var(--space-4);">
             <strong>Data to be moved:</strong>
             <table style="width: 100%; margin-top: var(--space-2); border-collapse: collapse;">
-              <thead>
-                <tr style="background: var(--color-bg-subtle);">
-                  <th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th>
-                  <th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${preview.estimated_changes.map(c => `
-                  <tr>
-                    <td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${escapeHtml(c.table_name)}</td>
-                    <td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
+              <thead><tr style="background: var(--color-bg-subtle);"><th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th><th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th></tr></thead>
+              <tbody>${preview.estimated_changes.map(c => `<tr><td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${escapeHtml(c.table_name)}</td><td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td></tr>`).join('')}</tbody>
             </table>
           </div>
         ` : '<p>No data to move - secondary organization appears empty.</p>';
@@ -1725,7 +1609,6 @@
                 <h3>Merge Preview${secondaryOrgIds.length > 1 ? ` (1 of ${secondaryOrgIds.length})` : ''}</h3>
                 <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
               </div>
-
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
                 <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
                   <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
@@ -1739,7 +1622,6 @@
                     ${preview.primary_org.has_notes ? `<div style="color: var(--color-brand);">Has admin notes</div>` : ''}
                   </div>
                 </div>
-
                 <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
                   <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
                   <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
@@ -1753,11 +1635,9 @@
                   </div>
                 </div>
               </div>
-
               ${stripeConflictHtml}
               ${warningsHtml}
               ${changesHtml}
-
               <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
                 <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
                 <button class="btn btn-primary" id="confirmMergeBtn" style="background: var(--color-error-600);"
@@ -1772,7 +1652,6 @@
           </div>
         `;
 
-        // Add click handler for confirm merge button
         document.getElementById('confirmMergeBtn').addEventListener('click', function() {
           const primaryId = decodeURIComponent(this.dataset.primaryId);
           const secondaryId = decodeURIComponent(this.dataset.secondaryId);
@@ -1786,20 +1665,13 @@
     }
 
     async function confirmMerge(primaryOrgId, secondaryOrgId, remainingOrgIds, hasStripeConflict = false) {
-      // Disable all buttons immediately to prevent double-clicks
-      document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => {
-        btn.disabled = true;
-      });
+      document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => btn.disabled = true);
 
       if (!confirm('Are you sure you want to merge these organizations? This cannot be undone.')) {
-        // Re-enable buttons if user cancels
-        document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => {
-          btn.disabled = false;
-        });
+        document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => btn.disabled = false);
         return;
       }
 
-      // Get Stripe customer resolution if there's a conflict
       let stripeCustomerResolution = null;
       if (hasStripeConflict) {
         const selected = document.querySelector('input[name="stripe_resolution"]:checked');
@@ -1817,9 +1689,8 @@
 
       try {
         const body = { primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId };
-        if (stripeCustomerResolution) {
-          body.stripe_customer_resolution = stripeCustomerResolution;
-        }
+        if (stripeCustomerResolution) body.stripe_customer_resolution = stripeCustomerResolution;
+
         const response = await fetch('/api/admin/cleanup/merge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1836,18 +1707,12 @@
         const totalMoved = tablesMerged.reduce((sum, t) => sum + (t.rows_moved || 0), 0);
         const totalSkipped = tablesMerged.reduce((sum, t) => sum + (t.rows_skipped_duplicate || 0), 0);
 
-        // Build summary message
         let summaryParts = [];
-        if (totalMoved > 0) {
-          summaryParts.push(`${totalMoved} record${totalMoved !== 1 ? 's' : ''} moved`);
-        }
-        if (totalSkipped > 0) {
-          summaryParts.push(`${totalSkipped} duplicate${totalSkipped !== 1 ? 's' : ''} skipped`);
-        }
+        if (totalMoved > 0) summaryParts.push(`${totalMoved} record${totalMoved !== 1 ? 's' : ''} moved`);
+        if (totalSkipped > 0) summaryParts.push(`${totalSkipped} duplicate${totalSkipped !== 1 ? 's' : ''} skipped`);
         summaryParts.push('secondary organization deleted');
         const summaryText = summaryParts.join(', ');
 
-        // Check if there are more orgs to merge
         if (remainingOrgIds && remainingOrgIds.length > 0) {
           const remainingCount = remainingOrgIds.split(',').filter(Boolean).length;
           mergeModalElement.innerHTML = `
@@ -1866,8 +1731,6 @@
               </div>
             </div>
           `;
-
-          // Add click handler for continue merge button
           document.getElementById('continueMergeBtn').addEventListener('click', function() {
             const orgIds = this.dataset.orgIds.split(',').map(decodeURIComponent).join(',');
             executeMergeFromModal(orgIds);
@@ -1893,12 +1756,11 @@
     }
 
     function closeMergeModal() {
-      if (mergeModalElement) {
-        mergeModalElement.innerHTML = '';
-      }
+      if (mergeModalElement) mergeModalElement.innerHTML = '';
     }
 
-    // Load backfill status on page load
+    // ─── Backfill Functions ─────────────────────────────────────────────────
+
     async function loadBackfillStatus() {
       const countSpan = document.getElementById('backfillCount');
       const btn = document.getElementById('backfillSlackBtn');
@@ -1906,9 +1768,7 @@
 
       try {
         const response = await fetch('/api/admin/slack/backfill-status');
-        if (!response.ok) {
-          throw new Error('Failed to load status');
-        }
+        if (!response.ok) throw new Error('Failed to load status');
         const status = await response.json();
 
         if (status.totalUsers === 0) {
@@ -1924,7 +1784,6 @@
           btn.disabled = false;
           btn.textContent = `Link ${status.totalUsers} Users`;
 
-          // Show preview of what will be linked
           if (status.byOrganization.length > 0) {
             previewDiv.innerHTML = `
               <div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
@@ -1946,7 +1805,6 @@
       }
     }
 
-    // Backfill Slack user links
     async function runSlackBackfill() {
       const btn = document.getElementById('backfillSlackBtn');
       const resultDiv = document.getElementById('backfillResult');
@@ -1965,17 +1823,12 @@
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || 'Backfill failed');
         }
 
         const result = await response.json();
-
-        // Show success result
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-success');
         btn.textContent = 'Complete';
@@ -1983,9 +1836,7 @@
         if (result.usersLinked > 0) {
           resultDiv.innerHTML = `
             <div style="padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md);">
-              <div style="font-weight: var(--font-semibold); color: var(--color-success-700);">
-                Linked ${result.usersLinked} Slack users to ${result.details.length} organizations
-              </div>
+              <div style="font-weight: var(--font-semibold); color: var(--color-success-700);">Linked ${result.usersLinked} Slack users to ${result.details.length} organizations</div>
               <ul style="margin: var(--space-2) 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
                 ${result.details.slice(0, 5).map(d => `<li>${escapeHtml(d.organizationName)} (${d.domain}): ${d.usersLinked} users</li>`).join('')}
                 ${result.details.length > 5 ? `<li>...and ${result.details.length - 5} more</li>` : ''}
@@ -1993,33 +1844,21 @@
             </div>
           `;
         } else {
-          resultDiv.innerHTML = `
-            <div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
-              <div style="color: var(--color-text-secondary);">No unmapped Slack users found to link. All users are already associated with their organizations.</div>
-            </div>
-          `;
+          resultDiv.innerHTML = `<div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);"><div style="color: var(--color-text-secondary);">No unmapped Slack users found to link.</div></div>`;
         }
         resultDiv.style.display = 'block';
 
-        // Refresh status after delay
         setTimeout(() => {
           loadBackfillStatus();
           btn.classList.remove('btn-success');
           btn.classList.add('btn-secondary');
         }, 3000);
-
       } catch (error) {
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-error');
         btn.textContent = 'Failed';
-
-        resultDiv.innerHTML = `
-          <div style="padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md);">
-            <div style="color: var(--color-error-700);">Error: ${escapeHtml(error.message)}</div>
-          </div>
-        `;
+        resultDiv.innerHTML = `<div style="padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md);"><div style="color: var(--color-error-700);">Error: ${escapeHtml(error.message)}</div></div>`;
         resultDiv.style.display = 'block';
-
         setTimeout(() => {
           btn.disabled = false;
           btn.classList.remove('btn-error');
@@ -2029,7 +1868,6 @@
       }
     }
 
-    // Load member backfill status
     async function loadMemberBackfillStatus() {
       const countSpan = document.getElementById('memberBackfillCount');
       const btn = document.getElementById('memberBackfillBtn');
@@ -2037,9 +1875,7 @@
 
       try {
         const response = await fetch('/api/admin/domain-users/backfill-status');
-        if (!response.ok) {
-          throw new Error('Failed to load status');
-        }
+        if (!response.ok) throw new Error('Failed to load status');
         const status = await response.json();
 
         if (status.total_users === 0) {
@@ -2055,7 +1891,6 @@
           btn.disabled = false;
           btn.textContent = `Add ${status.total_users} Members`;
 
-          // Show preview of what will be added
           if (status.by_organization.length > 0) {
             previewDiv.innerHTML = `
               <div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
@@ -2081,7 +1916,6 @@
       const errorOrgs = details.filter(d => d.error_details && d.error_details.length > 0);
       if (errorOrgs.length === 0) return '';
 
-      // Group errors by message to find common patterns
       const errorsByMessage = {};
       for (const org of errorOrgs) {
         for (const e of org.error_details) {
@@ -2091,27 +1925,14 @@
         }
       }
 
-      let html = `<details style="margin-top: var(--space-2);">
-        <summary style="cursor: pointer; font-size: var(--text-sm); color: var(--color-error-600); font-weight: var(--font-medium);">
-          View error details
-        </summary>
-        <div style="margin-top: var(--space-2); padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md); font-size: var(--text-sm);">`;
-
+      let html = `<details style="margin-top: var(--space-2);"><summary style="cursor: pointer; font-size: var(--text-sm); color: var(--color-error-600); font-weight: var(--font-medium);">View error details</summary><div style="margin-top: var(--space-2); padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md); font-size: var(--text-sm);">`;
       for (const [message, items] of Object.entries(errorsByMessage)) {
-        html += `<div style="margin-bottom: var(--space-3);">
-          <div style="font-weight: var(--font-medium); color: var(--color-error-700);">${escapeHtml(message)} (${items.length})</div>
-          <ul style="margin: var(--space-1) 0 0 var(--space-4); color: var(--color-text-secondary);">
-            ${items.slice(0, 10).map(i => `<li>${escapeHtml(i.email)} — ${escapeHtml(i.org_name)}</li>`).join('')}
-            ${items.length > 10 ? `<li>...and ${items.length - 10} more</li>` : ''}
-          </ul>
-        </div>`;
+        html += `<div style="margin-bottom: var(--space-3);"><div style="font-weight: var(--font-medium); color: var(--color-error-700);">${escapeHtml(message)} (${items.length})</div><ul style="margin: var(--space-1) 0 0 var(--space-4); color: var(--color-text-secondary);">${items.slice(0, 10).map(i => `<li>${escapeHtml(i.email)} — ${escapeHtml(i.org_name)}</li>`).join('')}${items.length > 10 ? `<li>...and ${items.length - 10} more</li>` : ''}</ul></div>`;
       }
-
       html += `</div></details>`;
       return html;
     }
 
-    // Run member backfill
     async function runMemberBackfill() {
       const btn = document.getElementById('memberBackfillBtn');
       const resultDiv = document.getElementById('memberBackfillResult');
@@ -2130,17 +1951,12 @@
         });
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminSidebar?.redirectToLogin();
-            return;
-          }
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || 'Backfill failed');
         }
 
         const result = await response.json();
-
-        // Show success result
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-success');
         btn.textContent = 'Complete';
@@ -2148,9 +1964,7 @@
         if (result.total_added > 0) {
           resultDiv.innerHTML = `
             <div style="padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md);">
-              <div style="font-weight: var(--font-semibold); color: var(--color-success-700);">
-                Added ${result.total_added} members to ${result.orgs_processed} organizations
-              </div>
+              <div style="font-weight: var(--font-semibold); color: var(--color-success-700);">Added ${result.total_added} members to ${result.orgs_processed} organizations</div>
               ${result.total_skipped > 0 ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary);">${result.total_skipped} already members (skipped)</div>` : ''}
               ${result.total_errors > 0 ? `<div style="font-size: var(--text-sm); color: var(--color-error-600);">${result.total_errors} errors</div>` : ''}
               <ul style="margin: var(--space-2) 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
@@ -2161,33 +1975,21 @@
             </div>
           `;
         } else {
-          resultDiv.innerHTML = `
-            <div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
-              <div style="color: var(--color-text-secondary);">No users to add. All verified domain users are already members of their organizations.</div>
-            </div>
-          `;
+          resultDiv.innerHTML = `<div style="padding: var(--space-3); background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);"><div style="color: var(--color-text-secondary);">No users to add. All verified domain users are already members.</div></div>`;
         }
         resultDiv.style.display = 'block';
 
-        // Refresh status after delay
         setTimeout(() => {
           loadMemberBackfillStatus();
           btn.classList.remove('btn-success');
           btn.classList.add('btn-primary');
         }, 3000);
-
       } catch (error) {
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-error');
         btn.textContent = 'Failed';
-
-        resultDiv.innerHTML = `
-          <div style="padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md);">
-            <div style="color: var(--color-error-700);">Error: ${escapeHtml(error.message)}</div>
-          </div>
-        `;
+        resultDiv.innerHTML = `<div style="padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md);"><div style="color: var(--color-error-700);">Error: ${escapeHtml(error.message)}</div></div>`;
         resultDiv.style.display = 'block';
-
         setTimeout(() => {
           btn.disabled = false;
           btn.classList.remove('btn-error');
@@ -2197,9 +1999,25 @@
       }
     }
 
-    // Initialize
+    // ─── Initialize ─────────────────────────────────────────────────────────
+
+    // Maintenance section toggle
+    document.getElementById('maintenanceToggle').addEventListener('click', () => {
+      const content = document.getElementById('maintenanceContent');
+      const chevron = document.getElementById('maintenanceChevron');
+      const isOpen = content.style.display !== 'none';
+      content.style.display = isOpen ? 'none' : 'block';
+      chevron.innerHTML = isOpen ? '&#9656;' : '&#9662;';
+    });
+
+    // Research All button
+    document.getElementById('researchAllBtn').addEventListener('click', researchAllOrphanDomains);
+
+    // Backfill buttons
     document.getElementById('backfillSlackBtn').addEventListener('click', runSlackBackfill);
     document.getElementById('memberBackfillBtn').addEventListener('click', runMemberBackfill);
+
+    // Load data
     loadDomainHealth();
     loadBackfillStatus();
     loadMemberBackfillStatus();
