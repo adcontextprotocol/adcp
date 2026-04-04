@@ -209,6 +209,41 @@
       color: var(--color-text-muted);
     }
 
+    /* Hierarchy badges */
+    .hierarchy-badge {
+      display: inline-block;
+      font-size: var(--text-xs);
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      margin-left: var(--space-2);
+      vertical-align: middle;
+    }
+    .hierarchy-badge.parent {
+      background: var(--color-brand-50, #eef2ff);
+      color: var(--color-brand);
+    }
+    .hierarchy-badge.subsidiary {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+    .hierarchy-badge.subsidiary a {
+      color: inherit;
+      text-decoration: underline;
+    }
+    tr.subsidiary-row td:nth-child(2) {
+      padding-left: var(--space-6);
+    }
+    .unmapped-badge {
+      display: inline-block;
+      font-size: var(--text-xs);
+      padding: 0 var(--space-1.5);
+      border-radius: var(--radius-full);
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+      vertical-align: middle;
+      margin-left: var(--space-1);
+    }
+
     /* Member status badges */
     .status-badge {
       display: inline-block;
@@ -799,6 +834,9 @@
           <button class="view-tab" data-view="churned">
             Churned <span class="badge" id="count-churned">-</span>
           </button>
+          <button class="view-tab" data-view="unmapped">
+            Unmapped <span class="badge" id="count-unmapped">-</span>
+          </button>
           <button class="view-tab" data-view="disqualified">
             Disqualified <span class="badge" id="count-disqualified">-</span>
           </button>
@@ -1128,6 +1166,7 @@
       most_users: 'Organizations ranked by number of active users',
       missing_owner: 'Organizations with members but no designated owner',
       churned: 'Former members with canceled or lapsed subscriptions',
+      unmapped: 'Accounts with no brand registry entry — domain not in discovered_brands',
       all: 'All accounts',
       disqualified: 'Accounts marked as not viable'
     };
@@ -1335,11 +1374,19 @@
           ? '<span class="addie-indicator" title="Addie outreach in last 30 days">🤖</span>'
           : '';
 
-        html += `<tr>
+        // Hierarchy badges
+        let hierarchyHtml = '';
+        if (account.subsidiary_count > 0) {
+          hierarchyHtml = `<span class="hierarchy-badge parent" title="${account.subsidiary_count} subsidiary account${account.subsidiary_count !== 1 ? 's' : ''}">Parent (${account.subsidiary_count})</span>`;
+        } else if (account.parent_name) {
+          hierarchyHtml = `<span class="hierarchy-badge subsidiary" title="Subsidiary of ${escapeHtml(account.parent_name)}">Sub of <a href="/admin/accounts/${escapeHtml(account.parent_org_id)}">${escapeHtml(account.parent_name)}</a></span>`;
+        }
+
+        html += `<tr class="${account.parent_name ? 'subsidiary-row' : ''}">
           <td><input type="checkbox" class="row-checkbox" value="${escapeHtml(account.id)}" onchange="updateBulkSelection()"></td>
           <td>
-            <a href="/admin/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>${addieHtml}
-            ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}</div>` : ''}
+            <a href="/admin/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>${addieHtml}${hierarchyHtml}
+            ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}${!account.brand_mapped && account.domain && currentView !== 'unmapped' ? ' <span class="unmapped-badge" title="Not in brand registry">unmapped</span>' : ''}</div>` : ''}
           </td>
           <td><span class="status-badge status-${statusClass}">${statusLabel}</span></td>
           <td>${userCountHtml}</td>

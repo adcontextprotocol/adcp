@@ -13,6 +13,7 @@ export async function seedDevData(orgDb: OrganizationDatabase): Promise<void> {
   await seedDevOrganizations(orgDb);
   await seedDevUsers();
   await seedDevMemberProfiles();
+  await seedDevHierarchyData(orgDb);
 }
 
 async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
@@ -102,6 +103,90 @@ async function seedDevMemberProfiles(): Promise<void> {
       logger.error({ err: error, orgId: p.orgId }, 'Failed to seed dev member profile');
     }
   }
+}
+
+/**
+ * Seed sample corporate hierarchy data for testing the hierarchy UI.
+ * Creates a holding company (Omnicom Group) with subsidiaries connected
+ * via the brand registry's house_domain field.
+ */
+async function seedDevHierarchyData(orgDb: OrganizationDatabase): Promise<void> {
+  const pool = getPool();
+
+  // Holding company + subsidiaries
+  const hierarchyOrgs = [
+    { id: 'org_dev_omnicom_parent', name: 'Omnicom Group', domain: 'omc.com', company_type: 'brand' as const },
+    { id: 'org_dev_omnicom_ddb', name: 'DDB Worldwide', domain: 'ddb.com', company_type: 'agency' as const },
+    { id: 'org_dev_omnicom_bbdo', name: 'BBDO', domain: 'bbdo.com', company_type: 'agency' as const },
+    { id: 'org_dev_omnicom_assembly', name: 'Assembly (Omnicom)', domain: 'assemblymarketing.com', company_type: 'agency' as const },
+    { id: 'org_dev_omnicom_hearts', name: 'Hearts & Science', domain: 'hearts-science.com', company_type: 'agency' as const },
+    // Standalone org for merge testing
+    { id: 'org_dev_omnicom_dupe', name: 'Omnicom', domain: 'omnicomgroup.com', company_type: 'brand' as const },
+    // Second holding company
+    { id: 'org_dev_ipg_parent', name: 'Interpublic Group (IPG)', domain: 'interpublic.com', company_type: 'brand' as const },
+    { id: 'org_dev_ipg_mediabrands', name: 'IPG Mediabrands', domain: 'ipgmediabrands.com', company_type: 'agency' as const },
+    { id: 'org_dev_ipg_um', name: 'UM Worldwide', domain: 'umww.com', company_type: 'agency' as const },
+  ];
+
+  for (const org of hierarchyOrgs) {
+    try {
+      const existing = await orgDb.getOrganization(org.id);
+      if (!existing) {
+        await orgDb.createOrganization({
+          workos_organization_id: org.id,
+          name: org.name,
+          is_personal: false,
+          company_type: org.company_type,
+        });
+        // Set email_domain so hierarchy JOINs work
+        await pool.query(
+          `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
+          [org.domain, org.id]
+        );
+        logger.info({ orgId: org.id, name: org.name }, 'Created hierarchy test org');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('duplicate key')) {
+        logger.debug({ orgId: org.id }, 'Hierarchy org already exists');
+      } else {
+        logger.error({ err: error, orgId: org.id }, 'Failed to seed hierarchy org');
+      }
+    }
+  }
+
+  // Brand registry entries connecting subsidiaries to parent via house_domain
+  const brandEntries = [
+    // Parent brands (no house_domain = top-level)
+    { domain: 'omc.com', brand_name: 'Omnicom Group', house_domain: null, keller_type: 'master' },
+    { domain: 'interpublic.com', brand_name: 'Interpublic Group', house_domain: null, keller_type: 'master' },
+    // Omnicom subsidiaries → omc.com
+    { domain: 'ddb.com', brand_name: 'DDB Worldwide', house_domain: 'omc.com', keller_type: 'endorsed' },
+    { domain: 'bbdo.com', brand_name: 'BBDO', house_domain: 'omc.com', keller_type: 'endorsed' },
+    { domain: 'assemblymarketing.com', brand_name: 'Assembly', house_domain: 'omc.com', keller_type: 'sub-brand' },
+    { domain: 'hearts-science.com', brand_name: 'Hearts & Science', house_domain: 'omc.com', keller_type: 'sub-brand' },
+    // Duplicate Omnicom domain → also points to omc.com
+    { domain: 'omnicomgroup.com', brand_name: 'Omnicom Group', house_domain: 'omc.com', keller_type: 'endorsed' },
+    // IPG subsidiaries → interpublic.com
+    { domain: 'ipgmediabrands.com', brand_name: 'IPG Mediabrands', house_domain: 'interpublic.com', keller_type: 'sub-brand' },
+    { domain: 'umww.com', brand_name: 'UM Worldwide', house_domain: 'interpublic.com', keller_type: 'sub-brand' },
+  ];
+
+  for (const entry of brandEntries) {
+    try {
+      await pool.query(
+        `INSERT INTO discovered_brands (domain, brand_name, house_domain, keller_type, source_type)
+         VALUES ($1, $2, $3, $4, 'community')
+         ON CONFLICT (domain) DO UPDATE SET
+           house_domain = COALESCE(EXCLUDED.house_domain, discovered_brands.house_domain),
+           keller_type = COALESCE(EXCLUDED.keller_type, discovered_brands.keller_type)`,
+        [entry.domain, entry.brand_name, entry.house_domain, entry.keller_type]
+      );
+    } catch (error) {
+      logger.debug({ domain: entry.domain }, 'Brand registry entry already exists');
+    }
+  }
+
+  logger.info('Seeded hierarchy test data (Omnicom Group + IPG corporate families)');
 }
 
 async function seedDevUsers(): Promise<void> {

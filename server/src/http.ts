@@ -4218,6 +4218,8 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
     this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
+    this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -5029,10 +5031,17 @@ Disallow: /api/admin/
             u.slug as author_slug,
             u.avatar_url as author_avatar_url,
             u.headline as author_headline,
-            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at,
+            pa_report.report_url
           FROM perspectives p
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          LEFT JOIN LATERAL (
+            SELECT '/api/perspectives/' || p.slug || '/assets/' || pa.file_name as report_url
+            FROM perspective_assets pa
+            WHERE pa.perspective_id = p.id AND pa.asset_type = 'report'
+            ORDER BY pa.created_at DESC LIMIT 1
+          ) pa_report ON true
           WHERE p.slug = $1
             AND (
               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
@@ -5061,6 +5070,42 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
+      }
+    });
+
+    // GET /api/perspectives/:slug/report - Track and redirect to report PDF
+    this.app.get('/api/perspectives/:slug/report', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `SELECT p.id, pa.file_name
+           FROM perspectives p
+           JOIN perspective_assets pa ON pa.perspective_id = p.id AND pa.asset_type = 'report'
+           WHERE p.slug = $1 AND p.status = 'published'
+           LIMIT 1`,
+          [slug]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'No report found for this perspective' });
+        }
+
+        const { file_name } = result.rows[0];
+        const assetUrl = `/api/perspectives/${encodeURIComponent(slug)}/assets/${encodeURIComponent(file_name)}`;
+
+        // Track download via PostHog (fire and forget)
+        try {
+          const { captureEvent } = await import('./utils/posthog.js');
+          const distinctId = req.ip || 'anonymous';
+          captureEvent(distinctId, 'report_downloaded', { slug, filename: file_name });
+        } catch { /* PostHog not configured */ }
+
+        res.redirect(302, assetUrl);
+      } catch (error) {
+        logger.error({ err: error }, 'Report download redirect error');
+        res.status(500).json({ error: 'Failed to redirect to report' });
       }
     });
 

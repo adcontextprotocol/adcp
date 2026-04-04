@@ -91,7 +91,7 @@ export interface UpsertDiscoveredBrandInput {
   brand_agent_capabilities?: string[];
   has_brand_manifest?: boolean;
   brand_manifest?: Record<string, unknown>;
-  source_type: 'brand_json' | 'community' | 'enriched';
+  source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   expires_at?: Date;
 }
 
@@ -99,7 +99,7 @@ export interface UpsertDiscoveredBrandInput {
  * Options for listing brands
  */
 export interface ListBrandsOptions {
-  source_type?: 'brand_json' | 'community' | 'enriched';
+  source_type?: 'brand_json' | 'community' | 'enriched' | 'stub';
   has_manifest?: boolean;
   house_domain?: string;
   search?: string;
@@ -466,7 +466,7 @@ export class BrandDatabase {
   async getAllBrandsForRegistry(options: ListBrandsOptions = {}): Promise<Array<{
     domain: string;
     brand_name: string;
-    source: 'hosted' | 'brand_json' | 'community' | 'enriched';
+    source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
     has_manifest: boolean;
     verified: boolean;
     house_domain?: string;
@@ -488,7 +488,7 @@ export class BrandDatabase {
     const result = await query<{
       domain: string;
       brand_name: string;
-      source: 'hosted' | 'brand_json' | 'community' | 'enriched';
+      source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
       has_manifest: boolean;
       verified: boolean;
       house_domain?: string;
