@@ -4,7 +4,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
-import { requireAuth, optionalAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
@@ -209,7 +209,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         const user = (req as any).user;
-        const isAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+        const isStaticAdmin = !!(req as any).isStaticAdminApiKey;
+        const isAdmin = isStaticAdmin || (user?.id ? await isWebUserAAOAdmin(user.id) : false);
 
         const logos = await brandLogoDb.listBrandLogos(domain, {
           tags: filterTags,
@@ -248,6 +249,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
   router.post(
     '/brands/:domain/logos/:id/review',
     requireAuth,
+    requireAdmin,
     async (req: Request, res: Response) => {
       try {
         const domain = req.params.domain.toLowerCase();
@@ -259,11 +261,6 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
         if (!uuidPattern.test(logoId)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
-        }
-
-        const isAdmin = await isWebUserAAOAdmin(user.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
         }
 
         const action = req.body.action as string;
