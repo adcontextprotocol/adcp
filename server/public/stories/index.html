@@ -494,11 +494,6 @@
       var perspectiveItems = [];
       var newsItems = [];
 
-      function matchesOrigin(cardOrigin, origin) {
-        if (origin === 'all') return true;
-        return cardOrigin === origin;
-      }
-
       function applyFilter(topic, origin) {
         if (topic !== undefined) activeTopic = topic;
         if (origin !== undefined) activeOrigin = origin;
