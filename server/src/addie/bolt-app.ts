@@ -2481,8 +2481,30 @@ async function handleAliasConfirm({ ack, body, client }: any): Promise<void> {
     return;
   }
 
+  // Validate inputs before writing to DB
+  if (!/^org_/.test(orgId)) {
+    logger.warn({ orgId }, 'Addie Bolt: Invalid org ID format in alias confirm');
+    return;
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+    logger.warn({ domain }, 'Addie Bolt: Invalid domain format in alias confirm');
+    return;
+  }
+
   try {
     const pool = getPool();
+
+    // Verify the org exists before linking
+    const orgResult = await pool.query<{ email_domain: string; name: string }>(
+      `SELECT email_domain, name FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+
+    if (orgResult.rows.length === 0) {
+      logger.warn({ orgId }, 'Addie Bolt: Org not found for alias confirm');
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: 'Organization not found.' });
+      return;
+    }
 
     // Add domain to organization_domains
     await pool.query(
@@ -2490,12 +2512,6 @@ async function handleAliasConfirm({ ack, body, client }: any): Promise<void> {
        VALUES ($1, $2)
        ON CONFLICT DO NOTHING`,
       [orgId, domain]
-    );
-
-    // Add to brand_domain_aliases so future lookups resolve directly
-    const orgResult = await pool.query<{ email_domain: string; name: string }>(
-      `SELECT email_domain, name FROM organizations WHERE workos_organization_id = $1`,
-      [orgId]
     );
     const orgRow = orgResult.rows[0];
 
