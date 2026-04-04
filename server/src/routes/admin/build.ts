@@ -98,12 +98,13 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
       if (!field || !EDITABLE.includes(field)) {
         return res.status(400).json({ error: `Field not editable. Allowed: ${EDITABLE.join(', ')}` });
       }
-      if (typeof value === 'string' && value.length > 10000) {
+      const coerced = value != null ? String(value) : undefined;
+      if (coerced && coerced.length > 10000) {
         return res.status(400).json({ error: 'Value too long (max 10000 characters)' });
       }
 
       const content = { ...edition.content } as BuildContent;
-      (content as unknown as Record<string, unknown>)[field] = value;
+      (content as unknown as Record<string, unknown>)[field] = coerced;
 
       const updated = await updateBuildContent(id, content);
       if (!updated) return res.status(500).json({ error: 'Failed to update edition' });
