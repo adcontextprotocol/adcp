@@ -956,6 +956,27 @@ export class WorkingGroupDatabase {
   }>> {
     // This queries the organization_memberships table to find users
     // and joins with organizations to get org names
+    // Split search into words so "brian o" matches first_name=Brian + last_name=O'Kelley
+    const words = searchTerm.trim().split(/\s+/).filter(w => w.length > 0).slice(0, 5);
+    if (words.length === 0) {
+      return [];
+    }
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+    let paramIndex = 1;
+
+    for (const word of words) {
+      const pattern = `%${escapeLikePattern(word)}%`;
+      conditions.push(
+        `(om.email ILIKE $${paramIndex} OR om.first_name ILIKE $${paramIndex} OR om.last_name ILIKE $${paramIndex} OR o.name ILIKE $${paramIndex})`
+      );
+      params.push(pattern);
+      paramIndex++;
+    }
+
+    params.push(limit);
+
     const result = await query<{
       user_id: string;
       email: string;
@@ -971,10 +992,10 @@ export class WorkingGroupDatabase {
          o.name AS org_name
        FROM organization_memberships om
        INNER JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
-       WHERE (om.email ILIKE $1 OR om.first_name ILIKE $1 OR om.last_name ILIKE $1 OR o.name ILIKE $1)
+       WHERE ${conditions.join(' AND ')}
        ORDER BY name
-       LIMIT $2`,
-      [`%${escapeLikePattern(searchTerm)}%`, limit]
+       LIMIT $${paramIndex}`,
+      params
     );
 
     return result.rows;
