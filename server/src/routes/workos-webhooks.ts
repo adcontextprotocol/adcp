@@ -71,7 +71,7 @@ interface OrganizationDomainData {
  */
 interface OrganizationDomainEventData {
   id: string;
-  domain: string;
+  domain?: string;
   organization_id: string;
   state: 'verified' | 'pending' | 'failed';
 }
@@ -478,7 +478,7 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
  * Upsert a single organization domain from organization_domain.* events
  * Uses transaction to prevent race conditions when setting primary domain
  */
-async function upsertOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -571,7 +571,7 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData)
  * Delete a single organization domain
  * Uses transaction to prevent race conditions when selecting new primary
  */
-async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -830,20 +830,19 @@ export function createWorkOSWebhooksRouter(): Router {
           // organization_domain.* events for granular domain management
           case 'organization_domain.created':
           case 'organization_domain.updated':
-          case 'organization_domain.verified': {
-            const domainData = event.data as unknown as OrganizationDomainEventData;
-            await upsertOrganizationDomain(domainData);
-            break;
-          }
-
+          case 'organization_domain.verified':
           case 'organization_domain.deleted':
           case 'organization_domain.verification_failed': {
             const domainData = event.data as unknown as OrganizationDomainEventData;
             if (!domainData.domain) {
-              logger.warn({ event: event.event, data: domainData }, 'Skipping domain event: missing domain field');
+              logger.warn({ event: event.event, domainId: domainData.id, organizationId: domainData.organization_id }, 'Skipping domain event: missing domain field');
               break;
             }
-            await deleteSingleOrganizationDomain(domainData);
+            if (event.event === 'organization_domain.deleted' || event.event === 'organization_domain.verification_failed') {
+              await deleteSingleOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+            } else {
+              await upsertOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+            }
             break;
           }
 

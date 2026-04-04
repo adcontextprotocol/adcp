@@ -452,15 +452,6 @@ export function registerAllJobs(): void {
     initialDelay: { value: 20, unit: 'minutes' },
     runner: async (options: { limit?: number }) => {
       const limit = options?.limit || 15;
-
-      const aliasTableExists = await query(
-        `SELECT EXISTS (
-           SELECT 1 FROM information_schema.tables
-           WHERE table_schema = 'public' AND table_name = 'brand_domain_aliases'
-         ) AS exists`
-      );
-      const hasAliasTable = aliasTableExists.rows[0]?.exists;
-
       const unmapped = await query<{
         workos_organization_id: string;
         name: string;
@@ -474,10 +465,10 @@ export function registerAllJobs(): void {
              SELECT 1 FROM discovered_brands db
              WHERE db.domain = o.email_domain
            )
-           ${hasAliasTable ? `AND NOT EXISTS (
+           AND NOT EXISTS (
              SELECT 1 FROM brand_domain_aliases bda
              WHERE bda.alias_domain = o.email_domain
-           )` : ''}
+           )
          ORDER BY o.subscription_status = 'active' DESC,
                   o.last_activity_at DESC NULLS LAST
          LIMIT $1`,
