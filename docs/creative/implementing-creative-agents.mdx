@@ -18,6 +18,70 @@ A creative agent is a service that:
 
 An ad server (CM360, Flashtalking), creative management platform, creative agency, publisher, or sales agent can implement a creative agent. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol serve both roles from a single endpoint — see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
+## Three interaction models
+
+Creative agents fall into three distinct categories based on how assets arrive and what the output is. Identifying which model your agent follows determines which tasks to implement and how buyers will interact with you.
+
+### Stateless: template and transformation agents
+
+**Examples:** Celtra, format conversion services, rich media template platforms
+
+The buyer passes all assets inline with each call. Your agent applies a template or transformation and returns the result. There is no persistent creative library — every call is self-contained.
+
+| Task | Role |
+|---|---|
+| `list_creative_formats` | Discover available templates and their asset requirements |
+| `preview_creative` | Render a template with provided assets |
+| `build_creative` | Transform input assets into a serving tag |
+
+**Capabilities:** `supports_transformation: true`
+
+The buyer's workflow: discover your formats → preview with real assets → request built creatives for trafficking.
+
+### Stateful (pre-loaded): ad servers
+
+**Examples:** Innovid, Flashtalking, CM360
+
+Creatives already exist in your system, loaded through your platform's UI or API. Buyers connect to browse your library and request serving tags for their media buys. The buyer never pushes assets to you — they reference creatives that are already there.
+
+| Task | Role |
+|---|---|
+| `list_creatives` | Browse existing creatives in the library |
+| `build_creative` | Generate a serving tag for a specific `creative_id` and media buy |
+| `preview_creative` | Preview an existing creative |
+| `get_creative_delivery` | Report variant-level delivery metrics |
+
+**Capabilities:** `has_creative_library: true`
+
+The buyer's workflow: browse your creative library → request tags per media buy → track delivery.
+
+### Stateful (push): sales agents with creative
+
+**Examples:** Publisher platforms, retail media networks, native ad platforms
+
+Buyers push creative assets or catalog items to your platform. You validate, store, and render them in your environment. This is where catalog-driven creative gets interesting — buyers might push product feeds, flight listings, or hotel inventory that you render as native ads.
+
+| Task | Role |
+|---|---|
+| `list_creative_formats` | Discover what formats you accept |
+| `sync_creatives` | Accept pushed assets or catalog items |
+| `preview_creative` | Preview pushed creatives in your platform's environment |
+| `get_creative_delivery` | Report delivery metrics |
+
+**Capabilities:** `has_creative_library: true`
+
+The buyer's workflow: discover your accepted formats → push assets → preview in your environment.
+
+### Choosing your model
+
+The key question is: **where do the assets come from?**
+
+- If the buyer sends assets with every call → **stateless (template/transformer)**
+- If creatives already exist in your system → **stateful (ad server)**
+- If the buyer pushes assets to you for hosting → **stateful (sales agent)**
+
+Some agents combine models. A creative management platform might be both a template engine (stateless transformation) and a library host (stateful). Declare the appropriate capability flags in `get_adcp_capabilities` so buyers can determine the right interaction model.
+
 ## Core requirements
 
 ### 1. Format ID namespacing
@@ -461,15 +525,14 @@ Re-submission resets the review clock. The agent treats the updated creative as 
 
 ### Which tasks to implement
 
-The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks and capabilities each platform type should implement.
+The table below maps each interaction model to the tasks it should implement. See [Three interaction models](#three-interaction-models) above for detailed descriptions.
 
-| Platform type | Core tasks | Recommended tasks | Capabilities |
+| Interaction model | Required tasks | Additional tasks | Capabilities |
 |---|---|---|---|
-| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true` |
-| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
-| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
-| Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
-| Sales agent with creative capabilities | `list_creative_formats`, `preview_creative` | `sync_creatives` (with `assignments`), `get_creative_delivery`, `build_creative` | `supports_generation: true` or `has_creative_library: true` |
+| Template/transformer (Celtra, format conversion) | `list_creative_formats`, `preview_creative`, `build_creative` | — | `supports_transformation: true` |
+| Ad server (Innovid, Flashtalking, CM360) | `list_creatives`, `build_creative`, `preview_creative` | `list_creative_formats`, `get_creative_delivery` | `has_creative_library: true` |
+| Sales agent with creative (publishers, retail media) | `list_creative_formats`, `sync_creatives`, `preview_creative` | `get_creative_delivery` | `has_creative_library: true` |
+| Generative creative tool | `list_creative_formats`, `preview_creative`, `build_creative` | — | `supports_generation: true` |
 
 Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
 

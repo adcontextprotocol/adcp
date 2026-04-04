@@ -140,6 +140,34 @@ export const notificationRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for storyboard evaluation endpoints.
+ * Limits: 5 evaluations per hour per user (each eval makes real HTTP calls to external agents).
+ */
+export const storyboardEvalRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  skipFailedRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('storyboard:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for storyboard evaluation');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Storyboard evaluation limit exceeded (5 per hour). Please try again later.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */

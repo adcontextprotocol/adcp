@@ -1,0 +1,118 @@
+# Acme Outdoor — Sample Advertiser Test Kit
+#
+# Provides the "ingredients" needed to test creative agent storyboards:
+# a brand identity, sample assets at common dimensions, and sample text.
+#
+# Acme Outdoor is a fictional outdoor gear brand from the AdCP character bible.
+# Use this test kit with any storyboard that requires an advertiser brand.
+
+id: acme_outdoor
+name: "Acme Outdoor"
+description: "Fictional outdoor gear brand for storyboard testing"
+
+brand:
+  house:
+    domain: "acme-outdoor.example.com"
+    name: "Acme Outdoor"
+  brand_id: "acme_outdoor"
+  names:
+    - en: "Acme Outdoor"
+  description: "Premium outdoor gear for every adventure. From trail to summit, we make gear that performs."
+  industry: "retail"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/acme-outdoor/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/acme-outdoor/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#1B5E20"
+    secondary: "#FF6F00"
+    accent: "#FDD835"
+    background: "#FAFAFA"
+    text: "#212121"
+  fonts:
+    heading:
+      family: "Montserrat"
+      weight: 700
+      url: "https://fonts.googleapis.com/css2?family=Montserrat:wght@700"
+    body:
+      family: "Open Sans"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Open+Sans"
+  tone:
+    voice: "Confident and adventurous, but never pretentious. We talk to people who do things, not people who buy things."
+    attributes:
+      - "active"
+      - "direct"
+      - "warm"
+    dos:
+      - "Use action verbs"
+      - "Reference real outdoor activities"
+      - "Keep it short"
+    donts:
+      - "Use superlatives without evidence"
+      - "Talk down to the reader"
+      - "Use corporate jargon"
+
+# Sample assets at common ad dimensions.
+# These are placeholder URLs — in production, these would point to actual hosted test images.
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — hiker on mountain trail"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — panoramic mountain vista"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — trail gear close-up"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical trail scene"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res source for any size"
+
+  text:
+    headlines:
+      - "Summer Sale — 40% Off All Gear"
+      - "Built for the Trail"
+      - "Adventure Starts Here"
+    descriptions:
+      - "Premium outdoor gear tested on the world's toughest trails. Shop the summer collection."
+      - "From daypacks to expedition tents, gear that performs when it matters."
+    cta:
+      - "Shop Now"
+      - "Explore the Collection"
+      - "Find Your Gear"
+
+  click_url: "https://acme-outdoor.example.com/summer-sale"

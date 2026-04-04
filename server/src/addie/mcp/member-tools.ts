@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
+import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
@@ -72,23 +73,6 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
     name: 'AdCP Reference Creative Agent',
   },
 };
-
-/**
- * Public test agent credentials.
- * These are intentionally public and documented for testing purposes.
- * See: https://docs.adcontextprotocol.org/docs/media-buy/advanced-topics/sandbox
- *
- * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
- * but defaults to the documented public token.
- */
-const PUBLIC_TEST_AGENT = {
-  url: process.env.PUBLIC_TEST_AGENT_URL || 'https://test-agent.adcontextprotocol.org/mcp',
-  token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
-  name: 'AdCP Public Test Agent',
-};
-
-// Internal path URL — redirect to the canonical hostname
-const INTERNAL_PATH_AGENT_URL = 'https://agenticadvertising.org/api/training-agent/mcp';
 
 /**
  * Known error patterns that indicate bugs in the @adcp/client testing library

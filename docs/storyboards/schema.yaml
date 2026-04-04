@@ -1,0 +1,65 @@
+# Storyboard Definition Schema
+#
+# Storyboards are narrative test workflows that walk agent builders through
+# the sequence of calls their agent will receive, with context at each step.
+#
+# Each storyboard targets a specific creative agent interaction model and
+# describes the flow from a caller's perspective.
+
+# --- Schema definition ---
+
+# A storyboard file must conform to this structure:
+#
+# id: string (unique identifier, e.g., "creative_template")
+# version: string (semver, e.g., "1.0.0")
+# title: string (human-readable title)
+# category: enum (creative_template | creative_ad_server | creative_sales_agent | creative_generative)
+# summary: string (one-line description for listings)
+# narrative: string (paragraph explaining the overall flow)
+#
+# agent:
+#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate)
+#   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation)
+#   examples: string[] (real-world examples: "Celtra", "Innovid")
+#
+# caller:
+#   role: string (who initiates the calls: "buyer_agent", "orchestrator", "dsp")
+#   example: string (e.g., "Scope3", "Pinnacle Agency")
+#
+# prerequisites:
+#   description: string (what must be true before running this storyboard)
+#   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml")
+#
+# phases: array of Phase objects
+#
+# --- Phase ---
+#
+# id: string (unique within storyboard)
+# title: string (human-readable phase title)
+# narrative: string (paragraph explaining this phase from the caller's perspective)
+#
+# steps: array of Step objects
+#
+# --- Step ---
+#
+# id: string (unique within phase)
+# title: string (human-readable step title)
+# narrative: string (what's happening and why)
+# task: string (AdCP task name: list_creative_formats, preview_creative, build_creative, etc.)
+# schema_ref: string (path to request schema, e.g., "creative/list-creative-formats-request.json")
+# response_schema_ref: string (path to response schema)
+# doc_ref: string (path to documentation page)
+# comply_scenario: string (maps to @adcp/client testing scenario, e.g., "creative_sync")
+# expected: string (human-readable description of expected behavior)
+# stateful: boolean (does this step depend on state from a previous step?)
+#
+# sample_request: object (optional — example request payload for this step)
+# sample_response: object (optional — example expected response)
+#
+# validations: array of Validation objects (optional)
+#
+# --- Validation ---
+#
+# check: string (what to validate: "response_schema", "field_present", "field_value", "status_code")
+# path: string (JSON path to the field, e.g., "formats[0].format_id")
+# description: string (human-readable description of validation)
