@@ -406,7 +406,7 @@ A `maximize_value` target steers spend toward higher-value conversions without c
 | `event_sources[].custom_event_name` | string | When event_type is `custom` | Platform-specific custom event name |
 | `event_sources[].value_field` | string | When target is `per_ad_spend` or `maximize_value` | Which field on `custom_data` carries the monetary value. The seller must use this for value extraction and aggregation — it is not passed directly to underlying platform APIs. |
 | `event_sources[].value_factor` | number | No | Multiplier the seller must apply to `value_field` before aggregation (default 1). Use -1 for refunds, 0.01 for cents, 0 to zero out a source's value contribution while still counting it for dedup. |
-| `target.kind` | `"cost_per"` \| `"per_ad_spend"` \| `"maximize_value"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
+| `target.kind` | `"cost_per"` \| `"per_ad_spend"` \| `"maximize_value"` | No | Target type. When omitted, the seller maximizes conversion count within budget (see [default behavior](#default-behavior-for-event-goals)). |
 | `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = \$4 per \$1 spent) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
@@ -518,7 +518,7 @@ All target kinds across both goal types:
 
 | Goal | When to use | What you set |
 |---|---|---|
-| Max conversions | As many conversions as possible within budget | `kind: "event"` + event sources, no target |
+| Max conversions | As many conversions as possible within budget | `kind: "event"` + event sources, no target. `value_field` may be present for reporting but does not change the objective. |
 | Target cost per conversion | Specific cost per event | `kind: "event"` + `target: { kind: "cost_per", value: 25.0 }` |
 | Target return on ad spend | Specific return ratio on event values | `kind: "event"` + `value_field` on sources + `target: { kind: "per_ad_spend", value: 4.0 }` |
 | Maximize conversion value | Steer toward higher-value conversions without a ROAS target | `kind: "event"` + `value_field` on sources + `target: { kind: "maximize_value" }` |
@@ -561,6 +561,62 @@ A package can have multiple goals. Priority controls which the seller treats as 
 ```
 
 The seller focuses on the `priority: 1` goal (installs at \$10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
+
+### Default behavior for event goals
+
+When `target` is omitted from an event goal, the seller maximizes conversion count within budget. This is true regardless of whether `value_field` is present on event sources — `value_field` without an explicit value-oriented target enables reporting (conversion_value, ROAS in delivery reports) but does not change the optimization objective.
+
+| `target` | `value_field` | Seller behavior |
+|-----------|---------------|-----------------|
+| omitted | omitted | Maximize event count within budget |
+| omitted | present | Maximize event count within budget. Value available for reporting only. |
+| `cost_per` | either | Target cost per conversion. Value used for reporting if present. |
+| `per_ad_spend` | present | Target return on ad spend. |
+| `per_ad_spend` | **missing** | **Validation error** — seller must reject. No value dimension to compute return. |
+| `maximize_value` | present | Steer toward higher-value conversions. |
+| `maximize_value` | **missing** | **Validation error** — seller must reject. No value dimension to maximize. |
+
+### Blending vs. sequencing goals
+
+`value_factor` and `priority` both express "event type A matters more than event type B" but mean different things to the seller's optimization:
+
+- **`value_factor`** blends multiple event sources into a **single objective function**. Set per event source entry *within* a single goal's `event_sources` array. The seller sees one goal with a composite value signal. Use this when purchases and page views should be optimized together with explicit relative weights.
+- **`priority`** sequences **independent goals**. Set on separate goal objects in the `optimization_goals` array. The seller optimizes for goal 1 first; goal 2 is a secondary objective, not blended in. Use this when goals are conceptually separate (e.g., hit a CPA target first, then maximize reach with remaining budget).
+
+Use `value_factor` to blend. Use `priority` to sequence. Mixing them up produces subtly wrong optimization — a blended goal that should be sequenced, or sequenced goals that should be blended — and the effect is hard to detect in delivery reports.
+
+### Event type polarity
+
+Most event types are positive signals — a purchase, lead, or install is something the buyer wants more of. Some event types are observation signals that should not be standalone optimization targets:
+
+| Polarity | Event types | Notes |
+|----------|-------------|-------|
+| Positive | `purchase`, `lead`, `qualify_lead`, `close_convert_lead`, `app_install`, `complete_registration`, `subscribe`, `start_trial`, `contact`, `schedule`, `donate`, `submit_application` | Safe as standalone optimization targets |
+| Upper funnel | `page_view`, `view_content`, `select_content`, `select_item`, `search`, `add_to_cart`, `viewed_cart`, `add_to_wishlist`, `initiate_checkout`, `add_payment_info`, `share`, `app_launch` | Valid optimization targets but typically used as proxy signals (`priority: 2`) when lower-funnel data is sparse |
+| Observation | `refund`, `remove_from_cart`, `disqualify_lead` | Include in `event_sources` for attribution accuracy and ROAS adjustment, not as standalone optimization targets |
+
+`custom` events are not classified here — their polarity depends on the buyer's definition. Buyer agents should apply the same reasoning when choosing whether a custom event is safe as a standalone target.
+
+Observation events are useful inside a composite goal — `refund` with `value_factor: -1` adjusts ROAS downward, which is exactly what you want. The risk is a misconfigured buyer agent that creates a standalone goal optimizing toward `refund` or `remove_from_cart` count. This is a buyer-agent implementation concern, not a protocol constraint — the protocol intentionally does not restrict which event types can be optimization targets.
+
+### Volume normalization with `value_factor`
+
+When combining event sources at different volume scales (e.g., `page_view` in the tens of thousands vs. `purchase` in the hundreds), the aggregate value in `sum(value_field * value_factor) / spend` will be dominated by the highest-volume type without explicit weighting. Buyers should use `value_factor` to express relative weights across sources:
+
+```json
+{
+  "kind": "event",
+  "event_sources": [
+    { "event_source_id": "web_pixel", "event_type": "page_view", "value_field": "value", "value_factor": 0.01 },
+    { "event_source_id": "web_pixel", "event_type": "purchase", "value_field": "value", "value_factor": 1 }
+  ],
+  "target": { "kind": "per_ad_spend", "value": 4.0 }
+}
+```
+
+Here `page_view` contributes 1% of its face value, preventing it from dominating the ROAS calculation despite being ~100x more frequent than `purchase`.
+
+Automatic normalization is intentionally out of scope — it requires event history the seller may not have, and would make the ROAS formula opaque. Buyer agents that want to normalize across event types should do so on their end before setting `value_factor`.
 
 ### Pricing model vs. optimization goal
 
