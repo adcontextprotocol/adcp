@@ -847,6 +847,7 @@ export interface InvoiceRequestData {
   daysUntilDue?: number; // Payment terms in days (default: 30)
   invoiceDate?: string; // ISO date (YYYY-MM-DD) for backdating the invoice
   dueDate?: string; // ISO date (YYYY-MM-DD) for explicit due date
+  poNumber?: string; // Customer PO number to display on invoice
 }
 
 /**
@@ -872,6 +873,7 @@ export async function createAndSendInvoice(
     return null;
   }
 
+  let subscriptionId: string | undefined;
   try {
     // Find or create customer using shared deduplication logic
     const customerId = await createStripeCustomer({
@@ -983,6 +985,14 @@ export async function createAndSendInvoice(
       throw new Error('due_date must be after invoice_date.');
     }
 
+    if (dueDateUnix && !invoiceDateUnix && dueDateUnix <= Math.floor(Date.now() / 1000)) {
+      throw new Error('due_date must be in the future when no invoice_date is provided.');
+    }
+
+    if (data.poNumber && data.poNumber.length > 30) {
+      throw new Error(`PO number is too long (${data.poNumber.length} chars, max 30).`);
+    }
+
     // Create subscription with invoice billing
     // This creates a subscription AND generates an invoice for the first payment
     // When the invoice is paid, the subscription becomes active and will auto-renew
@@ -1001,6 +1011,7 @@ export async function createAndSendInvoice(
         ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
       },
     });
+    subscriptionId = subscription.id;
 
     // Get the invoice that was created with the subscription
     const invoiceId = subscription.latest_invoice as string;
@@ -1076,7 +1087,17 @@ export async function createAndSendInvoice(
       lookupKey: data.lookupKey,
       companyName: data.companyName,
       contactEmail: data.contactEmail,
+      subscriptionId,
     }, 'createAndSendInvoice: Error creating subscription with invoice');
+    // If subscription was created but invoice update/send failed, clean it up
+    if (subscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(subscriptionId);
+        logger.info({ subscriptionId }, 'createAndSendInvoice: Cleaned up orphaned subscription after error');
+      } catch (cancelError) {
+        logger.error({ err: cancelError, subscriptionId }, 'createAndSendInvoice: Failed to cancel orphaned subscription');
+      }
+    }
     notifySystemError({ source: 'stripe-invoice', errorMessage: `Failed to create invoice for ${data.companyName} (${data.lookupKey}): ${stripeError.message || 'unknown error'}` });
     return null;
   }
