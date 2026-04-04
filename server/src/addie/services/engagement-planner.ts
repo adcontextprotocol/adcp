@@ -499,6 +499,31 @@ const REASONING_PREFIX_PATTERNS = [
   /^let me (think|focus|consider|compose|craft|write)\b/i,
   /^looking at (their|the|this)\b/i,
   /^based on (their|the|this)\b/i,
+  // Name + metadata patterns (e.g. "Terry is at Yahoo", "Frank is at")
+  /^\w+ is at\b/i,
+  // Strategy statements embedded in longer paragraphs
+  /\bi should\b/i,
+  /\bi'll keep\b/i,
+  /\bi need to\b/i,
+  // Unreplied count with "message(s)"
+  /\d+ unreplied messages?\b/i,
+  // Stage references
+  /\bparticipating stage\b/i,
+  /\b(at|in) stage\b/i,
+  /\bwelcomed stage\b/i,
+  /\bexploring stage\b/i,
+  /\bcontributing stage\b/i,
+  /\bleading stage\b/i,
+  /\bprospect stage\b/i,
+  // Channel/tactic discussion
+  /\blead with value\b/i,
+  /\bno asks?,\s*no\b/i,
+  /\bpeer-to-peer tone\b/i,
+  /\bkeep (this|it) (light|brief|warm|short)\b/i,
+  /\bwithout being pushy\b/i,
+  /\bworking group angle\b/i,
+  // "I have very little to go on"
+  /\blittle to go on\b/i,
 ];
 
 function looksLikeReasoningParagraph(paragraph: string): boolean {
@@ -506,6 +531,32 @@ function looksLikeReasoningParagraph(paragraph: string): boolean {
   if (!normalized) return false;
   if (normalized === '---') return true;
   return REASONING_PREFIX_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/**
+ * Secondary safety check: detect reasoning markers that may have survived
+ * paragraph-level stripping (e.g. reasoning and message in a single paragraph
+ * without a blank-line separator).
+ */
+const REASONING_LEAK_PATTERNS = [
+  /\bunreplied messages?\b/i,
+  /\bparticipating stage\b/i,
+  /\bwelcomed stage\b/i,
+  /\bexploring stage\b/i,
+  /\bcontributing stage\b/i,
+  /\bleading stage\b/i,
+  /\bprospect stage\b/i,
+  /\bno conversation history\b/i,
+  /\blead with value\b/i,
+  /\bpeer-to-peer tone\b/i,
+  /\bwithout being pushy\b/i,
+  /\blittle to go on\b/i,
+  /\bworking group angle\b/i,
+  /\bkeep (this|it) (light|brief|warm|short)\b/i,
+];
+
+function containsReasoningMarkers(text: string): boolean {
+  return REASONING_LEAK_PATTERNS.some(pattern => pattern.test(text));
 }
 
 export function extractUserFacingMessage(rawText: string, channel: 'slack' | 'email'): string | null {
@@ -530,6 +581,12 @@ export function extractUserFacingMessage(rawText: string, channel: 'slack' | 'em
   if (!cleaned) return null;
 
   if (channel === 'slack' && looksLikeReasoningParagraph(cleaned)) {
+    return null;
+  }
+
+  // Safety net: catch reasoning that slipped past paragraph-level stripping.
+  if (channel === 'slack' && containsReasoningMarkers(cleaned)) {
+    logger.warn({ snippet: cleaned.slice(0, 120) }, 'Extracted text still contains reasoning markers — suppressing');
     return null;
   }
 

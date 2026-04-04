@@ -645,6 +645,69 @@ export function setupAccountRoutes(
             : Promise.resolve({ rows: [] }),
         ]);
 
+        // Brand-aware similar org detection via aliases and hierarchy
+        const brandSimilarOrgs: Array<{
+          org_id: string;
+          name: string;
+          subscription_status: string;
+          match_source: 'brand_alias' | 'brand_hierarchy';
+          match_domain: string;
+        }> = [];
+
+        if (org.email_domain) {
+          // Orgs linked through brand_domain_aliases (this org's domain is an alias, or aliases point to this org)
+          const aliasMatches = await pool.query(`
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_alias' AS match_source, bda.brand_domain AS match_domain
+            FROM brand_domain_aliases bda
+            JOIN organizations o
+              ON (o.email_domain = bda.brand_domain OR o.email_domain = bda.alias_domain)
+            WHERE (bda.alias_domain = $1 OR bda.brand_domain = $1)
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+          `, [org.email_domain, orgId]);
+          brandSimilarOrgs.push(...aliasMatches.rows);
+
+          // Orgs sharing the same house_domain (parent-child via brand hierarchy)
+          const hierarchyMatches = await pool.query(`
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_hierarchy' AS match_source, db2.house_domain AS match_domain
+            FROM discovered_brands db1
+            JOIN discovered_brands db2 ON db2.house_domain = db1.house_domain
+            JOIN organizations o ON o.email_domain = db2.domain
+            WHERE db1.domain = $1
+              AND db1.house_domain IS NOT NULL
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+            UNION
+            -- Reverse: this org is the house and sub-brands belong to other orgs
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_hierarchy' AS match_source, db.house_domain AS match_domain
+            FROM discovered_brands db
+            JOIN organizations o ON o.email_domain = db.domain
+            WHERE db.house_domain = $1
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+          `, [org.email_domain, orgId]);
+          brandSimilarOrgs.push(...hierarchyMatches.rows);
+        }
+
+        // Merge brand-based matches with name-based matches, deduplicating by org_id
+        const seenOrgIds = new Set<string>();
+        const mergedSimilarOrgs: Array<Record<string, unknown>> = [];
+        for (const bso of brandSimilarOrgs) {
+          if (!seenOrgIds.has(bso.org_id)) {
+            seenOrgIds.add(bso.org_id);
+            mergedSimilarOrgs.push(bso);
+          }
+        }
+        for (const row of similarOrgsResult.rows) {
+          if (!seenOrgIds.has(row.org_id)) {
+            seenOrgIds.add(row.org_id);
+            mergedSimilarOrgs.push({ ...row, match_source: 'name_similarity' });
+          }
+        }
+
         // Get engagement signals
         const engagementSignals = await orgDb.getEngagementSignals(orgId);
 
@@ -801,8 +864,7 @@ export function setupAccountRoutes(
           domain_health: {
             // Users who have this org's domain but aren't in this org
             misaligned_users: misalignedUsersResult.rows,
-            // Potential duplicate orgs with similar names
-            similar_orgs: similarOrgsResult.rows,
+            similar_orgs: mergedSimilarOrgs,
             // Whether all domains are verified
             has_unverified_domains: domainsResult.rows.some(
               (d: { verified?: boolean }) => !d.verified

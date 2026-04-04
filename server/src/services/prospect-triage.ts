@@ -10,10 +10,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
 import { enrichDomain } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { createProspect } from './prospect.js';
-import { notifyNewProspect } from '../notifications/prospect.js';
+import { notifyNewProspect, notifyAliasMatch } from '../notifications/prospect.js';
+import { createActionItem } from '../db/account-management-db.js';
 import { ModelConfig } from '../config/models.js';
 import { COMPANY_TYPE_VALUES, getCompanyTypesDocumentation } from '../config/company-types.js';
 import { getSetting, SETTING_KEYS } from '../db/system-settings-db.js';
@@ -35,6 +37,10 @@ export interface TriageResult {
   companyType?: string;
   /** Set when the domain is already tracked */
   existingOrgId?: string;
+  /** The domain that was matched (e.g., "arcspan.com") */
+  matchedDomain?: string;
+  /** The resolution method (e.g., "redirect", "brand_alias", "sub_brand") */
+  matchMethod?: string;
 }
 
 export interface TriageContext {
@@ -147,6 +153,99 @@ async function getRecentDisqualifications(): Promise<string> {
   return `\nRecently disqualified companies (learn from these — avoid creating similar prospects):\n${lines.join('\n')}`;
 }
 
+// ─── Org name lookup ──────────────────────────────────────────────────────
+
+async function lookupOrgName(orgId: string): Promise<string> {
+  const pool = getPool();
+  const result = await pool.query<{ name: string }>(
+    `SELECT name FROM organizations WHERE workos_organization_id = $1`,
+    [orgId]
+  );
+  return result.rows[0]?.name ?? orgId;
+}
+
+// ─── Skip side effects ──────────────────────────────────────────────────────
+
+/**
+ * Fire notifications and action items when triage skips due to an existing org.
+ * Shared by triageAndNotify and triageAndCreateProspect.
+ * All calls are fire-and-forget — errors are logged but don't fail triage.
+ */
+async function handleSkipSideEffects(
+  domain: string,
+  result: TriageResult,
+  context?: TriageContext,
+): Promise<void> {
+  // Alias match (brand alias, sub-brand, redirect) — Slack notification + action item
+  const { existingOrgId, matchedDomain, matchMethod, companyType } = result;
+  if (result.reason === 'already_tracked_alias' && existingOrgId && matchedDomain && matchMethod) {
+    // Skip notification if this domain+org alias was recently rejected
+    try {
+      const pool = getPool();
+      const recentRejection = await pool.query(
+        `SELECT 1 FROM prospect_triage_log
+         WHERE domain = $1 AND reason = 'alias_rejected'
+           AND created_at > NOW() - INTERVAL '30 days'
+         LIMIT 1`,
+        [domain]
+      );
+      if (recentRejection.rows.length > 0) {
+        logger.debug({ domain }, 'Skipping alias notification — previously rejected');
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err, domain }, 'Failed to check recent alias rejections');
+    }
+
+    lookupOrgName(existingOrgId).then(orgName => {
+      notifyAliasMatch({
+        signupDomain: domain,
+        matchedDomain,
+        method: matchMethod,
+        orgId: existingOrgId,
+        orgName,
+        companyType,
+        source: context?.source ?? 'inbound',
+        contactName: context?.name,
+        contactEmail: context?.email,
+      }).catch(err => {
+        logger.warn({ err, domain }, 'Alias match notification failed');
+      });
+
+      createActionItem({
+        orgId: existingOrgId,
+        actionType: 'alert',
+        priority: 'medium',
+        title: `Review alias match: ${domain} → ${matchedDomain}`,
+        description: `Signup domain ${domain} resolved to existing org "${orgName}" via ${matchMethod}. Confirm or dismiss.`,
+        triggerType: 'alias_match',
+        triggerId: `${domain}:${existingOrgId}`,
+        context: { signupDomain: domain, matchedDomain, method: matchMethod },
+      }).catch(err => {
+        logger.warn({ err, domain }, 'Failed to create alias match action item');
+      });
+    }).catch(err => {
+      logger.warn({ err, domain }, 'Failed to look up org name for alias match');
+    });
+  }
+
+  // Exact match — lightweight action item only (no Slack, these are expected)
+  if (result.reason === 'already_tracked' && result.existingOrgId && context?.email) {
+    createActionItem({
+      orgId: result.existingOrgId,
+      actionType: 'alert',
+      priority: 'low',
+      title: `New signup from tracked domain: ${context.name ?? context.email} (${domain})`,
+      description: `${context.name ?? context.email} signed up from ${domain}, which is already tracked.`,
+      triggerType: 'tracked_signup',
+      triggerId: `${context.email}:${result.existingOrgId}`,
+      context: { name: context.name, email: context.email, source: context.source },
+    }).catch(err => {
+      logger.warn({ err, domain }, 'Failed to create tracked signup action item');
+    });
+  }
+}
+
 // ─── Triage log ────────────────────────────────────────────────────────────
 
 async function logTriageDecision(
@@ -256,29 +355,28 @@ export async function triageEmailDomain(
     return { action: 'skip', reason: 'personal_email', owner: 'addie', priority: 'standard', verdict: 'Free email provider, not a business domain.' };
   }
 
-  // 2. Skip if already tracked (member or prospect)
-  const pool = getPool();
-  const existing = await pool.query<{ workos_organization_id: string }>(
-    `SELECT o.workos_organization_id
-     FROM organizations o
-     WHERE o.email_domain = $1
-        OR o.workos_organization_id IN (
-          SELECT workos_organization_id FROM organization_domains WHERE domain = $1
-        )
-     LIMIT 1`,
-    [normalizedDomain]
-  );
-
-  if (existing.rows.length > 0) {
+  // 2. Skip if already tracked — checks org domains, brand aliases,
+  //    sub-brand hierarchy, and TLD variants in one call.
+  const resolved = await resolveOrgByDomain(normalizedDomain);
+  if (resolved) {
+    const isExact = resolved.method === 'exact';
+    logger.info(
+      { domain: normalizedDomain, matchedDomain: resolved.matchedDomain, orgId: resolved.orgId, method: resolved.method },
+      `Triage: ${isExact ? 'exact domain match' : 'domain alias match'}`
+    );
     return {
       action: 'skip',
-      reason: 'already_tracked',
+      reason: isExact ? 'already_tracked' : 'already_tracked_alias',
       owner: 'addie',
       priority: 'standard',
-      verdict: 'Already tracked.',
-      existingOrgId: existing.rows[0].workos_organization_id,
+      verdict: isExact ? 'Already tracked.' : `Likely alias of existing domain ${resolved.matchedDomain}.`,
+      existingOrgId: resolved.orgId,
+      matchedDomain: resolved.matchedDomain,
+      matchMethod: resolved.method,
     };
   }
+
+  const pool = getPool();
 
   // 3. Enrich via Lusha (best-effort — don't fail triage if unavailable)
   let enrichmentContext = 'No enrichment data available.';
@@ -375,6 +473,7 @@ export async function triageAndNotify(
   }
 
   if (result.action === 'skip') {
+    handleSkipSideEffects(domain, result, context);
     logger.debug({ domain, reason: result.reason }, 'Triage: skip (assess-only)');
     return { triaged: true, result };
   }
@@ -434,6 +533,7 @@ export async function triageAndCreateProspect(
   }
 
   if (result.action === 'skip') {
+    handleSkipSideEffects(domain, result, context);
     logger.debug({ domain, reason: result.reason }, 'Triage: skip');
     return { triaged: true, created: false, orgId: result.existingOrgId, result };
   }
