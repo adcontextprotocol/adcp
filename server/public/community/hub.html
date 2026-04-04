@@ -844,7 +844,7 @@
           <div class="activity-grid">
             <div class="activity-metric"><div class="activity-value">${activity.logins_30d || 0}</div><div class="activity-label">Logins (30d)</div></div>
             <div class="activity-metric"><div class="activity-value">${activity.events_attended || 0}</div><div class="activity-label">Events joined</div></div>
-            <div class="activity-metric"><div class="activity-value">${activity.last_active || '&mdash;'}</div><div class="activity-label">Last active</div></div>
+            <div class="activity-metric"><div class="activity-value">${activity.last_active ? relDate(activity.last_active) : '&mdash;'}</div><div class="activity-label">Last active</div></div>
             <div class="activity-metric"><div class="activity-value">${contentContributions.published_count || 0}</div><div class="activity-label">Published</div></div>
           </div>
         </div>
@@ -997,6 +997,19 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
+    }
+
+    function relDate(s) {
+      try {
+        const d = Math.floor((Date.now() - new Date(s)) / 86400000);
+        if (d < 0)  return 'Today';
+        if (d === 0) return 'Today';
+        if (d === 1) return '1 day ago';
+        if (d < 7)  return d + ' days ago';
+        if (d < 30) return Math.floor(d / 7) + 'w ago';
+        if (d < 365) return Math.floor(d / 30) + 'mo ago';
+        return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return escapeHtml(String(s)); }
     }
 
     // Load Cast & Crew builders
