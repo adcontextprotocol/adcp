@@ -221,7 +221,7 @@ async function testRedirect(page) {
   assert(finalUrl.includes('/account'), `Redirected to /account (got: ${finalUrl})`);
 
   // With query param
-  const resp2 = await page.goto(`${TARGET_URL}/community/profile/edit?org=test123`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${TARGET_URL}/community/profile/edit?org=test123`, { waitUntil: 'domcontentloaded' });
   const finalUrl2 = page.url();
   assert(finalUrl2.includes('/account') && finalUrl2.includes('org=test123'), `Redirect preserves query params (got: ${finalUrl2})`);
 }
