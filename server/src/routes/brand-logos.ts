@@ -1,5 +1,5 @@
 /**
- * Brand logo routes — upload, list, and admin review.
+ * Brand logo routes — upload, list, and review.
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -9,7 +9,7 @@ import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
-import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
+import { canReviewBrandLogos } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import {
   validateLogoTags,
@@ -59,9 +59,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'Invalid domain' });
         }
 
-        // Membership check (skip for admin API key and WorkOS API keys with member flag)
-        const isStaticAdmin = !!(req as any).isStaticAdminApiKey;
-        if (!isStaticAdmin && !user.isMember) {
+        // Membership check
+        if (!user.isMember) {
           const enriched = await enrichUserWithMembership(user);
           if (!enriched?.isMember) {
             return res.status(403).json({ error: 'Membership required to upload logos' });
@@ -208,13 +207,14 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           }
         }
 
+        // Reviewers see all statuses (pending, rejected) for brands they manage
         const user = (req as any).user;
-        const isAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+        const canReview = user?.id ? await canReviewBrandLogos(user.id, domain, brandDb) : false;
 
         const logos = await brandLogoDb.listBrandLogos(domain, {
           tags: filterTags,
-          include_all_statuses: isAdmin,
-          ...(!isAdmin ? { review_status: 'approved' } : {}),
+          include_all_statuses: canReview,
+          ...(!canReview ? { review_status: 'approved' } : {}),
         });
 
         const mapped = logos.map(l => {
@@ -228,7 +228,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           };
           if (l.width) base.width = l.width;
           if (l.height) base.height = l.height;
-          if (isAdmin) {
+          if (canReview) {
             base.uploaded_by_email = l.uploaded_by_email;
             base.upload_note = l.upload_note;
             base.created_at = l.created_at;
@@ -244,7 +244,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
     },
   );
 
-  // POST /api/brands/:domain/logos/:id/review — Admin review
+  // POST /api/brands/:domain/logos/:id/review — Review a logo
   router.post(
     '/brands/:domain/logos/:id/review',
     requireAuth,
@@ -261,9 +261,10 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
 
-        const isAdmin = await isWebUserAAOAdmin(user.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
+        // Authorization: registry moderator or verified brand owner
+        const authorized = await canReviewBrandLogos(user.id, domain, brandDb);
+        if (!authorized) {
+          return res.status(403).json({ error: 'Only registry moderators or verified brand owners can review logos' });
         }
 
         const action = req.body.action as string;
@@ -301,7 +302,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Create brand revision
         try {
           await brandDb.editDiscoveredBrand(domain, {
-            edit_summary: `Logo ${action}d by admin`,
+            edit_summary: `Logo ${action}d by ${user.email}`,
             editor_user_id: user.id,
             editor_email: user.email,
           });
