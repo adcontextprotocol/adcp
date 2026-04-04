@@ -18,7 +18,6 @@ import {
   extractDimensions,
   computeSha256,
   rebuildManifestLogos,
-  ALLOWED_TAGS,
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
 
