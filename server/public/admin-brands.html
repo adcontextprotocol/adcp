@@ -1111,6 +1111,12 @@
       return div.innerHTML;
     }
 
+    // Populate search from URL param (used by domain health "Review in Brands" links)
+    const urlSearch = new URLSearchParams(window.location.search).get('search');
+    if (urlSearch) {
+      document.getElementById('filterSearch').value = urlSearch;
+    }
+
     // Initialize
     loadBrands();
     loadBans();
