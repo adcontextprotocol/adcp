@@ -18,6 +18,25 @@ This project uses **Mintlify** for documentation:
 - ✅ **AdCP** - the protocol specification
 - ❌ Never "Alliance for Agentic Advertising", "AAO", or "ADCP"
 
+### Membership Terminology
+
+The word "member" means different things in different contexts. Use precise
+language to avoid confusion — especially in prompts, context formatting, and
+user-facing strings where ambiguity causes misdiagnosis and bad escalations.
+
+| Term | Meaning | Determined by |
+|------|---------|---------------|
+| **AAO member** (org) | Organization with active AgenticAdvertising.org subscription | `subscription_status = 'active' AND subscription_canceled_at IS NULL` |
+| **Org member** (user) | A person who belongs to a WorkOS organization | `organization_memberships` table, `joined_at` field |
+| **Working group member** | A person who belongs to a specific working group | `working_group_members` table |
+| **Community member** | Any registered user with engagement activity | Engagement signals, community points |
+
+**Rules:**
+- When displaying dates, never label `org_membership.joined_at` as "Member since" — use "Joined organization" to distinguish from AAO membership tenure.
+- Section headers like "Organization Role" (not "Organization Membership") prevent confusion with AAO subscription status.
+- When `is_member` is false but an org has a non-null `subscription_status`, surface the status so agents can diagnose billing vs. enrollment issues.
+- In tool descriptions, qualify which kind of membership: "AgenticAdvertising.org member organization" (subscription) vs. "organization member" (WorkOS role).
+
 ### Examples: No Real Brands or Agencies
 - ❌ Never use real company names (brands, agencies, holding companies) in new examples
 - ✅ Use fictional names: Acme Corp, Pinnacle Media, Nova Brands, etc.
@@ -376,6 +395,16 @@ Walkthrough pages use progressive disclosure — grouped by reader intent:
 4. **Reference**: Task reference and specification pages
 
 Apply this pattern when restructuring protocol sections.
+
+## PR Preparation Checklist
+
+Before creating or updating a PR, always:
+
+1. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
+2. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
+3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
+4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
+5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
 
 ## Cross-Agent Integration
 

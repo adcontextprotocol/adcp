@@ -7,6 +7,17 @@
 
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+
+/** Stripe-defined subscription statuses (safe to interpolate into prompts). */
+const KNOWN_SUBSCRIPTION_STATUSES = new Set([
+  'active', 'past_due', 'canceled', 'incomplete',
+  'incomplete_expired', 'trialing', 'unpaid', 'paused', 'none',
+]);
+
+function safeSubscriptionStatus(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
+}
 import * as certDb from '../../db/certification-db.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
@@ -30,8 +41,14 @@ function membershipRequiredMessage(moduleId: string, memberContext: MemberContex
       + `Use find_membership_products with customer_type "individual" to show them their options and help them sign up.`;
   }
 
+  const subStatus = safeSubscriptionStatus(memberContext?.organization?.subscription_status);
+  const statusNote = subStatus && subStatus !== 'none' && subStatus !== 'active'
+    ? `Their organization's subscription status is "${subStatus}" — this may indicate a billing or activation issue that needs admin attention. `
+    : '';
+
   return `Module ${moduleId} requires AgenticAdvertising.org membership. `
     + `This user works at ${orgName || 'a company'} which is not yet a member. `
+    + statusNote
     + `Company membership covers everyone at the organization. `
     + `Use find_membership_products with customer_type "company" to show pricing. `
     + `Help this person become an internal champion — give them the value proposition and pricing they need to make the case internally. `
@@ -1736,8 +1753,14 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      // Check for existing active attempt
-      const active = await certDb.getActiveAttempt(userId, mod.track_id);
+      // Auto-expire stale attempts (30+ days old) so they don't block forever
+      const expired = await certDb.expireStaleAttempts(userId, moduleId);
+      if (expired > 0) {
+        logger.info({ userId, moduleId, expired }, 'Auto-expired stale certification attempts');
+      }
+
+      // Check for existing active attempt (module-scoped so S1 doesn't block S4)
+      const active = await certDb.getActiveAttemptForModule(userId, moduleId);
       if (active) {
         return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}`;
       }
@@ -1865,15 +1888,11 @@ export function createCertificationToolHandlers(
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
         logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
-        const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
-        if (!/^[A-Z]{1,2}$/.test(trackPrefix)) {
+        const normalized = attemptId.toUpperCase();
+        if (!/^[A-Z]{1,2}[0-9]+$/.test(normalized)) {
           return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
         }
-        attempt = await certDb.getActiveAttempt(userId, trackPrefix);
-        if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {
-          logger.warn({ attemptId, attemptModuleId: attempt.module_id }, 'Active attempt module_id does not match, discarding');
-          attempt = null;
-        }
+        attempt = await certDb.getActiveAttemptForModule(userId, normalized);
       }
       if (!attempt) return 'Exam attempt not found.';
       if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';

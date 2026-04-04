@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { decodeHtmlEntities } from '../../server/src/utils/html-entities.js';
 
 describe('decodeHtmlEntities', () => {

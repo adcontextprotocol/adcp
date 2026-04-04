@@ -35,6 +35,7 @@ import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
+import { setupDigestAdminRoutes } from "./admin/digest.js";
 
 const logger = createLogger("admin-routes");
 
@@ -99,6 +100,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/digest", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-digest.html").catch((err) => {
+      logger.error({ err }, "Error serving digest page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -147,6 +155,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Perspective illustration generation routes
   setupIllustrationRoutes(apiRouter);
+
+  // Digest (The Prompt) admin routes
+  setupDigestAdminRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)

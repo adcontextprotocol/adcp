@@ -81,6 +81,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
+                      "docs/reference/migration/v3-readiness",
                       "docs/reference/migration/index",
                       "docs/reference/migration/prerelease-upgrades",
                       "docs/reference/migration/channels",
@@ -475,6 +476,7 @@
                   "docs/reference/gmsf-reference",
                   "docs/reference/media-channel-taxonomy",
                   "docs/reference/roadmap",
+                  "docs/reference/versioning",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
@@ -553,6 +555,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
                   "docs/reference/migration/prerelease-upgrades",
                   "docs/reference/migration/channels",
@@ -926,6 +929,7 @@
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
+              "docs/reference/versioning",
               "docs/reference/release-notes",
               "docs/reference/changelog",
               "docs/reference/implementor-faq",

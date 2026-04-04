@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { isMultiPartyThread, isDirectedAtAddie } from '../../server/src/addie/thread-utils.js';
 
 const BOT = 'UBOT123';

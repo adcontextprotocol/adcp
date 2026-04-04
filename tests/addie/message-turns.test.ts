@@ -5,7 +5,7 @@
  * instead of flattening everything into a single user message string.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { buildMessageTurns, buildMessageTurnsWithMetadata, type ThreadContextEntry, type MessageTurn } from '../../server/src/addie/prompts.js';
 
 describe('buildMessageTurns', () => {

@@ -5,7 +5,7 @@
  * without external dependencies (API calls, database, etc.)
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Import the tool definitions directly (no side effects)

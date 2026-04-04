@@ -193,15 +193,60 @@ export function initPostHogErrorTracking(): boolean {
       },
     });
 
-    // Fatal-level errors (uncaught exceptions, unhandled rejections, critical failures)
-    // get an immediate Slack notification so we know about them in real time.
+    // Fatal-level errors get an immediate Slack notification to ops channel.
     if (level && level >= 60) {
       notifySlackCriticalError(message, error, module);
+    }
+
+    // All error+ logs get posted to the #aao-errors channel via notifySystemError.
+    // The error-notifier has its own 5-minute per-source throttle.
+    if (level && level >= 50) {
+      notifyErrorChannel(module, message, error);
     }
   });
 
   logger.info('PostHog error tracking initialized - all logger.error() calls will be captured');
   return true;
+}
+
+/**
+ * Strip connection strings, credentials, and other secrets from error messages
+ * before forwarding to Slack.
+ */
+function sanitizeForSlack(msg: string): string {
+  return msg
+    .replace(/\b\w+:\/\/[^\s]+@[^\s]+/g, '[REDACTED_URL]')
+    .replace(/password[=:]\s*\S+/gi, 'password=[REDACTED]')
+    .replace(/\b(sk|pk|api[_-]?key|secret|token)[_-]?\w*[=:]\s*\S+/gi, '$1=[REDACTED]');
+}
+
+/**
+ * Bridge logger.error() to the #aao-errors Slack channel via notifySystemError.
+ * Uses dynamic import to avoid circular dependencies.
+ * Fire-and-forget — failures are silently ignored.
+ *
+ * Reentrancy guard prevents infinite loops: if sendChannelMessage fails and
+ * calls logger.error, the hook would fire again. The guard breaks the cycle.
+ */
+let notifyingErrorChannel = false;
+
+function notifyErrorChannel(module: string, message: string, error?: Error): void {
+  if (notifyingErrorChannel) return;
+  notifyingErrorChannel = true;
+
+  import('../addie/error-notifier.js')
+    .then(({ notifySystemError }) => {
+      const errorDetail = error?.message && error.message !== message
+        ? sanitizeForSlack(`${message}: ${error.message}`)
+        : sanitizeForSlack(message);
+      const stack = error?.stack ? `\n\`\`\`${sanitizeForSlack(error.stack.slice(0, 500))}\`\`\`` : '';
+      notifySystemError({
+        source: module || 'unknown',
+        errorMessage: errorDetail + stack,
+      });
+    })
+    .catch(() => {})
+    .finally(() => { notifyingErrorChannel = false; });
 }
 
 /**
@@ -212,14 +257,21 @@ export function initPostHogErrorTracking(): boolean {
  */
 const OPS_ALERT_CHANNEL_ID = process.env.OPS_ALERT_CHANNEL_ID;
 
+let notifyingCriticalError = false;
+
 function notifySlackCriticalError(message: string, error?: Error, module?: string): void {
   if (!OPS_ALERT_CHANNEL_ID) return;
+  if (notifyingCriticalError) return;
+  notifyingCriticalError = true;
+
+  const safeMessage = sanitizeForSlack(message);
+  const safeStack = error?.stack ? sanitizeForSlack(error.stack.slice(0, 500)) : '';
 
   import('../slack/client.js')
     .then(({ sendChannelMessage, isSlackConfigured }) => {
       if (!isSlackConfigured()) return;
       return sendChannelMessage(OPS_ALERT_CHANNEL_ID!, {
-        text: `FATAL ERROR on ${process.env.FLY_APP_NAME || 'aao-server'}: ${message}`,
+        text: `FATAL ERROR on ${process.env.FLY_APP_NAME || 'aao-server'}: ${safeMessage}`,
         blocks: [
           {
             type: 'section',
@@ -228,13 +280,14 @@ function notifySlackCriticalError(message: string, error?: Error, module?: strin
               text: [
                 `:rotating_light: *FATAL ERROR* on \`${process.env.FLY_APP_NAME || 'aao-server'}\``,
                 module ? `*Module:* \`${module}\`` : '',
-                `*Message:* ${message}`,
-                error?.stack ? `\`\`\`${error.stack.slice(0, 500)}\`\`\`` : '',
+                `*Message:* ${safeMessage}`,
+                safeStack ? `\`\`\`${safeStack}\`\`\`` : '',
               ].filter(Boolean).join('\n'),
             },
           },
         ],
       });
     })
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => { notifyingCriticalError = false; });
 }

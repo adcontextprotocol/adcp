@@ -6,7 +6,7 @@
  * via integration tests.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 
 // Define the RetrievedSIAgent type locally to avoid importing the module
 // (which has database dependencies)

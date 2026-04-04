@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it } from 'vitest';
 
 function runTsxJson<T>(code: string): T {
   const markerStart = '__TEST_JSON_START__';

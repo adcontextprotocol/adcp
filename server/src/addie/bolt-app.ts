@@ -61,6 +61,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  NEWSLETTER_TOOLS,
+  createNewsletterToolHandlers,
+} from './mcp/newsletter-tools.js';
+import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
@@ -112,11 +116,18 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft, isLegacyContent } from '../db/digest-db.js';
 import { applyDigestEdit } from './services/digest-editor.js';
 import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
+import {
+  getProspectChannel,
+  getEscalationChannel,
+  getBillingChannel,
+  getErrorChannel,
+  getAdminChannel,
+} from '../db/system-settings-db.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -124,6 +135,52 @@ import * as personEvents from '../db/person-events-db.js';
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
 const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
+
+/**
+ * Tool sets to auto-include when Addie is in a system-configured channel.
+ * Keyed by the channel's system role from system_settings.
+ */
+type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
+
+const SYSTEM_CHANNEL_TOOL_SETS: Record<SystemChannelRole, string[]> = {
+  prospect: ['admin', 'outreach'],
+  escalation: ['admin'],
+  billing: ['admin', 'billing'],
+  error: ['admin'],
+  admin: ['admin'],
+};
+
+let systemChannelMap: Map<string, SystemChannelRole> | null = null;
+let systemChannelMapExpiresAt = 0;
+let systemChannelRefreshPromise: Promise<void> | null = null;
+const SYSTEM_CHANNEL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getSystemChannelRole(channelId: string): Promise<SystemChannelRole | null> {
+  if (!systemChannelMap || Date.now() > systemChannelMapExpiresAt) {
+    if (!systemChannelRefreshPromise) {
+      systemChannelRefreshPromise = (async () => {
+        const map = new Map<string, SystemChannelRole>();
+        const [prospect, escalation, billing, error, admin] = await Promise.all([
+          getProspectChannel(),
+          getEscalationChannel(),
+          getBillingChannel(),
+          getErrorChannel(),
+          getAdminChannel(),
+        ]);
+        if (prospect.channel_id) map.set(prospect.channel_id, 'prospect');
+        if (escalation.channel_id) map.set(escalation.channel_id, 'escalation');
+        if (billing.channel_id) map.set(billing.channel_id, 'billing');
+        if (error.channel_id) map.set(error.channel_id, 'error');
+        if (admin.channel_id) map.set(admin.channel_id, 'admin');
+        systemChannelMap = map;
+        systemChannelMapExpiresAt = Date.now() + SYSTEM_CHANNEL_CACHE_TTL_MS;
+        systemChannelRefreshPromise = null;
+      })();
+    }
+    await systemChannelRefreshPromise;
+  }
+  return systemChannelMap!.get(channelId) ?? null;
+}
 
 /**
  * Shared database instance for working group lookups
@@ -401,6 +458,17 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
     }
   } catch (error) {
     logger.debug({ error, channelId }, 'Could not look up working group for channel');
+  }
+
+  // Check if this channel is a system-configured channel (prospect, escalation, etc.)
+  try {
+    const systemRole = await getSystemChannelRole(channelId);
+    if (systemRole) {
+      context.viewing_channel_system_role = systemRole;
+      logger.debug({ channelId, systemRole }, 'Channel is a system channel');
+    }
+  } catch (error) {
+    logger.debug({ error, channelId }, 'Could not check system channel role');
   }
 
   return context;
@@ -808,6 +876,14 @@ async function createUserScopedTools(
   }
   logger.debug('Addie Bolt: Escalation tools enabled');
 
+  // Add newsletter suggestion tools for all users
+  const newsletterHandlers = createNewsletterToolHandlers(memberContext, slackUserId);
+  allTools.push(...NEWSLETTER_TOOLS);
+  for (const [name, handler] of newsletterHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Newsletter suggestion tools enabled');
+
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
   const adcpHandlers = createAdcpToolHandlers(memberContext);
   allTools.push(...ADCP_TOOLS);
@@ -1017,6 +1093,14 @@ async function selectRoutedToolsForSlackResponse(
     if (userIsAdmin && (source === 'dm' || threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG)) {
       fallbackSets.push('admin');
     }
+    const fallbackSystemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
+    if (userIsAdmin && fallbackSystemRole) {
+      for (const set of SYSTEM_CHANNEL_TOOL_SETS[fallbackSystemRole] ?? []) {
+        if (!fallbackSets.includes(set)) {
+          fallbackSets.push(set);
+        }
+      }
+    }
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
       fallbackSets,
@@ -1064,6 +1148,16 @@ async function selectRoutedToolsForSlackResponse(
   const isAdminChannel = userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG;
   if ((isAdminDm || isAdminChannel) && !options?.hasCertificationContext && !selectedSets.includes('admin')) {
     selectedSets.push('admin');
+  }
+
+  // System-configured channels: auto-include relevant tool sets for admins
+  const systemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
+  if (userIsAdmin && systemRole && !options?.hasCertificationContext) {
+    for (const set of SYSTEM_CHANNEL_TOOL_SETS[systemRole] ?? []) {
+      if (!selectedSets.includes(set)) {
+        selectedSets.push(set);
+      }
+    }
   }
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -3618,6 +3712,16 @@ async function handleChannelMessage({
     if (userIsAdmin && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG && !proposedSets.includes('admin')) {
       proposedSets.push('admin');
     }
+    // System channels are operational channels — certification sessions don't happen here,
+    // so no hasCertificationContext guard needed (unlike selectRoutedToolsForSlackResponse).
+    const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
+    if (userIsAdmin && channelSystemRole) {
+      for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
+        if (!proposedSets.includes(set)) {
+          proposedSets.push(set);
+        }
+      }
+    }
     const { filteredTools, unavailableHint } = filterToolsBySet(userTools, proposedSets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
 
     // Build SI context from retrieved agents
@@ -4025,6 +4129,10 @@ async function handleDigestEditReply(
 
   let result;
   try {
+    if (isLegacyContent(digest.content)) {
+      logger.warn({ digestId: digest.id }, 'Cannot edit legacy-format digest');
+      return true;
+    }
     result = await applyDigestEdit(digest.content, messageText, editorName);
   } catch (err) {
     logger.error({ error: err, digestId: digest.id }, 'Failed to apply digest edit');

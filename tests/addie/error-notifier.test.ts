@@ -1,14 +1,15 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 
-// Mock system-settings-db before importing
-const mockGetErrorChannel = jest.fn<any>();
-jest.mock('../../server/src/db/system-settings-db.js', () => ({
+const { mockGetErrorChannel, mockSendChannelMessage } = vi.hoisted(() => ({
+  mockGetErrorChannel: vi.fn<any>(),
+  mockSendChannelMessage: vi.fn<any>(),
+}));
+
+vi.mock('../../server/src/db/system-settings-db.js', () => ({
   getErrorChannel: mockGetErrorChannel,
 }));
 
-// Mock slack client
-const mockSendChannelMessage = jest.fn<any>();
-jest.mock('../../server/src/slack/client.js', () => ({
+vi.mock('../../server/src/slack/client.js', () => ({
   sendChannelMessage: mockSendChannelMessage,
 }));
 
@@ -20,7 +21,7 @@ import { notifyToolError, notifySystemError } from '../../server/src/addie/error
 // channel and test the positive paths.
 describe('error-notifier', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
     mockSendChannelMessage.mockResolvedValue({ ok: true });
   });
