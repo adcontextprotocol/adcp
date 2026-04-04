@@ -216,7 +216,7 @@ async function testRedirect(page) {
   await login(page, 'personal');
 
   // Visit old profile edit URL
-  const resp = await page.goto(`${TARGET_URL}/community/profile/edit`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${TARGET_URL}/community/profile/edit`, { waitUntil: 'domcontentloaded' });
   const finalUrl = page.url();
   assert(finalUrl.includes('/account'), `Redirected to /account (got: ${finalUrl})`);
 
