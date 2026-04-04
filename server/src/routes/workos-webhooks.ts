@@ -839,6 +839,10 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_domain.deleted':
           case 'organization_domain.verification_failed': {
             const domainData = event.data as unknown as OrganizationDomainEventData;
+            if (!domainData.domain) {
+              logger.warn({ event: event.event, data: domainData }, 'Skipping domain event: missing domain field');
+              break;
+            }
             await deleteSingleOrganizationDomain(domainData);
             break;
           }
