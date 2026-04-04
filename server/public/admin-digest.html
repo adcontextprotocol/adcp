@@ -116,12 +116,25 @@
 
       <!-- EDIT TAB -->
       <div id="panelEdit">
+        <!-- How this works (collapsible) -->
+        <div id="helpBanner" style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.6;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>How this works</strong>
+            <button onclick="document.getElementById('helpBanner').style.display='none';localStorage.setItem('hideDigestHelp','1')" style="background:none;border:none;color:#1e40af;cursor:pointer;font-size:16px;">&times;</button>
+          </div>
+          <div style="margin-top:8px;">
+            Addie generates a draft from community activity, suggestions, and industry feeds. <strong>Click any text</strong> to edit inline (Enter to save, Escape to cancel). Use the <strong>instruction bar</strong> at the bottom to ask Addie for broader changes. Preview by persona/segment before sending a test email. When ready, <strong>Approve & Queue</strong> to schedule the send.
+          </div>
+        </div>
+        <script>if(localStorage.getItem('hideDigestHelp')==='1')document.getElementById('helpBanner').style.display='none';</script>
+
         <div id="lockedBanner"></div>
         <div id="subjectLine" class="subject-line"></div>
 
         <!-- Opening Take -->
         <div class="section" id="sectionOpening">
           <h2>Opening Take</h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">The lead-in that sets the theme for this edition</p>
           <div class="editable" id="editOpening" contenteditable="false" onclick="startEdit(this, 'openingTake')"></div>
         </div>
 
@@ -134,6 +147,7 @@
         <!-- Worth Your Time -->
         <div class="section">
           <h2>Worth Your Time <span class="count" id="articleCount"></span></h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Curated articles, videos, and community suggestions</p>
           <div id="articlesList"></div>
         </div>
 
@@ -141,12 +155,14 @@
           <!-- What Shipped -->
           <div class="section">
             <h2>What Shipped <span class="count" id="shippedCount"></span></h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Protocol and platform releases</p>
             <div id="shippedList"></div>
           </div>
 
           <!-- Shareable Take -->
           <div class="section">
             <h2>Shareable Take</h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">A standalone quote designed for social sharing</p>
             <div class="editable" id="editShareable" contenteditable="false" onclick="startEdit(this, 'shareableTake')"></div>
           </div>
         </div>
@@ -155,6 +171,7 @@
           <!-- From the Inside -->
           <div class="section">
             <h2>From the Inside <span class="count" id="insiderCount"></span></h2>
+            <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Working group updates and community activity</p>
             <div id="insiderList"></div>
           </div>
 
@@ -173,8 +190,11 @@
 
         <!-- Instruction bar -->
         <div class="instruction-bar">
-          <input type="text" id="instructionInput" placeholder="Tell Addie what to change... e.g. 'remove the Google article' or 'make the opening take shorter'" onkeydown="if(event.key==='Enter')applyInstruction()">
+          <input type="text" id="instructionInput" placeholder="Tell Addie what to change..." onkeydown="if(event.key==='Enter')applyInstruction()">
           <button class="btn btn-primary" onclick="applyInstruction()" id="instructionBtn">Apply</button>
+        </div>
+        <div style="padding:4px 16px 8px;font-size:11px;color:#888;background:#f8fafc;">
+          Try: "remove the first article" &middot; "make the opening shorter" &middot; "rewrite the shareable take about measurement" &middot; "add a note about next week's Town Hall" &middot; "set the subject to..."
         </div>
       </div>
 
