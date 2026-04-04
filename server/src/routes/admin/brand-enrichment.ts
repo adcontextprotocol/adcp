@@ -423,7 +423,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
 
         params.push(domain);
         const result = await query(
-          `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING *`,
+          `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, canonical_domain, house_domain, keller_type, brand_name, source_type`,
           params
         );
 

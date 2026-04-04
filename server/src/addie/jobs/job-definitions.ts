@@ -484,7 +484,8 @@ export function registerAllJobs(): void {
           const wasFetched = result.actions.some(a => a.action === 'fetched');
           if (wasFetched) researched++;
           else if (wasStubbed) stubbed++;
-        } catch {
+        } catch (err) {
+          logger.warn({ err, domain: org.email_domain }, 'Brand registry sweep: research failed');
           failed++;
         }
         // Rate limit between calls
