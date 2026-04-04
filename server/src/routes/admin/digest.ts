@@ -355,11 +355,13 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       if (!Array.isArray(indices) || indices.length !== content.whatToWatch.length) {
         return res.status(400).json({ error: `Expected ${content.whatToWatch.length} indices` });
       }
-
-      const reordered = indices.map((i: number) => content.whatToWatch[i]).filter(Boolean);
-      if (reordered.length !== content.whatToWatch.length) {
-        return res.status(400).json({ error: 'Invalid indices' });
+      // Validate indices are a valid permutation (no duplicates, all in range)
+      const unique = new Set(indices);
+      if (unique.size !== indices.length || indices.some((i: number) => !Number.isInteger(i) || i < 0 || i >= content.whatToWatch.length)) {
+        return res.status(400).json({ error: 'Indices must be a permutation of 0..' + (content.whatToWatch.length - 1) });
       }
+
+      const reordered = indices.map((i: number) => content.whatToWatch[i]);
 
       content.whatToWatch = reordered;
       const updated = await updateDigestContent(id, content);

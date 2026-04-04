@@ -162,6 +162,8 @@ export function createDigestRouter(): Router {
    * GET /digest/archive - Public archive of all sent editions of The Prompt
    */
   router.get('/archive', async (_req: Request, res: Response) => {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     try {
       const digests = await getRecentDigests(50);
       const editions = digests
@@ -174,7 +176,7 @@ export function createDigestRouter(): Router {
 
       const editionHtml = editions.map((e) => `
         <li style="margin-bottom: 12px;">
-          <a href="/digest/${e.date}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${e.subject}</a>
+          <a href="/digest/${esc(e.date)}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${esc(e.subject)}</a>
           <span style="color: #888; font-size: 13px; margin-left: 8px;">${new Date(e.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span>
         </li>
       `).join('');
