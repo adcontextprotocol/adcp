@@ -2161,7 +2161,7 @@
     async function executeMerge(primaryId, secondaryId, hasStripeConflict) {
       document.querySelectorAll('#mergeModal button, #confirmMergeBtn').forEach(btn => {
         btn.disabled = true;
-      }
+      });
 
       let stripeCustomerResolution = null;
       if (hasStripeConflict) {
