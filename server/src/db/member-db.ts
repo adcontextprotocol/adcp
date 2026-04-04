@@ -37,8 +37,8 @@ export class MemberDatabase {
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
         offerings, agents, publishers, data_providers, headquarters, markets, metadata, tags,
-        is_public, show_in_carousel, is_founding_member
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW() < '2026-04-01'::timestamptz)
+        is_public, show_in_carousel
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -133,6 +133,7 @@ export class MemberDatabase {
       tags: 'tags',
       is_public: 'is_public',
       show_in_carousel: 'show_in_carousel',
+      is_founding_member: 'is_founding_member',
     };
 
     const setClauses: string[] = [];

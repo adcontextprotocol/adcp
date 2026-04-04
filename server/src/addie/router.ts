@@ -389,6 +389,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Billing, invoices, payment links, resending invoices → ["billing"]
 - Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
 - Listing all members with payment/product/invoice status → ["admin"]
+- Task management, marking tasks done, checking tasks, reminders, logging conversations → ["admin"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
 - Adding/removing committee or working group leaders (admin action) → ["admin"]
@@ -655,6 +656,20 @@ export class AddieRouter {
           tool_sets: ['admin'],
           confidence: 'high',
           reason: 'Admin engagement/analytics query',
+          decision_method: 'quick_match',
+          latency_ms: Date.now() - startTime,
+        };
+      }
+
+      // Admin task management - "my tasks", "what's on my plate", "that X task is done", "mark X complete"
+      const adminTaskPattern =
+        /\bmy\s+tasks\b|what'?s\s+on\s+my\s+plate|(?:that|this)\s+(?:\S+\s+){0,3}(?:task|reminder|follow.?up)\s+(?:is\s+)?done\b|mark\s+\S.{0,40}?(?:complete|done)|(?:complete|done\s+with)\s+(?:the\s+)?(?:task|reminder)|set\s+(?:a\s+)?reminder/i;
+      if (adminTaskPattern.test(text)) {
+        return {
+          action: 'respond',
+          tool_sets: ['admin'],
+          confidence: 'high',
+          reason: 'Admin task management',
           decision_method: 'quick_match',
           latency_ms: Date.now() - startTime,
         };

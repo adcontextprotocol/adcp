@@ -1550,7 +1550,7 @@
         const section = document.getElementById('typography-section');
         const display = document.getElementById('font-display');
 
-        if (!fonts || (!fonts.primary && !fonts.secondary)) {
+        if (!fonts || Object.keys(fonts).length === 0) {
           section.classList.add('hidden');
           return;
         }
@@ -1558,28 +1558,41 @@
         section.classList.remove('hidden');
         let html = '';
 
-        if (fonts.primary) {
+        for (const [role, value] of Object.entries(fonts)) {
+          if (!value) continue;
+          const isStructured = typeof value === 'object' && value.family;
+          const familyName = isStructured ? value.family : String(value);
+          const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
           html += `
             <div class="font-item">
-              <div class="font-label">Primary font</div>
-              <div class="font-value" style="font-family: ${safeFontFamily(fonts.primary)};">${escapeHtml(fonts.primary)}</div>
+              <div class="font-label">${escapeHtml(roleLabel)} font</div>
+              <div class="font-value" style="font-family: ${safeFontFamily(familyName)};">${escapeHtml(familyName)}</div>
             </div>`;
-        }
-
-        if (fonts.secondary) {
-          html += `
-            <div class="font-item">
-              <div class="font-label">Secondary font</div>
-              <div class="font-value" style="font-family: ${safeFontFamily(fonts.secondary)};">${escapeHtml(fonts.secondary)}</div>
-            </div>`;
-        }
-
-        if (fonts.font_urls?.length) {
-          html += `
-            <div class="font-item">
-              <div class="font-label">Font files</div>
-              ${fonts.font_urls.map(url => `<div class="info-value">${isSafeUrl(url) ? `<a href="${escapeAttr(url)}" target="_blank">${escapeHtml(url)}</a>` : escapeHtml(url)}</div>`).join('')}
-            </div>`;
+          if (isStructured && value.files?.length) {
+            html += `
+              <div class="font-item">
+                <div class="font-label">${escapeHtml(roleLabel)} font files</div>
+                ${value.files.filter(f => f.url).map(f => {
+                  const weightLabel = f.weight_range ? `${f.weight_range[0]}-${f.weight_range[1]} (variable)` : (f.weight || '');
+                  const label = `${weightLabel}${f.style && f.style !== 'normal' ? ' ' + f.style : ''}`.trim();
+                  return `<div class="info-value">${label ? escapeHtml(label) + ': ' : ''}${isSafeUrl(f.url) ? `<a href="${escapeAttr(f.url)}" target="_blank">${escapeHtml(f.url)}</a>` : escapeHtml(f.url)}</div>`;
+                }).join('')}
+              </div>`;
+          }
+          if (isStructured && value.opentype_features?.length) {
+            html += `
+              <div class="font-item">
+                <div class="font-label">${escapeHtml(roleLabel)} OpenType features</div>
+                <div class="info-value">${value.opentype_features.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')}</div>
+              </div>`;
+          }
+          if (isStructured && value.fallbacks?.length) {
+            html += `
+              <div class="font-item">
+                <div class="font-label">${escapeHtml(roleLabel)} fallbacks</div>
+                <div class="info-value">${value.fallbacks.map(f => escapeHtml(f)).join(' → ')}</div>
+              </div>`;
+          }
         }
 
         display.innerHTML = html;

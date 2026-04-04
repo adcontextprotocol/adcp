@@ -308,15 +308,8 @@ export async function assembleOrgHealth(orgId: string): Promise<OrgHealth> {
       return [];
     }),
 
-    // Agent count
-    query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM agents
-       WHERE workos_organization_id = $1 AND status = 'active'`,
-      [orgId]
-    ).then(r => parseInt(r.rows[0]?.count || '0', 10)).catch(err => {
-      logger.error({ err, orgId }, 'Failed to fetch agent count');
-      return 0;
-    }),
+    // Agent count — no org-scoped agents table yet; always 0 until one exists
+    Promise.resolve(0),
 
     // Leadership roles across all org members
     query<{ count: string }>(

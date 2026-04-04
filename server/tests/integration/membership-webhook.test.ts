@@ -118,7 +118,7 @@ describe('Membership webhook DB operations', () => {
       expect(result.assigned_role).toBe('admin');
     });
 
-    it('updates email and name on conflict', async () => {
+    it('updates email on conflict but preserves existing names', async () => {
       await upsertOrganizationMembership({
         user_id: TEST_USER_1,
         organization_id: TEST_ORG_ID,
@@ -148,10 +148,45 @@ describe('Membership webhook DB operations', () => {
         [TEST_USER_1, TEST_ORG_ID],
       );
       expect(row.rows[0].email).toBe('new@test.com');
-      expect(row.rows[0].first_name).toBe('New');
+      // Existing non-empty name is preserved (user may have set it via profile)
+      expect(row.rows[0].first_name).toBe('Old');
       expect(row.rows[0].workos_membership_id).toBe('om_test_1_v2');
       // seat_type should NOT change when has_explicit_seat_type is false
       expect(row.rows[0].seat_type).toBe('community_only');
+    });
+
+    it('fills in names on conflict when existing names are empty', async () => {
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_test_1',
+        email: 'empty@test.com',
+        first_name: null,
+        last_name: null,
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+      });
+
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_test_1_v2',
+        email: 'empty@test.com',
+        first_name: 'Filled',
+        last_name: 'In',
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+      });
+
+      const row = await pool.query(
+        'SELECT first_name, last_name FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      // Empty names should be filled in from the incoming values
+      expect(row.rows[0].first_name).toBe('Filled');
+      expect(row.rows[0].last_name).toBe('In');
     });
 
     it('updates seat_type on conflict when has_explicit_seat_type is true', async () => {

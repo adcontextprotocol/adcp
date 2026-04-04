@@ -5,7 +5,7 @@
  * that prevents context limit errors when calling the Anthropic API.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import {
   estimateTokens,
   estimateToolTokens,

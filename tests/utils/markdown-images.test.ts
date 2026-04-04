@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { extractMarkdownImages } from '../../server/src/addie/security.js';
 
 describe('extractMarkdownImages', () => {

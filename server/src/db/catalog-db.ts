@@ -155,9 +155,9 @@ export class CatalogDatabase {
       )]
     );
 
-    // For unknown identifiers in resolve mode, batch-fetch classifications
+    // For unknown identifiers, batch-fetch classifications from catalog_facts
     const unknownNorms = normalized.filter(n => !existing.has(`${n.type}:${n.value}`));
-    const classifications = mode === 'resolve' && unknownNorms.length > 0
+    const classifications = unknownNorms.length > 0
       ? await this.batchGetClassifications(unknownNorms.map(n => `${n.type}:${n.value}`))
       : new Map<string, string>();
 
@@ -215,14 +215,19 @@ export class CatalogDatabase {
           created++;
         }
       } else {
+        const classification = classifications.get(`${norm.type}:${norm.value}`) ?? null;
         results.push({
           identifier: { type: norm.type, value: norm.value },
           property_rid: null,
-          classification: 'unknown',
+          classification: classification ?? 'unknown',
           status: 'excluded',
-          source: null,
+          source: classification ? 'data_partner' : null,
         });
-        notFound++;
+        if (classification === 'ad_infra' || classification === 'publisher_mask') {
+          excluded++;
+        } else {
+          notFound++;
+        }
       }
     }
 
@@ -685,7 +690,7 @@ export class CatalogDatabase {
   // Internal helpers
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async batchLookupIdentifiers(
+  async batchLookupIdentifiers(
     identifiers: Array<{ type: string; value: string }>
   ): Promise<Map<string, { property_rid: string; classification: string; source: string } | null>> {
     if (identifiers.length === 0) return new Map();
@@ -740,7 +745,7 @@ export class CatalogDatabase {
    * Batch classification lookup — single query for all identifiers.
    * Returns the highest-confidence classification for each identifier value.
    */
-  private async batchGetClassifications(
+  async batchGetClassifications(
     identifierValues: string[]
   ): Promise<Map<string, string>> {
     if (identifierValues.length === 0) return new Map();
