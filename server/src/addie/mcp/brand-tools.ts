@@ -12,12 +12,16 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
 import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.js';
+import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
+import { safeFetch } from '../../utils/url-security.js';
+import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions } from '../../services/brand-logo-service.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('brand-tools');
 const brandManager = new BrandManager();
 const brandDb = new BrandDatabase();
+const brandLogoDb = new BrandLogoDatabase();
 
 /**
  * Brand tool definitions for Addie
@@ -121,6 +125,34 @@ export const BRAND_TOOLS: AddieTool[] = [
           description: 'Maximum results (default: 20)',
         },
       },
+    },
+  },
+  {
+    name: 'upload_brand_logo',
+    description: 'Upload a logo file for a brand in the registry. The logo will be pending review.',
+    usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and wants to upload it for a brand.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain (e.g., "chime.com")',
+        },
+        logo_url: {
+          type: 'string',
+          description: 'HTTPS URL to fetch the logo from (press kit, brand portal, etc.)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'At least one tag: icon, wordmark, full-lockup, symbol, primary, secondary, square, horizontal, vertical, stacked, light-bg, dark-bg, transparent-bg, favicon, social',
+        },
+        note: {
+          type: 'string',
+          description: 'Source attribution (e.g., "From Chime press kit")',
+        },
+      },
+      required: ['domain', 'logo_url', 'tags'],
     },
   },
 ];
@@ -466,6 +498,138 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }));
 
     return JSON.stringify({ missing_brands: result, count: result.length }, null, 2);
+  });
+
+  handlers.set('upload_brand_logo', async (args) => {
+    const rawDomain = args.domain as string;
+    const logoUrl = args.logo_url as string;
+    const tags = args.tags as string[];
+    const note = typeof args.note === 'string' ? args.note.slice(0, 500) : undefined;
+
+    if (!rawDomain) return JSON.stringify({ error: 'domain is required' });
+    if (!logoUrl) return JSON.stringify({ error: 'logo_url is required' });
+    if (!Array.isArray(tags) || tags.length === 0) {
+      return JSON.stringify({ error: 'At least one tag is required' });
+    }
+
+    const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+    // Validate tags
+    const tagValidation = validateLogoTags(tags);
+    if (!tagValidation.valid) {
+      return JSON.stringify({ error: `Invalid tags: ${tagValidation.invalid.join(', ')}` });
+    }
+
+    // HTTPS only
+    try {
+      const parsed = new URL(logoUrl);
+      if (parsed.protocol !== 'https:') {
+        return JSON.stringify({ error: 'Only HTTPS URLs are accepted' });
+      }
+    } catch {
+      return JSON.stringify({ error: 'Invalid URL' });
+    }
+
+    // Fetch the logo via safeFetch with timeout
+    const MAX_BYTES = 5 * 1024 * 1024;
+    const FETCH_TIMEOUT_MS = 10000;
+    let buffer: Buffer;
+    try {
+      const fetchPromise = safeFetch(logoUrl, { maxRedirects: 3 });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Logo fetch timed out')), FETCH_TIMEOUT_MS),
+      );
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+      if (!response.ok) {
+        return JSON.stringify({ error: `Failed to fetch logo: HTTP ${response.status}` });
+      }
+
+      // Stream with size limit
+      const reader = response.body?.getReader();
+      if (!reader) {
+        return JSON.stringify({ error: 'Failed to read response body' });
+      }
+
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.length;
+        if (totalBytes > MAX_BYTES) {
+          reader.cancel();
+          return JSON.stringify({ error: 'Logo exceeds 5 MB size limit' });
+        }
+        chunks.push(value);
+      }
+      buffer = Buffer.concat(chunks);
+    } catch (err) {
+      logger.warn({ err, domain, logoUrl }, 'Failed to fetch logo URL');
+      return JSON.stringify({ error: 'Failed to fetch logo from URL' });
+    }
+
+    // Detect content type from magic bytes
+    const contentType = await detectContentType(buffer);
+    if (!contentType) {
+      return JSON.stringify({ error: 'Unsupported file type. Accepted: PNG, JPEG, SVG, WebP, GIF' });
+    }
+
+    // SVG sanitization
+    if (contentType === 'image/svg+xml') {
+      buffer = sanitizeSvg(buffer);
+    }
+
+    const sha256 = computeSha256(buffer);
+    const { width, height } = await extractDimensions(buffer, contentType);
+
+    // Check logo count cap
+    const count = await brandLogoDb.countBrandLogos(domain);
+    if (count >= 10) {
+      return JSON.stringify({ error: 'Maximum 10 logos per brand' });
+    }
+
+    const logo = await brandLogoDb.insertBrandLogo({
+      domain,
+      content_type: contentType,
+      data: buffer,
+      sha256,
+      tags,
+      width,
+      height,
+      source: 'community',
+      review_status: 'pending',
+      uploaded_by_user_id: 'system:addie',
+      upload_note: note,
+    });
+
+    if (!logo) {
+      return JSON.stringify({ error: 'Duplicate logo already exists for this brand' });
+    }
+
+    // Create brand if it doesn't exist
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+    if (!existing) {
+      try {
+        await brandDb.createDiscoveredBrand(
+          { domain, source_type: 'community' },
+          { user_id: 'system:addie', email: 'addie@agenticadvertising.org', name: 'Addie' },
+        );
+      } catch {
+        // May already exist
+      }
+    }
+
+    // Exclude upload_note and original_filename from response (prompt injection vector)
+    return JSON.stringify({
+      success: true,
+      domain,
+      logo_id: logo.id,
+      review_status: 'pending',
+      url: `/logos/brands/${domain}/${logo.id}`,
+      content_type: contentType,
+      tags,
+    }, null, 2);
   });
 
   return handlers;

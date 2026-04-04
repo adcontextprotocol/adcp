@@ -70,8 +70,10 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
+    "file-type": "^22.0.0",
     "free-email-domains": "^1.2.25",
     "googleapis": "^171.4.0",
+    "isomorphic-dompurify": "^3.7.1",
     "jose": "^6.2.2",
     "jsonwebtoken": "^9.0.3",
     "linkedom": "^0.18.12",
@@ -96,6 +98,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "@types/cookie-parser": "^1.4.10",
+    "@types/dompurify": "^3.0.5",
     "@types/escape-html": "^1.0.4",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
