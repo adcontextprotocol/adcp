@@ -109,6 +109,7 @@
     "concurrently": "^9.2.1",
     "glob": "^13.0.6",
     "husky": "^9.1.7",
+    "jsdom": "^29.0.1",
     "mintlify": "^4.2.459",
     "msw": "^2.12.14",
     "puppeteer": "^24.40.0",
@@ -118,7 +119,7 @@
     "vitest": "^4.1.2"
   },
   "engines": {
-    "node": ">=20.0"
+    "node": ">=22.0"
   },
   "overrides": {
     "webpack-dev-server": "^5.2.2",
