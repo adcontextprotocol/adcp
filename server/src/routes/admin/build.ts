@@ -11,6 +11,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import {
   getCurrentBuildEdition,
   getRecentBuildEditions,
+  getBuildByDate,
   createBuildEdition,
   updateBuildContent,
   approveBuildEdition,
@@ -97,13 +98,12 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
       if (!field || !EDITABLE.includes(field)) {
         return res.status(400).json({ error: `Field not editable. Allowed: ${EDITABLE.join(', ')}` });
       }
-      const coerced = value != null ? String(value) : undefined;
-      if (coerced && coerced.length > 10000) {
+      if (typeof value === 'string' && value.length > 10000) {
         return res.status(400).json({ error: 'Value too long (max 10000 characters)' });
       }
 
       const content = { ...edition.content } as BuildContent;
-      (content as unknown as Record<string, unknown>)[field] = coerced;
+      (content as unknown as Record<string, unknown>)[field] = value;
 
       const updated = await updateBuildContent(id, content);
       if (!updated) return res.status(500).json({ error: 'Failed to update edition' });
@@ -143,7 +143,8 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
 
       const { email } = req.body;
-      if (!email || typeof email !== 'string' || !email.includes('@') || email.length > 254 || email.indexOf('@') < 1 || email.indexOf('@') === email.length - 1) {
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !EMAIL_RE.test(email)) {
         return res.status(400).json({ error: 'Valid email address required' });
       }
 
