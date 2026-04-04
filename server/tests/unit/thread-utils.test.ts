@@ -239,25 +239,25 @@ describe('buildThreadSummaryForRouter', () => {
   });
 
   it('truncates long messages', () => {
-    const longText = 'A'.repeat(200);
+    const longText = 'A'.repeat(800);
     const messages = [
       { user: BRIAN, text: longText, ts: '1' },
     ];
     const summary = buildThreadSummaryForRouter(messages, BOT_ID, '999');
-    expect(summary[0].length).toBeLessThan(140); // "User: " + 120 + "..."
+    expect(summary[0].length).toBeLessThan(620); // "User: " + 600 + "..."
     expect(summary[0]).toContain('...');
   });
 
-  it('limits to 5 most recent messages', () => {
+  it('limits to 8 most recent messages', () => {
     const messages = Array.from({ length: 12 }, (_, i) => ({
       user: i % 2 === 0 ? BOT_ID : BRIAN,
       text: `Message ${i}`,
       ts: String(i),
     }));
     const summary = buildThreadSummaryForRouter(messages, BOT_ID, '999');
-    expect(summary).toHaveLength(5);
-    // Should be the last 5
-    expect(summary[0]).toContain('Message 7');
+    expect(summary).toHaveLength(8);
+    // Should be the last 8
+    expect(summary[0]).toContain('Message 4');
   });
 
   it('skips empty messages', () => {

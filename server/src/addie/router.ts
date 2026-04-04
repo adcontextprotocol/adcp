@@ -8,7 +8,6 @@
  * Execution plans:
  * - ignore: Do nothing (not relevant to Addie)
  * - react: Add an emoji reaction (greetings, welcomes)
- * - clarify: Ask a clarifying question before proceeding
  * - respond: Generate a full response with specific tools
  *
  * Routing rules are code-managed (not user-editable) because:
@@ -56,7 +55,6 @@ export type ConfidenceTier = 'high' | 'suggest' | 'low';
 export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
-  | { action: 'clarify'; question: string; reason: string }
   | { action: 'respond'; tool_sets: string[]; reason: string; confidence: ConfidenceTier }
 );
 
@@ -335,8 +333,13 @@ The user is NOT an admin.
     ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply an even higher threshold — community introductions, event mentions, and social updates should be reacted to with an emoji.`
     : '';
 
-  // If message explicitly names Addie, treat as direct request even in channels
-  const explicitlyNamedAddie = /\baddie\b/i.test(ctx.message);
+  // Detect whether "addie" in the message is a direct address (talking TO Addie)
+  // vs a third-person reference (talking ABOUT Addie, e.g. "addie could redirect").
+  // Third-person patterns: "addie could redirect" but NOT "addie could you help"
+  const mentionsAddie = /\baddie\b/i.test(ctx.message);
+  const thirdPersonAddie = /\baddie\s+(could|would|should|is|was|will|can|has|does|might)\s+(?!you\b)/i.test(ctx.message)
+    || /\b(let|have|make|get)\s+addie\b/i.test(ctx.message);
+  const explicitlyNamedAddie = mentionsAddie && !thirdPersonAddie;
   const channelNameOverride = explicitlyNamedAddie && ctx.source === 'channel'
     ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy.\n`
     : '';
@@ -397,7 +400,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []
 
-**directory clarify rule**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, use the clarify action to ask what they're looking for rather than searching the directory.
+**directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
 
 ## Messages to React To (emoji only, no response)
 ${reactList}
@@ -417,7 +420,7 @@ Recent messages in this thread (oldest first):
 ${ctx.threadMessages.join('\n')}
 
 ` : ''}## Message
-"${ctx.message.substring(0, 500)}"
+"${ctx.message}"
 
 ## Instructions
 Respond with a JSON object for the execution plan. Choose ONE action:
@@ -430,11 +433,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? `
 2. {"action": "react", "emoji": "emoji_name", "reason": "brief reason"}
    - For greetings, welcomes, thanks (use emoji name like "wave", "tada", "heart")
 
-3. {"action": "clarify", "question": "your clarifying question", "reason": "why clarification needed"}
-   - When you need more information to help effectively
-   - Use sparingly - only when truly ambiguous
-
-4. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
+3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
    - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
@@ -453,7 +452,6 @@ Respond with ONLY the JSON object, no other text.`;
 type ParsedPlan =
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
-  | { action: 'clarify'; question: string; reason: string }
   | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean; confidence: ConfidenceTier };
 
 /**
@@ -481,9 +479,12 @@ export function parseRouterResponse(response: string): ParsedPlan {
       };
     }
     if (parsed.action === 'clarify') {
+      // Clarify is no longer a router action — route to the main handler
+      // which can ask for clarification with full context and tools
       return {
-        action: 'clarify',
-        question: parsed.question || 'Could you tell me more about what you need help with?',
+        action: 'respond',
+        tool_sets: ['knowledge'],
+        confidence: 'suggest' as ConfidenceTier,
         reason: parsed.reason || 'Needs clarification',
       };
     }

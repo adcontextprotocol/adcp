@@ -3581,35 +3581,6 @@ async function handleChannelMessage({
       return;
     }
 
-    if (plan.action === 'clarify') {
-      const questionValidation = validateOutput(plan.question);
-      if (questionValidation.flagged) {
-        logger.warn({ channelId, reason: questionValidation.reason }, 'Addie Bolt: Clarifying question flagged');
-        return;
-      }
-
-      // Log clarifying question to unified thread
-      await threadService.addMessage({
-        thread_id: thread.thread_id,
-        role: 'assistant',
-        content: questionValidation.sanitized,
-        router_decision: buildRouterDecision(plan),
-      });
-
-      // Post clarifying question directly to the channel thread
-      try {
-        await boltApp?.client.chat.postMessage({
-          channel: channelId,
-          text: wrapUrlsForSlack(questionValidation.sanitized),
-          thread_ts: threadTs,
-        });
-        logger.info({ channelId, userId }, 'Addie Bolt: Posted clarifying question to channel');
-      } catch (error) {
-        logger.error({ error, channelId }, 'Addie Bolt: Failed to post clarifying question');
-      }
-      return;
-    }
-
     // action === 'respond'
     // Suppress low-confidence channel responses — let humans answer, but flag for review
     if (plan.confidence === 'low') {
