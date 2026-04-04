@@ -8,6 +8,7 @@
 import { getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
+import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
 import { researchDomain } from './brand-enrichment.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
@@ -87,6 +88,33 @@ export async function createProspect(
 
   // Normalize domain to lowercase
   const normalizedDomain = input.domain?.trim().toLowerCase() || null;
+
+  // Check if domain resolves to an existing organization (exact, alias, sub-brand, or redirect)
+  if (normalizedDomain) {
+    const resolved = await resolveOrgByDomain(normalizedDomain);
+    if (resolved) {
+      const isAlias = resolved.matchedDomain !== normalizedDomain;
+      logger.info({ domain: normalizedDomain, matchedDomain: resolved.matchedDomain, method: resolved.method, orgId: resolved.orgId },
+        isAlias ? 'Domain resolves to existing org via alias' : 'Domain already tracked');
+
+      // Fetch actual org details so callers have useful info
+      const orgRow = await pool.query<{ name: string; prospect_status: string | null }>(
+        `SELECT name, prospect_status FROM organizations WHERE workos_organization_id = $1`,
+        [resolved.orgId]
+      );
+      const orgName = orgRow.rows[0]?.name ?? resolved.matchedDomain;
+      return {
+        success: false,
+        error: isAlias ? `Domain resolves to ${orgName} via ${resolved.method}` : `Domain already tracked (${orgName})`,
+        alreadyExists: true,
+        organization: {
+          workos_organization_id: resolved.orgId,
+          name: orgRow.rows[0]?.name ?? resolved.matchedDomain,
+          prospect_status: orgRow.rows[0]?.prospect_status ?? '',
+        },
+      };
+    }
+  }
 
   // Check for existing organization with same name
   const existing = await pool.query(

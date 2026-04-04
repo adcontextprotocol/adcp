@@ -833,6 +833,81 @@ The working groups are where the more interesting conversations happen here.`;
       'The working groups are where the more interesting conversations happen here.'
     );
   });
+
+  it('strips reasoning with name/stage metadata and delimiter', () => {
+    const raw = `With 1 unreplied message and no conversation history, I should keep this light — lead with value, no ask. Terry is at Yahoo, participating stage, in a working group. I'll keep it brief and reference the community/working group angle without being pushy.
+
+---
+
+Been a good few weeks in the working groups — some genuinely useful threads on measurement lately. Worth a look if you haven't peeked in a bit.`;
+
+    const result = extractUserFacingMessage(raw, 'slack');
+    expect(result).toBe(
+      "Been a good few weeks in the working groups — some genuinely useful threads on measurement lately. Worth a look if you haven't peeked in a bit."
+    );
+  });
+
+  it('strips reasoning about Frank with minimal context', () => {
+    const raw = `Given 1 unreplied message and no conversation history, I should lead with pure value, no asks. Frank is at "participating" stage, in a working group, but I have very little to go on...
+
+---
+
+Still thinking about how much good signal comes out of the measurement working group. Some of the recent threads are worth catching up on.`;
+
+    const result = extractUserFacingMessage(raw, 'slack');
+    expect(result).toBe(
+      'Still thinking about how much good signal comes out of the measurement working group. Some of the recent threads are worth catching up on.'
+    );
+  });
+
+  it('returns null when reasoning leaks into a single paragraph without delimiter', () => {
+    const raw = `With 1 unreplied message and no conversation history, I should keep this light — lead with value, no ask. Terry is at Yahoo, participating stage, in a working group. I'll keep it brief and reference the community/working group angle without being pushy. Been a good few weeks in the working groups.`;
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBeNull();
+  });
+
+  it('returns null when reasoning markers survive extraction', () => {
+    const raw = `Since there's 1 unreplied message and no conversation history, I should keep this light.
+
+---
+
+With 1 unreplied message I want to lead with value, no asks. Here is a quick update for you.`;
+
+    // The text after --- still contains reasoning markers
+    expect(extractUserFacingMessage(raw, 'slack')).toBeNull();
+  });
+
+  it('strips sign-off with blank line before it', () => {
+    const raw = `Some interesting discussions in the working groups this week.
+
+— Addie`;
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBe(
+      'Some interesting discussions in the working groups this week.'
+    );
+  });
+
+  it('strips sign-off with bare Addie after blank line', () => {
+    const raw = `Hope you're having a great week.
+
+Addie`;
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBe(
+      "Hope you're having a great week."
+    );
+  });
+
+  it('passes through clean messages without reasoning', () => {
+    const raw = 'Some interesting discussions in the working groups this week. Worth checking out the latest thread on measurement.';
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBe(raw);
+  });
+
+  it('passes through clean email messages without safety-net interference', () => {
+    const raw = 'Hi there,\n\nJust wanted to share a quick update on what the community has been working on this month.';
+
+    expect(extractUserFacingMessage(raw, 'email')).toBe(raw);
+  });
 });
 
 describe('pulse scoring', () => {

@@ -692,6 +692,10 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   boltApp.action('prospect_claim', handleProspectClaim);
   boltApp.action('prospect_disqualify', handleProspectDisqualify);
 
+  // Register alias match action handlers
+  boltApp.action('alias_confirm', handleAliasConfirm);
+  boltApp.action('alias_reject', handleAliasReject);
+
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
 
@@ -2440,6 +2444,196 @@ async function handleProspectDisqualify({ ack, body, client }: any): Promise<voi
       channel: channelId,
       user: userId,
       text: 'Failed to update prospect. Please try again or use the admin portal.',
+    });
+  }
+}
+
+/**
+ * Handle "Add domain to org" button from alias match notification
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleAliasConfirm({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const rawValue = body.actions?.[0]?.value;
+  const userId = body.user?.id;
+  const channelId = body.channel?.id;
+  const messageTs = body.message?.ts;
+
+  if (!rawValue || !userId || !channelId) {
+    logger.warn({ rawValue, userId, channelId }, 'Addie Bolt: Alias confirm missing required fields');
+    return;
+  }
+
+  let domain: string;
+  let orgId: string;
+  try {
+    const parsed = JSON.parse(rawValue);
+    domain = parsed.domain;
+    orgId = parsed.orgId;
+  } catch {
+    logger.warn({ rawValue }, 'Addie Bolt: Failed to parse alias confirm value');
+    return;
+  }
+
+  if (!domain || !orgId) {
+    logger.warn({ domain, orgId }, 'Addie Bolt: Alias confirm missing domain or orgId');
+    return;
+  }
+
+  // Validate inputs before writing to DB
+  if (!/^org_/.test(orgId)) {
+    logger.warn({ orgId }, 'Addie Bolt: Invalid org ID format in alias confirm');
+    return;
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+    logger.warn({ domain }, 'Addie Bolt: Invalid domain format in alias confirm');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+
+    // Verify the org exists before linking
+    const orgResult = await pool.query<{ email_domain: string; name: string }>(
+      `SELECT email_domain, name FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+
+    if (orgResult.rows.length === 0) {
+      logger.warn({ orgId }, 'Addie Bolt: Org not found for alias confirm');
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: 'Organization not found.' });
+      return;
+    }
+
+    // Add domain to organization_domains
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [orgId, domain]
+    );
+    const orgRow = orgResult.rows[0];
+
+    if (orgRow?.email_domain) {
+      await pool.query(
+        `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source)
+         VALUES ($1, $2, 'manual_confirm')
+         ON CONFLICT (alias_domain) DO NOTHING`,
+        [domain, orgRow.email_domain]
+      );
+    }
+
+    const orgName = orgRow?.name ?? orgId;
+
+    // Update the Slack message: remove buttons, show confirmation
+    try {
+      await client.chat.update({
+        channel: channelId,
+        ts: messageTs,
+        text: `Alias confirmed: ${domain} added to ${orgName} by <@${userId}>`,
+        blocks: [
+          ...(body.message?.blocks?.slice(0, -1) || []),
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Confirmed by:* <@${userId}>` },
+          },
+        ],
+      });
+    } catch (updateErr) {
+      logger.warn({ error: updateErr }, 'Addie Bolt: Failed to update alias confirm message');
+    }
+
+    // Log to triage log
+    await pool.query(
+      `INSERT INTO prospect_triage_log (domain, action, reason, owner, priority, verdict, source, enriched)
+       VALUES ($1, 'skip', 'alias_confirmed', 'addie', 'standard', $2, 'slack_button', false)`,
+      [domain, `Domain ${domain} confirmed as alias of ${orgName} by Slack user ${userId}`]
+    ).catch(err => {
+      logger.warn({ err, domain }, 'Addie Bolt: Failed to log alias confirmation');
+    });
+
+    logger.info({ domain, orgId, orgName, userId }, 'Addie Bolt: Alias confirmed via Slack button');
+  } catch (error) {
+    logger.error({ error, domain, orgId, userId }, 'Addie Bolt: Error handling alias confirm');
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: 'Failed to confirm alias. Please try again or use the admin portal.',
+    });
+  }
+}
+
+/**
+ * Handle "Not a match" button from alias match notification
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleAliasReject({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const rawValue = body.actions?.[0]?.value;
+  const userId = body.user?.id;
+  const channelId = body.channel?.id;
+  const messageTs = body.message?.ts;
+
+  if (!rawValue || !userId || !channelId) {
+    logger.warn({ rawValue, userId, channelId }, 'Addie Bolt: Alias reject missing required fields');
+    return;
+  }
+
+  let domain: string;
+  let orgId: string;
+  try {
+    const parsed = JSON.parse(rawValue);
+    domain = parsed.domain;
+    orgId = parsed.orgId;
+  } catch {
+    logger.warn({ rawValue }, 'Addie Bolt: Failed to parse alias reject value');
+    return;
+  }
+
+  if (!domain || !orgId) {
+    logger.warn({ domain, orgId }, 'Addie Bolt: Alias reject missing domain or orgId');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+
+    // Update the Slack message: remove buttons, show dismissal
+    try {
+      await client.chat.update({
+        channel: channelId,
+        ts: messageTs,
+        text: `Alias dismissed: ${domain} is not a match (dismissed by <@${userId}>)`,
+        blocks: [
+          ...(body.message?.blocks?.slice(0, -1) || []),
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Dismissed by:* <@${userId}>` },
+          },
+        ],
+      });
+    } catch (updateErr) {
+      logger.warn({ error: updateErr }, 'Addie Bolt: Failed to update alias reject message');
+    }
+
+    // Log to triage log
+    await pool.query(
+      `INSERT INTO prospect_triage_log (domain, action, reason, owner, priority, verdict, source, enriched)
+       VALUES ($1, 'skip', 'alias_rejected', 'addie', 'standard', $2, 'slack_button', false)`,
+      [domain, `Domain ${domain} rejected as alias match by Slack user ${userId}`]
+    ).catch(err => {
+      logger.warn({ err, domain }, 'Addie Bolt: Failed to log alias rejection');
+    });
+
+    logger.info({ domain, orgId, userId }, 'Addie Bolt: Alias rejected via Slack button');
+  } catch (error) {
+    logger.error({ error, domain, orgId, userId }, 'Addie Bolt: Error handling alias reject');
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: 'Failed to dismiss alias. Please try again.',
     });
   }
 }
