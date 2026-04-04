@@ -6726,7 +6726,7 @@ Disallow: /api/admin/
         const userDomain = getCompanyDomain(user.email);
 
         // Get all public member profiles (published orgs)
-        const publicProfiles = await memberDb.getPublicProfiles({ limit: 100 });
+        const publicProfiles = await memberDb.getPublicProfiles();
 
         // Get user's current org memberships to exclude
         const userMemberships = await workos!.userManagement.listOrganizationMemberships({
@@ -7368,7 +7368,7 @@ Disallow: /api/admin/
           search: search as string,
           offerings: offerings ? (offerings as string).split(',') as any : undefined,
           markets: markets ? (markets as string).split(',') : undefined,
-          limit: limit ? parseInt(limit as string, 10) : 50,
+          limit: limit ? parseInt(limit as string, 10) : undefined,
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
