@@ -138,7 +138,7 @@
       const data = await hubResponse.json();
       profileData = data.profile || {};
 
-      const billingOrgId = null;
+      let billingOrgId = null;
       if (meResponse.ok) {
         const meData = await meResponse.json();
         userData = meData.user || null;
@@ -240,7 +240,7 @@
   // === Form population ===
   function populateForm(profile) {
     document.getElementById('field-is-public').checked = !!profile.is_public;
-    const slug = profile.slug || '';
+    let slug = profile.slug || '';
     if (!slug && userData && userData.first_name) {
       slug = slugify([userData.first_name, userData.last_name].filter(Boolean).join(' '));
     }
