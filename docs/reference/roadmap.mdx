@@ -1,108 +1,95 @@
 ---
-title: Product Roadmap
-description: "AdCP protocol roadmap: planned features, upcoming schema changes, and development milestones for the Ad Context Protocol specification."
-"og:title": "AdCP — Product Roadmap"
+title: Roadmap
+description: "AdCP protocol roadmap: RFCs, epics, and development milestones tracked on our public GitHub Project board."
+"og:title": "AdCP — Roadmap"
 ---
 
+The AdCP roadmap is a public [GitHub Project board](https://github.com/orgs/adcontextprotocol/projects/1) tracking protocol RFCs and epics across all domains. It shows what we're exploring, what's accepted, what's in progress, and what's shipped.
 
-This roadmap outlines the planned evolution of the AdCP protocol. All dates are targets and subject to change based on community feedback and working group progress.
-
----
-
-## Version 2.5.0 - Shipped ✅
-
-**Released:** November 2025 | [View Release Notes](./release-notes#version-250)
-
-Version 2.5.0 delivered developer experience and API refinement improvements including:
-- **Type Safety & Code Generation** - Discriminator fields throughout for excellent TypeScript/Python type inference
-- **Batch Creative Previews** - Preview up to 50 creatives in a single call (5-10x faster)
-- **Schema Infrastructure** - Build-time versioning with semantic paths (`/schemas/v2.5/`)
-- **Agent Cards** - AdCP extension schema for capability discovery
-- **Brand Manifest** - Standardized brand information for creative generation
-- **Template Formats** - Dynamic creative sizing via `accepts_parameters` (dimensions, duration, etc.)
-- **Inline Creative Updates** - `sync_creatives` task for updating creatives in existing campaigns
-- **Enhanced Product Filtering** - Structured filters with date ranges, budget ranges, countries, and channels
-- **Explicit Extension Support** - Formal extension mechanism via agent cards
-
-### Through End of 2025
-
-From December 2025 through year end:
-- **Patch releases only** for bug fixes and critical issues
-- No new features or breaking changes
-- Focus on stability and production readiness
+<Card title="View the Roadmap" icon="map" href="https://github.com/orgs/adcontextprotocol/projects/1">
+  Live board with RFCs and epics across Creative, Media Buy, Signals, Governance, and more.
+</Card>
 
 ---
 
-## Version 3.0.0 - Major Update
+## How the Roadmap Works
 
-**Current Status:** rc.3 released | [View Release Notes](./release-notes#version-300-rc3)
+The board has four columns representing the lifecycle of a roadmap item:
 
-Version 3.0 is a major evolution of the protocol. Three beta releases and three release candidates have shipped:
+| Status | Meaning |
+|---|---|
+| **Exploring** | Under discussion, community input welcome |
+| **Accepted** | Committed and scoped, not yet started |
+| **In Progress** | Active work |
+| **Shipped** | Released and available |
 
-- **beta.1** - Media Channel Taxonomy (19 channels), Governance Protocol, Sponsored Intelligence, `get_adcp_capabilities`, creative assignment weighting, global geo targeting
-- **beta.2** - Accounts & Agents, property targeting, A2UI for Sponsored Intelligence, CTV/streaming constraints, creative protocol discovery
-- **beta.3** - Delivery forecasting, brand protocol, account management, commerce media, creative delivery reporting, CPA & TIME pricing, conversion tracking, signal catalog, cursor-based pagination, accessibility, targeting restrictions
-- **rc.1** - AI provenance and disclosure, creative compliance, structured error recovery, keyword targeting, optimization goals redesign, signal pricing models, dimension breakdowns, reach optimization, device type targeting, typed refinement with seller acknowledgment, agent ergonomics, manifest unification, signal deactivation
-- **rc.2** - Brand rights licensing, visual guidelines for generative creative, collections and installments, AI media channel, property governance integration, account model simplification
-- **rc.3** - Trusted Match Protocol (TMP), order lifecycle management, governance simplification, seller-assigned IDs, proposal lifecycle, audience bias governance, streaming/audio delivery metrics, availability forecasts, advertiser industry taxonomy
+Each item has two fields:
 
-rc.3 focused on real-time execution (TMP), order management maturity, and governance simplification based on implementer feedback.
-
-### Remaining for GA
-
-- Schema freeze and final migration guide review
-- Namespace management for custom extensions
+- **Protocol** — which area of the protocol it affects (Creative, Media Buy, Signals, Brand Protocol, Governance, SI, TMP, Platform, Website, Addie, Certification)
+- **Kind** — whether it's an **RFC** (protocol change needing community input) or an **Epic** (major deliverable spanning multiple PRs)
 
 ---
 
-## Future Work (No Target Date)
+## What Belongs on the Roadmap
 
-The following features are in the working group planning stages:
+Not every issue or PR belongs here. Roadmap items are protocol-level changes, new capabilities, and strategic initiatives that affect adopters. An issue qualifies if it meets at least two of:
 
-### Private Marketplace (PMP) Support
-- Deal ID integration
-- Programmatic guaranteed workflows
+1. **Protocol surface** — changes what agents or platforms interact with
+2. **Audience impact** — would influence a prospective member's or builder's decision
+3. **Multi-issue scope** — spans more than one PR
+
+Bug fixes, minor improvements, and internal tooling stay in the [issue tracker](https://github.com/adcontextprotocol/adcp/issues).
+
+---
+
+## Adding Items to the Roadmap
+
+Any issue labeled `rfc` or `epic` is automatically added to the board. To propose a roadmap item:
+
+1. **Open a GitHub issue** describing the proposal
+2. **Add the `rfc` or `epic` label** (maintainers can also do this during triage)
+3. The issue appears in the **Exploring** column
+4. A maintainer sets the **Protocol** and **Kind** fields on the board
+
+---
+
+## Triage
+
+Each protocol area has a triage owner responsible for reviewing new issues weekly (~15 minutes) and deciding what gets the `rfc` or `epic` label. The triage owner also reviews the board monthly to ensure items reflect reality.
+
+| Protocol Area | Triage Owner |
+|---|---|
+| Creative | _TBD_ |
+| Media Buy | _TBD_ |
+| Signals | _TBD_ |
+| Brand Protocol | _TBD_ |
+| Governance | _TBD_ |
+| SI | _TBD_ |
+| TMP | _TBD_ |
+| Platform | _TBD_ |
+| Website | _TBD_ |
+| Addie | _TBD_ |
+| Certification | _TBD_ |
+
+Triage owners rotate quarterly. To volunteer, reach out in the relevant working group channel on Slack.
+
+---
+
+## Release History
+
+For detailed release notes and version history, see:
+
+- **[Release Notes](./release-notes)** — per-version feature summaries
+- **[CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md)** — technical changelog
+- **[GitHub Releases](https://github.com/adcontextprotocol/adcp/releases)** — release archive
+- **[Versioning & Governance](./versioning)** — versioning model and release cadence
 
 ---
 
 ## Get Involved
 
-AdCP is developed in the open with active working groups on Slack. We strongly encourage participation in these discussions!
+AdCP is developed in the open with active working groups on Slack.
 
-### Join the Community
-
-- **Slack Community** - [Join the AgenticAds Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
-- **GitHub Discussions** - [Protocol Discussions](https://github.com/adcontextprotocol/adcp/discussions)
-- **Working Groups** - See [Working Group](../community/working-group) for active initiatives
-
-### Working Group Focus Areas
-
-Current working groups are focusing on:
-- **Creative Protocol** - Hosted sets and inline updates
-- **Registry Architecture** - Property and agent discovery
-- **Extensions Framework** - Protocol extensibility design
-- **Governance Model** - Multi-party workflow design
-- **PMP Integration** - Programmatic deal support
-
-### How to Contribute
-
-1. **Join discussions** on Slack in relevant channels
-2. **Review proposals** in GitHub Discussions
-3. **Share feedback** on draft specifications
-4. **Test implementations** in your environment
-5. **Submit issues** for bugs or feature requests
-
----
-
-## Versioning & Governance
-
-For the versioning model, schema change rules, release cadence, and governance structure, see [Versioning & Governance](/docs/reference/versioning).
-
----
-
-## Additional Resources
-
-- **Current Release Notes** - [Release Notes](./release-notes)
-- **Technical Changelog** - [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md)
-- **GitHub Releases** - [Release Archive](https://github.com/adcontextprotocol/adcp/releases)
-- **Schemas and SDKs** - [Schemas and SDKs Guide](/docs/building/schemas-and-sdks)
+- **[Join the AgenticAds Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)**
+- **[GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)**
+- **[Working Groups](../community/working-group)**
