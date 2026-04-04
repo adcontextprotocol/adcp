@@ -1314,6 +1314,10 @@
     {
       "source": "/docs/guides/creator-studios",
       "destination": "/docs/media-buy/commerce-media"
+    },
+    {
+      "source": "/docs/reference/schema-versioning",
+      "destination": "/docs/reference/versioning"
     }
   ],
   "modeToggle": {
