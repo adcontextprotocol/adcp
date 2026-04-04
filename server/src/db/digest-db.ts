@@ -239,12 +239,12 @@ export async function getDigestByDate(editionDate: string): Promise<DigestRecord
 }
 
 /**
- * Get the current week's digest (most recent by edition_date)
+ * Get the most recent digest edition (biweekly cadence, so look back 16 days)
  */
 export async function getCurrentWeekDigest(): Promise<DigestRecord | null> {
   const result = await query<DigestRecord>(
     `SELECT * FROM weekly_digests
-     WHERE edition_date >= CURRENT_DATE - INTERVAL '7 days'
+     WHERE edition_date >= CURRENT_DATE - INTERVAL '16 days'
      ORDER BY edition_date DESC
      LIMIT 1`,
   );

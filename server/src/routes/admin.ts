@@ -36,6 +36,7 @@ import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
 import { setupDigestAdminRoutes } from "./admin/digest.js";
+import { setupBuildAdminRoutes } from "./admin/build.js";
 
 const logger = createLogger("admin-routes");
 
@@ -107,6 +108,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/the-build", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-the-build.html").catch((err) => {
+      logger.error({ err }, "Error serving The Build page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -156,8 +164,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Perspective illustration generation routes
   setupIllustrationRoutes(apiRouter);
 
-  // Digest (The Prompt) admin routes
+  // Newsletter admin routes
   setupDigestAdminRoutes(apiRouter);
+  setupBuildAdminRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
