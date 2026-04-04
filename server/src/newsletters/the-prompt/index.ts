@@ -201,8 +201,8 @@ export const thePromptConfig: NewsletterConfig = {
   cadence: {
     generateHourET: 7,
     sendHourET: 9,
-    shouldRunToday: () => {
-      const now = new Date();
+    shouldRunToday: (dateOverride?: Date) => {
+      const now = dateOverride || new Date();
       const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
       if (et.getDay() !== 2) return false; // Tuesday only
 

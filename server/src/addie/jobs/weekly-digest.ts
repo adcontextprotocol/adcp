@@ -99,12 +99,7 @@ export async function runPromptPrepNudgeJob(): Promise<{ nudgesSent: number }> {
   const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-
-  // Temporarily shift the date check to see if tomorrow would be a send day
-  const originalDate = Date.now;
-  Date.now = () => tomorrow.getTime();
-  const isTomorrowDraftDay = thePromptConfig.cadence.shouldRunToday();
-  Date.now = originalDate;
+  const isTomorrowDraftDay = thePromptConfig.cadence.shouldRunToday(tomorrow);
 
   if (!isTomorrowDraftDay) return { nudgesSent };
 

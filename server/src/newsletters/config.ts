@@ -29,8 +29,8 @@ export interface NewsletterCadence {
   generateHourET: number;
   /** Hour (ET) to send approved editions */
   sendHourET: number;
-  /** Returns true if today is a send day for this newsletter */
-  shouldRunToday: () => boolean;
+  /** Returns true if the given date (or today) is a send day for this newsletter */
+  shouldRunToday: (dateOverride?: Date) => boolean;
 }
 
 // ─── Recipient ─────────────────────────────────────────────────────────
