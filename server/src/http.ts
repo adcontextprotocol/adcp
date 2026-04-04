@@ -5602,8 +5602,35 @@ Disallow: /api/admin/
                LIMIT 1`,
               [aliasEmails, user.id]
             );
-            if (aliasResult.rows.length > 0) {
-              const existing = aliasResult.rows[0];
+
+            // If no local match, check WorkOS — the duplicate may exist there
+            // but never have logged in (e.g. created via Stripe checkout only).
+            let existing: { workos_user_id: string; email: string } | null =
+              aliasResult.rows[0] ?? null;
+
+            if (!existing && workos) {
+              for (const aliasEmail of aliasEmails) {
+                const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
+                const match = workosUsers.data.find(u => u.id !== user.id);
+                if (match) {
+                  // Insert into local users table so mergeUsers can operate on it
+                  await pool.query(
+                    `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                     ON CONFLICT (workos_user_id) DO NOTHING`,
+                    [match.id, match.email, match.firstName, match.lastName, match.emailVerified, match.createdAt, match.updatedAt]
+                  );
+                  logger.info(
+                    { primaryUserId: user.id, secondaryWorkosId: match.id, secondaryEmail: match.email },
+                    'Found duplicate account in WorkOS (not in local DB) — created local user for merge'
+                  );
+                  existing = { workos_user_id: match.id, email: match.email };
+                  break;
+                }
+              }
+            }
+
+            if (existing) {
               duplicateAliasEmail = existing.email;
 
               // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
@@ -5624,6 +5651,29 @@ Disallow: /api/admin/
                 const secondaryId = existing.workos_user_id;
 
                 try {
+                  // Add the primary user to any of the secondary's WorkOS orgs
+                  // so that membership context resolves correctly after the
+                  // merge deletes the secondary user from WorkOS.
+                  if (workos) {
+                    const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
+                      userId: secondaryId,
+                      limit: 100,
+                    });
+                    for (const mem of secondaryMemberships.data) {
+                      if (mem.status !== 'active') continue;
+                      try {
+                        await workos.userManagement.createOrganizationMembership({
+                          userId: primaryId,
+                          organizationId: mem.organizationId,
+                        });
+                      } catch (memErr: unknown) {
+                        // Ignore conflict — the primary may already be a member
+                        const status = (memErr as { status?: number })?.status;
+                        if (status !== 409) throw memErr;
+                      }
+                    }
+                  }
+
                   const { mergeUsers } = await import('./db/user-merge-db.js');
                   const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge', workos!);
                   autoMerged = true;
@@ -5632,7 +5682,11 @@ Disallow: /api/admin/
                     'Auto-merged duplicate Google email alias accounts'
                   );
                 } catch (mergeError) {
-                  // Roll back the claim so the merge can be retried on next login
+                  // Note: org memberships already transferred to primary in WorkOS
+                  // are NOT rolled back. This is acceptable because both users
+                  // control the same inbox, and the merge will be retried on
+                  // next login (createOrganizationMembership will 409, which is handled).
+                  // Roll back the alias claim so the merge can be retried on next login
                   await pool.query(
                     'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
                     [user.id, existing.email]
