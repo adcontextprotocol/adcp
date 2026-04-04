@@ -138,6 +138,11 @@
       setTimeout(() => el.classList.remove('show'), duration);
     }
 
+    function escUrl(s) {
+      const escaped = esc(s);
+      return /^https?:\/\//i.test(escaped) ? escaped : '#';
+    }
+
     async function api(path, opts = {}) {
       const res = await AdminSidebar.fetch(API_BASE + path, {
         headers: { 'Content-Type': 'application/json', ...opts.headers },
@@ -199,7 +204,7 @@
             return `<div class="decision-card">
               <span class="decision-badge ${badgeClass}">${label}</span>
               <strong>${esc(d.workingGroup)}</strong>
-              <br><a href="${esc(d.url)}" target="_blank" style="color:#0d9488;">${esc(d.title)}</a>
+              <br><a href="${escUrl(d.url)}" target="_blank" style="color:#0d9488;">${esc(d.title)}</a>
               <br><span style="font-size:13px;color:#666;">${esc(d.summary)}</span>
             </div>`;
           }).join('');
@@ -211,7 +216,7 @@
         ? '<em style="color:#888;">No releases this cycle</em>'
         : shipped.map(r => `<div style="margin-bottom:8px;">
             ${r.breaking ? '<span class="decision-badge badge-breaking">BREAKING</span>' : ''}
-            <a href="${esc(r.releaseUrl)}" target="_blank" style="color:#0d9488;font-weight:600;">${esc(r.repo)} ${esc(r.version)}</a>
+            <a href="${escUrl(r.releaseUrl)}" target="_blank" style="color:#0d9488;font-weight:600;">${esc(r.repo)} ${esc(r.version)}</a>
             — ${esc(r.summary)}
             ${r.migrationNote ? `<br><span style="font-size:13px;color:#dc2626;">Migration: ${esc(r.migrationNote)}</span>` : ''}
           </div>`).join('');
@@ -223,7 +228,7 @@
         ? '<em style="color:#888;">No open asks</em>'
         : help.map(h => `<div style="margin-bottom:8px;">
             <span style="display:inline-block;padding:2px 6px;background:#e5e7eb;color:#374151;font-size:11px;border-radius:3px;margin-right:6px;">${esc(h.type)}</span>
-            <a href="${esc(h.url)}" target="_blank" style="color:#0d9488;">${esc(h.title)}</a>
+            <a href="${escUrl(h.url)}" target="_blank" style="color:#0d9488;">${esc(h.title)}</a>
             <br><span style="font-size:13px;color:#666;">${esc(h.source)} — ${esc(h.context)}</span>
           </div>`).join('');
 
