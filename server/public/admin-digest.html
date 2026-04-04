@@ -518,6 +518,16 @@
       try {
         const res = await api('/digests/generate', { method: 'POST' });
         const data = await res.json();
+        if (res.status === 409 && data.edition) {
+          // Edition already exists — load it instead of showing error
+          currentDigest = data.edition;
+          currentSubject = data.subject || '';
+          document.getElementById('emptyState').style.display = 'none';
+          document.getElementById('editorContent').style.display = 'block';
+          render();
+          toast('Edition already exists — loaded for editing');
+          return;
+        }
         if (!res.ok) throw new Error(data.error);
         currentDigest = data.digest;
         currentSubject = data.subject || '';
