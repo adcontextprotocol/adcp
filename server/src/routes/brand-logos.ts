@@ -59,10 +59,13 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'Invalid domain' });
         }
 
-        // Membership check
-        const enriched = await enrichUserWithMembership(user);
-        if (!enriched?.isMember) {
-          return res.status(403).json({ error: 'Membership required to upload logos' });
+        // Membership check (skip for admin API key and WorkOS API keys with member flag)
+        const isStaticAdmin = !!(req as any).isStaticAdminApiKey;
+        if (!isStaticAdmin && !user.isMember) {
+          const enriched = await enrichUserWithMembership(user);
+          if (!enriched?.isMember) {
+            return res.status(403).json({ error: 'Membership required to upload logos' });
+          }
         }
 
         // Ban check
