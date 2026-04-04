@@ -4218,6 +4218,8 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
     this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
+    this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
