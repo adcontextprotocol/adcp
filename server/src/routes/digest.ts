@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback, isLegacyContent, type PersonaCluster } from '../db/digest-db.js';
+import { getDigestByDate, getCurrentWeekDigest, getRecentDigests, recordDigestFeedback, isLegacyContent, type PersonaCluster, type DigestContent } from '../db/digest-db.js';
+import { generateDigestSubject } from '../addie/services/digest-builder.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
 
 const logger = createLogger('digest-routes');
@@ -155,6 +156,56 @@ export function createDigestRouter(): Router {
     }
 
     res.redirect(`/digest/${date}`);
+  });
+
+  /**
+   * GET /digest/archive - Public archive of all sent editions of The Prompt
+   */
+  router.get('/archive', async (_req: Request, res: Response) => {
+    try {
+      const digests = await getRecentDigests(50);
+      const editions = digests
+        .filter((d) => !isLegacyContent(d.content))
+        .map((d) => {
+          const date = new Date(d.edition_date).toISOString().split('T')[0];
+          const subject = generateDigestSubject(d.content as DigestContent);
+          return { date, subject, sentAt: d.sent_at };
+        });
+
+      const editionHtml = editions.map((e) => `
+        <li style="margin-bottom: 12px;">
+          <a href="/digest/${e.date}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${e.subject}</a>
+          <span style="color: #888; font-size: 13px; margin-left: 8px;">${new Date(e.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span>
+        </li>
+      `).join('');
+
+      res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Prompt — Archive</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
+    .container { max-width: 640px; margin: 40px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h1 { font-size: 24px; color: #1a1a2e; margin-bottom: 4px; }
+    .subtitle { font-size: 14px; color: #666; margin-bottom: 24px; }
+    ul { list-style: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>The Prompt</h1>
+    <p class="subtitle">from Addie — Archive of all editions</p>
+    <ul>${editionHtml || '<li style="color:#888;">No editions yet.</li>'}</ul>
+    <p style="margin-top: 24px; text-align: center;"><a href="/" style="color: #2563eb; text-decoration: none;">← Back to AgenticAdvertising.org</a></p>
+  </div>
+</body>
+</html>`);
+    } catch (error) {
+      logger.error({ error }, 'Failed to render digest archive');
+      res.status(500).send('Internal server error');
+    }
   });
 
   return router;
