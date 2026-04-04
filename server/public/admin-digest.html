@@ -328,8 +328,9 @@
       if (!c.shareableTake) shareEl.textContent = 'Click to add a shareable take...';
 
       // Articles
-      document.getElementById('articleCount').textContent = `(${c.whatToWatch.length})`;
-      document.getElementById('articlesList').innerHTML = c.whatToWatch.map((a, i) => `
+      const articles = c.whatToWatch || [];
+      document.getElementById('articleCount').textContent = `(${articles.length})`;
+      document.getElementById('articlesList').innerHTML = articles.map((a, i) => `
         <div class="article-card" id="article-${i}">
           <div class="article-actions">
             <button class="btn btn-sm btn-secondary" onclick="editArticle(${i})">Edit</button>
@@ -350,8 +351,9 @@
         : '<p style="color:#aaa;font-size:13px;">No releases this week.</p>';
 
       // From the inside
-      document.getElementById('insiderCount').textContent = `(${c.fromTheInside.length})`;
-      document.getElementById('insiderList').innerHTML = c.fromTheInside.map(g => `
+      const insider = c.fromTheInside || [];
+      document.getElementById('insiderCount').textContent = `(${insider.length})`;
+      document.getElementById('insiderList').innerHTML = insider.map(g => `
         <div class="wg-card">
           <h3>${esc(g.name)}</h3>
           <p>${esc(g.summary)}</p>
@@ -360,8 +362,9 @@
       `).join('') || '<p style="color:#aaa;font-size:13px;">No group activity this week.</p>';
 
       // Voices
-      document.getElementById('voicesCount').textContent = `(${c.voices.length})`;
-      document.getElementById('voicesList').innerHTML = c.voices.map(v => `
+      const voices = c.voices || [];
+      document.getElementById('voicesCount').textContent = `(${voices.length})`;
+      document.getElementById('voicesList').innerHTML = voices.map(v => `
         <div class="voice-card">
           <div style="font-size:14px;font-weight:600;">${esc(v.title)}</div>
           <div style="font-size:12px;color:#888;">by ${esc(v.authorName)}</div>
@@ -369,9 +372,10 @@
       `).join('') || '<p style="color:#aaa;font-size:13px;">No member perspectives this week.</p>';
 
       // New members
-      if (c.newMembers.length > 0) {
+      const members = c.newMembers || [];
+      if (members.length > 0) {
         document.getElementById('sectionMembers').style.display = 'block';
-        document.getElementById('membersList').innerHTML = c.newMembers.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
+        document.getElementById('membersList').innerHTML = members.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
       }
 
       // Hide instruction bar when locked
