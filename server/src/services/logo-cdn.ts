@@ -7,7 +7,10 @@
  */
 
 import axios from 'axios';
+import crypto from 'crypto';
 import { query } from '../db/client.js';
+import { BrandLogoDatabase } from '../db/brand-logo-db.js';
+import { sanitizeSvg } from './brand-logo-service.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('logo-cdn');
@@ -26,8 +29,10 @@ const ALLOWED_CONTENT_TYPES = new Set([
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export function getLogoUrl(domain: string, idx: number): string {
-  return `${BASE_URL}/logos/brands/${encodeURIComponent(domain)}/${idx}`;
+const brandLogoDb = new BrandLogoDatabase();
+
+export function getLogoUrl(domain: string, logoId: string): string {
+  return `${BASE_URL}/logos/brands/${encodeURIComponent(domain)}/${logoId}`;
 }
 
 export function isBrandfetchUrl(url: string): boolean {
@@ -67,10 +72,11 @@ export function isAllowedLogoContentType(contentType: string): boolean {
   return ALLOWED_CONTENT_TYPES.has(contentType);
 }
 
-export async function getCachedLogo(domain: string, idx: number): Promise<CachedLogo | null> {
+export async function getLogo(domain: string, logoId: string): Promise<CachedLogo | null> {
   const result = await query<{ content_type: string; data: Buffer }>(
-    'SELECT content_type, data FROM brand_logo_cache WHERE domain = $1 AND idx = $2',
-    [domain, idx]
+    `SELECT content_type, data FROM brand_logos
+     WHERE domain = $1 AND id = $2 AND review_status = 'approved'`,
+    [domain, logoId]
   );
   if (result.rows.length === 0) return null;
   return result.rows[0];
@@ -113,20 +119,32 @@ export async function downloadAndCacheLogos(
         continue;
       }
 
-      const data = Buffer.from(response.data);
+      const rawData = Buffer.from(response.data);
+      const data = contentType === 'image/svg+xml' ? sanitizeSvg(rawData) : rawData;
+      const sha256 = crypto.createHash('sha256').update(data).digest('hex');
 
-      await query(
-        `INSERT INTO brand_logo_cache (domain, idx, content_type, data)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (domain, idx) DO UPDATE
-           SET content_type = EXCLUDED.content_type,
-               data = EXCLUDED.data,
-               fetched_at = now()`,
-        [domain, i, contentType, data]
-      );
+      const inserted = await brandLogoDb.insertBrandLogo({
+        domain,
+        content_type: contentType,
+        data,
+        sha256,
+        tags: logo.tags || [],
+        source: 'brandfetch',
+        review_status: 'approved',
+      });
 
-      updated.push({ url: getLogoUrl(domain, i), tags: logo.tags });
-      logger.debug({ domain, idx: i, bytes: data.length }, 'Logo cached');
+      if (inserted) {
+        updated.push({ url: getLogoUrl(domain, inserted.id), tags: logo.tags });
+        logger.debug({ domain, logoId: inserted.id, bytes: data.length }, 'Logo cached');
+      } else {
+        // Dedup conflict — find existing logo by sha256
+        const existing = await brandLogoDb.getByDomainAndSha256(domain, sha256);
+        if (existing) {
+          updated.push({ url: getLogoUrl(domain, existing.id), tags: logo.tags });
+        } else {
+          updated.push(logo);
+        }
+      }
     } catch (err) {
       logger.warn({ err, domain, idx: i, url: logo.url }, 'Failed to download logo, keeping original URL');
       updated.push(logo);
