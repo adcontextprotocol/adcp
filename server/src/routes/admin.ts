@@ -107,6 +107,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/the-build", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-the-build.html").catch((err) => {
+      logger.error({ err }, "Error serving The Build page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================

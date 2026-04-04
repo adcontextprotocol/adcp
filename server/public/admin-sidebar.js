@@ -38,7 +38,13 @@
           { href: '/admin/meetings', label: 'Meetings', icon: '🗓️' },
           { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
           { href: '/admin/perspectives', label: 'Content', icon: '📝' },
+        ]
+      },
+      {
+        label: 'Newsletters',
+        items: [
           { href: '/admin/digest', label: 'The Prompt', icon: '📨' },
+          { href: '/admin/the-build', label: 'The Build', icon: '🔧' },
         ]
       },
       {

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
+  <title>Admin - The Build</title>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    .digest-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .digest-header h1 { margin: 0; font-size: 24px; }
+    .digest-actions { display: flex; gap: 8px; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .status-draft { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #d1fae5; color: #065f46; }
+    .status-sent { background: #dbeafe; color: #1e40af; }
+
+    .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); }
+    .section h2 { font-size: 16px; color: var(--color-text-heading, #1a1a2e); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
+    .count { font-size: 12px; color: var(--color-text-muted, #888); font-weight: normal; }
+
+    .decision-card { padding: 12px; border: 1px solid var(--color-border, #e5e5e5); border-radius: 6px; margin-bottom: 8px; }
+    .decision-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; margin-right: 8px; }
+    .badge-decided { background: #065f46; }
+    .badge-open { background: #d97706; }
+    .badge-review { background: #6366f1; }
+    .badge-breaking { background: #dc2626; }
+
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--color-text-muted, #888); }
+    .empty-state h2 { color: var(--color-text-heading, #1a1a2e); }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+    .teal-accent { color: #0d9488; }
+    .btn-teal { background: #0d9488; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .btn-teal:hover { background: #0f766e; }
+  </style>
+</head>
+<body>
+  <div class="container" style="padding: 24px;">
+    <div class="digest-header">
+      <div>
+        <h1 class="teal-accent">The Build</h1>
+        <p style="color: var(--color-text-muted, #888); margin: 4px 0 0 0;">Sage's contributor briefing editor</p>
+      </div>
+      <div class="digest-actions" id="actions"></div>
+    </div>
+
+    <div id="content">
+      <div class="empty-state">
+        <h2>No draft this cycle</h2>
+        <p>Generate a new draft to start editing.</p>
+        <button class="btn-teal" onclick="generateDraft()">Generate Draft</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api/admin/digests'; // Will switch to newsletter-specific API when shared routes are mounted
+    let currentEdition = null;
+    let currentSubject = '';
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    async function load() {
+      // For now, show the empty state since The Build doesn't have its own API routes yet
+      // When the shared newsletter admin routes are mounted, this will call
+      // /api/admin/newsletters/the_build/editions/current
+      document.getElementById('content').innerHTML = `
+        <div class="empty-state">
+          <h2>The Build — Coming Soon</h2>
+          <p>The Build's admin editor shares the same infrastructure as The Prompt.<br>
+          It will be fully operational once the shared newsletter admin routes are mounted.</p>
+          <p style="margin-top: 16px; font-size: 14px; color: var(--color-text-muted);">
+            <strong>What's ready:</strong> Content builder, email template, teal cover illustrations, contributor seat targeting, biweekly cadence.<br>
+            <strong>What's next:</strong> Mount the shared admin API routes and connect this page.
+          </p>
+        </div>`;
+    }
+
+    async function generateDraft() {
+      // Placeholder — will wire to shared newsletter API
+      alert('The Build draft generation will be available when the shared newsletter admin routes are mounted.');
+    }
+
+    load();
+  </script>
+</body>
+</html>
