@@ -1120,10 +1120,17 @@
     const notifList = document.getElementById('notifList');
 
     if (notifBell && notifDropdown) {
-      // Poll unread count
+      // Poll unread count — stop on 401 to avoid hammering expired sessions
+      var notifPollTimer = null;
       async function updateNotifCount() {
         try {
           const res = await fetch('/api/notifications/count', { credentials: 'include' });
+          if (res.status === 401) {
+            // Session expired — stop polling, hide badge
+            if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
+            if (notifBadge) notifBadge.style.display = 'none';
+            return;
+          }
           if (!res.ok) return;
           const { count } = await res.json();
           if (count > 0) {
@@ -1135,7 +1142,7 @@
         } catch {}
       }
       updateNotifCount();
-      setInterval(updateNotifCount, 30000);
+      notifPollTimer = setInterval(updateNotifCount, 30000);
 
       function notifTimeAgo(dateStr) {
         const diff = Date.now() - new Date(dateStr).getTime();
