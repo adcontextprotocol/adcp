@@ -1732,8 +1732,7 @@
 
     function renderTierProgress(tier, tierIdx, points, nextTier, nextAt, progressPct, orgCtx, milestones) {
       // Show all tiers so users can see the full progression
-      const steps = TIERS.map((t) => {
-        const tIdx = TIERS.indexOf(t);
+      const steps = TIERS.map((t, tIdx) => {
         const isCurrent = t === tier;
         const isCompleted = tIdx < tierIdx;
         let cls = 'level-step';
