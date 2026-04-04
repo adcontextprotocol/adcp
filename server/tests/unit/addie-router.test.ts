@@ -535,6 +535,15 @@ describe('parseRouterResponse', () => {
     expect(plan.action).toBe('react');
     expect('confidence' in plan).toBe(false);
   });
+
+  it('should convert stale clarify action to respond with knowledge tools', () => {
+    const plan = parseRouterResponse('{"action":"clarify","question":"What do you mean?","reason":"ambiguous"}');
+    expect(plan.action).toBe('respond');
+    if (plan.action === 'respond') {
+      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.confidence).toBe('suggest');
+    }
+  });
 });
 
 // ============================================================================
@@ -601,7 +610,6 @@ describeWithApi('AddieRouter.route (LLM)', () => {
     }, 15000);
 
     // Joshua Koran — #general — meeting scheduling
-    // Prod: Addie asked "What meeting?" (clarify action)
     // Should: Ignore — scheduling is not Addie's domain
     it('should ignore meeting scheduling logistics', async () => {
       const plan = await routeInChannel(
@@ -745,22 +753,19 @@ describeWithApi('AddieRouter.route (LLM)', () => {
     }, 15000);
 
     // Terence — DM — which channels to follow as publisher
-    // clarify is acceptable — "what topics interest you?" is a valid response
-    it('should respond or clarify for channel recommendation requests', async () => {
+    it('should respond to channel recommendation requests', async () => {
       const plan = await routeAsMember(
         'As a Publisher/Seller - which would be the best channels to follow?'
       );
-      expect(['respond', 'clarify']).toContain(plan.action);
+      expect(plan.action).toBe('respond');
     }, 15000);
 
     // B. Masse — DM — admin dashboard link
-    // Prod: Addie didn't have the link, clarified which dashboard
-    // clarify is acceptable — "which funnel dashboard?" is reasonable
-    it('should respond or clarify for dashboard link requests', async () => {
+    it('should respond to dashboard link requests', async () => {
       const plan = await routeAsMember(
         'Do you have the link to the funnel dashboard? Not finding it'
       );
-      expect(['respond', 'clarify']).toContain(plan.action);
+      expect(plan.action).toBe('respond');
     }, 15000);
 
     // Harvin — DM — test my agent
@@ -776,12 +781,11 @@ describeWithApi('AddieRouter.route (LLM)', () => {
     }, 15000);
 
     // Ryan Maynard — DM — asking about previous conversation
-    // clarify is expected — "where are these conversations?" is ambiguous without context
-    it('should clarify or respond to ambiguous recall requests', async () => {
+    it('should respond to ambiguous recall requests', async () => {
       const plan = await routeAsMember(
         'where are these conversations?'
       );
-      expect(['respond', 'clarify']).toContain(plan.action);
+      expect(plan.action).toBe('respond');
     }, 15000);
   });
 
