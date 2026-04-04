@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback } from '../db/digest-db.js';
+import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback, isLegacyContent, type PersonaCluster } from '../db/digest-db.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
 
 const logger = createLogger('digest-routes');
@@ -22,6 +22,9 @@ export function createDigestRouter(): Router {
     const segmentParam = typeof req.query.segment === 'string' ? req.query.segment : 'both';
     const segment: DigestSegment = VALID_SEGMENTS.has(segmentParam) ? segmentParam as DigestSegment : 'both';
     const firstName = typeof req.query.firstName === 'string' ? req.query.firstName.slice(0, 50) : undefined;
+    const VALID_CLUSTERS = new Set(['builder', 'strategist', 'newcomer']);
+    const clusterParam = typeof req.query.persona === 'string' ? req.query.persona : undefined;
+    const personaCluster: PersonaCluster | undefined = clusterParam && VALID_CLUSTERS.has(clusterParam) ? clusterParam as PersonaCluster : undefined;
     const dateParam = typeof req.query.date === 'string' ? req.query.date : undefined;
 
     try {
@@ -43,8 +46,13 @@ export function createDigestRouter(): Router {
         return;
       }
 
+      if (isLegacyContent(digest.content)) {
+        res.status(410).send('This digest uses a legacy format and cannot be previewed.');
+        return;
+      }
+
       // Render with 'preview' tracking ID so links are not tracked
-      const { html } = renderDigestEmail(digest.content, 'preview', editionDate, segment, firstName);
+      const { html } = renderDigestEmail(digest.content, 'preview', editionDate, segment, firstName, undefined, personaCluster);
 
       // Wrap in a simple page with segment switcher
       const page = `<!DOCTYPE html>
@@ -68,7 +76,12 @@ export function createDigestRouter(): Router {
   <div class="preview-bar">
     <label>Segment:</label>
     ${(['website_only', 'both', 'slack_only', 'active'] as const).map((s) =>
-      `<a href="?segment=${s}&firstName=${encodeURIComponent(firstName || '')}&date=${editionDate}" class="${s === segment ? 'active' : ''}">${s}</a>`
+      `<a href="?segment=${s}&firstName=${encodeURIComponent(firstName || '')}&date=${editionDate}&persona=${personaCluster || ''}" class="${s === segment ? 'active' : ''}">${s}</a>`
+    ).join(' ')}
+    <span style="margin: 0 8px; color: #555;">|</span>
+    <label>Persona:</label>
+    ${(['', 'builder', 'strategist', 'newcomer'] as const).map((p) =>
+      `<a href="?segment=${segment}&firstName=${encodeURIComponent(firstName || '')}&date=${editionDate}&persona=${p}" class="${(p || undefined) === personaCluster ? 'active' : ''}">${p || 'default'}</a>`
     ).join(' ')}
     <span style="margin-left: auto;">Status: ${digest.status} | ${editionDate}</span>
   </div>
@@ -103,6 +116,11 @@ export function createDigestRouter(): Router {
 
       if (!digest || digest.status !== 'sent') {
         res.status(404).send('Digest not found');
+        return;
+      }
+
+      if (isLegacyContent(digest.content)) {
+        res.status(410).send('This digest edition is no longer available in web format.');
         return;
       }
 

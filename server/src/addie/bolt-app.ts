@@ -61,6 +61,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  NEWSLETTER_TOOLS,
+  createNewsletterToolHandlers,
+} from './mcp/newsletter-tools.js';
+import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
@@ -112,7 +116,7 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft, isLegacyContent } from '../db/digest-db.js';
 import { applyDigestEdit } from './services/digest-editor.js';
 import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
@@ -871,6 +875,14 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Escalation tools enabled');
+
+  // Add newsletter suggestion tools for all users
+  const newsletterHandlers = createNewsletterToolHandlers(memberContext, slackUserId);
+  allTools.push(...NEWSLETTER_TOOLS);
+  for (const [name, handler] of newsletterHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Newsletter suggestion tools enabled');
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
   const adcpHandlers = createAdcpToolHandlers(memberContext);
@@ -4117,6 +4129,10 @@ async function handleDigestEditReply(
 
   let result;
   try {
+    if (isLegacyContent(digest.content)) {
+      logger.warn({ digestId: digest.id }, 'Cannot edit legacy-format digest');
+      return true;
+    }
     result = await applyDigestEdit(digest.content, messageText, editorName);
   } catch (err) {
     logger.error({ error: err, digestId: digest.id }, 'Failed to apply digest edit');
