@@ -102,7 +102,7 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       const existing = await getCurrentWeekDigest();
       if (existing) {
         const subject = isLegacyContent(existing.content) ? '' : generateDigestSubject(existing.content as DigestContent);
-        return res.status(409).json({ error: 'A digest already exists for this week. Edit it instead.', edition: existing, subject });
+        return res.status(409).json({ error: 'A digest already exists for this week. Edit it instead.', digest: existing, subject });
       }
 
       const content = await buildDigestContent();
