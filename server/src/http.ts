@@ -7368,7 +7368,7 @@ Disallow: /api/admin/
           search: search as string,
           offerings: offerings ? (offerings as string).split(',') as any : undefined,
           markets: markets ? (markets as string).split(',') : undefined,
-          limit: limit ? parseInt(limit as string, 10) : undefined,
+          limit: limit ? Math.min(parseInt(limit as string, 10), 500) : undefined,
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
