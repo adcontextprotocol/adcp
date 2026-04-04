@@ -26,6 +26,7 @@ import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
+import { isFreeEmailDomain } from '../utils/email-domain.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import {
@@ -71,7 +72,7 @@ interface OrganizationDomainData {
  */
 interface OrganizationDomainEventData {
   id: string;
-  domain: string;
+  domain?: string;
   organization_id: string;
   state: 'verified' | 'pending' | 'failed';
 }
@@ -478,7 +479,7 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
  * Upsert a single organization domain from organization_domain.* events
  * Uses transaction to prevent race conditions when setting primary domain
  */
-async function upsertOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -571,7 +572,7 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData)
  * Delete a single organization domain
  * Uses transaction to prevent race conditions when selecting new primary
  */
-async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -773,15 +774,26 @@ export function createWorkOSWebhooksRouter(): Router {
                 'Auto-linked new website user to Slack account'
               );
             }
-            // Fire-and-forget prospect triage for business emails.
-            // Assess + notify only — don't create an org. The user creates their
-            // own org during onboarding; enrichment runs on organization.created.
-            if (user.email && process.env.ANTHROPIC_API_KEY) {
-              const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
+            // Fire-and-forget prospect triage + brand research for business emails.
+            if (user.email) {
               const domain = user.email.split('@')[1];
-              triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
-                logger.error({ err, domain }, 'Prospect triage failed for new website user');
-              });
+              if (domain) {
+                // Assess prospect value and notify Slack
+                if (process.env.ANTHROPIC_API_KEY) {
+                  const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
+                  triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
+                    logger.error({ err, domain }, 'Prospect triage failed for new website user');
+                  });
+                }
+                // Classify brand hierarchy before the user finishes onboarding
+                const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
+                  && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
+                if (isValidDomain && !isFreeEmailDomain(domain)) {
+                  researchDomain(domain).catch(err => {
+                    logger.warn({ err, domain }, 'Background domain research failed for new user');
+                  });
+                }
+              }
             }
             invalidateUnifiedUsersCache();
             break;
@@ -830,16 +842,19 @@ export function createWorkOSWebhooksRouter(): Router {
           // organization_domain.* events for granular domain management
           case 'organization_domain.created':
           case 'organization_domain.updated':
-          case 'organization_domain.verified': {
-            const domainData = event.data as unknown as OrganizationDomainEventData;
-            await upsertOrganizationDomain(domainData);
-            break;
-          }
-
+          case 'organization_domain.verified':
           case 'organization_domain.deleted':
           case 'organization_domain.verification_failed': {
             const domainData = event.data as unknown as OrganizationDomainEventData;
-            await deleteSingleOrganizationDomain(domainData);
+            if (!domainData.domain) {
+              logger.warn({ event: event.event, domainId: domainData.id, organizationId: domainData.organization_id }, 'Skipping domain event: missing domain field');
+              break;
+            }
+            if (event.event === 'organization_domain.deleted' || event.event === 'organization_domain.verification_failed') {
+              await deleteSingleOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+            } else {
+              await upsertOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+            }
             break;
           }
 

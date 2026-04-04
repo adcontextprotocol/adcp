@@ -770,7 +770,7 @@ async function main() {
   }
 
   console.log('');
-  console.log('📖 See docs/reference/schema-versioning.mdx for guidance on which to use.');
+  console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
 main().catch(err => {

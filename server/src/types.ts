@@ -594,7 +594,7 @@ export interface BrandLogo {
   url: string;
   orientation?: 'square' | 'horizontal' | 'vertical' | 'stacked';
   background?: 'dark-bg' | 'light-bg' | 'transparent-bg';
-  variant?: 'primary' | 'secondary' | 'icon' | 'wordmark' | 'full-lockup';
+  variant?: 'primary' | 'secondary' | 'icon' | 'wordmark' | 'full-lockup' | 'symbol';
   usage?: string;
 }
 
@@ -684,6 +684,7 @@ export interface UpdateMemberProfileInput {
   tags?: string[];
   is_public?: boolean;
   show_in_carousel?: boolean;
+  is_founding_member?: boolean;
 }
 
 export interface ListMemberProfilesOptions {

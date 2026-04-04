@@ -32,6 +32,28 @@ const sessionCache = new Map<string, CachedSession>();
 // Cache TTL: 60 seconds - short enough to catch revocations, long enough to reduce API calls
 const SESSION_CACHE_TTL_MS = 60 * 1000;
 
+// Track recent auth failures to suppress repeated warnings for the same stale session.
+// Key: cookie hash, Value: timestamp of first warning. Entries expire after 5 minutes.
+const authFailureLog = new Map<string, number>();
+const AUTH_FAILURE_LOG_SUPPRESS_MS = 5 * 60 * 1000;
+
+/** Log at warn the first time a stale session is seen; demote repeats to debug. */
+function warnOncePerSession(
+  cacheKey: string,
+  fields: Record<string, unknown>,
+  message: string,
+  suppressedMessage: string,
+): void {
+  const now = Date.now();
+  const firstSeen = authFailureLog.get(cacheKey);
+  if (!firstSeen || now - firstSeen > AUTH_FAILURE_LOG_SUPPRESS_MS) {
+    authFailureLog.set(cacheKey, now);
+    logger.warn(fields, message);
+  } else {
+    logger.debug(fields, suppressedMessage);
+  }
+}
+
 // Clean up expired cache entries periodically (every 5 minutes)
 setInterval(() => {
   const now = Date.now();
@@ -44,6 +66,9 @@ setInterval(() => {
   }
   if (cleaned > 0) {
     logger.debug({ cleaned, remaining: sessionCache.size }, 'Cleaned expired session cache entries');
+  }
+  for (const [key, ts] of authFailureLog.entries()) {
+    if (now - ts > AUTH_FAILURE_LOG_SUPPRESS_MS) authFailureLog.delete(key);
   }
 }, 5 * 60 * 1000);
 
@@ -544,10 +569,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // If authentication failed, try to refresh the session (this makes an API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
-      const reason = !result.authenticated ? 'not_authenticated'
+      const authReason = !result.authenticated
+        ? ('reason' in result ? result.reason : 'not_authenticated')
         : !('user' in result) ? 'no_user_field'
         : 'user_null';
-      logger.debug({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
+      logger.debug({ path: req.path, reason: authReason }, 'Session JWT expired, attempting refresh');
 
       let refreshFailed = false;
 
@@ -573,9 +599,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           });
           result = await newSession.authenticate();
         } else {
-          logger.warn(
-            { path: req.path, authenticated: refreshResult.authenticated },
-            'Session refresh returned but was not usable'
+          const refreshReason = 'reason' in refreshResult ? refreshResult.reason : undefined;
+          warnOncePerSession(
+            cacheKey,
+            { path: req.path, authenticated: refreshResult.authenticated, reason: refreshReason },
+            'Session refresh returned but was not usable',
+            'Session refresh not usable (repeated — suppressed)',
           );
           refreshFailed = true;
         }
@@ -644,7 +673,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       const reason = !result.authenticated ? 'not_authenticated'
         : !('user' in result) ? 'no_user_field'
         : 'user_null';
-      logger.warn({ path: req.path, reason }, 'Session invalid after refresh attempt — user will be logged out');
+
+      warnOncePerSession(
+        cacheKey,
+        { path: req.path, reason },
+        'Session invalid after refresh attempt — user will be logged out',
+        'Session invalid (repeated — suppressed)',
+      );
+
       // Remove any stale cache entry
       sessionCache.delete(cacheKey);
       if (isHtmlRequest) {

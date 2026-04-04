@@ -188,7 +188,7 @@ export function computeNextSteps(data: {
     steps.push({
       action: 'complete_profile',
       label: 'Complete your profile',
-      url: '/community/profile/edit',
+      url: '/account',
       context: `${data.profileCompleteness}% complete`,
     });
   }

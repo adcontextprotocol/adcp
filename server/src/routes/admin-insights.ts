@@ -220,6 +220,180 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   });
 
   // =========================================================================
+  // PROSPECT TRIAGE API
+  // =========================================================================
+
+  // GET /api/admin/outreach/triage-stats - Prospect triage statistics
+  apiRouter.get('/outreach/triage-stats', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const [summaryResult, byOwnerResult, byPriorityResult, bySourceResult, byCompanyTypeResult, enrichmentResult, recentResult] = await Promise.all([
+        // Summary counts with time windows
+        query<{
+          total: string;
+          created: string;
+          skipped: string;
+          last_7d: string;
+          last_7d_created: string;
+          last_7d_skipped: string;
+          last_30d: string;
+          last_30d_created: string;
+          last_30d_skipped: string;
+        }>(`
+          SELECT
+            COUNT(*)::text AS total,
+            COUNT(*) FILTER (WHERE action = 'create')::text AS created,
+            COUNT(*) FILTER (WHERE action = 'skip')::text AS skipped,
+            COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::text AS last_7d,
+            COUNT(*) FILTER (WHERE action = 'create' AND created_at > NOW() - INTERVAL '7 days')::text AS last_7d_created,
+            COUNT(*) FILTER (WHERE action = 'skip' AND created_at > NOW() - INTERVAL '7 days')::text AS last_7d_skipped,
+            COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::text AS last_30d,
+            COUNT(*) FILTER (WHERE action = 'create' AND created_at > NOW() - INTERVAL '30 days')::text AS last_30d_created,
+            COUNT(*) FILTER (WHERE action = 'skip' AND created_at > NOW() - INTERVAL '30 days')::text AS last_30d_skipped
+          FROM prospect_triage_log
+        `),
+        // By owner
+        query<{ owner: string; count: string }>(`
+          SELECT owner, COUNT(*)::text AS count
+          FROM prospect_triage_log
+          GROUP BY owner
+          ORDER BY count DESC
+        `),
+        // By priority
+        query<{ priority: string; count: string }>(`
+          SELECT COALESCE(priority, 'unset') AS priority, COUNT(*)::text AS count
+          FROM prospect_triage_log
+          GROUP BY priority
+          ORDER BY count DESC
+        `),
+        // By source
+        query<{ source: string; count: string }>(`
+          SELECT COALESCE(source, 'unknown') AS source, COUNT(*)::text AS count
+          FROM prospect_triage_log
+          GROUP BY source
+          ORDER BY count DESC
+        `),
+        // By company type
+        query<{ company_type: string; count: string }>(`
+          SELECT COALESCE(company_type, 'unknown') AS company_type, COUNT(*)::text AS count
+          FROM prospect_triage_log
+          GROUP BY company_type
+          ORDER BY count DESC
+        `),
+        // Enrichment rate
+        query<{ total: string; enriched_count: string }>(`
+          SELECT
+            COUNT(*)::text AS total,
+            COUNT(*) FILTER (WHERE enriched = TRUE)::text AS enriched_count
+          FROM prospect_triage_log
+        `),
+        // Recent decisions for quality review
+        query<{
+          id: number;
+          domain: string;
+          action: string;
+          reason: string | null;
+          owner: string | null;
+          priority: string | null;
+          verdict: string | null;
+          company_name: string | null;
+          company_type: string | null;
+          source: string | null;
+          enriched: boolean | null;
+          created_at: Date;
+        }>(`
+          SELECT id, domain, action, reason, owner, priority, verdict,
+                 company_name, company_type, source, enriched, created_at
+          FROM prospect_triage_log
+          ORDER BY created_at DESC
+          LIMIT 20
+        `),
+      ]);
+
+      const s = summaryResult.rows[0];
+      const e = enrichmentResult.rows[0];
+      const totalEnrich = parseInt(e.total, 10);
+      const enrichedCount = parseInt(e.enriched_count, 10);
+
+      res.json({
+        summary: {
+          total: parseInt(s.total, 10),
+          created: parseInt(s.created, 10),
+          skipped: parseInt(s.skipped, 10),
+        },
+        time_windows: {
+          last_7d: {
+            total: parseInt(s.last_7d, 10),
+            created: parseInt(s.last_7d_created, 10),
+            skipped: parseInt(s.last_7d_skipped, 10),
+          },
+          last_30d: {
+            total: parseInt(s.last_30d, 10),
+            created: parseInt(s.last_30d_created, 10),
+            skipped: parseInt(s.last_30d_skipped, 10),
+          },
+        },
+        by_owner: byOwnerResult.rows.map(r => ({ owner: r.owner, count: parseInt(r.count, 10) })),
+        by_priority: byPriorityResult.rows.map(r => ({ priority: r.priority, count: parseInt(r.count, 10) })),
+        by_source: bySourceResult.rows.map(r => ({ source: r.source, count: parseInt(r.count, 10) })),
+        by_company_type: byCompanyTypeResult.rows.map(r => ({ company_type: r.company_type, count: parseInt(r.count, 10) })),
+        enrichment: {
+          total: totalEnrich,
+          enriched: enrichedCount,
+          rate_pct: totalEnrich > 0 ? Math.round((100 * enrichedCount) / totalEnrich) : null,
+        },
+        recent_decisions: recentResult.rows,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting triage stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/triage-log - Paginated prospect triage log
+  apiRouter.get('/outreach/triage-log', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Math.min(Number.isNaN(rawLimit) ? 50 : Math.max(1, rawLimit), 200);
+      const rawOffset = parseInt(req.query.offset as string, 10);
+      const offset = Number.isNaN(rawOffset) ? 0 : Math.max(0, rawOffset);
+
+      const countResult = await query<{ count: string }>('SELECT COUNT(*)::text AS count FROM prospect_triage_log');
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      const result = await query<{
+        id: number;
+        domain: string;
+        action: string;
+        reason: string | null;
+        owner: string | null;
+        priority: string | null;
+        verdict: string | null;
+        company_name: string | null;
+        company_type: string | null;
+        source: string | null;
+        enriched: boolean | null;
+        created_at: Date;
+      }>(`
+        SELECT id, domain, action, reason, owner, priority, verdict,
+               company_name, company_type, source, enriched, created_at
+        FROM prospect_triage_log
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+
+      res.json({
+        total,
+        limit,
+        offset,
+        rows: result.rows,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting triage log');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =========================================================================
   // TEST ACCOUNTS API
   // =========================================================================
 

@@ -29,8 +29,8 @@ export interface NewsletterCadence {
   generateHourET: number;
   /** Hour (ET) to send approved editions */
   sendHourET: number;
-  /** Returns true if today is a send day for this newsletter */
-  shouldRunToday: () => boolean;
+  /** Returns true if the given date (or today) is a send day for this newsletter */
+  shouldRunToday: (dateOverride?: Date) => boolean;
 }
 
 // ─── Recipient ─────────────────────────────────────────────────────────
@@ -99,6 +99,8 @@ export interface NewsletterConfig {
   authorSystemId: string;
   /** Email category for opt-out */
   emailCategory: string;
+  /** From address for emails (e.g. 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>') */
+  fromEmail?: string;
   /** Color palette for email and illustrations */
   palette: NewsletterPalette;
   /** Cadence configuration */

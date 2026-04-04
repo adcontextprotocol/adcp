@@ -754,7 +754,7 @@ export function createMeetingRouters(): {
       const meetings = await meetingsDb.listMeetings({
         working_group_id: working_group_id as string,
         upcoming_only: true,
-        limit: limit ? parseInt(limit as string, 10) : 20,
+        limit: limit ? Math.min(parseInt(limit as string, 10), 500) : undefined,
       });
 
       res.json({ meetings });

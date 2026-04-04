@@ -96,9 +96,11 @@ import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
-import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
+import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
+import { BrandLogoDatabase } from "./db/brand-logo-db.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
+import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
@@ -1020,36 +1022,103 @@ export class HTTPServer {
       }
     });
 
-    // Serve cached brand logos — public endpoint so agents can download them.
-    // Logos are stored in brand_logo_cache when brands are enriched via Brandfetch.
+    // Serve brand logos by UUID — public endpoint so agents can download them.
     const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-    this.app.get('/logos/brands/:domain/:idx', async (req, res) => {
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const brandLogoDb = new BrandLogoDatabase();
+
+    // LRU cache: bounded to ~100MB / ~200 entries, 5-minute TTL
+    const logoCache = new Map<string, { content_type: string; data: Buffer; cachedAt: number }>();
+    const LOGO_CACHE_MAX_BYTES = 100 * 1024 * 1024;
+    const LOGO_CACHE_TTL_MS = 5 * 60 * 1000;
+    let logoCacheTotalBytes = 0;
+
+    function evictLogoCache(): void {
+      const now = Date.now();
+      // Evict expired entries first
+      for (const [key, entry] of logoCache) {
+        if (now - entry.cachedAt > LOGO_CACHE_TTL_MS) {
+          logoCacheTotalBytes -= entry.data.length;
+          logoCache.delete(key);
+        }
+      }
+      // Evict oldest entries until under budget
+      while (logoCacheTotalBytes > LOGO_CACHE_MAX_BYTES && logoCache.size > 0) {
+        const firstKey = logoCache.keys().next().value!;
+        const entry = logoCache.get(firstKey)!;
+        logoCacheTotalBytes -= entry.data.length;
+        logoCache.delete(firstKey);
+      }
+    }
+
+    this.app.get('/logos/brands/:domain/:id', async (req, res) => {
       const domain = req.params.domain.toLowerCase();
-      const idx = parseInt(req.params.idx, 10);
+      const id = req.params.id;
       if (!logoDomainPattern.test(domain)) {
         return res.status(400).json({ error: 'Invalid domain' });
       }
-      if (isNaN(idx) || idx < 0 || idx > 999) {
-        return res.status(400).json({ error: 'Invalid logo index' });
-      }
+
       try {
-        const logo = await getCachedLogo(domain, idx);
+        // Integer fallback: old /:idx URLs redirect to UUID
+        if (/^\d+$/.test(id)) {
+          const oldIdx = parseInt(id, 10);
+          const newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
+          if (!newId) {
+            return res.status(404).json({ error: 'Logo not found' });
+          }
+          res.setHeader('Content-Security-Policy', "default-src 'none'");
+          res.setHeader('Content-Disposition', 'inline');
+          return res.redirect(301, `/logos/brands/${domain}/${newId}`);
+        }
+
+        if (!uuidPattern.test(id)) {
+          return res.status(400).json({ error: 'Invalid logo ID' });
+        }
+
+        // Check LRU cache (with TTL)
+        const cacheKey = `${domain}/${id}`;
+        const cached = logoCache.get(cacheKey);
+        if (cached && (Date.now() - cached.cachedAt) < LOGO_CACHE_TTL_MS) {
+          // Move to end (most recently used)
+          logoCache.delete(cacheKey);
+          logoCache.set(cacheKey, cached);
+
+          res.setHeader('Content-Type', cached.content_type);
+          res.setHeader('Cache-Control', 'public, max-age=2592000');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Security-Policy', "default-src 'none'");
+          res.setHeader('Content-Disposition', 'inline');
+          return res.send(cached.data);
+        }
+
+        const logo = await getLogo(domain, id);
         if (!logo) {
           return res.status(404).json({ error: 'Logo not found' });
         }
         if (!isAllowedLogoContentType(logo.content_type)) {
-          logger.error({ domain, idx, contentType: logo.content_type }, 'Cached logo has disallowed content-type');
+          logger.error({ domain, id, contentType: logo.content_type }, 'Logo has disallowed content-type');
           return res.status(500).json({ error: 'Failed to retrieve logo' });
         }
+
+        // Add to LRU cache
+        logoCacheTotalBytes += logo.data.length;
+        logoCache.set(cacheKey, { content_type: logo.content_type, data: logo.data, cachedAt: Date.now() });
+        evictLogoCache();
+
         res.setHeader('Content-Type', logo.content_type);
-        res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
+        res.setHeader('Cache-Control', 'public, max-age=2592000');
         res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'");
+        res.setHeader('Content-Disposition', 'inline');
         return res.send(logo.data);
       } catch (error) {
-        logger.error({ err: error, domain, idx }, 'Failed to serve logo');
+        logger.error({ err: error, domain, id }, 'Failed to serve logo');
         return res.status(500).json({ error: 'Failed to retrieve logo' });
       }
     });
+
+    // Mount brand logo routes (upload, list, review)
+    this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
 
     // Mount member profile routes
     const memberDb = new MemberDatabase();
@@ -2031,8 +2100,9 @@ export class HTTPServer {
     this.app.get("/community/notifications", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/notifications.html');
     });
-    this.app.get("/community/profile/edit", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');
+    this.app.get("/community/profile/edit", (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, '/account' + query);
     });
 
     // brand.json project landing page
@@ -4218,6 +4288,8 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
     this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
+    this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -5029,10 +5101,17 @@ Disallow: /api/admin/
             u.slug as author_slug,
             u.avatar_url as author_avatar_url,
             u.headline as author_headline,
-            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at,
+            pa_report.report_url
           FROM perspectives p
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          LEFT JOIN LATERAL (
+            SELECT '/api/perspectives/' || p.slug || '/assets/' || pa.file_name as report_url
+            FROM perspective_assets pa
+            WHERE pa.perspective_id = p.id AND pa.asset_type = 'report'
+            ORDER BY pa.created_at DESC LIMIT 1
+          ) pa_report ON true
           WHERE p.slug = $1
             AND (
               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
@@ -5061,6 +5140,42 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
+      }
+    });
+
+    // GET /api/perspectives/:slug/report - Track and redirect to report PDF
+    this.app.get('/api/perspectives/:slug/report', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `SELECT p.id, pa.file_name
+           FROM perspectives p
+           JOIN perspective_assets pa ON pa.perspective_id = p.id AND pa.asset_type = 'report'
+           WHERE p.slug = $1 AND p.status = 'published'
+           LIMIT 1`,
+          [slug]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'No report found for this perspective' });
+        }
+
+        const { file_name } = result.rows[0];
+        const assetUrl = `/api/perspectives/${encodeURIComponent(slug)}/assets/${encodeURIComponent(file_name)}`;
+
+        // Track download via PostHog (fire and forget)
+        try {
+          const { captureEvent } = await import('./utils/posthog.js');
+          const distinctId = req.ip || 'anonymous';
+          captureEvent(distinctId, 'report_downloaded', { slug, filename: file_name });
+        } catch { /* PostHog not configured */ }
+
+        res.redirect(302, assetUrl);
+      } catch (error) {
+        logger.error({ err: error }, 'Report download redirect error');
+        res.status(500).json({ error: 'Failed to redirect to report' });
       }
     });
 
@@ -5614,8 +5729,35 @@ Disallow: /api/admin/
                LIMIT 1`,
               [aliasEmails, user.id]
             );
-            if (aliasResult.rows.length > 0) {
-              const existing = aliasResult.rows[0];
+
+            // If no local match, check WorkOS — the duplicate may exist there
+            // but never have logged in (e.g. created via Stripe checkout only).
+            let existing: { workos_user_id: string; email: string } | null =
+              aliasResult.rows[0] ?? null;
+
+            if (!existing && workos) {
+              for (const aliasEmail of aliasEmails) {
+                const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
+                const match = workosUsers.data.find(u => u.id !== user.id);
+                if (match) {
+                  // Insert into local users table so mergeUsers can operate on it
+                  await pool.query(
+                    `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                     ON CONFLICT (workos_user_id) DO NOTHING`,
+                    [match.id, match.email, match.firstName, match.lastName, match.emailVerified, match.createdAt, match.updatedAt]
+                  );
+                  logger.info(
+                    { primaryUserId: user.id, secondaryWorkosId: match.id, secondaryEmail: match.email },
+                    'Found duplicate account in WorkOS (not in local DB) — created local user for merge'
+                  );
+                  existing = { workos_user_id: match.id, email: match.email };
+                  break;
+                }
+              }
+            }
+
+            if (existing) {
               duplicateAliasEmail = existing.email;
 
               // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
@@ -5636,6 +5778,29 @@ Disallow: /api/admin/
                 const secondaryId = existing.workos_user_id;
 
                 try {
+                  // Add the primary user to any of the secondary's WorkOS orgs
+                  // so that membership context resolves correctly after the
+                  // merge deletes the secondary user from WorkOS.
+                  if (workos) {
+                    const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
+                      userId: secondaryId,
+                      limit: 100,
+                    });
+                    for (const mem of secondaryMemberships.data) {
+                      if (mem.status !== 'active') continue;
+                      try {
+                        await workos.userManagement.createOrganizationMembership({
+                          userId: primaryId,
+                          organizationId: mem.organizationId,
+                        });
+                      } catch (memErr: unknown) {
+                        // Ignore conflict — the primary may already be a member
+                        const status = (memErr as { status?: number })?.status;
+                        if (status !== 409) throw memErr;
+                      }
+                    }
+                  }
+
                   const { mergeUsers } = await import('./db/user-merge-db.js');
                   const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge', workos!);
                   autoMerged = true;
@@ -5644,7 +5809,11 @@ Disallow: /api/admin/
                     'Auto-merged duplicate Google email alias accounts'
                   );
                 } catch (mergeError) {
-                  // Roll back the claim so the merge can be retried on next login
+                  // Note: org memberships already transferred to primary in WorkOS
+                  // are NOT rolled back. This is acceptable because both users
+                  // control the same inbox, and the merge will be retried on
+                  // next login (createOrganizationMembership will 409, which is handled).
+                  // Roll back the alias claim so the merge can be retried on next login
                   await pool.query(
                     'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
                     [user.id, existing.email]
@@ -6180,12 +6349,20 @@ Disallow: /api/admin/
             is_personal: row.is_personal || false,
           }));
 
+          // Read DB names (user may have updated their display name)
+          const devNameResult = await pool.query<{ first_name: string | null; last_name: string | null }>(
+            'SELECT first_name, last_name FROM users WHERE workos_user_id = $1',
+            [user.id]
+          );
+          const devFirstName = devNameResult.rows[0]?.first_name?.trim() || user.firstName;
+          const devLastName = devNameResult.rows[0]?.last_name?.trim() || user.lastName;
+
           return res.json({
             user: {
               id: user.id,
               email: user.email,
-              first_name: user.firstName,
-              last_name: user.lastName,
+              first_name: devFirstName,
+              last_name: devLastName,
               isAdmin: devUser.isAdmin,
             },
             organizations,
@@ -6294,11 +6471,23 @@ Disallow: /api/admin/
     this.app.put('/api/me/name', requireAuth, async (req, res) => {
       try {
         const user = req.user!;
-        const firstName = (req.body.first_name as string)?.trim();
-        const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+        if (typeof req.body.first_name !== 'string') {
+          return res.status(400).json({ error: 'first_name must be a string' });
+        }
+
+        const sanitize = (s: string) => s.trim().replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
+        const firstName = sanitize(req.body.first_name);
+        const lastName = typeof req.body.last_name === 'string' ? sanitize(req.body.last_name) || null : null;
 
         if (!firstName) {
           return res.status(400).json({ error: 'first_name is required' });
+        }
+        if (firstName.length > 255) {
+          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
+        }
+        if (lastName && lastName.length > 255) {
+          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
         }
 
         const pool = getPool();
@@ -6315,6 +6504,7 @@ Disallow: /api/admin/
           [firstName, lastName, user.id]
         );
 
+        invalidateMemberContextCache();
         logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
         res.json({ first_name: firstName, last_name: lastName });
       } catch (error) {
@@ -6558,7 +6748,7 @@ Disallow: /api/admin/
         const userDomain = getCompanyDomain(user.email);
 
         // Get all public member profiles (published orgs)
-        const publicProfiles = await memberDb.getPublicProfiles({ limit: 100 });
+        const publicProfiles = await memberDb.getPublicProfiles();
 
         // Get user's current org memberships to exclude
         const userMemberships = await workos!.userManagement.listOrganizationMemberships({
@@ -7200,7 +7390,7 @@ Disallow: /api/admin/
           search: search as string,
           offerings: offerings ? (offerings as string).split(',') as any : undefined,
           markets: markets ? (markets as string).split(',') : undefined,
-          limit: limit ? parseInt(limit as string, 10) : 50,
+          limit: limit ? Math.min(parseInt(limit as string, 10), 500) : undefined,
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 

@@ -60,7 +60,7 @@ export async function buildWgDigestContent(workingGroupId: string): Promise<WgDi
     getActivitySummary(workingGroupId),
     getRecentMeetingRecaps(workingGroupId),
     getNextMeeting(workingGroupId),
-    getActiveThreads(group.slack_channel_id),
+    getActiveThreads(group.slack_channel_id, group.name),
     getNewMembers(workingGroupId),
   ]);
 
@@ -152,7 +152,7 @@ async function getNextMeeting(workingGroupId: string): Promise<{ title: string; 
   };
 }
 
-async function getActiveThreads(slackChannelId: string | null | undefined): Promise<WgDigestThread[]> {
+async function getActiveThreads(slackChannelId: string | null | undefined, groupName?: string): Promise<WgDigestThread[]> {
   if (!slackChannelId) return [];
 
   try {
@@ -203,7 +203,7 @@ async function getActiveThreads(slackChannelId: string | null | undefined): Prom
 
     return enriched;
   } catch (err) {
-    logger.warn({ channelId: slackChannelId, error: err }, 'Failed to fetch channel history for WG digest');
+    logger.error({ channelId: slackChannelId, groupName, error: err }, `Failed to fetch Slack threads for WG digest${groupName ? ` (${groupName})` : ''} — is the bot in channel ${slackChannelId}?`);
     return [];
   }
 }

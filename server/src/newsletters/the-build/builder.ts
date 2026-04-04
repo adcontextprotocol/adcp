@@ -46,12 +46,15 @@ export async function buildBuildContent(): Promise<BuildContent> {
     }
   }
 
-  const [decisions, whatShipped, helpNeeded, contributorSpotlight] = await Promise.all([
+  // Build decisions first so we can deduplicate help-needed
+  const [decisions, whatShipped, contributorSpotlight] = await Promise.all([
     buildDecisionsSection(wgEntries),
     buildReleasesSection(),
-    buildHelpNeededSection(wgEntries),
     buildContributorSpotlight(),
   ]);
+
+  const decisionUrls = new Set(decisions.map((d) => d.url));
+  const helpNeeded = await buildHelpNeededSection(wgEntries, decisionUrls);
 
   const statusLine = await generateStatusLine(decisions, whatShipped, helpNeeded, contributorSpotlight);
 
@@ -224,6 +227,7 @@ Only include items that are NOT noise. Be conservative — if unclear, classify 
 
 async function buildReleasesSection(): Promise<BuildRelease[]> {
   try {
+    // Query both explicit release entries AND articles about releases/SDKs/versions
     const result = await query<{
       title: string;
       source_url: string;
@@ -234,11 +238,16 @@ async function buildReleasesSection(): Promise<BuildRelease[]> {
     }>(
       `SELECT title, source_url, summary, addie_notes, relevance_tags, created_at
        FROM addie_knowledge
-       WHERE source_type IN ('changelog', 'release')
-         AND created_at > NOW() - INTERVAL '14 days'
+       WHERE created_at > NOW() - INTERVAL '21 days'
          AND quality_score >= 3
+         AND is_active = TRUE
+         AND (
+           source_type IN ('changelog', 'release')
+           OR title ~* '(release|v\\d+\\.\\d+|SDK|client|RC\\d+|shipped)'
+           OR EXISTS (SELECT 1 FROM unnest(relevance_tags) t WHERE t IN ('release', 'sdk', 'client', 'changelog'))
+         )
        ORDER BY created_at DESC
-       LIMIT 8`,
+       LIMIT 12`,
     );
 
     return result.rows.map((row) => {
@@ -263,13 +272,21 @@ async function buildReleasesSection(): Promise<BuildRelease[]> {
 
 // ─── Help Needed ───────────────────────────────────────────────────────
 
-async function buildHelpNeededSection(wgEntries: WgEntry[]): Promise<BuildHelpItem[]> {
+async function buildHelpNeededSection(wgEntries: WgEntry[], decisionUrls: Set<string>): Promise<BuildHelpItem[]> {
   const items: BuildHelpItem[] = [];
 
   for (const entry of wgEntries) {
     for (const thread of entry.content.activeThreads) {
+      // Skip threads already surfaced as decisions
+      if (decisionUrls.has(thread.threadUrl)) continue;
+
       const lower = thread.summary.toLowerCase();
-      if (lower.includes('help') || lower.includes('review') || lower.includes('feedback') || lower.includes('volunteer')) {
+
+      // Look for active asks, not resolved ones
+      // Skip if the summary suggests it's already resolved
+      if (lower.includes('solved') || lower.includes('resolved') || lower.includes('thanks, that worked') || lower.includes('closed')) continue;
+
+      if (lower.includes('help') || lower.includes('review') || lower.includes('feedback') || lower.includes('volunteer') || lower.includes('input needed') || lower.includes('looking for')) {
         items.push({
           title: thread.summary.slice(0, 120),
           url: thread.threadUrl,

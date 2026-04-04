@@ -16,6 +16,7 @@ import {
   listPersonalDomains,
 } from "../../db/personal-domains-db.js";
 import { linkContactsByDomain } from "../../db/contacts-db.js";
+import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -104,22 +105,28 @@ export function setupDomainRoutes(
         // Normalize domains to lowercase for consistent matching
         const domainList = domains.map((d) => d.domain.toLowerCase());
 
-        // Query all matching domains at once (check both organization_domains and organizations.email_domain)
-        const localDomainsResult = await pool.query(
-          `SELECT COALESCE(LOWER(od.domain), LOWER(o.email_domain)) as domain, o.workos_organization_id, o.name
-           FROM organizations o
-           LEFT JOIN organization_domains od ON o.workos_organization_id = od.workos_organization_id
-             AND LOWER(od.domain) = ANY($1)
-           WHERE od.domain IS NOT NULL OR LOWER(o.email_domain) = ANY($1)`,
-          [domainList]
-        );
+        // Resolve domains via centralized resolver (exact, brand alias, sub-brand)
+        const resolutionMap = await resolveOrgsByDomains(domainList);
+
+        // Fetch org names for resolved domains
+        const resolvedOrgIds = [...new Set([...resolutionMap.values()].map(r => r.orgId))];
+        const orgNameMap = new Map<string, string>();
+        if (resolvedOrgIds.length > 0) {
+          const nameResult = await pool.query<{ workos_organization_id: string; name: string }>(
+            `SELECT workos_organization_id, name FROM organizations WHERE workos_organization_id = ANY($1)`,
+            [resolvedOrgIds]
+          );
+          for (const row of nameResult.rows) {
+            orgNameMap.set(row.workos_organization_id, row.name);
+          }
+        }
 
         // Build a map of domain -> org for fast lookup
         const domainToOrgMap = new Map<string, { id: string; name: string }>();
-        for (const row of localDomainsResult.rows) {
-          domainToOrgMap.set(row.domain, {
-            id: row.workos_organization_id,
-            name: row.name,
+        for (const [domain, resolution] of resolutionMap) {
+          domainToOrgMap.set(domain, {
+            id: resolution.orgId,
+            name: orgNameMap.get(resolution.orgId) || '',
           });
         }
 
@@ -1589,6 +1596,14 @@ export function setupDomainRoutes(
             SELECT REGEXP_REPLACE(LOWER(domain), '^www\\.', '') as domain FROM organization_domains
             UNION
             SELECT REGEXP_REPLACE(LOWER(email_domain), '^www\\.', '') FROM organizations WHERE email_domain IS NOT NULL
+            UNION
+            SELECT LOWER(alias_domain) FROM brand_domain_aliases
+            UNION
+            SELECT LOWER(brand_domain) FROM brand_domain_aliases
+            UNION
+            SELECT LOWER(db.domain) FROM discovered_brands db
+              JOIN organizations o ON o.email_domain = db.house_domain
+              WHERE db.house_domain IS NOT NULL
           ),
           domain_orgs AS (
             -- Find which orgs users with each domain actually belong to
@@ -1768,14 +1783,63 @@ export function setupDomainRoutes(
 
         // 6. Related domains - find organizations with domains that share a root domain
         // e.g., yahooinc.com and advertising.yahoo.com should be grouped together
-        const relatedDomainsResult = await pool.query(`
+        // 6a. Brand hierarchy matches: orgs sharing a house_domain in discovered_brands
+        const brandHierarchyResult = await pool.query(`
+          WITH house_groups AS (
+            SELECT
+              db.house_domain AS group_key,
+              COUNT(DISTINCT o.workos_organization_id) AS org_count,
+              json_agg(DISTINCT jsonb_build_object(
+                'org_id', o.workos_organization_id,
+                'name', o.name,
+                'subscription_status', o.subscription_status,
+                'domains', ARRAY[o.email_domain]
+              )) AS organizations
+            FROM discovered_brands db
+            JOIN organizations o ON o.email_domain = db.domain OR o.email_domain = db.house_domain
+            WHERE db.house_domain IS NOT NULL
+              AND o.is_personal = false
+            GROUP BY db.house_domain
+            HAVING COUNT(DISTINCT o.workos_organization_id) > 1
+          )
+          SELECT group_key, org_count, organizations, 'brand_hierarchy' AS match_source
+          FROM house_groups
+          ORDER BY org_count DESC
+          LIMIT $1
+        `, [limit]);
+
+        // 6b. Brand alias matches: orgs linked through brand_domain_aliases
+        const brandAliasResult = await pool.query(`
+          WITH alias_groups AS (
+            SELECT
+              bda.brand_domain AS group_key,
+              COUNT(DISTINCT o.workos_organization_id) AS org_count,
+              json_agg(DISTINCT jsonb_build_object(
+                'org_id', o.workos_organization_id,
+                'name', o.name,
+                'subscription_status', o.subscription_status,
+                'domains', ARRAY[o.email_domain]
+              )) AS organizations
+            FROM brand_domain_aliases bda
+            JOIN organizations o
+              ON o.email_domain = bda.alias_domain OR o.email_domain = bda.brand_domain
+            WHERE o.is_personal = false
+            GROUP BY bda.brand_domain
+            HAVING COUNT(DISTINCT o.workos_organization_id) > 1
+          )
+          SELECT group_key, org_count, organizations, 'brand_alias' AS match_source
+          FROM alias_groups
+          ORDER BY org_count DESC
+          LIMIT $1
+        `, [limit]);
+
+        // 6c. Root-domain heuristic fallback for domains not in the brand registry
+        const rootHeuristicResult = await pool.query(`
           WITH org_domains AS (
-            -- Get all domains associated with orgs (from organization_domains, email_domain, and user emails)
             SELECT DISTINCT
               o.workos_organization_id,
               o.name as org_name,
               o.subscription_status,
-              o.is_personal,
               COALESCE(od.domain, o.email_domain, LOWER(SPLIT_PART(om.email, '@', 2))) as domain
             FROM organizations o
             LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
@@ -1784,25 +1848,19 @@ export function setupDomainRoutes(
               AND (od.domain IS NOT NULL OR o.email_domain IS NOT NULL OR om.email IS NOT NULL)
           ),
           domain_roots AS (
-            -- Extract root domain (last two parts, e.g., yahoo.com from advertising.yahoo.com)
             SELECT
               workos_organization_id,
               org_name,
               subscription_status,
-              is_personal,
               domain,
-              -- Extract root domain (last two parts): a.b.yahoo.com -> yahoo.com
-              -- This handles any depth of subdomain
               SUBSTRING(domain FROM '([^.]+\\.[^.]+)$') as root_domain
             FROM org_domains
             WHERE domain IS NOT NULL
-              -- Exclude personal email domains (gmail.com, yahoo.com, admin-managed domains, etc.)
               AND LOWER(SUBSTRING(domain FROM '([^.]+\\.[^.]+)$')) NOT IN (${freeEmailPlaceholders})
           ),
           root_groups AS (
-            -- Group by root domain, only keep groups with multiple orgs
             SELECT
-              root_domain,
+              root_domain AS group_key,
               COUNT(DISTINCT workos_organization_id) as org_count,
               json_agg(DISTINCT jsonb_build_object(
                 'org_id', workos_organization_id,
@@ -1813,7 +1871,8 @@ export function setupDomainRoutes(
                   FROM domain_roots d2
                   WHERE d2.workos_organization_id = domain_roots.workos_organization_id
                 )
-              )) as organizations
+              )) as organizations,
+              'root_domain_heuristic' AS match_source
             FROM domain_roots
             GROUP BY root_domain
             HAVING COUNT(DISTINCT workos_organization_id) > 1
@@ -1822,6 +1881,44 @@ export function setupDomainRoutes(
           ORDER BY org_count DESC
           LIMIT $${allExcludedDomains.length + 1}
         `, [...allExcludedDomains, limit]);
+
+        // Merge results, deduplicating by group_key (brand matches take precedence)
+        const seenGroupKeys = new Set<string>();
+        const relatedDomainsRows: Array<{
+          group_key: string;
+          org_count: string;
+          organizations: Array<{ org_id: string; name: string; subscription_status: string; domains: string[] }>;
+          match_source: 'brand_hierarchy' | 'brand_alias' | 'root_domain_heuristic';
+        }> = [];
+
+        for (const row of brandHierarchyResult.rows) {
+          seenGroupKeys.add(row.group_key);
+          relatedDomainsRows.push(row);
+        }
+        for (const row of brandAliasResult.rows) {
+          if (!seenGroupKeys.has(row.group_key)) {
+            seenGroupKeys.add(row.group_key);
+            relatedDomainsRows.push(row);
+          }
+        }
+        // Only include heuristic matches for domains not already covered by brand registry
+        const brandOrgIds = new Set<string>();
+        for (const row of [...brandHierarchyResult.rows, ...brandAliasResult.rows]) {
+          for (const org of row.organizations) {
+            brandOrgIds.add(org.org_id);
+          }
+        }
+        for (const row of rootHeuristicResult.rows) {
+          if (!seenGroupKeys.has(row.group_key)) {
+            // Skip heuristic groups where all orgs are already covered by brand matches
+            const hasUncoveredOrg = row.organizations.some(
+              (org: { org_id: string }) => !brandOrgIds.has(org.org_id)
+            );
+            if (hasUncoveredOrg) {
+              relatedDomainsRows.push({ ...row, match_source: 'root_domain_heuristic' });
+            }
+          }
+        }
 
         // 7. Similar organization names - find orgs with similar names that might be duplicates
         // Uses pg_trgm trigram similarity for fuzzy matching
@@ -1936,7 +2033,7 @@ export function setupDomainRoutes(
               unverified_orgs: unverifiedResult.rows.length,
               domain_conflicts: conflictResult.rows.length,
               domain_sync_issues: domainSyncResult.rows.length,
-              related_domains: relatedDomainsResult.rows.length,
+              related_domains: relatedDomainsRows.length,
               similar_names: similarNamesResult.rows.length,
               duplicate_organizations: duplicateOrgsResult.rows.length,
             },
@@ -1983,10 +2080,11 @@ export function setupDomainRoutes(
             subscription_status: row.subscription_status,
             prospect_status: row.prospect_status,
           })),
-          related_domains: relatedDomainsResult.rows.map(row => ({
-            root_domain: row.root_domain,
+          related_domains: relatedDomainsRows.map(row => ({
+            root_domain: row.group_key,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
+            match_source: row.match_source,
           })),
           similar_names: similarNamesResult.rows.map(row => ({
             base_name: row.base_name,

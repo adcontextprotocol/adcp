@@ -55,7 +55,7 @@ async function fetchUrlContent(url: string): Promise<string> {
 
   // Use Mozilla Readability to extract article content
   // This removes nav, ads, footers, sidebars, etc. automatically
-  const { document } = parseHTML(html);
+  const { document } = parseHTML(html) as unknown as { document: Document };
   const reader = new Readability(document);
   const article = reader.parse();
 

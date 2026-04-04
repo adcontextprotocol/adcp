@@ -185,8 +185,8 @@ function extractTags(content: unknown): string[] {
 
 // ─── Cadence ───────────────────────────────────────────────────────────
 
-function isTriweeklyWednesday(): boolean {
-  const now = new Date();
+function isTriweeklyWednesday(dateOverride?: Date): boolean {
+  const now = dateOverride || new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   if (et.getDay() !== 3) return false; // Wednesday only
 
@@ -205,6 +205,7 @@ export const theBuildConfig: NewsletterConfig = {
   authorTitle: 'AdCP Protocol',
   authorSystemId: 'system:sage',
   emailCategory: 'the_build',
+  fromEmail: 'Sage from AgenticAdvertising.org <sage@updates.agenticadvertising.org>',
   palette: BUILD_PALETTE,
   cadence: {
     generateHourET: 7,

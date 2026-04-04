@@ -488,7 +488,7 @@
     // Load meetings
     async function loadMeetings() {
       try {
-        const res = await fetch('/api/meetings?limit=50');
+        const res = await fetch('/api/meetings');
         const data = await res.json();
         return data.meetings || [];
       } catch (e) {

@@ -1034,7 +1034,7 @@ export async function getChannelHistory(
       nextCursor: response.response_metadata?.next_cursor,
     };
   } catch (error) {
-    logger.error({ error, channelId }, 'Failed to get channel history');
+    logger.warn({ error, channelId }, 'Failed to get channel history');
     return { messages: [], hasMore: false };
   }
 }

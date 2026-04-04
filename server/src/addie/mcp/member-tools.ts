@@ -1451,7 +1451,7 @@ export function createMemberToolHandlers(
 
     const p = profileResult.rows[0];
     if (!p) {
-      return "You don't have a profile yet. Visit https://agenticadvertising.org/community/profile/edit to create one!";
+      return "You don't have a profile yet. Visit https://agenticadvertising.org/account to create one!";
     }
 
     const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
@@ -1577,11 +1577,11 @@ export function createMemberToolHandlers(
       }
     } catch (err) {
       logger.error({ err, userId }, 'update_my_profile: DB error');
-      return 'Something went wrong updating your profile. Please try again or edit directly at https://agenticadvertising.org/community/profile/edit';
+      return 'Something went wrong updating your profile. Please try again or edit directly at https://agenticadvertising.org/account';
     }
 
     const updatedFields = Object.keys(updates).join(', ');
-    return `Profile updated! Updated: ${updatedFields}\n\nEdit at https://agenticadvertising.org/community/profile/edit`;
+    return `Profile updated! Updated: ${updatedFields}\n\nEdit at https://agenticadvertising.org/account`;
   });
 
   // ============================================

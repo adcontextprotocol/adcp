@@ -228,15 +228,12 @@ async function runScenario(scenario: Scenario): Promise<void> {
     console.log('→ Addie stays silent (correct for channel noise)');
   } else if (plan.action === 'react') {
     console.log(`→ Addie reacts with :${plan.emoji}:`);
-  } else if (plan.action === 'clarify') {
-    console.log(`→ Addie asks: "${plan.question}"`);
   }
 
   // Grade
   const pass =
     (scenario.expectedBehavior.startsWith('IGNORE') && plan.action === 'ignore') ||
-    (scenario.expectedBehavior.startsWith('RESPOND') && plan.action === 'respond') ||
-    plan.action === 'clarify'; // clarify is always acceptable
+    (scenario.expectedBehavior.startsWith('RESPOND') && plan.action === 'respond');
   console.log(`\nGRADE: ${pass ? '✅ PASS' : '❌ FAIL'}`);
 }
 

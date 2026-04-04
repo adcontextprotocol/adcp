@@ -101,7 +101,8 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     try {
       const existing = await getCurrentWeekDigest();
       if (existing) {
-        return res.status(409).json({ error: 'A digest already exists for this week. Edit it instead.' });
+        const subject = isLegacyContent(existing.content) ? '' : generateDigestSubject(existing.content as DigestContent);
+        return res.status(409).json({ error: 'A digest already exists for this week. Edit it instead.', digest: existing, subject });
       }
 
       const content = await buildDigestContent();
@@ -338,6 +339,42 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     }
   });
 
+  // POST /api/admin/digests/:id/articles/reorder - Reorder articles by index array
+  apiRouter.post('/digests/:id/articles/reorder', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid digest ID' });
+
+      const digest = await getCurrentWeekDigest();
+      if (!digest || digest.id !== id) return res.status(404).json({ error: 'Digest not found' });
+      if (digest.status !== 'draft') return res.status(400).json({ error: 'Can only reorder draft articles' });
+      if (isLegacyContent(digest.content)) return res.status(400).json({ error: 'Legacy format' });
+
+      const content = digest.content as DigestContent;
+      const { indices } = req.body;
+      if (!Array.isArray(indices) || indices.length !== content.whatToWatch.length) {
+        return res.status(400).json({ error: `Expected ${content.whatToWatch.length} indices` });
+      }
+      // Validate indices are a valid permutation (no duplicates, all in range)
+      const unique = new Set(indices);
+      if (unique.size !== indices.length || indices.some((i: number) => !Number.isInteger(i) || i < 0 || i >= content.whatToWatch.length)) {
+        return res.status(400).json({ error: 'Indices must be a permutation of 0..' + (content.whatToWatch.length - 1) });
+      }
+
+      const reordered = indices.map((i: number) => content.whatToWatch[i]);
+
+      content.whatToWatch = reordered;
+      const updated = await updateDigestContent(id, content);
+      if (!updated) return res.status(500).json({ error: 'Failed to reorder' });
+
+      const subject = generateDigestSubject(updated.content as DigestContent);
+      res.json({ digest: updated, subject });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to reorder articles');
+      res.status(500).json({ error: 'Failed to reorder articles' });
+    }
+  });
+
   // POST /api/admin/digests/:id/test-send - Send a test email to a specific address
   apiRouter.post('/digests/:id/test-send', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -372,6 +409,7 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
         textContent: text,
         category: 'weekly_digest',
         workosUserId: req.user?.id || 'admin',
+        from: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
       });
 
       logger.info({ id, email, sentBy: req.user?.email }, 'Digest test email sent');

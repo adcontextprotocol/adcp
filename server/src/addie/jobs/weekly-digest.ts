@@ -57,34 +57,81 @@ function getTodayEditionDate(): string {
 
 /**
  * Main weekly digest job runner.
- * Runs hourly. On Tuesdays:
- * - 7-8am ET: Generates a draft and posts to Editorial channel for review
- * - 10am+ ET: Sends the digest if approved, or nudges at 10am if still waiting
+ * Runs hourly. Uses newsletter config cadence (biweekly Tuesdays).
+ * - generateHourET: Generates a draft and posts to Editorial channel for review
+ * - sendHourET+: Sends the digest if approved, or nudges if still waiting
  */
 export async function runWeeklyDigestJob(): Promise<WeeklyDigestResult> {
   const result: WeeklyDigestResult = { generated: false, sent: 0, skipped: false };
 
-  const now = new Date();
-  const dayOfWeek = now.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short' });
+  // Import cadence from newsletter config
+  const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
+  const cadence = thePromptConfig.cadence;
 
-  if (dayOfWeek !== 'Tue') {
+  if (!cadence.shouldRunToday()) {
     return result;
   }
 
   const etHour = getETHour();
   const editionDate = getTodayEditionDate();
 
-  // Phase 1: Generate draft (7-8am ET)
-  if (etHour >= 7 && etHour < 8) {
+  // Phase 1: Generate draft
+  if (etHour >= cadence.generateHourET && etHour < cadence.generateHourET + 1) {
     return generateDraft(editionDate);
   }
 
-  // Phase 2: Send if approved, or nudge at 10am (rest of Tuesday)
-  if (etHour >= 10) {
+  // Phase 2: Send if approved
+  if (etHour >= cadence.sendHourET) {
     return sendApprovedDigest(editionDate, etHour);
   }
 
   return result;
+}
+
+/**
+ * Prep nudge job — runs the day before draft generation.
+ * Sends Slack DMs to WG leaders asking for highlights.
+ */
+export async function runPromptPrepNudgeJob(): Promise<{ nudgesSent: number }> {
+  let nudgesSent = 0;
+
+  // Check if tomorrow is a draft day
+  const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrowDraftDay = thePromptConfig.cadence.shouldRunToday(tomorrow);
+
+  if (!isTomorrowDraftDay) return { nudgesSent };
+
+  const etHour = getETHour();
+  if (etHour < 9 || etHour >= 10) return { nudgesSent };
+
+  try {
+    const { getDigestEligibleGroups } = await import('../services/wg-digest-builder.js');
+    const groups = await getDigestEligibleGroups();
+
+    for (const group of groups) {
+      const leaders = await workingGroupDb.getLeaders(group.id);
+      for (const leader of leaders) {
+        if (!leader.user_id) continue; // user_id is the Slack user ID
+
+        try {
+          await sendChannelMessage(leader.user_id, {
+            text: `Hi! The Prompt goes out tomorrow. Any highlights from ${group.name} this week? Reply here and I'll include it in the draft.`,
+          });
+          nudgesSent++;
+        } catch (err) {
+          logger.warn({ error: err, group: group.name }, 'Failed to send prep nudge');
+        }
+      }
+    }
+
+    logger.info({ nudgesSent }, 'Prompt prep nudges sent');
+  } catch (err) {
+    logger.error({ error: err }, 'Failed to run prep nudge job');
+  }
+
+  return { nudgesSent };
 }
 
 /**

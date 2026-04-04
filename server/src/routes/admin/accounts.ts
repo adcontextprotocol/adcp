@@ -114,6 +114,7 @@ export function setupAccountRoutes(
           missingOwner,
           openInvoices,
           churned,
+          unmapped,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -279,6 +280,23 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.subscription_status IN (${churnedStatusList})
           `),
+
+          // Unmapped - accounts with email_domain not in brand registry (checks domain + aliases)
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.is_personal = false
+              AND o.email_domain IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM discovered_brands db
+                WHERE db.domain = o.email_domain
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM brand_domain_aliases bda
+                WHERE bda.alias_domain = o.email_domain
+              )
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `),
         ]);
 
         res.json({
@@ -294,6 +312,7 @@ export function setupAccountRoutes(
           missing_owner: parseInt(missingOwner.rows[0].count),
           open_invoices: parseInt(openInvoices.rows[0].count),
           churned: parseInt(churned.rows[0].count),
+          unmapped: parseInt(unmapped.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
@@ -322,10 +341,24 @@ export function setupAccountRoutes(
             o.*,
             p.name as parent_name,
             p.email_domain as parent_domain,
-            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
+            p.workos_organization_id as parent_org_id,
+            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count,
+            (db_parent.domain IS NOT NULL) as brand_mapped,
+            db_parent.brand_name as brand_registry_name,
+            db_parent.keller_type as brand_keller_type,
+            db_parent.house_domain as brand_house_domain,
+            db_parent.source_type as brand_source
           FROM organizations o
-          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN LATERAL (
+            SELECT db.domain, db.brand_name, db.keller_type, db.house_domain, db.source_type
+            FROM discovered_brands db
+            WHERE db.domain = o.email_domain
+               OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
+            ORDER BY (db.domain = o.email_domain) DESC
+            LIMIT 1
+          ) db_parent ON true
           LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
+            AND p.is_personal IS NOT TRUE
           WHERE o.workos_organization_id = $1
         `,
           [orgId]
@@ -355,6 +388,7 @@ export function setupAccountRoutes(
           misalignedUsersResult,
           similarOrgsResult,
           pendingSlackUsersResult,
+          subsidiariesResult,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -593,7 +627,86 @@ export function setupAccountRoutes(
           `,
             [orgId]
           ),
+
+          // Subsidiary organizations (via brand registry house_domain)
+          org.email_domain
+            ? pool.query(
+                `
+                SELECT o.workos_organization_id, o.name, o.email_domain, o.subscription_status,
+                       o.subscription_product_name
+                FROM organizations o
+                JOIN discovered_brands db ON o.email_domain = db.domain
+                WHERE db.house_domain = $1
+                  AND o.workos_organization_id != $2
+                ORDER BY o.name
+              `,
+                [org.email_domain, orgId]
+              )
+            : Promise.resolve({ rows: [] }),
         ]);
+
+        // Brand-aware similar org detection via aliases and hierarchy
+        const brandSimilarOrgs: Array<{
+          org_id: string;
+          name: string;
+          subscription_status: string;
+          match_source: 'brand_alias' | 'brand_hierarchy';
+          match_domain: string;
+        }> = [];
+
+        if (org.email_domain) {
+          // Orgs linked through brand_domain_aliases (this org's domain is an alias, or aliases point to this org)
+          const aliasMatches = await pool.query(`
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_alias' AS match_source, bda.brand_domain AS match_domain
+            FROM brand_domain_aliases bda
+            JOIN organizations o
+              ON (o.email_domain = bda.brand_domain OR o.email_domain = bda.alias_domain)
+            WHERE (bda.alias_domain = $1 OR bda.brand_domain = $1)
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+          `, [org.email_domain, orgId]);
+          brandSimilarOrgs.push(...aliasMatches.rows);
+
+          // Orgs sharing the same house_domain (parent-child via brand hierarchy)
+          const hierarchyMatches = await pool.query(`
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_hierarchy' AS match_source, db2.house_domain AS match_domain
+            FROM discovered_brands db1
+            JOIN discovered_brands db2 ON db2.house_domain = db1.house_domain
+            JOIN organizations o ON o.email_domain = db2.domain
+            WHERE db1.domain = $1
+              AND db1.house_domain IS NOT NULL
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+            UNION
+            -- Reverse: this org is the house and sub-brands belong to other orgs
+            SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
+                   'brand_hierarchy' AS match_source, db.house_domain AS match_domain
+            FROM discovered_brands db
+            JOIN organizations o ON o.email_domain = db.domain
+            WHERE db.house_domain = $1
+              AND o.workos_organization_id != $2
+              AND o.is_personal = false
+          `, [org.email_domain, orgId]);
+          brandSimilarOrgs.push(...hierarchyMatches.rows);
+        }
+
+        // Merge brand-based matches with name-based matches, deduplicating by org_id
+        const seenOrgIds = new Set<string>();
+        const mergedSimilarOrgs: Array<Record<string, unknown>> = [];
+        for (const bso of brandSimilarOrgs) {
+          if (!seenOrgIds.has(bso.org_id)) {
+            seenOrgIds.add(bso.org_id);
+            mergedSimilarOrgs.push(bso);
+          }
+        }
+        for (const row of similarOrgsResult.rows) {
+          if (!seenOrgIds.has(row.org_id)) {
+            seenOrgIds.add(row.org_id);
+            mergedSimilarOrgs.push({ ...row, match_source: 'name_similarity' });
+          }
+        }
 
         // Get engagement signals
         const engagementSignals = await orgDb.getEngagementSignals(orgId);
@@ -751,8 +864,7 @@ export function setupAccountRoutes(
           domain_health: {
             // Users who have this org's domain but aren't in this org
             misaligned_users: misalignedUsersResult.rows,
-            // Potential duplicate orgs with similar names
-            similar_orgs: similarOrgsResult.rows,
+            similar_orgs: mergedSimilarOrgs,
             // Whether all domains are verified
             has_unverified_domains: domainsResult.rows.some(
               (d: { verified?: boolean }) => !d.verified
@@ -771,10 +883,25 @@ export function setupAccountRoutes(
               }
             : null,
 
+          // Brand registry mapping
+          brand_mapped: org.brand_mapped === true || org.brand_mapped === 't',
+          brand_registry_name: org.brand_registry_name || null,
+          brand_keller_type: org.brand_keller_type || null,
+          brand_house_domain: org.brand_house_domain || null,
+          brand_source: org.brand_source || null,
+
           // Hierarchy (derived from brand registry via email_domain → house_domain)
           parent_name: org.parent_name,
           parent_domain: org.parent_domain,
+          parent_org_id: org.parent_org_id || null,
           subsidiary_count: parseInt(org.subsidiary_count) || 0,
+          subsidiaries: subsidiariesResult.rows.map((s) => ({
+            id: s.workos_organization_id,
+            name: s.name,
+            domain: s.email_domain,
+            subscription_status: s.subscription_status,
+            product_name: s.subscription_product_name,
+          })),
 
           // Effective membership (direct or inherited via brand registry hierarchy)
           effective_membership: {
@@ -832,6 +959,29 @@ export function setupAccountRoutes(
           WHERE om.workos_organization_id = o.workos_organization_id
         ) ocp ON true`;
 
+      // Brand registry hierarchy join (house_domain → parent org)
+      // Uses LATERAL + LIMIT 1 to avoid duplicate rows when multiple orgs share an email_domain
+      // Matches on domain first, falls back to brand_domain_aliases for aliases (e.g. omc.com → omnicomgroup.com)
+      const hierarchyJoin = `
+        LEFT JOIN LATERAL (
+          SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
+                 db.keller_type as brand_keller_type, db.source_type as brand_source
+          FROM discovered_brands db
+          WHERE db.domain = o.email_domain
+             OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
+          ORDER BY (db.domain = o.email_domain) DESC
+          LIMIT 1
+        ) db_hier ON true
+        LEFT JOIN LATERAL (
+          SELECT p.name as parent_name, p.workos_organization_id as parent_org_id
+          FROM organizations p
+          WHERE p.email_domain = db_hier.house_domain
+            AND p.workos_organization_id != o.workos_organization_id
+            AND p.is_personal IS NOT TRUE
+          ORDER BY p.subscription_status = 'active' DESC, p.created_at ASC
+          LIMIT 1
+        ) p_hier ON db_hier.house_domain IS NOT NULL`;
+
       // Base SELECT fields
       const selectFields = `
         SELECT
@@ -855,7 +1005,18 @@ export function setupAccountRoutes(
           o.disqualification_reason,
           o.prospect_source,
           o.prospect_contact_name,
-          o.prospect_contact_email
+          o.prospect_contact_email,
+          db_hier.house_domain as house_domain,
+          p_hier.parent_name,
+          p_hier.parent_org_id,
+          (SELECT COUNT(*) FROM organizations child
+           JOIN discovered_brands db_child ON child.email_domain = db_child.domain
+           WHERE db_child.house_domain = o.email_domain
+             AND child.workos_organization_id != o.workos_organization_id) as subsidiary_count,
+          (db_hier.domain IS NOT NULL) as brand_mapped,
+          db_hier.brand_registry_name,
+          db_hier.brand_keller_type,
+          db_hier.brand_source
       `;
 
       const params: (string | Date | null)[] = [];
@@ -892,6 +1053,7 @@ export function setupAccountRoutes(
             END as attention_reason
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -948,6 +1110,7 @@ export function setupAccountRoutes(
             na.description as next_step_description
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -966,6 +1129,7 @@ export function setupAccountRoutes(
             oi.due_date as invoice_due_date
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
               AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -979,6 +1143,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE (${NOT_MEMBER_ALIASED})
             AND (
               ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
@@ -995,6 +1160,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -1011,6 +1177,7 @@ export function setupAccountRoutes(
             latest_activity.latest_activity_at as last_insight_at
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             INNER JOIN LATERAL (
               SELECT MAX(sm.last_slack_activity_at) as latest_activity_at
               FROM organization_memberships om
@@ -1030,6 +1197,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
           `;
           orderBy = ` ORDER BY o.name ASC`;
@@ -1041,6 +1209,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
@@ -1055,6 +1224,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
               AND ocp.org_points < ${GOING_COLD_MIN_POINTS}
           `;
@@ -1071,6 +1241,7 @@ export function setupAccountRoutes(
             os.role as stakeholder_role
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
               AND os.user_id = $1
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -1086,6 +1257,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
@@ -1099,6 +1271,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE o.prospect_status = 'disqualified'
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
@@ -1119,6 +1292,7 @@ export function setupAccountRoutes(
             ) as computed_user_count
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND o.is_personal = false
           `;
@@ -1131,6 +1305,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE EXISTS (
               SELECT 1 FROM organization_memberships om
               WHERE om.workos_organization_id = o.workos_organization_id
@@ -1150,9 +1325,25 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE o.subscription_status IN (${CHURNED_STATUSES.map(s => `'${s}'`).join(', ')})
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
+          break;
+
+        case "unmapped":
+          // Accounts with email_domain not in brand registry
+          query = `
+            ${selectFields}
+            FROM organizations o
+            ${communityPointsJoin}
+            ${hierarchyJoin}
+            WHERE o.is_personal = false
+              AND o.email_domain IS NOT NULL
+              AND db_hier.domain IS NULL
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `;
+          orderBy = ` ORDER BY o.last_activity_at DESC NULLS LAST, o.name ASC`;
           break;
 
         default:
@@ -1161,6 +1352,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             ${communityPointsJoin}
+            ${hierarchyJoin}
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
@@ -1384,6 +1576,18 @@ export function setupAccountRoutes(
 
           // Addie activity
           has_addie_activity: addieActivitySet.has(row.workos_organization_id),
+
+          // Brand registry
+          brand_mapped: row.brand_mapped === true || row.brand_mapped === 't',
+          brand_registry_name: row.brand_registry_name || null,
+          brand_keller_type: row.brand_keller_type || null,
+          brand_source: row.brand_source || null,
+
+          // Hierarchy
+          house_domain: row.house_domain || null,
+          parent_name: row.parent_name || null,
+          parent_org_id: row.parent_org_id || null,
+          subsidiary_count: parseInt(row.subsidiary_count) || 0,
 
           // Legacy (for transition)
           workos_organization_id: row.workos_organization_id,

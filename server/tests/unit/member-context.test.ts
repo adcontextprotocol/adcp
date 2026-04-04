@@ -706,6 +706,6 @@ describe('community_profile formatting', () => {
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('Community profile: Public');
     expect(result).toContain('GitHub: Not linked');
-    expect(result).toContain('/community/profile/edit');
+    expect(result).toContain('/account');
   });
 });

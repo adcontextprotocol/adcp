@@ -143,6 +143,8 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     classification.canonical_domain.toLowerCase() !== domain.toLowerCase();
 
   if (isVariant) {
+    const canonicalDomain = classification!.canonical_domain!.toLowerCase();
+
     // Remove the variant from discovered_brands (it's just a regional redirect)
     try {
       await brandDb.deleteDiscoveredBrand(domain);
@@ -150,13 +152,30 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       // May not exist, that's fine
     }
 
+    // Add domain alias so accounts using this variant domain still map
+    // e.g. omc.com → omnicomgroup.com: insert alias omc.com → omnicomgroup.com
+    try {
+      await query(
+        `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source)
+         VALUES ($1, $2, 'classifier')
+         ON CONFLICT (alias_domain) DO UPDATE SET brand_domain = $2`,
+        [domain.toLowerCase(), canonicalDomain]
+      );
+      logger.info(
+        { domain, canonical: canonicalDomain },
+        'Added domain alias for variant brand'
+      );
+    } catch (err) {
+      logger.warn({ err, domain, canonical: canonicalDomain }, 'Failed to add domain alias');
+    }
+
     logger.info(
-      { domain, canonical: classification!.canonical_domain },
+      { domain, canonical: canonicalDomain },
       'Variant domain removed (canonical is different)'
     );
 
     // Mark resolved pointing to canonical
-    registryRequestsDb.markResolved('brand', domain, classification!.canonical_domain).catch(err => {
+    registryRequestsDb.markResolved('brand', domain, canonicalDomain).catch(err => {
       logger.warn({ err, domain }, 'Failed to mark registry request as resolved');
     });
 
@@ -165,7 +184,7 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       status: 'skipped',
       brand_name: result.manifest.name,
       classification: classification || undefined,
-      error: `Variant of ${classification!.canonical_domain}`,
+      error: `Variant of ${canonicalDomain}`,
     };
   }
 
@@ -644,8 +663,8 @@ export interface DomainResearchOptions {
 }
 
 export interface DomainResearchAction {
-  source: 'brandfetch' | 'sonnet' | 'lusha' | 'db';
-  action: 'fetched' | 'skipped_fresh' | 'skipped_config' | 'skipped_in_progress' | 'skipped_rate_limit' | 'failed' | 'not_found';
+  source: 'brandfetch' | 'sonnet' | 'lusha' | 'db' | 'stub';
+  action: 'fetched' | 'skipped_fresh' | 'skipped_config' | 'skipped_in_progress' | 'skipped_rate_limit' | 'failed' | 'not_found' | 'created';
   detail?: string;
 }
 
@@ -771,6 +790,19 @@ export async function researchDomain(
       } else {
         actions.push({ source: 'lusha', action: 'failed', detail: lushaResult.error });
       }
+    }
+
+    // Step 5: If no brand data found after research, create a stub from org data
+    // This ensures every account with a domain has a brand registry entry
+    const postResearchBrand = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+    if (!postResearchBrand && org) {
+      await brandDb.upsertDiscoveredBrand({
+        domain: normalizedDomain,
+        brand_name: org.name,
+        source_type: 'stub',
+        has_brand_manifest: false,
+      });
+      actions.push({ source: 'stub', action: 'created', detail: `Stub from org: ${org.name}` });
     }
 
     // Assemble result from current DB state (may have just been updated)

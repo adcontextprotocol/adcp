@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
+  <title>Admin - The Build</title>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    .digest-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .digest-header h1 { margin: 0; font-size: 24px; color: #0d9488; }
+    .digest-actions { display: flex; gap: 8px; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .status-draft { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #d1fae5; color: #065f46; }
+    .status-sent { background: #dbeafe; color: #1e40af; }
+
+    .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); }
+    .section h2 { font-size: 16px; color: var(--color-text-heading, #1a1a2e); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
+    .section-hint { font-size: 12px; color: var(--color-text-muted, #888); font-weight: normal; margin-top: 2px; }
+    .count { font-size: 12px; color: var(--color-text-muted, #888); font-weight: normal; }
+
+    .editable { padding: 8px 12px; border: 1px solid transparent; border-radius: 4px; min-height: 20px; line-height: 1.5; cursor: pointer; }
+    .editable:hover { border-color: #d1d5db; }
+    .editable[contenteditable="true"] { border-color: #0d9488; outline: none; background: #f0fdfa; }
+
+    .decision-card { padding: 12px; border: 1px solid var(--color-border, #e5e5e5); border-radius: 6px; margin-bottom: 8px; }
+    .decision-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; margin-right: 8px; }
+    .badge-decided { background: #065f46; }
+    .badge-open { background: #d97706; }
+    .badge-review { background: #6366f1; }
+    .badge-breaking { background: #dc2626; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--color-text-muted, #888); }
+    .empty-state h2 { color: var(--color-text-heading, #1a1a2e); }
+    .subject-line { padding: 12px 16px; background: #f8f9fa; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #1a1a2e; color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; z-index: 1000; }
+    .toast.show { opacity: 1; }
+
+    .btn-teal { background: #0d9488; color: white; }
+    .btn-teal:hover { background: #0f766e; }
+  </style>
+</head>
+<body>
+  <div class="container" style="padding: 24px;">
+    <div class="digest-header">
+      <div>
+        <h1>The Build</h1>
+        <p style="color:#666;font-size:14px;margin:4px 0 0 0;">Sage's contributor briefing editor</p>
+      </div>
+      <div class="digest-actions" id="headerActions"></div>
+    </div>
+
+    <div id="loading" style="text-align:center;padding:40px;color:#888;">Loading...</div>
+    <div id="emptyState" style="display:none;" class="empty-state">
+      <h2>No draft this cycle</h2>
+      <p>Generate a new draft to start editing.</p>
+      <button class="btn btn-teal" onclick="generateDraft(event)">Generate Draft</button>
+    </div>
+
+    <div id="editorContent" style="display:none;">
+      <!-- How this works (collapsible) -->
+      <div id="helpBanner" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#0f766e;line-height:1.6;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>How this works</strong>
+          <button onclick="document.getElementById('helpBanner').style.display='none';localStorage.setItem('hideBuildHelp','1')" style="background:none;border:none;color:#0f766e;cursor:pointer;font-size:16px;">&times;</button>
+        </div>
+        <div style="margin-top:8px;">
+          Sage assembles The Build from working group activity, releases, and community contributions. <strong>Click any text</strong> to edit inline (Enter to save, Escape to cancel). Review the sections, then <strong>Send Test</strong> to preview in your inbox before approving.
+        </div>
+      </div>
+      <script>if(localStorage.getItem('hideBuildHelp')==='1')document.getElementById('helpBanner').style.display='none';</script>
+
+      <div id="subjectLine" class="subject-line"></div>
+
+      <!-- Status Line -->
+      <div class="section">
+        <h2>Status Line</h2>
+        <p class="section-hint">Sage's one-sentence summary of this cycle — what shipped, what needs attention</p>
+        <div class="editable" id="editStatusLine" contenteditable="false" onclick="startEdit(this, 'statusLine')"></div>
+      </div>
+
+      <!-- Editor's Note -->
+      <div class="section">
+        <h2>Editor's Note <span style="font-size:12px;color:#888;font-weight:normal;">(optional)</span></h2>
+        <div class="editable" id="editNote" contenteditable="false" onclick="startEdit(this, 'editorsNote')"></div>
+      </div>
+
+      <!-- Decisions -->
+      <div class="section">
+        <h2>Decisions & Proposals <span class="count" id="decisionCount"></span></h2>
+        <p class="section-hint">WG decisions, open proposals, and items under review</p>
+        <div id="decisionsList"></div>
+      </div>
+
+      <!-- What Shipped -->
+      <div class="section">
+        <h2>What Shipped <span class="count" id="shippedCount"></span></h2>
+        <p class="section-hint">Protocol releases, SDK updates, platform changes</p>
+        <div id="shippedList"></div>
+      </div>
+
+      <!-- Help Needed -->
+      <div class="section">
+        <h2>Help Needed <span class="count" id="helpCount"></span></h2>
+        <p class="section-hint">Open asks for code, review, writing, or expertise</p>
+        <div id="helpList"></div>
+      </div>
+
+      <div class="two-col">
+        <!-- Deep Dive -->
+        <div class="section">
+          <h2>Deep Dive</h2>
+          <p class="section-hint">Curated technical deep-dive (admin-selected)</p>
+          <div id="deepDive"><em style="color:#888;">No deep dive this edition</em></div>
+        </div>
+
+        <!-- Contributor Spotlight -->
+        <div class="section">
+          <h2>Contributor Spotlight <span class="count" id="spotlightCount"></span></h2>
+          <p class="section-hint">Recent contributors and their work</p>
+          <div id="spotlightList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/admin/build';
+    let currentDigest = null;
+    let currentSubject = '';
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function toast(msg, duration = 3000) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    function escUrl(s) {
+      const escaped = esc(s);
+      return /^https?:\/\//i.test(escaped) ? escaped : '#';
+    }
+
+    async function api(path, opts = {}) {
+      const res = await AdminSidebar.fetch(API_BASE + path, {
+        headers: { 'Content-Type': 'application/json', ...opts.headers },
+        ...opts,
+      });
+      return res;
+    }
+
+    async function loadEdition() {
+      try {
+        const res = await api('/current');
+        const data = await res.json();
+        document.getElementById('loading').style.display = 'none';
+
+        if (!data.digest) {
+          document.getElementById('emptyState').style.display = 'block';
+          document.getElementById('editorContent').style.display = 'none';
+          return;
+        }
+
+        currentDigest = data.digest;
+        currentSubject = data.subject || '';
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('editorContent').style.display = 'block';
+        render();
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Failed to load: ' + esc(err.message);
+      }
+    }
+
+    function render() {
+      const c = currentDigest.content;
+      const status = currentDigest.status;
+
+      // Header actions
+      document.getElementById('headerActions').innerHTML = `
+        <span class="status-badge status-${esc(status)}">${esc(status)}</span>
+        ${status === 'draft' ? `<button class="btn btn-teal" onclick="sendTest()">Send Test</button>` : ''}
+        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+      `;
+
+      // Subject
+      document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> ${esc(currentSubject)}`;
+
+      // Status line
+      document.getElementById('editStatusLine').textContent = c.statusLine || '';
+
+      // Editor's note
+      document.getElementById('editNote').textContent = c.editorsNote || '';
+
+      // Decisions
+      const decisions = c.decisions || [];
+      document.getElementById('decisionCount').textContent = `(${decisions.length})`;
+      document.getElementById('decisionsList').innerHTML = decisions.length === 0
+        ? '<em style="color:#888;">No decisions this cycle</em>'
+        : decisions.map(d => {
+            const badgeClass = d.status === 'decided' ? 'badge-decided' : d.status === 'open_for_comment' ? 'badge-open' : 'badge-review';
+            const label = d.status === 'decided' ? 'DECIDED' : d.status === 'open_for_comment' ? 'OPEN' : 'REVIEW';
+            return `<div class="decision-card">
+              <span class="decision-badge ${badgeClass}">${label}</span>
+              <strong>${esc(d.workingGroup)}</strong>
+              <br><a href="${escUrl(d.url)}" target="_blank" style="color:#0d9488;">${esc(d.title)}</a>
+              <br><span style="font-size:13px;color:#666;">${esc(d.summary)}</span>
+            </div>`;
+          }).join('');
+
+      // What shipped
+      const shipped = c.whatShipped || [];
+      document.getElementById('shippedCount').textContent = `(${shipped.length})`;
+      document.getElementById('shippedList').innerHTML = shipped.length === 0
+        ? '<em style="color:#888;">No releases this cycle</em>'
+        : shipped.map(r => `<div style="margin-bottom:8px;">
+            ${r.breaking ? '<span class="decision-badge badge-breaking">BREAKING</span>' : ''}
+            <a href="${escUrl(r.releaseUrl)}" target="_blank" style="color:#0d9488;font-weight:600;">${esc(r.repo)} ${esc(r.version)}</a>
+            — ${esc(r.summary)}
+            ${r.migrationNote ? `<br><span style="font-size:13px;color:#dc2626;">Migration: ${esc(r.migrationNote)}</span>` : ''}
+          </div>`).join('');
+
+      // Help needed
+      const help = c.helpNeeded || [];
+      document.getElementById('helpCount').textContent = `(${help.length})`;
+      document.getElementById('helpList').innerHTML = help.length === 0
+        ? '<em style="color:#888;">No open asks</em>'
+        : help.map(h => `<div style="margin-bottom:8px;">
+            <span style="display:inline-block;padding:2px 6px;background:#e5e7eb;color:#374151;font-size:11px;border-radius:3px;margin-right:6px;">${esc(h.type)}</span>
+            <a href="${escUrl(h.url)}" target="_blank" style="color:#0d9488;">${esc(h.title)}</a>
+            <br><span style="font-size:13px;color:#666;">${esc(h.source)} — ${esc(h.context)}</span>
+          </div>`).join('');
+
+      // Deep dive
+      if (c.deepDive) {
+        document.getElementById('deepDive').innerHTML = `
+          <strong>${esc(c.deepDive.title)}</strong>
+          <p style="font-size:13px;color:#666;margin:4px 0;">${esc(c.deepDive.body.slice(0, 200))}...</p>`;
+      }
+
+      // Contributor spotlight
+      const spotlights = c.contributorSpotlight || [];
+      document.getElementById('spotlightCount').textContent = `(${spotlights.length})`;
+      document.getElementById('spotlightList').innerHTML = spotlights.length === 0
+        ? '<em style="color:#888;">No spotlights this cycle</em>'
+        : spotlights.map(s => `<div style="margin-bottom:6px;">
+            <strong>${esc(s.name)}</strong>${s.handle ? ` (${esc(s.handle)})` : ''}
+            — ${esc(s.contribution)}
+          </div>`).join('');
+    }
+
+    // Inline editing for text fields
+    function startEdit(el, field) {
+      if (currentDigest?.status !== 'draft') return;
+      el.contentEditable = 'true';
+      el.focus();
+
+      function save() {
+        el.contentEditable = 'false';
+        el.removeEventListener('blur', save);
+        el.removeEventListener('keydown', onKey);
+        const value = el.textContent.trim();
+        api('/' + currentDigest.id + '/edit', {
+          method: 'POST',
+          body: JSON.stringify({ field, value }),
+        }).then(res => res.json()).then(data => {
+          if (data.digest) {
+            currentDigest = data.digest;
+            currentSubject = data.subject || currentSubject;
+            render();
+            toast('Saved');
+          }
+        }).catch(() => toast('Save failed'));
+      }
+
+      function onKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { el.textContent = currentDigest.content[field] || ''; el.contentEditable = 'false'; el.removeEventListener('blur', save); el.removeEventListener('keydown', onKey); }
+      }
+
+      el.addEventListener('blur', save);
+      el.addEventListener('keydown', onKey);
+    }
+
+    async function generateDraft(evt) {
+      const btn = evt.target;
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      try {
+        const res = await api('/generate', { method: 'POST' });
+        const data = await res.json();
+        if (res.status === 409 && data.digest) {
+          currentDigest = data.digest;
+          currentSubject = data.subject || '';
+          document.getElementById('emptyState').style.display = 'none';
+          document.getElementById('editorContent').style.display = 'block';
+          render();
+          toast('Edition already exists — loaded for editing');
+          return;
+        }
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || '';
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('editorContent').style.display = 'block';
+        render();
+        toast('Draft generated');
+      } catch (err) {
+        toast('Generate failed: ' + esc(err.message));
+        btn.disabled = false;
+        btn.textContent = 'Generate Draft';
+      }
+    }
+
+    async function approveEdition() {
+      if (!confirm('Approve this edition? It will be sent on the next scheduled run.')) return;
+      try {
+        const res = await api('/' + currentDigest.id + '/approve', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        render();
+        toast('Approved');
+      } catch (err) {
+        toast('Approve failed: ' + esc(err.message));
+      }
+    }
+
+    async function sendTest() {
+      const email = prompt('Send test email to:');
+      if (!email) return;
+      try {
+        const res = await api('/' + currentDigest.id + '/test-send', {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast('Test sent to ' + email);
+      } catch (err) {
+        toast('Send failed: ' + esc(err.message));
+      }
+    }
+
+    loadEdition();
+  </script>
+</body>
+</html>

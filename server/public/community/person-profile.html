@@ -1271,7 +1271,7 @@
       const isOwnProfile = currentUser && currentUser.id === data.workos_user_id;
 
       if (isOwnProfile) {
-        return `<a href="/community/profile/edit" class="connect-btn connect-btn-secondary">Edit profile</a>`;
+        return `<a href="/account" class="connect-btn connect-btn-secondary">Edit profile</a>`;
       }
 
       if (!currentUser) {

@@ -1492,7 +1492,7 @@
             </div>
             <div class="hub-hero-actions">
               <a href="${primaryAction.href}" class="btn btn-primary">${escapeHtml(primaryAction.label)}</a>
-              <a href="/community/profile/edit" class="btn btn-secondary">Edit profile</a>
+              <a href="/account" class="btn btn-secondary">Edit profile</a>
               <a href="/organization" class="btn btn-secondary">View organization</a>
             </div>
           </div>
@@ -1553,7 +1553,7 @@
       if (!profile?.headline || !profile?.bio) {
         return {
           label: 'Complete your public profile',
-          href: '/community/profile/edit',
+          href: '/account',
           description: 'Tighten up your public profile so other members can understand your expertise, discover you, and know when to reach out.',
         };
       }
@@ -1606,7 +1606,7 @@
       if (seatType === 'community_only') {
         return {
           label: 'Keep building your profile',
-          href: '/community/profile/edit',
+          href: '/account',
           description: 'With community access, the highest-leverage moves are learning, publishing, and making yourself easier for other members to discover.',
         };
       }
@@ -1630,7 +1630,7 @@
       const contentCount = Array.isArray(contentItems) ? contentItems.length : 0;
       const actions = [
         {
-          href: '/community/profile/edit',
+          href: '/account',
           icon: '👤',
           title: 'Profile',
           copy: 'Sharpen your public identity and how other members discover you.',
@@ -1707,7 +1707,7 @@
             <div class="milestone-detail">${escapeHtml(milestone.detail)}</div>
             <div class="milestone-actions">
               <a href="${linkedInUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Share on LinkedIn</a>
-              <a href="/community/profile/edit" class="btn btn-ghost btn-sm">Update profile</a>
+              <a href="/account" class="btn btn-ghost btn-sm">Update profile</a>
             </div>
           </div>
         </div>
@@ -1975,14 +1975,14 @@
       const hdr = `
         <div class="hub-card-header">
           <span class="hub-card-title">Your profile</span>
-          <a href="/community/profile/edit" class="hub-card-link">Edit profile →</a>
+          <a href="/account" class="hub-card-link">Edit profile →</a>
         </div>`;
 
       if (!profile) {
         return `${hdr}
           <div class="hub-empty">
             <p>Your public member profile is not set up yet.</p>
-            <a href="/community/profile/edit">Create your profile →</a>
+            <a href="/account">Create your profile →</a>
           </div>`;
       }
 

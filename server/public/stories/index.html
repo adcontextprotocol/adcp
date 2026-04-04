@@ -76,6 +76,7 @@
       letter-spacing: var(--tracking-widest);
       color: var(--color-text-secondary);
       margin: 0;
+      white-space: nowrap;
     }
     .section-desc {
       font-size: var(--text-sm);
@@ -87,8 +88,26 @@
     /* Card grid */
     .card-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: var(--space-6);
+    }
+    /* Horizontal scroll track for featured/report sections */
+    .scroll-track {
+      display: flex;
+      gap: var(--space-6);
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: var(--space-2);
+    }
+    .scroll-track::-webkit-scrollbar { display: none; }
+    .scroll-track .card {
+      flex: 0 0 340px;
+      scroll-snap-align: start;
+    }
+    @media (max-width: 600px) {
+      .scroll-track .card { flex: 0 0 280px; }
     }
     .card {
       background: var(--color-bg-card);
@@ -149,52 +168,6 @@
       font-size: var(--text-xs);
       color: var(--color-text-muted);
     }
-
-    /* Perspectives carousel */
-    .carousel-track {
-      display: flex;
-      gap: var(--space-6);
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      padding-bottom: var(--space-2);
-    }
-    .carousel-track::-webkit-scrollbar { display: none; }
-    .carousel-card {
-      flex: 0 0 340px;
-      scroll-snap-align: start;
-      background: var(--color-bg-card);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-xl);
-      overflow: hidden;
-      text-decoration: none;
-      color: inherit;
-      display: flex;
-      flex-direction: column;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .carousel-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
-    }
-    .carousel-card[hidden] { display: none; }
-    .carousel-card .card-cover {
-      width: 100%;
-      aspect-ratio: 16 / 10;
-      object-fit: cover;
-      background: var(--color-gray-100);
-    }
-    .carousel-card .card-body {
-      padding: var(--space-4) var(--space-5) var(--space-5);
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-    }
-    .carousel-card .card-excerpt {
-      -webkit-line-clamp: 2;
-    }
-
     /* News list */
     .news-list {
       display: flex;
@@ -258,12 +231,48 @@
       vertical-align: middle;
     }
 
+    /* Origin toggle */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
+      justify-content: center;
+    }
+    .filter-bar .ds-pill {
+      font-size: var(--text-xs);
+    }
+
     /* Section empty state */
     .section-empty {
       text-align: center;
       padding: var(--space-6);
       color: var(--color-text-muted);
       font-size: var(--text-sm);
+    }
+
+    /* No results state */
+    .no-results {
+      text-align: center;
+      padding: var(--space-10) var(--space-6);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .no-results[hidden] { display: none; }
+    .no-results-heading {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-2);
+    }
+    .no-results-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin: 0 0 var(--space-6);
+    }
+    .no-results .ds-btn {
+      margin: 0 var(--space-2);
     }
 
     /* Footer CTA */
@@ -296,15 +305,10 @@
       padding: var(--space-3) var(--space-6);
     }
 
-    @media (max-width: 1024px) {
-      .card-grid { grid-template-columns: repeat(2, 1fr); }
-    }
     @media (max-width: 600px) {
       .stories-hero { padding: var(--space-8) var(--space-4) var(--space-3); }
       .stories-hero h1 { font-size: var(--text-2xl); }
-      .card-grid { grid-template-columns: 1fr; }
       .content-section { padding-left: var(--space-4); padding-right: var(--space-4); }
-      .carousel-card { flex: 0 0 280px; }
       .pill-tabs { justify-content: flex-start; }
     }
   </style>
@@ -320,7 +324,16 @@
   <!-- Page-level topic pills -->
   <nav class="topic-bar">
     <div class="pill-tabs" id="topic-tabs"></div>
+    <div class="filter-bar" id="origin-filter"></div>
   </nav>
+
+  <!-- No results state (shown when all sections are empty after filtering) -->
+  <div class="no-results" id="no-results" hidden>
+    <p class="no-results-heading">No content matches these filters.</p>
+    <p class="no-results-desc">Try a different topic, or explore all content.</p>
+    <a href="/stories" class="ds-btn ds-btn-primary">View all</a>
+    <a href="/community/" class="ds-btn ds-btn-ghost">Meet the community</a>
+  </div>
 
   <!-- Stories -->
   <section class="content-section" id="stories-section">
@@ -374,7 +387,7 @@
         <h2 class="section-heading">Reports &amp; Research</h2>
       </div>
       <p class="section-desc">Official reports, white papers, and analysis from the Agentic Advertising Organization.</p>
-      <div class="card-grid" id="research-grid"></div>
+      <div class="scroll-track" id="research-grid"></div>
     </div>
   </section>
 
@@ -385,7 +398,7 @@
         <h2 class="section-heading">Member Perspectives</h2>
       </div>
       <p class="section-desc">Analysis and commentary from the people building agentic advertising.</p>
-      <div class="carousel-track" id="perspectives-carousel"></div>
+      <div class="card-grid" id="perspectives-grid"></div>
     </div>
   </section>
 
@@ -451,6 +464,7 @@
       // Collect all topics from all content, then build pills + filter
       var allTopics = {};
       var activeTopic = new URLSearchParams(window.location.search).get('topic') || 'all';
+      var activeOrigin = new URLSearchParams(window.location.search).get('origin') || 'all';
 
       function registerTopics(topicStr) {
         if (!topicStr) return;
@@ -471,7 +485,8 @@
         registerTopics(card.getAttribute('data-topics'));
       });
       buildPills();
-      if (activeTopic !== 'all') applyFilter(activeTopic);
+      buildOriginFilter();
+      if (activeTopic !== 'all' || activeOrigin !== 'all') applyFilter(activeTopic, activeOrigin);
 
       var pillsBuilt = true;
 
@@ -479,58 +494,75 @@
       var perspectiveItems = [];
       var newsItems = [];
 
-      function applyFilter(topic) {
-        activeTopic = topic;
+      function applyFilter(topic, origin) {
+        if (topic !== undefined) activeTopic = topic;
+        if (origin !== undefined) activeOrigin = origin;
 
         // Update URL without reload
         var url = new URL(window.location);
-        if (topic === 'all') { url.searchParams.delete('topic'); }
-        else { url.searchParams.set('topic', topic); }
+        if (activeTopic === 'all') { url.searchParams.delete('topic'); }
+        else { url.searchParams.set('topic', activeTopic); }
+        if (activeOrigin === 'all') { url.searchParams.delete('origin'); }
+        else { url.searchParams.set('origin', activeOrigin); }
         history.replaceState(null, '', url);
 
-        // Update pill active state
+        // Update pill active states
         document.querySelectorAll('.pill-tab').forEach(function(tab) {
-          tab.classList.toggle('active', tab.getAttribute('data-topic') === topic);
+          tab.classList.toggle('active', tab.getAttribute('data-topic') === activeTopic);
+        });
+        document.querySelectorAll('.origin-tab').forEach(function(tab) {
+          tab.classList.toggle('active', tab.getAttribute('data-origin') === activeOrigin);
         });
 
-        // Filter stories
+        var totalVisible = 0;
+
+        // Filter stories (origin = 'story', always show unless origin filter excludes)
         var storiesVisible = 0;
+        var showStories = activeOrigin === 'all';
         document.querySelectorAll('#stories-grid .card').forEach(function(card) {
-          var show = matchesTopic(card.getAttribute('data-topics'), topic);
+          var show = showStories && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
           if (show) storiesVisible++;
         });
         document.getElementById('stories-section').hidden = storiesVisible === 0;
+        totalVisible += storiesVisible;
 
         // Filter research (official content)
         var researchVisible = 0;
+        var showResearch = activeOrigin === 'all' || activeOrigin === 'official';
         document.querySelectorAll('#research-grid .card').forEach(function(card) {
-          var show = matchesTopic(card.getAttribute('data-topics'), topic);
+          var show = showResearch && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
           if (show) researchVisible++;
         });
         var researchSection = document.getElementById('research-section');
         if (researchSection) researchSection.hidden = researchVisible === 0;
+        totalVisible += researchVisible;
 
         // Filter member perspectives
         var perspectivesVisible = 0;
-        document.querySelectorAll('#perspectives-carousel .carousel-card').forEach(function(card) {
-          var show = matchesTopic(card.getAttribute('data-topics'), topic);
+        var showMember = activeOrigin === 'all' || activeOrigin === 'member';
+        document.querySelectorAll('#perspectives-grid .card').forEach(function(card) {
+          var show = showMember && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
           if (show) perspectivesVisible++;
         });
         document.getElementById('perspectives-section').hidden = perspectivesVisible === 0;
-        var carousel = document.getElementById('perspectives-carousel');
-        if (carousel) carousel.scrollLeft = 0;
+        totalVisible += perspectivesVisible;
 
-        // Filter news
+        // Filter news (origin = news, always show unless origin filter excludes)
         var newsVisible = 0;
+        var showNews = activeOrigin === 'all';
         document.querySelectorAll('#news-list .news-item').forEach(function(item) {
-          var show = matchesTopic(item.getAttribute('data-topics'), topic);
+          var show = showNews && matchesTopic(item.getAttribute('data-topics'), activeTopic);
           item.hidden = !show;
           if (show) newsVisible++;
         });
         document.getElementById('news-section').hidden = newsVisible === 0;
+        totalVisible += newsVisible;
+
+        // Show no-results state if everything is empty
+        document.getElementById('no-results').hidden = totalVisible > 0;
       }
 
       function buildPills() {
@@ -558,7 +590,28 @@
         });
       }
 
-      // Build a perspective card (shared between research grid and member carousel)
+      function buildOriginFilter() {
+        var container = document.getElementById('origin-filter');
+        var origins = [
+          { value: 'all', label: 'All content' },
+          { value: 'official', label: 'Official' },
+          { value: 'member', label: 'Member' },
+        ];
+        origins.forEach(function(o) {
+          var pill = document.createElement('a');
+          pill.className = 'ds-pill origin-tab' + (activeOrigin === o.value ? ' active' : '');
+          pill.textContent = o.label;
+          pill.href = '#';
+          pill.setAttribute('data-origin', o.value);
+          pill.addEventListener('click', function(e) {
+            e.preventDefault();
+            applyFilter(undefined, o.value);
+          });
+          container.appendChild(pill);
+        });
+      }
+
+      // Build a perspective card (shared between research grid and member grid)
       function buildPerspectiveCard(item, className) {
         var topics = (item.tags || []).join(',');
         registerTopics(topics);
@@ -609,11 +662,13 @@
           body.appendChild(excerpt);
         }
 
-        var meta = document.createElement('span');
-        meta.className = 'card-meta';
         var authorName = item.author_name || (item.authors && item.authors.length > 0 ? item.authors.map(function(a){return a.display_name}).join(' & ') : '');
-        meta.textContent = authorName;
-        if (meta.textContent) body.appendChild(meta);
+        if (authorName) {
+          var meta = document.createElement('span');
+          meta.className = 'card-meta';
+          meta.textContent = authorName;
+          body.appendChild(meta);
+        }
 
         card.appendChild(body);
         return card;
@@ -640,11 +695,11 @@
             document.getElementById('research-section').hidden = true;
           }
 
-          // Render member content in perspectives carousel
-          var carousel = document.getElementById('perspectives-carousel');
+          // Render member content in perspectives grid
+          var perspectivesGrid = document.getElementById('perspectives-grid');
           if (member.length > 0) {
             member.forEach(function(item) {
-              carousel.appendChild(buildPerspectiveCard(item, 'carousel-card'));
+              perspectivesGrid.appendChild(buildPerspectiveCard(item, 'card'));
             });
           } else {
             document.getElementById('perspectives-section').hidden = true;
@@ -652,7 +707,7 @@
 
           // Rebuild pills with perspective topics added
           buildPills();
-          if (activeTopic !== 'all') applyFilter(activeTopic);
+          if (activeTopic !== 'all' || activeOrigin !== 'all') applyFilter(activeTopic, activeOrigin);
         } catch (e) {
           // Pills already built from static stories; no rebuild needed
         }

@@ -504,6 +504,9 @@ export function createCommitteeRouters(): {
       }
       const isAddingChannel = updates.slack_channel_url && (!existingGroup?.slack_channel_id || updates.slack_channel_url !== existingGroup.slack_channel_url);
 
+      // Track existing leaders before update so we can invite new ones to Slack
+      const existingLeaderIds = new Set(existingGroup?.leaders?.map(l => l.user_id) ?? []);
+
       const group = await workingGroupDb.updateWorkingGroup(id, updates);
 
       if (!group) {
@@ -511,6 +514,24 @@ export function createCommitteeRouters(): {
           error: 'Working group not found',
           message: `No working group found with id ${id}`
         });
+      }
+
+      // Auto-invite newly added leaders to the group's Slack channel (fire-and-forget)
+      if (updates.leader_user_ids && group.slack_channel_id) {
+        const newLeaderIds = (updates.leader_user_ids as string[]).filter(uid => !existingLeaderIds.has(uid));
+        if (newLeaderIds.length > 0) {
+          const slackDb = new SlackDatabase();
+          Promise.all(newLeaderIds.map(uid => slackDb.getByWorkosUserId(uid))).then(mappings => {
+            const slackUserIds = mappings
+              .filter((m): m is NonNullable<typeof m> => !!m?.slack_user_id)
+              .map(m => m.slack_user_id);
+            if (slackUserIds.length > 0) {
+              return inviteToChannel(group.slack_channel_id!, slackUserIds);
+            }
+          }).catch(err => {
+            logger.error({ err, workingGroupId: id }, 'Failed to auto-invite leaders to Slack channel');
+          });
+        }
       }
 
       // Auto-sync members from Slack channel if a new channel was linked to a chapter or event

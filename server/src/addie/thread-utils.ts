@@ -130,8 +130,8 @@ export function isDirectedAtAddie(
 
 /**
  * Build compact thread summary lines for the router.
- * Returns up to 8 recent messages as "Speaker: text" (truncated to ~120 chars each).
- * The router uses this to understand thread topic without seeing full content.
+ * Returns up to 8 recent messages as "Speaker: text" (truncated to ~600 chars each).
+ * The router uses this to understand thread topic and context.
  */
 export function buildThreadSummaryForRouter(
   messages: Array<{ user?: string; text?: string; ts: string }>,
@@ -139,8 +139,8 @@ export function buildThreadSummaryForRouter(
   currentEventTs: string,
   currentUserId?: string,
 ): string[] {
-  const MAX_SUMMARY_MESSAGES = 5;
-  const MAX_LINE_LENGTH = 120;
+  const MAX_SUMMARY_MESSAGES = 8;
+  const MAX_LINE_LENGTH = 600;
 
   return messages
     .filter(msg => msg.ts !== currentEventTs && (msg.text || '').trim().length > 0)
