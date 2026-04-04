@@ -196,14 +196,6 @@ function injectJoinCtaStyles() {
       margin-top: var(--space-3);
     }
 
-    .join-cta-founding-note {
-      text-align: center;
-      margin-top: var(--space-6);
-      color: var(--color-warning-600);
-      font-weight: var(--font-semibold);
-      font-size: var(--text-sm);
-    }
-
     .join-cta-custom-packages {
       text-align: center;
       margin-top: var(--space-4);
@@ -352,13 +344,11 @@ function injectJoinCtaStyles() {
  * Fetches pricing from Stripe via API for single source of truth
  * @param {Object} options - Configuration options
  * @param {string} options.containerId - ID of the container element
- * @param {boolean} options.showFoundingNote - Whether to show founding member note (default: true)
  * @param {boolean} options.showContactLine - Whether to show contact email (default: true)
  */
 async function renderJoinCta(options = {}) {
   const {
     containerId = 'join-cta-container',
-    showFoundingNote = new Date() < new Date('2026-04-01T04:00:00Z'),
     showContactLine = true
   } = options;
 
@@ -376,20 +366,17 @@ async function renderJoinCta(options = {}) {
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
-  // Use founding-era prices until April 1, 2026 — midnight Eastern (UTC-4)
-  const isFoundingPricing = new Date() < new Date('2026-04-01T04:00:00Z');
-
   // Find specific products by lookup key
   const leaderProduct = products.find(p => p.lookup_key === 'aao_membership_leader_50000');
-  const memberProduct = products.find(p => p.lookup_key === (isFoundingPricing ? 'aao_membership_member_10000' : 'aao_membership_member_15000'));
-  const builderProduct = products.find(p => p.lookup_key === (isFoundingPricing ? 'aao_membership_builder_2500' : 'aao_membership_builder_3000'));
+  const memberProduct = products.find(p => p.lookup_key === 'aao_membership_member_15000');
+  const builderProduct = products.find(p => p.lookup_key === 'aao_membership_builder_3000');
   const professionalProduct = products.find(p => p.lookup_key === 'aao_membership_professional_250');
   const explorerProduct = products.find(p => p.lookup_key === 'aao_membership_explorer_50');
 
   // Format prices (fallback to defaults if API fails)
   const priceLeader = escapeHtml(leaderProduct ? formatCurrency(leaderProduct.amount_cents, leaderProduct.currency) : '$50,000');
-  const priceMember = escapeHtml(memberProduct ? formatCurrency(memberProduct.amount_cents, memberProduct.currency) : (isFoundingPricing ? '$10,000' : '$15,000'));
-  const priceBuilder = escapeHtml(builderProduct ? formatCurrency(builderProduct.amount_cents, builderProduct.currency) : (isFoundingPricing ? '$2,500' : '$3,000'));
+  const priceMember = escapeHtml(memberProduct ? formatCurrency(memberProduct.amount_cents, memberProduct.currency) : '$15,000');
+  const priceBuilder = escapeHtml(builderProduct ? formatCurrency(builderProduct.amount_cents, builderProduct.currency) : '$3,000');
   const priceProfessional = escapeHtml(professionalProduct ? formatCurrency(professionalProduct.amount_cents, professionalProduct.currency) : '$250');
   const priceExplorer = escapeHtml(explorerProduct ? formatCurrency(explorerProduct.amount_cents, explorerProduct.currency) : '$50');
 
@@ -577,12 +564,6 @@ async function renderJoinCta(options = {}) {
       </div>
     </div>
 
-    ${showFoundingNote ? `
-      <p class="join-cta-founding-note">
-        Founding member pricing available through March 31, 2026
-      </p>
-    ` : ''}
-
     <p class="join-cta-custom-packages">
       Need more seats or a custom package? <a href="mailto:membership@agenticadvertising.org?subject=Custom%20Membership%20Package">Contact us</a>
     </p>
@@ -632,7 +613,7 @@ function renderMemberConfirmation(userContext, showContactLine) {
         <span>You're a Member!</span>
       </div>
       <p class="join-cta-member-thanks">
-        Thank you for being a founding member of AgenticAdvertising.org. Your support helps build the future of agentic advertising.
+        Thank you for being a member of AgenticAdvertising.org. Your support helps build the future of agentic advertising.
       </p>
       <div class="join-cta-member-benefits">
         <h4>Your ${escapeHtml(memberType)} Member Benefits</h4>
