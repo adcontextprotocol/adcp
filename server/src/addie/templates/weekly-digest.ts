@@ -125,7 +125,7 @@ export function renderDigestEmail(
 
     ${personaCluster === 'newcomer' && !greeting ? `
     <p style="font-size: 14px; color: #555; margin-bottom: 12px;">
-      New here? The Prompt is your weekly guide to what's happening in agentic advertising. Start with "Worth your time" and explore from there.
+      New here? The Prompt is your biweekly guide to what's happening in agentic advertising. Read the key updates, then browse Industry Intel for what's happening across the ecosystem.
     </p>
     ` : ''}
 
@@ -140,20 +140,38 @@ export function renderDigestEmail(
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
-    <!-- What to Watch -->
-    ${content.whatToWatch.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Worth your time</h2>
-    ${content.whatToWatch.map((item, i) => `
-    <div style="margin-bottom: 20px;">
-      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
-        <a href="${t(`watch_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
-      </h3>
-      <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
-      <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">${escapeHtml(item.whyItMatters)}</p>
-    </div>
-    `).join('')}
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-    ` : ''}
+    <!-- This Edition (official AAO content — no section header, flows from opening take) -->
+    ${(() => {
+      const official = content.whatToWatch.filter((item) => item.tags?.includes('official'));
+      const external = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+      let html = '';
+      if (official.length > 0) {
+        html += official.map((item, i) => `
+        <div style="margin-bottom: 20px;">
+          <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+            <a href="${t(`edition_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+          </h3>
+          <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+          <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">${escapeHtml(item.whyItMatters)}</p>
+        </div>
+        `).join('');
+        html += '<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">';
+      }
+      if (external.length > 0) {
+        html += `<h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry intel</h2>`;
+        html += external.map((item, i) => `
+        <div style="margin-bottom: 20px;">
+          <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+            <a href="${t(`intel_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+          </h3>
+          <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+          <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">${escapeHtml(item.whyItMatters)}</p>
+        </div>
+        `).join('');
+        html += '<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">';
+      }
+      return html;
+    })()}
 
     <!-- What Shipped -->
     ${content.whatShipped && content.whatShipped.length > 0 ? `
@@ -434,7 +452,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     });
   }
 
-  // Worth your time
+  // Industry intel
   if (content.whatToWatch.length > 0) {
     const watchText = content.whatToWatch
       .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
@@ -442,7 +460,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Worth your time*\n\n${watchText}` },
+      text: { type: 'mrkdwn', text: `*Industry intel*\n\n${watchText}` },
     });
   }
 

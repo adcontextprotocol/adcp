@@ -96,7 +96,7 @@ function buildFullMarkdown(content: DigestContent): string {
 
   // Worth your time
   if (content.whatToWatch.length > 0) {
-    sections.push('## Worth your time');
+    sections.push('## Industry intel');
     for (const item of content.whatToWatch) {
       sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
     }
