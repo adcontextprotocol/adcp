@@ -596,20 +596,23 @@
     function countActionableRelationships(dismissed) {
       const clusters = [];
       for (const c of (healthData.domain_conflicts || [])) {
-        clusters.push({ key: `domain:${c.domain}`, signal: 'Shared Email Domain', organizations: c.organizations.map(o => ({ name: o.name })) });
+        clusters.push({ key: `domain:${c.domain}`, signal: 'Shared Email Domain', organizations: c.organizations.map(o => ({ name: o.name })), classification: c.classification || null });
       }
       for (const r of (healthData.related_domains || [])) {
         const signal = r.match_source === 'brand_hierarchy' ? 'Brand Hierarchy' : r.match_source === 'brand_alias' ? 'Known Alias' : 'Domain Similarity';
-        clusters.push({ key: `related:${r.root_domain}`, signal, organizations: r.organizations.map(o => ({ name: o.name })) });
+        clusters.push({ key: `related:${r.root_domain}`, signal, organizations: r.organizations.map(o => ({ name: o.name })), classification: r.classification || null });
       }
       for (const s of (healthData.similar_names || [])) {
-        clusters.push({ key: `names:${s.base_name}`, signal: 'Similar Names', organizations: s.organizations.map(o => ({ name: o.name })) });
+        clusters.push({ key: `names:${s.base_name}`, signal: 'Similar Names', organizations: s.organizations.map(o => ({ name: o.name })), classification: s.classification || null });
       }
       for (const d of (healthData.duplicate_organizations || [])) {
         const emails = d.shared_emails || [];
-        clusters.push({ key: `members:${emails.slice(0, 3).join(',')}`, signal: 'Shared Members', organizations: d.organizations.map(o => ({ name: o.name })) });
+        clusters.push({ key: `members:${emails.slice(0, 3).join(',')}`, signal: 'Shared Members', organizations: d.organizations.map(o => ({ name: o.name })), classification: d.classification || null });
       }
-      return clusters.filter(c => classifyCluster(c).type !== 'subsidiary' && !dismissed.includes(c.key)).length;
+      return clusters.filter(c => {
+        const cls = c.classification || classifyCluster(c);
+        return cls.type !== 'subsidiary' && !dismissed.includes(c.key);
+      }).length;
     }
 
     // ─── Summary Cards ──────────────────────────────────────────────────────
@@ -917,6 +920,7 @@
             id: o.id, name: o.name, status: o.subscription_status
           })),
           researchDomain: c.domain,
+          classification: c.classification || null,
         });
       }
 
@@ -944,6 +948,7 @@
             domains: o.domains
           })),
           researchDomain: r.root_domain,
+          classification: r.classification || null,
         });
       }
 
@@ -959,6 +964,7 @@
             id: o.org_id, name: o.name, status: o.subscription_status
           })),
           researchDomain: null,
+          classification: s.classification || null,
         });
       }
 
@@ -976,11 +982,15 @@
             memberCount: o.member_count
           })),
           researchDomain: null,
+          classification: d.classification || null,
         });
       }
 
-      // Classify every cluster and split into auto-resolved vs needs-attention
-      const classified = clusters.map(c => ({ ...c, classification: classifyCluster(c) }));
+      // Use server-provided classification, fall back to client-side heuristic
+      const classified = clusters.map(c => ({
+        ...c,
+        classification: c.classification || classifyCluster(c),
+      }));
       const autoResolved = classified.filter(c => c.classification.type === 'subsidiary');
       const needsAttention = classified.filter(c => c.classification.type !== 'subsidiary');
       const manuallyDismissed = needsAttention.filter(c => dismissed.includes(c.key));
