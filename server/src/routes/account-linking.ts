@@ -194,6 +194,104 @@ export function createAccountLinkingRouter(): Router {
     }
   });
 
+  // PUT /api/me/linked-emails/primary — swap a linked alias to be the primary email
+  router.put('/primary', requireAuth, verifyExecuteLimiter, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { email } = req.body;
+
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+      const currentPrimary = req.user!.email.toLowerCase();
+
+      if (normalizedEmail === currentPrimary) {
+        return res.status(400).json({ error: 'This is already your primary email' });
+      }
+
+      const oldPrimary = req.user!.email;
+
+      // DB-first, then WorkOS: if WorkOS fails we rollback cleanly.
+      // If WorkOS succeeds but COMMIT fails (extremely rare), the user.updated
+      // webhook will re-sync the email from WorkOS on the next event.
+      let aliasEmail: string;
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Lock and verify the alias belongs to this user
+        const alias = await client.query(
+          `SELECT id, email FROM user_email_aliases
+           WHERE workos_user_id = $1 AND LOWER(email) = $2 AND verified_at IS NOT NULL
+           FOR UPDATE`,
+          [userId, normalizedEmail]
+        );
+
+        if (alias.rows.length === 0) {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(404).json({ error: 'Email is not linked to your account' });
+        }
+
+        aliasEmail = alias.rows[0].email;
+
+        // Update users table with the new primary email
+        await client.query(
+          `UPDATE users SET email = $1, updated_at = NOW() WHERE workos_user_id = $2`,
+          [aliasEmail, userId]
+        );
+
+        // Remove the new primary from aliases
+        await client.query(
+          `DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = $2`,
+          [userId, normalizedEmail]
+        );
+
+        // Add old primary as an alias
+        await client.query(
+          `INSERT INTO user_email_aliases (workos_user_id, email)
+           VALUES ($1, $2)
+           ON CONFLICT (workos_user_id, email) DO NOTHING`,
+          [userId, oldPrimary]
+        );
+
+        // Update organization_memberships to reflect new email
+        await client.query(
+          `UPDATE organization_memberships SET email = $1, updated_at = NOW()
+           WHERE workos_user_id = $2`,
+          [aliasEmail, userId]
+        );
+
+        // DB is staged. Now update WorkOS (source of truth for auth).
+        await workos.userManagement.updateUser({ userId, email: aliasEmail });
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+
+      logger.info(
+        { userId, oldPrimary, newPrimary: aliasEmail },
+        'Primary email changed'
+      );
+
+      return res.json({ status: 'primary_updated', primary_email: aliasEmail });
+    } catch (error: any) {
+      // WorkOS may reject the email update (e.g. email already taken in WorkOS)
+      if (error?.code === 'email_already_exists' || error?.status === 409) {
+        return res.status(409).json({ error: 'This email is already associated with another account in our auth system' });
+      }
+      logger.error({ error }, 'Failed to set primary email');
+      return res.status(500).json({ error: 'Failed to update primary email' });
+    }
+  });
+
   return router;
 }
 

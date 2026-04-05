@@ -1082,6 +1082,7 @@
           html += '<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">' +
             '<span style="font-size: var(--text-sm);">' + accountEscapeHtml(data.aliases[i].email) + '</span>' +
             '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-success-50); color: var(--color-success-600); padding: 2px 8px; border-radius: 4px;">Linked</span>' +
+            '<button class="btn btn-ghost make-primary-btn" data-email="' + accountEscapeHtml(data.aliases[i].email) + '" style="margin-left: auto; font-size: var(--text-xs); padding: 2px 8px;">Make primary</button>' +
             '</div>';
         }
 
@@ -1093,8 +1094,44 @@
         }
 
         container.innerHTML = html;
+
+        container.querySelectorAll('.make-primary-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            setPrimaryEmail(btn.dataset.email);
+          });
+        });
       } catch (error) {
         console.error('Failed to load linked emails:', error);
+      }
+    }
+
+    async function setPrimaryEmail(email) {
+      if (!confirm('Make ' + email + ' your primary email? You will need to use this email to sign in.')) return;
+
+      var btns = document.querySelectorAll('.make-primary-btn');
+      btns.forEach(function(b) { b.disabled = true; });
+
+      try {
+        var response = await fetch('/api/me/linked-emails/primary', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email }),
+          credentials: 'include'
+        });
+
+        var data = await response.json();
+
+        if (!response.ok) {
+          accountShowToast(data.error || 'Failed to update primary email', true);
+          return;
+        }
+
+        accountShowToast('Primary email updated to ' + email);
+        loadLinkedEmails();
+      } catch (error) {
+        accountShowToast('Failed to update primary email', true);
+      } finally {
+        btns.forEach(function(b) { b.disabled = false; });
       }
     }
 
