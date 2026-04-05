@@ -1241,7 +1241,30 @@
             }
           }
         } catch (err) {
-          // brand.json fetch failed - will try community brand fallback below
+          // brand.json fetch failed - will try discovered brand fallback below
+        }
+
+        // Fall back to discovered brand data (community-enriched brands without brand.json)
+        if (!brandJsonLoaded) {
+          try {
+            const resp = await fetch(`/brands/${encodeURIComponent(domain)}/brand.json`);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && (data.logos || data.colors || data.name)) {
+                brandData = { brands: [{ id: domain, name: data.name || domain, logos: data.logos, colors: data.colors, fonts: data.fonts }] };
+                brandJsonLoaded = true;
+                document.getElementById('loading-state').classList.add('hidden');
+                document.getElementById('brand-content').classList.remove('hidden');
+                document.getElementById('hero-title').textContent = data.name || domain;
+                document.getElementById('hero-subtitle').textContent = domain;
+                currentBrandId = domain;
+                renderLogos(data.logos);
+                renderColors(data.colors);
+              }
+            }
+          } catch {
+            // discovered brand fetch failed too
+          }
         }
 
         // Always try loading revision history (works for community brands even without brand.json)
