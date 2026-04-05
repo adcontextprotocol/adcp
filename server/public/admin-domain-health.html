@@ -383,7 +383,7 @@
               Review Relationships
               <span class="section-badge" id="reviewBadge">0</span>
             </div>
-            <p class="section-description">Organizations the system thinks are related. These may be duplicates, subsidiaries, or unrelated — review and classify.</p>
+            <p class="section-description">Subsidiary groups are auto-confirmed. Only likely duplicates and unclassified relationships appear here for review.</p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
             <button class="btn btn-secondary btn-sm" id="showDismissedBtn" style="display: none;">Show Dismissed</button>
@@ -584,20 +584,35 @@
         });
       });
 
-      // Research cluster buttons
-      document.querySelectorAll('.research-cluster-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const domain = btn.dataset.domain;
-          researchBrandFromOrphan(btn, domain);
-        });
-      });
-
       // Dismiss buttons
       document.querySelectorAll('.dismiss-cluster-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           dismissCluster(btn.dataset.clusterKey);
         });
       });
+    }
+
+    // Count relationship clusters that need human attention (excluding auto-resolved subsidiaries and dismissed)
+    function countActionableRelationships(dismissed) {
+      const clusters = [];
+      for (const c of (healthData.domain_conflicts || [])) {
+        clusters.push({ key: `domain:${c.domain}`, signal: 'Shared Email Domain', organizations: c.organizations.map(o => ({ name: o.name })), classification: c.classification || null });
+      }
+      for (const r of (healthData.related_domains || [])) {
+        const signal = r.match_source === 'brand_hierarchy' ? 'Brand Hierarchy' : r.match_source === 'brand_alias' ? 'Known Alias' : 'Domain Similarity';
+        clusters.push({ key: `related:${r.root_domain}`, signal, organizations: r.organizations.map(o => ({ name: o.name })), classification: r.classification || null });
+      }
+      for (const s of (healthData.similar_names || [])) {
+        clusters.push({ key: `names:${s.base_name}`, signal: 'Similar Names', organizations: s.organizations.map(o => ({ name: o.name })), classification: s.classification || null });
+      }
+      for (const d of (healthData.duplicate_organizations || [])) {
+        const emails = d.shared_emails || [];
+        clusters.push({ key: `members:${emails.slice(0, 3).join(',')}`, signal: 'Shared Members', organizations: d.organizations.map(o => ({ name: o.name })), classification: d.classification || null });
+      }
+      return clusters.filter(c => {
+        const cls = c.classification || classifyCluster(c);
+        return cls.type !== 'subsidiary' && !dismissed.includes(c.key);
+      }).length;
     }
 
     // ─── Summary Cards ──────────────────────────────────────────────────────
@@ -615,11 +630,7 @@
       const placeCount = misalignedUsers.reduce((sum, d) => sum + d.user_count, 0);
 
       const dismissed = getDismissed();
-      const allReviewCount = (healthData.domain_conflicts || []).length +
-                             (healthData.related_domains || []).length +
-                             (healthData.similar_names || []).length +
-                             (healthData.duplicate_organizations || []).length;
-      const reviewCount = Math.max(0, allReviewCount - dismissed.length);
+      const reviewCount = countActionableRelationships(dismissed);
 
       const grid = document.getElementById('summaryGrid');
       grid.innerHTML = `
@@ -636,7 +647,7 @@
         <div class="summary-card ${reviewCount === 0 ? 'good' : 'warning'}">
           <div class="label">Relationships to Review</div>
           <div class="value">${reviewCount}</div>
-          <div class="detail">${reviewCount === 0 ? 'No ambiguous relationships' : 'Possible duplicates or subsidiaries'}</div>
+          <div class="detail">${reviewCount === 0 ? 'All relationships classified' : 'Possible duplicates need review'}</div>
         </div>
         <div class="summary-card">
           <div class="label">Total Organizations</div>
@@ -818,6 +829,76 @@
 
     // ─── Section 3: Review Relationships ────────────────────────────────────
 
+    // Words that don't count as meaningful differentiation between org names
+    const NOISE_WORDS = new Set([
+      'inc', 'llc', 'ltd', 'limited', 'corp', 'corporation', 'company', 'co', 'group', 'the',
+      'plc', 'gmbh', 'sa', 'ag', 'bv', 'nv', 'pty', 'ab', 'as', 'oy',
+    ]);
+
+    // Classify a cluster of organizations sharing a signal as subsidiaries, duplicates, or unclear.
+    // Uses name patterns: shared prefix + distinct suffixes = subsidiaries,
+    // near-identical names = duplicates.
+    function classifyCluster(cluster) {
+      // Brand hierarchy / alias signals are already classified
+      if (cluster.signal === 'Brand Hierarchy' || cluster.signal === 'Known Alias') {
+        return { type: 'subsidiary', reason: 'Brand registry confirms parent/subsidiary relationship' };
+      }
+      // Shared members almost always means duplicates
+      if (cluster.signal === 'Shared Members') {
+        return { type: 'duplicate', reason: 'Organizations share the same members' };
+      }
+
+      const names = cluster.organizations.map(o => o.name.trim());
+      if (names.length < 2) return { type: 'unclear', reason: 'Single organization' };
+
+      // Find longest common prefix (word-aligned)
+      const words = names.map(n => n.split(/\s+/));
+      let prefixLen = 0;
+      for (let i = 0; i < Math.min(...words.map(w => w.length)); i++) {
+        const word = words[0][i].toLowerCase();
+        if (words.every(w => w[i].toLowerCase() === word)) {
+          prefixLen = i + 1;
+        } else {
+          break;
+        }
+      }
+      // Strip noise words from the prefix (e.g. "The" alone is not meaningful)
+      const prefixWords = prefixLen > 0 ? words[0].slice(0, prefixLen) : [];
+      const meaningfulPrefixWords = prefixWords.filter(w => !NOISE_WORDS.has(w.toLowerCase()));
+      const commonPrefix = meaningfulPrefixWords.join(' ');
+
+      // Get suffixes after the common prefix
+      const suffixes = words.map(w => w.slice(prefixLen).join(' ').trim());
+      const nonEmptySuffixes = suffixes.filter(s => s.length > 0);
+      const uniqueSuffixes = new Set(nonEmptySuffixes.map(s => s.toLowerCase()));
+
+      const meaningfulSuffixes = [...uniqueSuffixes].filter(s => !NOISE_WORDS.has(s.toLowerCase()));
+
+      // Strong meaningful prefix + distinct meaningful suffixes = subsidiaries
+      if (commonPrefix.length >= 3 && meaningfulSuffixes.length >= 1) {
+        return {
+          type: 'subsidiary',
+          reason: `Distinct ${commonPrefix} entities: ${nonEmptySuffixes.slice(0, 4).join(', ')}${nonEmptySuffixes.length > 4 ? '…' : ''}`
+        };
+      }
+
+      // Names are nearly identical (only noise-word differences) = duplicates
+      if (commonPrefix.length >= 3 && meaningfulSuffixes.length === 0) {
+        return { type: 'duplicate', reason: 'Names are nearly identical' };
+      }
+
+      // No shared prefix — check if names are similar via normalized comparison
+      const normalized = names.map(n =>
+        n.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => !NOISE_WORDS.has(w)).join(' ')
+      );
+      const uniqueNormalized = new Set(normalized);
+      if (uniqueNormalized.size === 1) {
+        return { type: 'duplicate', reason: 'Names are effectively identical' };
+      }
+
+      return { type: 'unclear', reason: 'Could not determine relationship from names alone' };
+    }
+
     function renderReviewRelationships() {
       const badge = document.getElementById('reviewBadge');
       const content = document.getElementById('reviewContent');
@@ -839,6 +920,7 @@
             id: o.id, name: o.name, status: o.subscription_status
           })),
           researchDomain: c.domain,
+          classification: c.classification || null,
         });
       }
 
@@ -866,6 +948,7 @@
             domains: o.domains
           })),
           researchDomain: r.root_domain,
+          classification: r.classification || null,
         });
       }
 
@@ -881,6 +964,7 @@
             id: o.org_id, name: o.name, status: o.subscription_status
           })),
           researchDomain: null,
+          classification: s.classification || null,
         });
       }
 
@@ -898,32 +982,39 @@
             memberCount: o.member_count
           })),
           researchDomain: null,
+          classification: d.classification || null,
         });
       }
 
-      // Filter dismissed
-      const visible = showDismissed ? clusters : clusters.filter(c => !dismissed.includes(c.key));
-      const dismissedCount = clusters.length - clusters.filter(c => !dismissed.includes(c.key)).length;
+      // Use server-provided classification, fall back to client-side heuristic
+      const classified = clusters.map(c => ({
+        ...c,
+        classification: c.classification || classifyCluster(c),
+      }));
+      const autoResolved = classified.filter(c => c.classification.type === 'subsidiary');
+      const needsAttention = classified.filter(c => c.classification.type !== 'subsidiary');
+      const manuallyDismissed = needsAttention.filter(c => dismissed.includes(c.key));
+      const actionable = showDismissed
+        ? needsAttention
+        : needsAttention.filter(c => !dismissed.includes(c.key));
 
-      badge.textContent = visible.length;
-      badge.className = visible.length === 0 ? 'section-badge success' : 'section-badge';
+      // Badge always reflects non-dismissed items needing human decisions
+      const badgeCount = needsAttention.filter(c => !dismissed.includes(c.key)).length;
+      badge.textContent = badgeCount;
+      badge.className = badgeCount === 0 ? 'section-badge success' : 'section-badge';
 
-      if (dismissedCount > 0) {
+      if (manuallyDismissed.length > 0) {
         showDismissedBtn.style.display = 'block';
-        showDismissedBtn.textContent = showDismissed ? 'Hide Dismissed' : `Show ${dismissedCount} Dismissed`;
+        showDismissedBtn.textContent = showDismissed ? 'Hide Dismissed' : `Show ${manuallyDismissed.length} Dismissed`;
         showDismissedBtn.onclick = () => {
           showDismissed = !showDismissed;
           renderReviewRelationships();
-          // Re-bind event handlers for new buttons
           document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
             btn.addEventListener('click', () => {
               const orgIds = btn.dataset.orgIds.split(',').map(decodeURIComponent);
               const domain = decodeURIComponent(btn.dataset.domain || btn.dataset.baseName || '');
               showMergeModal(orgIds, domain);
             });
-          });
-          document.querySelectorAll('.research-cluster-btn').forEach(btn => {
-            btn.addEventListener('click', () => researchBrandFromOrphan(btn, btn.dataset.domain));
           });
           document.querySelectorAll('.dismiss-cluster-btn').forEach(btn => {
             btn.addEventListener('click', () => dismissCluster(btn.dataset.clusterKey));
@@ -933,29 +1024,60 @@
         showDismissedBtn.style.display = 'none';
       }
 
-      if (visible.length === 0) {
-        content.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#10003;</div>
-            <p>No ambiguous organization relationships found.</p>
+      // Build HTML sections
+      let html = '';
+
+      // Auto-resolved subsidiary summary (collapsed)
+      if (autoResolved.length > 0) {
+        html += `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md, 6px);">
+            <details>
+              <summary style="cursor: pointer; font-size: var(--text-sm); font-weight: 500; color: var(--color-success-700);">
+                ${autoResolved.length} of ${classified.length} relationship clusters auto-confirmed as subsidiary groups
+                <span style="font-weight: normal; color: var(--color-text-muted);">
+                  &mdash; ${autoResolved.reduce((sum, c) => sum + c.organizations.length, 0)} organizations recognized as offices/divisions under a parent
+                </span>
+              </summary>
+              <ul style="margin: var(--space-2) 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted);">
+                ${autoResolved.map(c => `
+                  <li style="margin-bottom: var(--space-1);">
+                    <strong>${escapeHtml(c.label)}</strong>:
+                    ${c.organizations.map(o => escapeHtml(o.name)).join(', ')}
+                    <span style="font-size: var(--text-xs); opacity: 0.7;">&mdash; ${escapeHtml(c.classification.reason)}</span>
+                  </li>
+                `).join('')}
+              </ul>
+            </details>
           </div>
         `;
+      }
+
+      if (actionable.length === 0) {
+        html += `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>No items requiring review.${autoResolved.length > 0 ? ' All detected relationships were auto-classified above.' : ''}</p>
+          </div>
+        `;
+        content.innerHTML = html;
         return;
       }
 
-      content.innerHTML = `
+      html += `
         <table class="issue-table">
           <thead>
             <tr>
               <th>Signal</th>
               <th>Key</th>
               <th>Organizations</th>
+              <th>Assessment</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${visible.map(c => {
+            ${actionable.map(c => {
               const isDismissed = dismissed.includes(c.key);
+              const cls = c.classification;
               return `
               <tr class="${isDismissed ? 'dismissed-row' : ''}">
                 <td><span class="signal-badge ${c.signalClass}">${escapeHtml(c.signal)}</span></td>
@@ -977,20 +1099,37 @@
                   </ul>
                 </td>
                 <td>
+                  <span class="signal-badge ${cls.type === 'duplicate' ? 'signal-members' : 'signal-heuristic'}">
+                    ${cls.type === 'duplicate' ? 'Likely Duplicates' : 'Needs Review'}
+                  </span>
+                  <br><small style="color: var(--color-text-muted);">${escapeHtml(cls.reason)}</small>
+                </td>
+                <td>
                   <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    ${c.researchDomain ? `
-                      <a class="btn btn-primary btn-sm" href="/admin/brands?search=${encodeURIComponent(c.researchDomain)}" style="text-align: center;">
-                        Review in Brands
-                      </a>
-                    ` : ''}
-                    <button class="btn btn-secondary btn-sm merge-orgs-btn"
-                      data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}"
-                      data-domain="${encodeURIComponent(c.label)}">Merge</button>
-                    ${!isDismissed ? `
-                      <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
-                        data-cluster-key="${escapeHtml(c.key)}"
-                        style="font-size: 10px; color: var(--color-text-muted);">Dismiss</button>
-                    ` : ''}
+                    ${cls.type === 'duplicate' ? `
+                      <button class="btn btn-primary btn-sm merge-orgs-btn"
+                        data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}"
+                        data-domain="${encodeURIComponent(c.label)}">Merge</button>
+                      ${!isDismissed ? `
+                        <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
+                          data-cluster-key="${escapeHtml(c.key)}"
+                          style="font-size: var(--text-xs); color: var(--color-text-muted);">Not Duplicates</button>
+                      ` : ''}
+                    ` : `
+                      ${c.researchDomain ? `
+                        <a class="btn btn-primary btn-sm" href="/admin/brands?search=${encodeURIComponent(c.researchDomain)}" style="text-align: center;">
+                          Review in Brands
+                        </a>
+                      ` : ''}
+                      <button class="btn btn-secondary btn-sm merge-orgs-btn"
+                        data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}"
+                        data-domain="${encodeURIComponent(c.label)}">Merge</button>
+                      ${!isDismissed ? `
+                        <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
+                          data-cluster-key="${escapeHtml(c.key)}"
+                          style="font-size: var(--text-xs); color: var(--color-text-muted);">Dismiss</button>
+                      ` : ''}
+                    `}
                   </div>
                 </td>
               </tr>
@@ -998,6 +1137,8 @@
           </tbody>
         </table>
       `;
+
+      content.innerHTML = html;
     }
 
     // ─── Section 4: Maintenance ─────────────────────────────────────────────

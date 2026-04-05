@@ -17,6 +17,7 @@ import {
 } from "../../db/personal-domains-db.js";
 import { linkContactsByDomain } from "../../db/contacts-db.js";
 import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
+import { complete, isLLMConfigured } from "../../utils/llm.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1548,6 +1549,160 @@ export function setupDomainRoutes(
   // DOMAIN HEALTH API
   // =========================================================================
 
+  // Classify relationship clusters using brand registry data + LLM
+  interface ClusterClassification {
+    type: 'subsidiary' | 'duplicate' | 'unclear';
+    reason: string;
+  }
+
+  interface ClusterForClassification {
+    signal: string;
+    label: string;
+    organizations: { name: string; status?: string }[];
+  }
+
+  async function classifyRelationshipClusters(
+    pool: ReturnType<typeof getPool>,
+    clusters: ClusterForClassification[]
+  ): Promise<Map<string, ClusterClassification>> {
+    const results = new Map<string, ClusterClassification>();
+    const needsLLM: ClusterForClassification[] = [];
+
+    // Batch brand registry lookups for all Shared Email Domain clusters
+    const emailDomainLabels = clusters
+      .filter(c => c.signal === 'Shared Email Domain')
+      .map(c => c.label.toLowerCase());
+
+    const houseDomainMap = new Map<string, string>();
+    const subBrandCountMap = new Map<string, number>();
+
+    if (emailDomainLabels.length > 0) {
+      const houseResult = await pool.query<{ domain: string; house_domain: string }>(
+        `SELECT domain, house_domain FROM discovered_brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
+        [emailDomainLabels]
+      );
+      for (const row of houseResult.rows) {
+        houseDomainMap.set(row.domain, row.house_domain);
+      }
+
+      const subResult = await pool.query<{ house_domain: string; sub_count: string }>(
+        `SELECT house_domain, COUNT(*) as sub_count FROM discovered_brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
+        [emailDomainLabels]
+      );
+      for (const row of subResult.rows) {
+        subBrandCountMap.set(row.house_domain, parseInt(row.sub_count, 10));
+      }
+    }
+
+    for (const cluster of clusters) {
+      const key = `${cluster.signal}:${cluster.label}`;
+
+      // Brand Hierarchy and Known Alias are already confirmed by the brand registry
+      if (cluster.signal === 'Brand Hierarchy' || cluster.signal === 'Known Alias') {
+        results.set(key, { type: 'subsidiary', reason: 'Brand registry confirms parent/subsidiary relationship' });
+        continue;
+      }
+
+      // Shared Members almost always means duplicates
+      if (cluster.signal === 'Shared Members') {
+        results.set(key, { type: 'duplicate', reason: 'Organizations share the same members' });
+        continue;
+      }
+
+      // For Shared Email Domain clusters, check brand registry data (pre-fetched above)
+      if (cluster.signal === 'Shared Email Domain') {
+        const domain = cluster.label.toLowerCase();
+        const houseDomain = houseDomainMap.get(domain);
+        if (houseDomain) {
+          results.set(key, { type: 'subsidiary', reason: `Brand registry: subsidiary of ${houseDomain}` });
+          continue;
+        }
+        const subCount = subBrandCountMap.get(domain);
+        if (subCount && subCount > 0) {
+          results.set(key, { type: 'subsidiary', reason: `Brand registry: parent brand with ${subCount} sub-brands` });
+          continue;
+        }
+      }
+
+      // Couldn't resolve from data — need LLM
+      needsLLM.push(cluster);
+    }
+
+    // Batch-classify remaining clusters with a single LLM call (cap batch size)
+    const LLM_BATCH_LIMIT = 30;
+    const llmBatch = needsLLM.slice(0, LLM_BATCH_LIMIT);
+    for (const cluster of needsLLM.slice(LLM_BATCH_LIMIT)) {
+      const key = `${cluster.signal}:${cluster.label}`;
+      results.set(key, { type: 'unclear', reason: 'Too many clusters for batch classification' });
+    }
+
+    if (llmBatch.length > 0 && isLLMConfigured()) {
+      try {
+        // Sanitize org names to limit prompt injection surface
+        const sanitizeName = (name: string) => name.slice(0, 100).replace(/[\n\r]/g, ' ');
+
+        const clusterDescriptions = llmBatch.map((c, i) => {
+          const orgNames = c.organizations.map(o => sanitizeName(o.name)).join(', ');
+          return `${i + 1}. Signal: ${c.signal}, Key: ${c.label}, Organizations: ${orgNames}`;
+        }).join('\n');
+
+        const llmResult = await complete({
+          system: `You classify groups of organizations that share a signal (email domain, similar name, etc.) as one of:
+- "subsidiary": These are offices, divisions, or subsidiaries of the same parent company
+- "duplicate": These appear to be the same organization registered multiple times
+- "unrelated": These are genuinely different companies that happen to share a signal
+
+Use your knowledge of the advertising, media, and marketing industry. Major holding companies include WPP, Omnicom, Publicis Groupe, IPG, Dentsu, Havas. Their agencies (e.g. TBWA, DDB, UM, Mindshare) are subsidiaries. Regional offices (e.g. "TBWA Melbourne") are subsidiaries of the agency.
+
+Respond with ONLY a JSON array, one entry per cluster:
+[{"id": 1, "type": "subsidiary|duplicate|unrelated", "reason": "brief explanation"}]`,
+          prompt: `Classify these ${llmBatch.length} organization clusters:\n\n${clusterDescriptions}`,
+          maxTokens: llmBatch.length * 100,
+          model: 'fast',
+          operationName: 'classify-org-relationships',
+        });
+
+        // Strip markdown code fences if present
+        const jsonText = llmResult.text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+        const raw = JSON.parse(jsonText);
+        const parsed: { id: number; type: string; reason: string }[] = Array.isArray(raw) ? raw : [];
+        if (parsed.length === 0) {
+          logger.warn({ response: jsonText.slice(0, 200) }, 'LLM returned non-array or empty response');
+        }
+        for (const item of parsed) {
+          const cluster = llmBatch[item.id - 1];
+          if (!cluster) continue;
+          const key = `${cluster.signal}:${cluster.label}`;
+          const type = item.type === 'subsidiary' ? 'subsidiary'
+            : item.type === 'duplicate' ? 'duplicate'
+            : 'unclear';
+          results.set(key, { type, reason: (item.reason || 'Classified by LLM').slice(0, 200) });
+        }
+
+        logger.info(
+          { clusterCount: llmBatch.length, latencyMs: llmResult.latencyMs, model: llmResult.model },
+          'LLM classified org relationship clusters'
+        );
+      } catch (err) {
+        logger.warn({ err }, 'LLM classification failed, falling back to unclear');
+        for (const cluster of llmBatch) {
+          const key = `${cluster.signal}:${cluster.label}`;
+          if (!results.has(key)) {
+            results.set(key, { type: 'unclear', reason: 'Classification unavailable' });
+          }
+        }
+      }
+    } else {
+      // No LLM configured — mark remaining as unclear
+      for (const cluster of needsLLM) {
+        const key = `${cluster.signal}:${cluster.label}`;
+        results.set(key, { type: 'unclear', reason: 'Classification unavailable' });
+      }
+    }
+
+    return results;
+  }
+
   // Common free email providers to exclude from corporate domain checks
   const freeEmailDomains = [
     'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
@@ -2020,6 +2175,33 @@ export function setupDomainRoutes(
           LIMIT $${allExcludedDomains.length + 1}
         `, [...allExcludedDomains, limit]);
 
+        // Classify all relationship clusters server-side
+        const allClusters: ClusterForClassification[] = [
+          ...conflictResult.rows.map(row => ({
+            signal: 'Shared Email Domain',
+            label: row.email_domain,
+            organizations: (row.organizations as { name: string; subscription_status?: string }[]).map(o => ({ name: o.name, status: o.subscription_status })),
+          })),
+          ...relatedDomainsRows.map(row => ({
+            signal: row.match_source === 'brand_hierarchy' ? 'Brand Hierarchy'
+              : row.match_source === 'brand_alias' ? 'Known Alias' : 'Domain Similarity',
+            label: row.group_key,
+            organizations: (row.organizations as { name: string; subscription_status?: string }[]).map(o => ({ name: o.name, status: o.subscription_status })),
+          })),
+          ...similarNamesResult.rows.map(row => ({
+            signal: 'Similar Names',
+            label: row.base_name,
+            organizations: (row.organizations as { name: string; subscription_status?: string }[]).map(o => ({ name: o.name, status: o.subscription_status })),
+          })),
+          ...duplicateOrgsResult.rows.map(row => ({
+            signal: 'Shared Members',
+            label: (row.shared_emails || []).slice(0, 3).join(', '),
+            organizations: ((row.organizations || []) as { name: string; subscription_status?: string }[]).map(o => ({ name: o.name, status: o.subscription_status })),
+          })),
+        ];
+
+        const classifications = await classifyRelationshipClusters(pool, allClusters);
+
         res.json({
           summary: {
             total_organizations: parseInt(statsResult.rows[0].total_orgs, 10),
@@ -2072,6 +2254,7 @@ export function setupDomainRoutes(
             domain: row.email_domain,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
+            classification: classifications.get(`Shared Email Domain:${row.email_domain}`) || null,
           })),
           domain_sync_issues: domainSyncResult.rows.map(row => ({
             org_id: row.workos_organization_id,
@@ -2080,22 +2263,32 @@ export function setupDomainRoutes(
             subscription_status: row.subscription_status,
             prospect_status: row.prospect_status,
           })),
-          related_domains: relatedDomainsRows.map(row => ({
-            root_domain: row.group_key,
-            org_count: parseInt(row.org_count, 10),
-            organizations: row.organizations,
-            match_source: row.match_source,
-          })),
+          related_domains: relatedDomainsRows.map(row => {
+            const signal = row.match_source === 'brand_hierarchy' ? 'Brand Hierarchy'
+              : row.match_source === 'brand_alias' ? 'Known Alias' : 'Domain Similarity';
+            return {
+              root_domain: row.group_key,
+              org_count: parseInt(row.org_count, 10),
+              organizations: row.organizations,
+              match_source: row.match_source,
+              classification: classifications.get(`${signal}:${row.group_key}`) || null,
+            };
+          }),
           similar_names: similarNamesResult.rows.map(row => ({
             base_name: row.base_name,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
+            classification: classifications.get(`Similar Names:${row.base_name}`) || null,
           })),
-          duplicate_organizations: duplicateOrgsResult.rows.map(row => ({
-            shared_emails: row.shared_emails || [],
-            org_count: parseInt(row.org_count, 10),
-            organizations: row.organizations || [],
-          })),
+          duplicate_organizations: duplicateOrgsResult.rows.map(row => {
+            const emails = (row.shared_emails || []) as string[];
+            return {
+              shared_emails: emails,
+              org_count: parseInt(row.org_count, 10),
+              organizations: row.organizations || [],
+              classification: classifications.get(`Shared Members:${emails.slice(0, 3).join(', ')}`) || null,
+            };
+          }),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching domain health");
