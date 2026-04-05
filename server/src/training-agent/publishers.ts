@@ -653,7 +653,7 @@ export const PUBLISHERS: PublisherProfile[] = [
       {
         propertyId: 'crestline_terrestrial',
         name: 'Crestline Terrestrial Stations',
-        identifierType: 'call_sign',
+        identifierType: 'station_id',
         identifierValue: 'KCRT-FM',
         channels: ['radio'],
         tags: ['radio', 'terrestrial', 'local', 'broadcast'],

@@ -24,11 +24,8 @@
     "apple_podcast_id",
     "spotify_collection_id",
     "podcast_guid",
-    "call_sign",
-    "facility_id",
-    "radiodns",
-    "dvb_service",
-    "dab_service"
+    "station_id",
+    "facility_id"
   ],
   "enumDescriptions": {
     "domain": "Web domain (e.g., example.com)",
@@ -50,18 +47,15 @@
     "apple_podcast_id": "Apple Podcasts numeric ID",
     "spotify_collection_id": "Spotify show or collection URI",
     "podcast_guid": "Podcast GUID (podcasting 2.0 namespace)",
-    "call_sign": "Broadcast station call sign assigned by national regulatory authority (e.g., WBEZ-FM, CFTO-DT, 2GB). Includes medium suffix where applicable.",
-    "facility_id": "Broadcast facility or license ID from a national regulator, prefixed with authority slug (e.g., fcc:73953, ofcom:AL000001). See facility-authority.json for valid prefixes.",
-    "radiodns": "RadioDNS FQDN per the RadioDNS specification. Recommended for European radio properties.",
-    "dvb_service": "DVB-SI service identifier triple as onid.tsid.sid (three dot-separated 16-bit integers)",
-    "dab_service": "DAB/DAB+ service identifier as gcc.eid.sid (Global Country Code, Ensemble ID, Service ID)"
+    "station_id": "Broadcast station identifier — call sign, station name, or other locally recognized identifier (e.g., WCBS-FM, BBC Radio 4, France Inter, 2GB)",
+    "facility_id": "Broadcast facility or license ID from a national regulator, prefixed with authority slug (e.g., fcc:73953, ofcom:AL000001). Known prefixes: fcc (US), crtc (Canada), ift (Mexico), ofcom (UK), arcom (France), bnetza/medienanstalt (Germany), acma (Australia), mic (Japan), msit (South Korea), anatel (Brazil), enacom (Argentina), trai (India)"
   },
   "examples": [
     "domain",
     "ios_bundle",
     "venue_id",
     "apple_podcast_id",
-    "call_sign",
+    "station_id",
     "facility_id"
   ]
 }

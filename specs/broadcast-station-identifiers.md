@@ -4,147 +4,81 @@
 
 ## Problem
 
-The protocol has `radio` as a property type and `linear_tv` as a channel, but no identifier types for broadcast stations. The docs show `call_sign` in examples, but it doesn't exist in the `identifier-types.json` enum. Radio properties today have no valid way to identify themselves.
-
-Call signs are the obvious starting point, but they're a North American concept. Most of Europe, India, and parts of Asia don't use call signs for broadcasting at all. A protocol claiming global scope can't assume call signs exist everywhere.
-
-Meanwhile, several well-established identifier systems do exist — FCC facility IDs, RadioDNS FQDNs, DVB service triples, DAB service IDs — but none of them is universal. Every market uses a different combination.
+The protocol has `radio` as a property type and `linear_tv` as a channel, but no identifier types for broadcast stations. Radio and TV stations have no valid way to identify themselves in `adagents.json`.
 
 ## Design Principles
 
-1. **Property type provides the medium** — a `call_sign` on a `radio` property is a radio call sign. We don't need `radio_call_sign` vs `broadcast_call_sign`. This is how every other identifier type works (`bundle_id` means different things on `ctv_app` vs `mobile_app`).
+1. **Match the protocol's existing pattern** — `domain` identifies web properties as a flat, human-recognizable string. `station_id` does the same for broadcast stations. The protocol doesn't need to parse or validate the value — it just needs a stable string that buyer and seller agents agree on.
 
-2. **Multiple identifiers per property** — stations have many identifiers simultaneously (call sign, facility ID, RadioDNS FQDN, Nielsen code). The existing `identifiers` array already supports this.
+2. **Multiple identifiers per property** — a station can have both a `station_id` (the name both sides know) and a `facility_id` (the regulatory reference for precise resolution). The existing `identifiers` array supports this. The catalog aliases them to the same `property_rid`.
 
-3. **No single identifier is universal** — the spec must support the identifier systems that actually exist in each market without privileging one over another.
+3. **Transport-layer identifiers are out of scope** — RadioDNS FQDNs, DVB service triples, and DAB service IDs tell a device how to tune or find a stream. They don't change the station's identity. A buyer targeting BBC Radio 4 doesn't think in DAB multiplex codes. These are catalog/registry concerns, not protocol concerns.
 
-4. **Authority-namespaced where needed** — some identifiers only make sense within the context of a specific regulatory body or system. Rather than creating dozens of identifier types, use a namespace pattern for regulatory IDs.
+4. **Regulatory lookups are catalog work** — if a signals agent or measurement provider needs to resolve a station to its FCC facility ID behind the scenes, that's their job. The protocol provides `facility_id` as a namespace for this, but doesn't enforce a schema-level authority enum.
 
-## Identifier Types to Add
+## Identifier Types
 
-### `call_sign`
+### `station_id`
 
-The station's regulatory call sign as assigned by the national authority (FCC, CRTC, ACMA, etc.).
+The primary broadcast station identifier — a human-recognizable string that both sides of a transaction agree on. This is the call sign, station name, or other locally understood identifier depending on the market.
 
-**Where it exists**: US, Canada, Mexico, Australia, Japan, South Korea, Argentina. Does not exist in most of Europe, India, or Brazil.
+**Examples by market:**
 
-**Value format**: The full call sign including suffix. Examples:
-- `WCBS-FM` (US FM radio)
-- `WMAQ-DT` (US digital TV)
-- `CFTO-DT` (Canadian TV)
-- `XHRED-FM` (Mexican FM radio)
-- `2GB` (Australian AM radio)
-- `JOAK-FM` (Japanese FM radio)
-
-**Validation guidance** (non-normative):
-- On `radio` properties: expect suffixes like `-FM`, `-AM`, `-HD`, or no suffix (AM stations often omit `-AM`)
-- On `linear_tv` properties: expect suffixes like `-TV`, `-DT`, `-LP`, `-LD`, `-CD`
-- Cross-medium mismatch (e.g., `-FM` on a `linear_tv` property) should be flagged as a warning, not a hard error, because suffix conventions vary by country
+| Market | station_id | Notes |
+|--------|-----------|-------|
+| US | `WCBS-FM` | FCC call sign — universal in US broadcast buying |
+| Canada | `CFMB-AM` | CRTC call sign |
+| France | `France Inter` | Station name — how buyers and measurement systems reference it |
+| UK | `BBC Radio 4` | Ofcom service name |
+| Australia | `2GB` | ACMA call sign |
+| Germany | `Das Erste` | Station name |
+| Japan | `JOAK-FM` | MIC call sign |
 
 ### `facility_id`
 
-The numeric identifier assigned by a national broadcast regulator to a specific licensed station.
+The regulatory facility or license ID from a national broadcast regulator, prefixed with an authority slug. Provides a precise, machine-resolvable secondary identifier for cross-referencing.
 
-**Where it exists**: US (FCC facility ID), Canada (CRTC decision number), and other countries with numeric license registries.
-
-**Value format**: The numeric ID as a string, prefixed with the regulatory authority. Examples:
+**Value format**: `{authority}:{id}` — authority slug followed by the regulator's identifier. Examples:
 - `fcc:73953` (WMAQ-DT Chicago)
 - `crtc:2019-389` (a CRTC decision reference)
-- `acma:1234567` (Australian ACMA license)
 - `ofcom:AL000001` (UK Ofcom license)
+- `acma:1234567` (Australian ACMA license)
 
-The `authority:id` format lets us support every national regulator without creating a separate identifier type for each one. The authority prefix is a lowercase slug of the regulatory body.
-
-**Known authority prefixes** (defined in `enums/facility-authority.json`):
-
-| Prefix | Authority | Jurisdiction |
-|--------|-----------|-------------|
-| `fcc` | Federal Communications Commission | United States |
-| `crtc` | Canadian Radio-television and Telecommunications Commission | Canada |
-| `ift` | Instituto Federal de Telecomunicaciones | Mexico |
-| `ofcom` | Office of Communications | United Kingdom |
-| `arcom` | Autorité de régulation de la communication audiovisuelle et numérique | France |
-| `bnetza` | Bundesnetzagentur | Germany |
-| `medienanstalt` | Landesmedienanstalten (state media authorities) | Germany |
-| `acma` | Australian Communications and Media Authority | Australia |
-| `mic` | Ministry of Internal Affairs and Communications | Japan |
-| `msit` | Ministry of Science and ICT | South Korea |
-| `anatel` | Agência Nacional de Telecomunicações | Brazil |
-| `enacom` | Ente Nacional de Comunicaciones | Argentina |
-| `trai` | Telecom Regulatory Authority of India | India |
-
-This is a closed enum. New authorities are added via spec revision as markets adopt AdCP.
-
-### `radiodns`
-
-The RadioDNS FQDN for the station, as defined by the RadioDNS specification.
-
-**Where it exists**: Primarily Europe (BBC, EBU members, Global, Bauer). Growing adoption but not universal.
-
-**Why it matters**: RadioDNS is the closest thing to a universal, machine-readable radio station identifier. It maps broadcast signals (FM frequency + RDS PI code, DAB ensemble + service ID, HD Radio station ID) to DNS-based identifiers that resolve to station metadata.
-
-**Recommendation**: RadioDNS is the preferred identifier for European radio properties. Stations outside Europe are encouraged to register but not required to. Properties should include a RadioDNS identifier when one exists.
-
-**Value format**: The RadioDNS FQDN. Examples:
-- `09580.09580.fm.radiodns.org` (an FM station via PI code + frequency)
-- `0.c224.ce15.ce1.dab.radiodns.org` (a DAB station)
-
-### `dvb_service`
-
-The DVB-SI service identifier triple for a digital television service.
-
-**Where it exists**: Most of the world's digital TV markets outside North America and Japan/Brazil (i.e., DVB markets: Europe, parts of Asia, Africa, Middle East, Oceania).
-
-**Value format**: `{onid}.{tsid}.{sid}` — three dot-separated 16-bit integers representing Original Network ID, Transport Stream ID, and Service ID. Example:
-- `8468.8199.28106` (a DVB service)
-
-### `dab_service`
-
-The DAB/DAB+ service identifier for a digital radio station.
-
-**Where it exists**: Europe (UK, Germany, Norway, Denmark, Switzerland), Australia, South Korea.
-
-**Value format**: `{gcc}.{eid}.{sid}` — Global Country Code, Ensemble ID, and Service ID. Example:
-- `ce1.ce15.c224`
+**Known authority prefixes**: `fcc` (US), `crtc` (Canada), `ift` (Mexico), `ofcom` (UK), `arcom` (France), `bnetza`/`medienanstalt` (Germany), `acma` (Australia), `mic` (Japan), `msit` (South Korea), `anatel` (Brazil), `enacom` (Argentina), `trai` (India). Documented in the `facility_id` enum description — not a separate schema file.
 
 ## What We're Not Adding
 
+### `call_sign` as a separate type
+
+Merged into `station_id`. Call signs are the locally recognized identifier in markets that use them (US, Canada, Australia, Japan). In markets that don't use call signs (UK, France, Germany), station names serve the same purpose. One type covers both.
+
+### `radiodns`, `dvb_service`, `dab_service`
+
+Transport/delivery-layer identifiers. They tell devices how to tune or locate a stream, not what station it is. If the catalog needs to link a station to its RadioDNS FQDN or DVB service triple, it can do that in its fact graph — the protocol doesn't need to carry these.
+
+### `facility-authority.json` enum
+
+Over-engineering. The known authority prefixes are documented in the `facility_id` enum description. Adding a separate schema file and validation for a dozen regulatory authority slugs adds complexity without proportional value. The catalog can validate prefixes if needed.
+
 ### `nielsen_station_id`
 
-Nielsen codes are proprietary, US-centric, and not freely redistributable. Stations that need Nielsen integration can use tags or a custom identifier in `additionalProperties` (which the property schema already allows). If Nielsen adoption in adagents.json becomes significant, we can reconsider.
+Proprietary, US-centric, not freely redistributable.
 
-### Medium-specific call sign types (`radio_call_sign`, `broadcast_call_sign`)
+### `frequency`, `market`, `dma`
 
-The property type already disambiguates medium. Adding medium to the identifier type is redundant and doesn't scale.
-
-### `call_sign` with a `medium` sub-field
-
-Breaks the clean `{type, value}` pair structure that every other identifier uses. One-off structural exception for no clear gain.
-
-### `frequency`
-
-Frequencies are geographic and can be reused across markets. A frequency alone doesn't identify a station. Where frequency matters (RadioDNS), it's encoded in the RadioDNS FQDN.
-
-### `market` or `dma`
-
-Market is a property of the station's coverage area, not an identifier. It belongs in tags or a future geographic metadata field, not in `identifiers`.
+Frequencies are geographic and reusable. Market is a coverage attribute, not an identifier. Both belong in tags or geographic metadata.
 
 ## Property Type Changes
 
 ### Add `linear_tv`
 
-`linear_tv` already exists in the `channels.json` enum but not in `property-type.json`. Add it:
+`linear_tv` exists in `channels.json` but not `property-type.json`. Required for broadcast TV stations to declare themselves as properties.
+
+### Update `radio` and `linear_tv` descriptions
 
 ```json
-"linear_tv": "Linear television stations and networks, identified by call signs, facility IDs, or DVB service identifiers"
-```
-
-This is required for broadcast TV stations to declare themselves as properties in `adagents.json`.
-
-### Update `radio` description
-
-```json
-"radio": "Radio station properties, identified by call signs, facility IDs, RadioDNS FQDNs, or DAB service identifiers"
+"radio": "Radio station properties, identified by station ID or facility ID"
+"linear_tv": "Linear television stations and networks, identified by station ID or facility ID"
 ```
 
 ## Examples
@@ -156,7 +90,7 @@ This is required for broadcast TV stations to declare themselves as properties i
   "property_type": "radio",
   "name": "WBEZ Chicago",
   "identifiers": [
-    { "type": "call_sign", "value": "WBEZ-FM" },
+    { "type": "station_id", "value": "WBEZ-FM" },
     { "type": "facility_id", "value": "fcc:21242" }
   ],
   "tags": ["public_radio", "npr_affiliate"],
@@ -171,56 +105,42 @@ This is required for broadcast TV stations to declare themselves as properties i
   "property_type": "linear_tv",
   "name": "NBC Chicago",
   "identifiers": [
-    { "type": "call_sign", "value": "WMAQ-DT" },
+    { "type": "station_id", "value": "WMAQ-DT" },
     { "type": "facility_id", "value": "fcc:73953" }
   ],
   "supported_channels": ["linear_tv"]
 }
 ```
 
-### UK DAB radio station (no call sign)
+### UK radio station (no call sign)
 
 ```json
 {
   "property_type": "radio",
   "name": "BBC Radio 4",
   "identifiers": [
-    { "type": "radiodns", "value": "0.c224.ce15.ce1.dab.radiodns.org" },
-    { "type": "dab_service", "value": "ce1.ce15.c224" },
+    { "type": "station_id", "value": "BBC Radio 4" },
     { "type": "facility_id", "value": "ofcom:AL000001" }
   ],
   "supported_channels": ["radio"]
 }
 ```
 
-### German TV channel (DVB, no call sign)
+### German TV channel
 
 ```json
 {
   "property_type": "linear_tv",
   "name": "Das Erste",
   "identifiers": [
-    { "type": "dvb_service", "value": "8468.8199.28106" },
+    { "type": "station_id", "value": "Das Erste" },
     { "type": "facility_id", "value": "medienanstalt:12345" }
   ],
   "supported_channels": ["linear_tv"]
 }
 ```
 
-### Australian AM radio station
-
-```json
-{
-  "property_type": "radio",
-  "name": "2GB Sydney",
-  "identifiers": [
-    { "type": "call_sign", "value": "2GB" }
-  ],
-  "supported_channels": ["radio"]
-}
-```
-
-### Rep firm with both TV and radio (the issue #1908 scenario)
+### Rep firm with both TV and radio (issue #1908 scenario)
 
 ```json
 {
@@ -230,7 +150,7 @@ This is required for broadcast TV stations to declare themselves as properties i
       "property_type": "linear_tv",
       "name": "CBS New York (WCBS-TV)",
       "identifiers": [
-        { "type": "call_sign", "value": "WCBS-TV" },
+        { "type": "station_id", "value": "WCBS-TV" },
         { "type": "facility_id", "value": "fcc:25434" }
       ],
       "supported_channels": ["linear_tv"]
@@ -240,7 +160,7 @@ This is required for broadcast TV stations to declare themselves as properties i
       "property_type": "radio",
       "name": "WCBS-FM New York",
       "identifiers": [
-        { "type": "call_sign", "value": "WCBS-FM" },
+        { "type": "station_id", "value": "WCBS-FM" },
         { "type": "facility_id", "value": "fcc:9610" }
       ],
       "supported_channels": ["radio"]
@@ -249,56 +169,50 @@ This is required for broadcast TV stations to declare themselves as properties i
 }
 ```
 
-No ambiguity. Different properties, different property types, different identifiers. A buyer agent matching on property type will never accidentally cross media boundaries.
+No ambiguity. Different properties, different property types, different identifiers. The `station_id` is the human-recognizable name; the `facility_id` provides precise regulatory resolution. The catalog links both to the same `property_rid`.
 
 ## Property Catalog Integration
 
-The property catalog (see `specs/property-registry-catalog.md`) can ingest broadcast station data as facts:
+The catalog resolves `station_id` and `facility_id` to stable `property_rid`s using its fact graph:
 
-- **FCC/CRTC/ACMA databases** as fact sources (confidence: authoritative for their jurisdiction)
-- **RadioDNS lookups** as linking facts (connecting FM frequency to DAB service to streaming URL)
-- **DVB-SI scan data** for TV station identification in DVB markets
+- If a publisher declares `station_id: "CBS FM New York"` and another uses `station_id: "WCBS-FM"` with the same `facility_id: "fcc:9610"`, the catalog links them to the same `property_rid`.
+- RadioDNS lookups, DVB-SI scans, and DAB ensemble data can feed the catalog as facts — connecting the human-readable `station_id` to transport-layer identifiers behind the scenes.
 
-The catalog's fact-graph model is well-suited to broadcast: a single station has multiple identifiers across systems, and the catalog can link them under one `property_rid` using evidence from multiple sources.
-
-### New fact source pipelines
+### Fact source pipelines
 
 | Pipeline | Facts produced | Confidence |
 |----------|---------------|------------|
-| FCC ULS/LMS | call_sign, facility_id, licensee, coverage area | authoritative |
-| CRTC database | call_sign, facility_id, licensee | authoritative |
-| ACMA BSL | call_sign, facility_id, licensee | authoritative |
-| RadioDNS resolver | radiodns FQDN, linked FM/DAB/HD identifiers | strong |
-| DVB-SI scan | dvb_service triple, service name | strong |
-| DAB ensemble scan | dab_service, ensemble metadata | strong |
+| FCC ULS/LMS | station_id (call sign), facility_id, licensee, coverage area | authoritative |
+| CRTC database | station_id (call sign), facility_id, licensee | authoritative |
+| ACMA BSL | station_id (call sign), facility_id, licensee | authoritative |
+| RadioDNS resolver | linked FM/DAB/HD technical identifiers | strong |
+| DVB-SI scan | service name, linked technical identifiers | strong |
 
 ## Schema Changes Summary
 
 ### `enums/identifier-types.json`
 
-Add: `call_sign`, `facility_id`, `radiodns`, `dvb_service`, `dab_service`
+Add: `station_id`, `facility_id`
 
 ### `enums/property-type.json`
 
 Add: `linear_tv`
-Update description for: `radio`
+Update descriptions for: `radio`, `linear_tv`
 
 ### `core/property.json`
 
-No structural changes. The existing `{type, value}` pair with `additionalProperties: true` handles everything.
+No structural changes.
 
 ## Migration
 
-No breaking changes. All new identifier types are additive. Existing properties are unaffected.
-
-The docs example in `governance/property/authorized-properties.mdx` that uses `call_sign` and `market` will become partially valid (call_sign will exist; market should be removed and replaced with tags).
+No breaking changes. All new identifier types are additive.
 
 ## Resolved Questions
 
-1. **`facility_id` authority prefixes**: Closed enum of known authorities. Broadcast regulators are a fixed universe — new entries added via spec revision. See the authority table above.
+1. **Why not five identifier types?** Early design had `call_sign`, `facility_id`, `radiodns`, `dvb_service`, `dab_service`. Community feedback (B. Masse) correctly identified that RadioDNS/DVB/DAB are transport-layer identifiers, and that a single `station_id` matches the protocol's existing patterns. The protocol's job is agreement on identity, not regulatory database work.
 
-2. **RadioDNS**: Recommended but not required. It's the best machine-readable identifier for radio stations, but requiring it would exclude stations that haven't registered — especially smaller and non-European ones. The spec should note it as the preferred identifier for European radio properties and encourage adoption elsewhere.
+2. **Why keep `facility_id`?** It provides a namespaced, machine-resolvable secondary identifier. The catalog can alias multiple `station_id` values to the same property when they share a `facility_id`. Same pattern as having both `ios_bundle` and `apple_app_store_id` for the same app.
 
-3. **Satellite radio (SiriusXM)**: Out of scope. SiriusXM is a nationally licensed streaming service, not station-by-station broadcasting. It fits as `streaming_audio` with a `network_id`. No special handling needed.
+3. **Satellite radio (SiriusXM)**: Out of scope. Fits as `streaming_audio` with a `network_id`.
 
-4. **ATSC 3.0 BSIDs**: Not included. The BSID format is stable (uint16, defined in ATSC A/331) but it's a transport-layer identifier, not a business identifier. BSIDs are self-assigned by broadcasters with local market coordination — no public registry exists, and they're only unique within a market, not globally. The FCC facility ID already covers ATSC 3.0 stations (same station keeps its facility ID across the 1.0→3.0 transition), so there's no gap to fill.
+4. **ATSC 3.0 BSIDs**: Not included. Transport-layer identifier with no public registry. FCC facility ID covers ATSC 3.0 stations.

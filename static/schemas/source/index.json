@@ -480,10 +480,6 @@
           "$ref": "/schemas/enums/identifier-types.json",
           "description": "Valid identifier types for property identification across different media types"
         },
-        "facility-authority": {
-          "$ref": "/schemas/enums/facility-authority.json",
-          "description": "Recognized broadcast regulatory authorities for facility_id identifier prefixes"
-        },
         "publisher-identifier-types": {
           "$ref": "/schemas/enums/publisher-identifier-types.json",
           "description": "Valid identifier types for publisher/legal entity identification (TAG ID, DUNS, LEI, seller_id, GLN)"
