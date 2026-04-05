@@ -155,7 +155,7 @@ No creative to upload. No ad tags to traffic. NovaMind already has Ridgeline's p
 
 <img src="/images/walkthrough/si-07-ad-moment.png" alt="An AI assistant conversation on a phone screen — a user asks 'what hiking boots should I get for the Appalachian Trail?' and the AI responds with a contextually relevant Ridgeline Trail Pro recommendation, with product details and a 'talk to Ridgeline' handoff button glowing below" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-This is the payoff. A NovaMind user asks:
+A NovaMind user asks:
 
 > *"What hiking boots should I get for the Appalachian Trail?"*
 
@@ -204,21 +204,16 @@ AI ad networks aggregate inventory across many AI platforms into a single seller
 
 The same protocol tasks work on both paths. Priya calls `get_products`, `create_media_buy`, and `get_media_buy_delivery` on Gravity exactly as she did on NovaMind — and exactly as she already does for her CTV and display campaigns through the [media buy protocol](/docs/media-buy/index). She sees everything in one dashboard.
 
-<Card title="Ad networks deep dive" icon="diagram-project" href="/docs/sponsored-intelligence/networks">
-  Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
-</Card>
+At serving time, Gravity's underlying AI platforms use the [Trusted Match Protocol](/docs/trusted-match) to match demand to conversations. TMP fans out to buyer agents, evaluates context and user eligibility, and the platform selects which offer to present — all within the LLM's generation latency. The buying layer (media buys, catalogs, reporting) stays the same; TMP handles real-time mediation underneath.
 
-## Connection to TMP
-
-On AI assistant surfaces, the [Trusted Match Protocol (TMP)](/docs/trusted-match) triggers SI sessions. TMP handles package selection; SI handles the conversational engagement that follows:
-
-1. **TMP Context Match** determines which packages match the conversation context
-2. **TMP Identity Match** confirms user eligibility
-3. The host joins both results and selects the winning package
-4. The winning offer's `brand`, `creative_manifest`, and `media_buy_id` flow into SI's `si_initiate_session` call
-5. SI takes over — managing the conversation between user and brand agent
-
-This separation keeps selection (TMP) and engagement (SI) as distinct concerns. TMP decides *which* brand appears. SI defines *what happens* when it does.
+<CardGroup cols={2}>
+  <Card title="Ad networks deep dive" icon="diagram-project" href="/docs/sponsored-intelligence/networks">
+    Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
+  </Card>
+  <Card title="How demand reaches AI assistants" icon="shield-halved" href="/docs/trusted-match/ai-mediation">
+    How TMP mediates demand on AI surfaces — context matching, frequency caps, and LLM integration.
+  </Card>
+</CardGroup>
 
 ## Protocol architecture
 
