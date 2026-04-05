@@ -3321,7 +3321,7 @@ export class HTTPServer {
       let event: Stripe.Event;
 
       try {
-        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+        event = stripe.webhooks.constructEvent(req.body, sig as string, STRIPE_WEBHOOK_SECRET);
       } catch (err) {
         logger.error({ err }, 'Stripe webhook signature verification failed');
         notifySystemError({ source: 'stripe-webhook-sig', errorMessage: 'Stripe webhook signature verification failed — check STRIPE_WEBHOOK_SECRET' });
