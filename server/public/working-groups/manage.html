@@ -423,6 +423,26 @@
     .badge-access_denied { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-featured { background: var(--color-brand); color: white; }
 
+    .document-fix-hint {
+      margin-top: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .document-fix-hint code {
+      background: var(--color-error-100);
+      padding: 1px var(--space-1);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      user-select: all;
+      overflow-wrap: break-word;
+    }
+
     @media (max-width: 768px) {
       .form-row { grid-template-columns: 1fr; }
       .editor-preview { grid-template-columns: 1fr; }
@@ -1693,7 +1713,7 @@
       listDiv.innerHTML = documents.map(doc => {
         const typeBadge = `<span class="badge badge-${doc.document_type}">${doc.document_type.replaceAll('_', ' ')}</span>`;
         const statusBadge = doc.index_status !== 'success'
-          ? `<span class="badge badge-${doc.index_status}">${doc.index_status}</span>`
+          ? `<span class="badge badge-${doc.index_status}">${formatIndexStatus(doc.index_status)}</span>`
           : '';
         const featuredBadge = doc.is_featured ? `<span class="badge badge-featured">featured</span>` : '';
         const uploadedBadge = doc.file_name ? `<span class="badge badge-uploaded">uploaded</span>` : '';
@@ -1727,6 +1747,11 @@
                 ${lastModified ? `<span>Updated ${lastModified}</span>` : ''}
               </div>
               ${doc.document_summary ? `<div class="document-summary-preview">${escapeHtml(doc.document_summary)}</div>` : ''}
+              ${doc.index_status === 'access_denied' ? `
+                <div class="document-fix-hint">
+                  Share this document with <code>addie@agenticadvertising.org</code> (Viewer), then click the refresh button to retry.
+                </div>
+              ` : ''}
             </div>
             <div class="document-actions">
               <button class="btn btn-secondary btn-small" onclick="reindexDocument('${doc.id}')" title="Refresh content">
@@ -1742,6 +1767,16 @@
           </div>
         `;
       }).join('');
+    }
+
+    function formatIndexStatus(status) {
+      const labels = {
+        pending: 'Indexing…',
+        access_denied: 'Check sharing permissions',
+        error: 'Indexing failed',
+        disabled: 'Indexing disabled',
+      };
+      return labels[status] || escapeHtml(status);
     }
 
     function formatRelativeDate(dateStr) {

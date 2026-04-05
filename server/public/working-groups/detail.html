@@ -752,6 +752,39 @@
       color: var(--color-error-600);
     }
 
+    .document-fix-banner {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .document-fix-banner p {
+      margin: 0 0 var(--space-2);
+    }
+
+    .document-fix-banner ol {
+      margin: 0 0 var(--space-3);
+      padding-left: var(--space-5);
+    }
+
+    .document-fix-banner li {
+      margin-bottom: var(--space-1);
+    }
+
+    .document-fix-banner code {
+      background: var(--color-error-100);
+      padding: 1px var(--space-1);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      user-select: all;
+      overflow-wrap: break-word;
+    }
+
     .empty-documents {
       text-align: center;
       padding: var(--space-8);
@@ -1790,9 +1823,20 @@
                 </div>
                 <div class="document-meta">
                   ${lastModified ? `<span>Updated ${lastModified}</span>` : ''}
-                  ${doc.index_status !== 'success' ? `<span class="document-status ${statusClass}">${doc.index_status}</span>` : ''}
+                  ${doc.index_status !== 'success' ? `<span class="document-status ${statusClass}">${formatIndexStatus(doc.index_status)}</span>` : ''}
                 </div>
                 ${doc.document_summary ? `<div class="document-summary">${escapeHtml(doc.document_summary)}</div>` : ''}
+                ${doc.index_status === 'access_denied' && isMember ? `
+                  <div class="document-fix-banner">
+                    <p>Addie can't read this document. To fix it:</p>
+                    <ol>
+                      <li>Open the document and click <strong>Share</strong></li>
+                      <li>Add <code>addie@agenticadvertising.org</code> as a Viewer</li>
+                      <li>Click the button below to retry</li>
+                    </ol>
+                    <button class="btn btn-primary" onclick="retryDocumentIndex('${doc.id}', this)">Retry indexing</button>
+                  </div>
+                ` : ''}
               </div>
             </div>
           `;
@@ -1832,6 +1876,41 @@
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>`;
       }
+    }
+
+    async function retryDocumentIndex(docId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Retrying…';
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/documents/${docId}/reindex`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          let message = 'Retry failed';
+          try {
+            const body = await response.json();
+            message = body.message || message;
+          } catch {}
+          throw new Error(message);
+        }
+        btn.textContent = 'Done — reloading…';
+        await loadDocuments();
+      } catch (error) {
+        btn.disabled = false;
+        btn.textContent = 'Retry indexing';
+        alert('Retry failed: ' + error.message);
+      }
+    }
+
+    function formatIndexStatus(status) {
+      const labels = {
+        pending: 'Indexing…',
+        access_denied: 'Check sharing permissions',
+        error: 'Indexing failed',
+        disabled: 'Indexing disabled',
+      };
+      return labels[status] || escapeHtml(status);
     }
 
     function formatRelativeDate(dateStr) {
