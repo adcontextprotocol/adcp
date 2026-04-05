@@ -592,6 +592,26 @@
       });
     }
 
+    // Count relationship clusters that need human attention (excluding auto-resolved subsidiaries and dismissed)
+    function countActionableRelationships(dismissed) {
+      const clusters = [];
+      for (const c of (healthData.domain_conflicts || [])) {
+        clusters.push({ key: `domain:${c.domain}`, signal: 'Shared Email Domain', organizations: c.organizations.map(o => ({ name: o.name })) });
+      }
+      for (const r of (healthData.related_domains || [])) {
+        const signal = r.match_source === 'brand_hierarchy' ? 'Brand Hierarchy' : r.match_source === 'brand_alias' ? 'Known Alias' : 'Domain Similarity';
+        clusters.push({ key: `related:${r.root_domain}`, signal, organizations: r.organizations.map(o => ({ name: o.name })) });
+      }
+      for (const s of (healthData.similar_names || [])) {
+        clusters.push({ key: `names:${s.base_name}`, signal: 'Similar Names', organizations: s.organizations.map(o => ({ name: o.name })) });
+      }
+      for (const d of (healthData.duplicate_organizations || [])) {
+        const emails = d.shared_emails || [];
+        clusters.push({ key: `members:${emails.slice(0, 3).join(',')}`, signal: 'Shared Members', organizations: d.organizations.map(o => ({ name: o.name })) });
+      }
+      return clusters.filter(c => classifyCluster(c).type !== 'subsidiary' && !dismissed.includes(c.key)).length;
+    }
+
     // ─── Summary Cards ──────────────────────────────────────────────────────
 
     function renderSummary() {
@@ -607,11 +627,7 @@
       const placeCount = misalignedUsers.reduce((sum, d) => sum + d.user_count, 0);
 
       const dismissed = getDismissed();
-      const allReviewCount = (healthData.domain_conflicts || []).length +
-                             (healthData.related_domains || []).length +
-                             (healthData.similar_names || []).length +
-                             (healthData.duplicate_organizations || []).length;
-      const reviewCount = Math.max(0, allReviewCount - dismissed.length);
+      const reviewCount = countActionableRelationships(dismissed);
 
       const grid = document.getElementById('summaryGrid');
       grid.innerHTML = `
@@ -628,7 +644,7 @@
         <div class="summary-card ${reviewCount === 0 ? 'good' : 'warning'}">
           <div class="label">Relationships to Review</div>
           <div class="value">${reviewCount}</div>
-          <div class="detail">${reviewCount === 0 ? 'No ambiguous relationships' : 'Possible duplicates or subsidiaries'}</div>
+          <div class="detail">${reviewCount === 0 ? 'All relationships classified' : 'Possible duplicates need review'}</div>
         </div>
         <div class="summary-card">
           <div class="label">Total Organizations</div>
@@ -811,7 +827,10 @@
     // ─── Section 3: Review Relationships ────────────────────────────────────
 
     // Words that don't count as meaningful differentiation between org names
-    const NOISE_WORDS = new Set(['inc', 'llc', 'ltd', 'corp', 'corporation', 'company', 'co', 'group', 'the']);
+    const NOISE_WORDS = new Set([
+      'inc', 'llc', 'ltd', 'limited', 'corp', 'corporation', 'company', 'co', 'group', 'the',
+      'plc', 'gmbh', 'sa', 'ag', 'bv', 'nv', 'pty', 'ab', 'as', 'oy',
+    ]);
 
     // Classify a cluster of organizations sharing a signal as subsidiaries, duplicates, or unclear.
     // Uses name patterns: shared prefix + distinct suffixes = subsidiaries,
@@ -840,7 +859,10 @@
           break;
         }
       }
-      const commonPrefix = prefixLen > 0 ? words[0].slice(0, prefixLen).join(' ') : '';
+      // Strip noise words from the prefix (e.g. "The" alone is not meaningful)
+      const prefixWords = prefixLen > 0 ? words[0].slice(0, prefixLen) : [];
+      const meaningfulPrefixWords = prefixWords.filter(w => !NOISE_WORDS.has(w.toLowerCase()));
+      const commonPrefix = meaningfulPrefixWords.join(' ');
 
       // Get suffixes after the common prefix
       const suffixes = words.map(w => w.slice(prefixLen).join(' ').trim());
@@ -849,8 +871,8 @@
 
       const meaningfulSuffixes = [...uniqueSuffixes].filter(s => !NOISE_WORDS.has(s.toLowerCase()));
 
-      // Strong prefix + distinct meaningful suffixes = subsidiaries
-      if (commonPrefix.length >= 3 && meaningfulSuffixes.length >= 2) {
+      // Strong meaningful prefix + distinct meaningful suffixes = subsidiaries
+      if (commonPrefix.length >= 3 && meaningfulSuffixes.length >= 1) {
         return {
           type: 'subsidiary',
           reason: `Distinct ${commonPrefix} entities: ${nonEmptySuffixes.slice(0, 4).join(', ')}${nonEmptySuffixes.length > 4 ? '…' : ''}`
@@ -858,7 +880,7 @@
       }
 
       // Names are nearly identical (only noise-word differences) = duplicates
-      if (commonPrefix.length >= 3 && meaningfulSuffixes.length <= 1) {
+      if (commonPrefix.length >= 3 && meaningfulSuffixes.length === 0) {
         return { type: 'duplicate', reason: 'Names are nearly identical' };
       }
 
@@ -998,10 +1020,10 @@
       // Auto-resolved subsidiary summary (collapsed)
       if (autoResolved.length > 0) {
         html += `
-          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-bg-success, #f0fdf4); border: 1px solid var(--color-border-success, #bbf7d0); border-radius: var(--radius-md, 6px);">
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md, 6px);">
             <details>
-              <summary style="cursor: pointer; font-size: var(--text-sm); font-weight: 500; color: var(--color-text-success, #166534);">
-                ${autoResolved.length} subsidiary group${autoResolved.length !== 1 ? 's' : ''} auto-confirmed
+              <summary style="cursor: pointer; font-size: var(--text-sm); font-weight: 500; color: var(--color-success-700);">
+                ${autoResolved.length} of ${classified.length} relationship clusters auto-confirmed as subsidiary groups
                 <span style="font-weight: normal; color: var(--color-text-muted);">
                   &mdash; ${autoResolved.reduce((sum, c) => sum + c.organizations.length, 0)} organizations recognized as offices/divisions under a parent
                 </span>
@@ -1081,7 +1103,7 @@
                       ${!isDismissed ? `
                         <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
                           data-cluster-key="${escapeHtml(c.key)}"
-                          style="font-size: 10px; color: var(--color-text-muted);">Not Duplicates</button>
+                          style="font-size: var(--text-xs); color: var(--color-text-muted);">Not Duplicates</button>
                       ` : ''}
                     ` : `
                       ${c.researchDomain ? `
@@ -1095,7 +1117,7 @@
                       ${!isDismissed ? `
                         <button class="btn btn-secondary btn-sm dismiss-cluster-btn"
                           data-cluster-key="${escapeHtml(c.key)}"
-                          style="font-size: 10px; color: var(--color-text-muted);">Dismiss</button>
+                          style="font-size: var(--text-xs); color: var(--color-text-muted);">Dismiss</button>
                       ` : ''}
                     `}
                   </div>
