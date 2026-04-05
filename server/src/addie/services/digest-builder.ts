@@ -80,7 +80,7 @@ export function hasMinimumContent(content: DigestContent): boolean {
  */
 async function buildWhatToWatch(): Promise<DigestNewsItem[]> {
   const [articles, suggestions] = await Promise.all([
-    getRecentArticlesForDigest(7, 12),
+    getRecentArticlesForDigest(14, 15),
     getPendingSuggestions('the_prompt'),
   ]);
 
@@ -209,7 +209,7 @@ async function buildInsiderSection(): Promise<DigestInsiderGroup[]> {
 // ─── Voices (member perspectives) ───────────────────────────────────────
 
 async function buildVoicesSection(): Promise<DigestMemberPerspective[]> {
-  const perspectives = await getRecentMemberPerspectivesForDigest(7, 4);
+  const perspectives = await getRecentMemberPerspectivesForDigest(14, 5);
 
   return perspectives.map((perspective) => ({
     slug: perspective.slug,
@@ -224,7 +224,7 @@ async function buildVoicesSection(): Promise<DigestMemberPerspective[]> {
 // ─── New Members ────────────────────────────────────────────────────────
 
 async function buildNewMembersSection(): Promise<DigestNewMember[]> {
-  const orgs = await getNewOrganizations(7);
+  const orgs = await getNewOrganizations(14);
   return orgs.map((org) => ({ name: org.name }));
 }
 

@@ -101,8 +101,14 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     try {
       const existing = await getCurrentWeekDigest();
       if (existing) {
-        const subject = isLegacyContent(existing.content) ? '' : generateDigestSubject(existing.content as DigestContent);
-        return res.status(409).json({ error: 'A digest already exists for this week. Edit it instead.', digest: existing, subject });
+        // Skip legacy or already-sent digests — generate fresh for today
+        if (isLegacyContent(existing.content) || existing.status === 'sent') {
+          logger.info({ digestId: existing.id, status: existing.status, isLegacy: isLegacyContent(existing.content) }, 'Skipping old/legacy digest, generating fresh');
+        } else {
+          // Current-format draft exists — offer to edit
+          const subject = generateDigestSubject(existing.content as DigestContent);
+          return res.status(409).json({ error: 'A digest already exists. Edit it instead.', digest: existing, subject });
+        }
       }
 
       const content = await buildDigestContent();
