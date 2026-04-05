@@ -133,11 +133,23 @@ export async function rebuildManifestLogos(
   }));
 
   try {
-    await brandDb.editDiscoveredBrand(domain, {
-      brand_manifest: { logos: manifestLogos },
-      edit_summary: 'Logo manifest rebuilt after review',
-      editor_user_id: 'system:logo-service',
-    });
+    // Ensure the discovered brand exists before updating the manifest
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+    if (!existing) {
+      await brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_manifest: { logos: manifestLogos },
+        has_brand_manifest: true,
+        source_type: 'community',
+      });
+    } else {
+      await brandDb.editDiscoveredBrand(domain, {
+        brand_manifest: { logos: manifestLogos },
+        has_brand_manifest: true,
+        edit_summary: 'Logo manifest rebuilt after review',
+        editor_user_id: 'system:logo-service',
+      });
+    }
   } catch (err) {
     logger.error({ err, domain }, 'Failed to rebuild manifest logos');
   }

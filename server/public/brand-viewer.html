@@ -1247,11 +1247,14 @@
         // Always try loading revision history (works for community brands even without brand.json)
         const hasCommunityData = await loadRevisionHistory(domain);
 
-        // If brand.json didn't load but we have community data, hide the error
-        if (!brandJsonLoaded && hasCommunityData) {
+        // Try loading community-uploaded logos (works even without brand.json)
+        const hasCommunityLogos = await loadStandaloneLogos(domain, brandJsonLoaded);
+
+        // If brand.json didn't load but we have community data or logos, show the brand content
+        if (!brandJsonLoaded && (hasCommunityData || hasCommunityLogos)) {
           document.getElementById('loading-state').classList.add('hidden');
           document.getElementById('error-state').classList.add('hidden');
-        } else if (!brandJsonLoaded && !hasCommunityData) {
+        } else if (!brandJsonLoaded && !hasCommunityData && !hasCommunityLogos) {
           showError(
             `Could not load brand data for ${escapeHtml(domain)}`,
             'Brand not found or invalid'
@@ -1348,8 +1351,9 @@
           tab.classList.toggle('active', tab.dataset.brandId === brandId);
         });
 
-        // Render each section
+        // Render logos from brand.json, supplemented by community-uploaded logos
         renderLogos(brand.logos);
+        loadCommunityLogos(currentDomain);
         renderColors(brand.colors);
         renderTypography(brand.fonts);
         renderBrandInfo(brand);
@@ -1489,6 +1493,63 @@
               </div>
             </div>`;
         }).join('');
+      }
+
+      async function loadStandaloneLogos(domain, brandJsonLoaded) {
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(domain)}/logos`);
+          if (!resp.ok) return false;
+          const data = await resp.json();
+          if (!data.logos || data.logos.length === 0) return false;
+
+          if (!brandJsonLoaded) {
+            // No brand.json — show brand content area with just logos
+            document.getElementById('brand-content').classList.remove('hidden');
+            document.getElementById('hero-title').textContent = domain;
+
+            const logos = data.logos.map(l => ({
+              url: l.url.startsWith('/') ? window.location.origin + l.url : l.url,
+              tags: l.tags || [],
+              width: l.width,
+              height: l.height,
+            }));
+            renderLogos(logos);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      async function loadCommunityLogos(domain) {
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(domain)}/logos`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (!data.logos || data.logos.length === 0) return;
+
+          // Convert to the format renderLogos expects
+          const communityLogos = data.logos.map(l => ({
+            url: l.url.startsWith('/') ? window.location.origin + l.url : l.url,
+            tags: l.tags || [],
+            width: l.width,
+            height: l.height,
+          }));
+
+          // Get existing logos from brand.json (if any)
+          const brands = brandData?.brands || [];
+          const brand = brands.find(b => b.id === currentBrandId);
+          const existingUrls = new Set((brand?.logos || []).map(l => l.url));
+
+          // Add community logos that aren't already in the manifest
+          const newLogos = communityLogos.filter(l => !existingUrls.has(l.url));
+          if (newLogos.length === 0) return;
+
+          const allLogos = [...(brand?.logos || []), ...newLogos];
+          renderLogos(allLogos);
+        } catch {
+          // Non-critical
+        }
       }
 
       function downloadAllLogos() {
