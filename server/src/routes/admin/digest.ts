@@ -131,6 +131,42 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     }
   });
 
+  // POST /api/admin/digests/:id/regenerate - Rebuild draft content from scratch
+  apiRouter.post('/digests/:id/regenerate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid digest ID' });
+
+      const digest = await getCurrentWeekDigest();
+      if (!digest || digest.id !== id) {
+        return res.status(404).json({ error: 'Digest not found' });
+      }
+      if (digest.status !== 'draft') {
+        return res.status(400).json({ error: 'Can only regenerate draft editions' });
+      }
+
+      const content = await buildDigestContent();
+      // Preserve editor's note and custom subject if they were manually set
+      if (digest.content && !isLegacyContent(digest.content)) {
+        const old = digest.content as DigestContent;
+        if (old.editorsNote) content.editorsNote = old.editorsNote;
+        if (old.emailSubject) content.emailSubject = old.emailSubject;
+      }
+
+      const updated = await updateDigestContent(id, content);
+      if (!updated) {
+        return res.status(500).json({ error: 'Failed to update digest' });
+      }
+
+      const subject = generateDigestSubject(content);
+      logger.info({ digestId: id, user: req.user?.email }, 'Digest regenerated via admin');
+      res.json({ digest: updated, subject });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to regenerate digest');
+      res.status(500).json({ error: 'Failed to regenerate digest' });
+    }
+  });
+
   // POST /api/admin/digests/:id/edit - Apply an edit instruction
   apiRouter.post('/digests/:id/edit', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {

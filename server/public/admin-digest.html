@@ -314,6 +314,7 @@
       const actions = document.getElementById('headerActions');
       actions.innerHTML = `
         <span class="status-badge status-${esc(status)}">${esc(status)}</span>
+        ${isDraft ? `<button class="btn btn-secondary" onclick="regenerateDraft()" title="Discard and rebuild from scratch">Regenerate</button>` : ''}
         <button class="btn btn-secondary" onclick="sendTestEmail()">Send Test</button>
         ${isDraft ? `<button class="btn btn-success" onclick="approveDigest()">Approve &amp; Queue</button>` : ''}
         <a href="/digest/preview?date=${encodeURIComponent(editionDate())}" target="_blank" class="btn btn-secondary">Open Preview</a>
@@ -591,6 +592,23 @@
         toast('Generate failed: ' + esc(err.message));
         btn.disabled = false;
         btn.textContent = 'Generate Draft';
+      }
+    }
+
+    // ─── Regenerate ──────────────────────────────────────────────
+    async function regenerateDraft() {
+      if (!confirm('Discard this draft and rebuild from scratch? This cannot be undone.')) return;
+      try {
+        toast('Regenerating...');
+        const res = await api(`/digests/${currentDigest.id}/regenerate`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || '';
+        render();
+        toast('Draft regenerated with fresh content');
+      } catch (err) {
+        toast('Regenerate failed: ' + esc(err.message));
       }
     }
 
