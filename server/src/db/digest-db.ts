@@ -414,6 +414,7 @@ export async function getRecentMemberPerspectivesForDigest(
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+       AND (p.content_origin IS NULL OR p.content_origin != 'official')
        AND p.published_at IS NOT NULL
        AND p.published_at > NOW() - make_interval(days => $1)
        AND NOT EXISTS (
@@ -426,6 +427,33 @@ export async function getRecentMemberPerspectivesForDigest(
                @> jsonb_build_array(jsonb_build_object('slug', p.slug))
            )
        )
+     ORDER BY p.published_at DESC
+     LIMIT $2`,
+    [days, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * Get recent official perspectives (Town Hall recaps, white papers, reports).
+ * These go into "Worth Your Time" — front and center, not in "Voices."
+ */
+export async function getRecentOfficialPerspectives(
+  days: number = 14,
+  limit: number = 5,
+): Promise<DigestPerspectiveRow[]> {
+  const result = await query<DigestPerspectiveRow>(
+    `SELECT
+        p.slug,
+        p.title,
+        p.excerpt,
+        p.author_name,
+        p.published_at
+     FROM perspectives p
+     WHERE p.status = 'published'
+       AND p.content_origin = 'official'
+       AND p.published_at IS NOT NULL
+       AND p.published_at > NOW() - make_interval(days => $1)
      ORDER BY p.published_at DESC
      LIMIT $2`,
     [days, limit],
