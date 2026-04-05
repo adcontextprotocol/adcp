@@ -1638,7 +1638,9 @@ Respond with ONLY a JSON array, one entry per cluster:
           operationName: 'classify-org-relationships',
         });
 
-        const parsed = JSON.parse(llmResult.text) as { id: number; type: string; reason: string }[];
+        // Strip markdown code fences if present
+        const jsonText = llmResult.text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+        const parsed = JSON.parse(jsonText) as { id: number; type: string; reason: string }[];
         for (const item of parsed) {
           const cluster = needsLLM[item.id - 1];
           if (!cluster) continue;
