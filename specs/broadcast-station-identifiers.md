@@ -44,7 +44,7 @@ The regulatory facility or license ID from a national broadcast regulator, prefi
 - `ofcom:AL000001` (UK Ofcom license)
 - `acma:1234567` (Australian ACMA license)
 
-**Known authority prefixes**: `fcc` (US), `crtc` (Canada), `ift` (Mexico), `ofcom` (UK), `arcom` (France), `bnetza`/`medienanstalt` (Germany), `acma` (Australia), `mic` (Japan), `msit` (South Korea), `anatel` (Brazil), `enacom` (Argentina), `trai` (India). Documented in the `facility_id` enum description — not a separate schema file.
+**Known authority prefixes**: `fcc` (US), `crtc` (Canada), `ift` (Mexico), `ofcom` (UK), `arcom` (France), `bnetza`/`medienanstalt` (Germany), `acma` (Australia), `mic` (Japan), `kcc` (South Korea), `anatel` (Brazil), `enacom` (Argentina), `trai` (India). Documented in the `facility_id` enum description — not a separate schema file.
 
 ## What We're Not Adding
 
@@ -107,6 +107,21 @@ Frequencies are geographic and reusable. Market is a coverage attribute, not an 
   "identifiers": [
     { "type": "station_id", "value": "WMAQ-DT" },
     { "type": "facility_id", "value": "fcc:73953" }
+  ],
+  "supported_channels": ["linear_tv"]
+}
+```
+
+### US cable network (no facility ID)
+
+Cable and satellite networks (ESPN, CNN, HGTV) are not FCC-licensed broadcast stations — they're distributed via MVPDs. They have no facility ID, but `station_id` alone is sufficient. These networks represent the majority of US linear TV ad spending.
+
+```json
+{
+  "property_type": "linear_tv",
+  "name": "ESPN",
+  "identifiers": [
+    { "type": "station_id", "value": "ESPN" }
   ],
   "supported_channels": ["linear_tv"]
 }
