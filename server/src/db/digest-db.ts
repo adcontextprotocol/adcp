@@ -374,11 +374,10 @@ export async function getRecentArticlesForDigest(
     `SELECT k.id, k.title, k.source_url, k.summary, k.addie_notes,
             k.quality_score, k.relevance_tags, k.published_at
      FROM addie_knowledge k
-     WHERE k.quality_score >= 4
+     WHERE k.quality_score >= 3
        AND k.fetch_status = 'success'
        AND k.is_active = TRUE
        AND k.source_url IS NOT NULL
-       AND k.addie_notes IS NOT NULL
        AND k.created_at > NOW() - make_interval(days => $1)
        AND NOT EXISTS (
          SELECT 1 FROM weekly_digests wd
@@ -415,8 +414,6 @@ export async function getRecentMemberPerspectivesForDigest(
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
-       AND (p.content_origin IS NULL OR p.content_origin != 'official')
-       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
        AND p.published_at IS NOT NULL
        AND p.published_at > NOW() - make_interval(days => $1)
        AND NOT EXISTS (
@@ -449,11 +446,12 @@ export async function getNewOrganizations(days: number = 7): Promise<Array<{
     enrichment_description: string | null;
     created_at: Date;
   }>(
-    `SELECT name, enrichment_description, created_at
-     FROM organizations
-     WHERE created_at > NOW() - make_interval(days => $1)
-       AND is_personal = FALSE
-     ORDER BY created_at DESC`,
+    `SELECT o.name, o.enrichment_description, o.created_at
+     FROM organizations o
+     WHERE o.created_at > NOW() - make_interval(days => $1)
+       AND o.is_personal = FALSE
+       AND o.subscription_status = 'active'
+     ORDER BY o.created_at DESC`,
     [days],
   );
   return result.rows;

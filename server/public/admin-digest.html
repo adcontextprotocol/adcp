@@ -277,7 +277,7 @@
       ).replace(
         /&lt;(https?:\/\/[^&]+)&gt;/g,
         '<a href="$1" target="_blank" style="color:#2563eb;">$1</a>'
-      );
+      ).replace(/\n/g, '<br>');
     }
 
     async function loadDigest() {
