@@ -1568,6 +1568,32 @@ export function setupDomainRoutes(
     const results = new Map<string, ClusterClassification>();
     const needsLLM: ClusterForClassification[] = [];
 
+    // Batch brand registry lookups for all Shared Email Domain clusters
+    const emailDomainLabels = clusters
+      .filter(c => c.signal === 'Shared Email Domain')
+      .map(c => c.label.toLowerCase());
+
+    const houseDomainMap = new Map<string, string>();
+    const subBrandCountMap = new Map<string, number>();
+
+    if (emailDomainLabels.length > 0) {
+      const houseResult = await pool.query<{ domain: string; house_domain: string }>(
+        `SELECT domain, house_domain FROM discovered_brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
+        [emailDomainLabels]
+      );
+      for (const row of houseResult.rows) {
+        houseDomainMap.set(row.domain, row.house_domain);
+      }
+
+      const subResult = await pool.query<{ house_domain: string; sub_count: string }>(
+        `SELECT house_domain, COUNT(*) as sub_count FROM discovered_brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
+        [emailDomainLabels]
+      );
+      for (const row of subResult.rows) {
+        subBrandCountMap.set(row.house_domain, parseInt(row.sub_count, 10));
+      }
+    }
+
     for (const cluster of clusters) {
       const key = `${cluster.signal}:${cluster.label}`;
 
@@ -1583,29 +1609,17 @@ export function setupDomainRoutes(
         continue;
       }
 
-      // For Shared Email Domain clusters, check if the domain has a house_domain in the brand registry
+      // For Shared Email Domain clusters, check brand registry data (pre-fetched above)
       if (cluster.signal === 'Shared Email Domain') {
-        const brandResult = await pool.query(
-          `SELECT house_domain, keller_type FROM discovered_brands WHERE domain = $1`,
-          [cluster.label.toLowerCase()]
-        );
-        if (brandResult.rows[0]?.house_domain) {
-          results.set(key, {
-            type: 'subsidiary',
-            reason: `Brand registry: subsidiary of ${brandResult.rows[0].house_domain}`,
-          });
+        const domain = cluster.label.toLowerCase();
+        const houseDomain = houseDomainMap.get(domain);
+        if (houseDomain) {
+          results.set(key, { type: 'subsidiary', reason: `Brand registry: subsidiary of ${houseDomain}` });
           continue;
         }
-        // Check if this domain IS a house brand with sub-brands
-        const subBrandResult = await pool.query(
-          `SELECT COUNT(*) as sub_count FROM discovered_brands WHERE house_domain = $1`,
-          [cluster.label.toLowerCase()]
-        );
-        if (parseInt(subBrandResult.rows[0]?.sub_count, 10) > 0) {
-          results.set(key, {
-            type: 'subsidiary',
-            reason: `Brand registry: parent brand with ${subBrandResult.rows[0].sub_count} sub-brands`,
-          });
+        const subCount = subBrandCountMap.get(domain);
+        if (subCount && subCount > 0) {
+          results.set(key, { type: 'subsidiary', reason: `Brand registry: parent brand with ${subCount} sub-brands` });
           continue;
         }
       }
@@ -1614,11 +1628,21 @@ export function setupDomainRoutes(
       needsLLM.push(cluster);
     }
 
-    // Batch-classify remaining clusters with a single LLM call
-    if (needsLLM.length > 0 && isLLMConfigured()) {
+    // Batch-classify remaining clusters with a single LLM call (cap batch size)
+    const LLM_BATCH_LIMIT = 30;
+    const llmBatch = needsLLM.slice(0, LLM_BATCH_LIMIT);
+    for (const cluster of needsLLM.slice(LLM_BATCH_LIMIT)) {
+      const key = `${cluster.signal}:${cluster.label}`;
+      results.set(key, { type: 'unclear', reason: 'Too many clusters for batch classification' });
+    }
+
+    if (llmBatch.length > 0 && isLLMConfigured()) {
       try {
-        const clusterDescriptions = needsLLM.map((c, i) => {
-          const orgNames = c.organizations.map(o => o.name).join(', ');
+        // Sanitize org names to limit prompt injection surface
+        const sanitizeName = (name: string) => name.slice(0, 100).replace(/[\n\r]/g, ' ');
+
+        const clusterDescriptions = llmBatch.map((c, i) => {
+          const orgNames = c.organizations.map(o => sanitizeName(o.name)).join(', ');
           return `${i + 1}. Signal: ${c.signal}, Key: ${c.label}, Organizations: ${orgNames}`;
         }).join('\n');
 
@@ -1632,32 +1656,36 @@ Use your knowledge of the advertising, media, and marketing industry. Major hold
 
 Respond with ONLY a JSON array, one entry per cluster:
 [{"id": 1, "type": "subsidiary|duplicate|unrelated", "reason": "brief explanation"}]`,
-          prompt: `Classify these ${needsLLM.length} organization clusters:\n\n${clusterDescriptions}`,
-          maxTokens: needsLLM.length * 100,
+          prompt: `Classify these ${llmBatch.length} organization clusters:\n\n${clusterDescriptions}`,
+          maxTokens: llmBatch.length * 100,
           model: 'fast',
           operationName: 'classify-org-relationships',
         });
 
         // Strip markdown code fences if present
         const jsonText = llmResult.text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-        const parsed = JSON.parse(jsonText) as { id: number; type: string; reason: string }[];
+        const raw = JSON.parse(jsonText);
+        const parsed: { id: number; type: string; reason: string }[] = Array.isArray(raw) ? raw : [];
+        if (parsed.length === 0) {
+          logger.warn({ response: jsonText.slice(0, 200) }, 'LLM returned non-array or empty response');
+        }
         for (const item of parsed) {
-          const cluster = needsLLM[item.id - 1];
+          const cluster = llmBatch[item.id - 1];
           if (!cluster) continue;
           const key = `${cluster.signal}:${cluster.label}`;
           const type = item.type === 'subsidiary' ? 'subsidiary'
             : item.type === 'duplicate' ? 'duplicate'
             : 'unclear';
-          results.set(key, { type, reason: item.reason });
+          results.set(key, { type, reason: (item.reason || 'Classified by LLM').slice(0, 200) });
         }
 
         logger.info(
-          { clusterCount: needsLLM.length, latencyMs: llmResult.latencyMs, model: llmResult.model },
+          { clusterCount: llmBatch.length, latencyMs: llmResult.latencyMs, model: llmResult.model },
           'LLM classified org relationship clusters'
         );
       } catch (err) {
         logger.warn({ err }, 'LLM classification failed, falling back to unclear');
-        for (const cluster of needsLLM) {
+        for (const cluster of llmBatch) {
           const key = `${cluster.signal}:${cluster.label}`;
           if (!results.has(key)) {
             results.set(key, { type: 'unclear', reason: 'Classification unavailable' });
