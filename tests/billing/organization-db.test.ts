@@ -177,9 +177,9 @@ describe('organization-db', () => {
       expect(inferMembershipTier(250000, 'year', false)).toBe('company_standard');
     });
 
-    test('infers company_standard for $10,000/yr company', async () => {
+    test('infers company_icl for $10,000/yr company (founding corporate rate)', async () => {
       const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
-      expect(inferMembershipTier(1000000, 'year', false)).toBe('company_standard');
+      expect(inferMembershipTier(1000000, 'year', false)).toBe('company_icl');
     });
 
     test('infers company_icl for $15,000/yr company', async () => {
@@ -196,6 +196,53 @@ describe('organization-db', () => {
       const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
       // $208.33/month * 12 = $2,500/yr
       expect(inferMembershipTier(20833, 'month', false)).toBe('company_standard');
+    });
+
+    test('handles monthly rounding for $250/yr individual', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      // $250/yr billed monthly = $20.83/mo = 2083¢. 2083 * 12 = 24996¢ (under 25000)
+      expect(inferMembershipTier(2083, 'month', true)).toBe('individual_professional');
+    });
+
+    test('handles monthly rounding for $50/yr individual', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      // $50/yr billed monthly = $4.16/mo = 416¢. 416 * 12 = 4992¢ (under 5000)
+      expect(inferMembershipTier(416, 'month', true)).toBe('individual_academic');
+    });
+
+    test('handles monthly rounding for $50K/yr company', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      // $50K/yr billed monthly = $4166.66/mo = 416666¢. 416666 * 12 = 4999992¢ (under 5000000)
+      expect(inferMembershipTier(416666, 'month', false)).toBe('company_leader');
+    });
+  });
+
+  describe('tierFromLookupKey', () => {
+    test('maps current tier product lookup keys', async () => {
+      const { tierFromLookupKey } = await import('../../server/src/db/organization-db.js');
+      expect(tierFromLookupKey('aao_membership_explorer_50')).toBe('individual_academic');
+      expect(tierFromLookupKey('aao_membership_professional_250')).toBe('individual_professional');
+      expect(tierFromLookupKey('aao_membership_builder_3000')).toBe('company_standard');
+      expect(tierFromLookupKey('aao_membership_member_15000')).toBe('company_icl');
+      expect(tierFromLookupKey('aao_membership_partner_10000')).toBe('company_icl');
+      expect(tierFromLookupKey('aao_membership_leader_50000')).toBe('company_leader');
+    });
+
+    test('maps legacy founding-member product lookup keys', async () => {
+      const { tierFromLookupKey } = await import('../../server/src/db/organization-db.js');
+      expect(tierFromLookupKey('aao_membership_individual')).toBe('individual_professional');
+      expect(tierFromLookupKey('aao_membership_individual_discounted')).toBe('individual_academic');
+      expect(tierFromLookupKey('aao_membership_corporate_under5m')).toBe('company_standard');
+      expect(tierFromLookupKey('aao_membership_corporate_5m')).toBe('company_icl');
+      expect(tierFromLookupKey('aao_membership_industry_council_leader_50000')).toBe('company_leader');
+    });
+
+    test('returns null for non-tier lookup keys', async () => {
+      const { tierFromLookupKey } = await import('../../server/src/db/organization-db.js');
+      expect(tierFromLookupKey(null)).toBeNull();
+      expect(tierFromLookupKey(undefined)).toBeNull();
+      expect(tierFromLookupKey('aao_invoice_membership_10k')).toBeNull();
+      expect(tierFromLookupKey('aao_sponsorship_gold')).toBeNull();
     });
   });
 

@@ -25,7 +25,7 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
-import { OrganizationDatabase, inferMembershipTier } from "../db/organization-db.js";
+import { OrganizationDatabase, inferMembershipTier, tierFromLookupKey } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 
 const logger = createLogger("billing-routes");
@@ -726,11 +726,11 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
               const subscription = subscriptions.data[0];
               const priceData = subscription.items?.data?.[0]?.price;
               const membershipTier = subscription.status === 'active'
-                ? inferMembershipTier(
+                ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(
                     priceData?.unit_amount ?? null,
                     priceData?.recurring?.interval ?? null,
                     org.is_personal ?? false,
-                  )
+                  ))
                 : null;
 
               await pool.query(
