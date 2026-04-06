@@ -82,6 +82,20 @@ The key question is: **where do the assets come from?**
 
 Some agents combine models. A creative management platform might be both a template engine (stateless transformation) and a library host (stateful). Declare the appropriate capability flags in `get_adcp_capabilities` so buyers can determine the right interaction model.
 
+### Pricing and statefulness
+
+A creative agent that charges for its services needs an account relationship and persistent creative identity. This means **if you charge, you're stateful** — even if you started as a stateless transformation engine.
+
+The transition from free/stateless to paid/stateful requires:
+1. **Implement the [Accounts Protocol](/docs/accounts/overview)** — buyers establish accounts with rate cards
+2. **Persist `creative_id`** — every build output gets a durable identity so it can be referenced in `list_creatives` and `report_usage`
+3. **Return pricing in `build_creative` responses** — `pricing_option_id`, `vendor_cost`, `currency`, and optionally `consumption` details
+4. **Accept `report_usage`** — orchestrators report what was served so you can track revenue
+
+Free transformation agents remain stateless and unchanged. No account, no pricing, no persistence required.
+
+See the [Pricing section of the specification](/docs/creative/specification#pricing) for the full pricing flow and requirements.
+
 ## Core requirements
 
 ### 1. Format ID namespacing

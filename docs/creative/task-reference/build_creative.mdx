@@ -35,6 +35,20 @@ For information about format IDs and how to reference formats, see [Creative For
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
 | `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 | `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
+
+### Pricing response fields
+
+When the creative agent charges and `account` is provided, the response includes pricing fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pricing_option_id` | string | Which rate card pricing option was applied |
+| `vendor_cost` | number | Cost incurred for this build. May be 0 for CPM-priced creatives where cost accrues at serve time. |
+| `currency` | string | ISO 4217 currency code |
+| `consumption` | object | Structured consumption details — `tokens`, `images_generated`, `renders`, `duration_seconds`. See [`creative-consumption.json`](https://adcontextprotocol.org/schemas/latest/core/creative-consumption.json). Informational for cost verification; `vendor_cost` is the billing source of truth. |
+
+For async builds (`status: "working"` with `context_id` polling), pricing fields appear on the final completed response only.
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 

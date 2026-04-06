@@ -44,7 +44,9 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_snapshot` | boolean | No | Include a lightweight delivery snapshot — lifetime impressions and last-served date (default: false). For detailed analytics, use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). |
 | `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
-| `fields` | array | No | Specific fields to return (omit for all fields) |
+| `include_pricing` | boolean | No | Include `pricing_options` on each creative (default: false). Requires `account`. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
+| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
 
 ## Filtering options
 
@@ -181,6 +183,26 @@ The response provides creative data with optional enrichment:
 | `snapshot` | object | Delivery snapshot (when `include_snapshot=true`) |
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
+| `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Same pattern as `get_signals` and `list_content_standards`. For agents with predetermined rate cards, this typically contains a single option. |
+
+### Pricing
+
+When `include_pricing=true` and `account` is provided, each creative includes `pricing_options` from the account's rate card:
+
+```json
+{
+  "pricing_options": [
+    {
+      "pricing_option_id": "po_video_cpm",
+      "model": "cpm",
+      "cpm": 0.50,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+The buyer passes the selected `pricing_option_id` in `report_usage` for billing verification. This is the same pattern used by [signals](/docs/signals/tasks/get_signals) and [content standards](/docs/governance/content-standards/index). For creative agents with predetermined rate cards, the array typically contains a single option.
 
 ### Delivery snapshot
 

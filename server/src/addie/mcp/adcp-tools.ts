@@ -1158,6 +1158,15 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'object',
           description: 'Source manifest - minimal for generation, complete for transformation',
         },
+        account: {
+          type: 'object',
+          description: 'Account reference for pricing and billing. Required by creative agents that charge for services.',
+          properties: {
+            account_id: { type: 'string' },
+            brand: { type: 'object', properties: { domain: { type: 'string' } } },
+            operator: { type: 'string' },
+          },
+        },
         brand: {
           type: 'object',
           description: 'Brand reference for creative generation. Resolved to full identity (colors, logos, tone).',

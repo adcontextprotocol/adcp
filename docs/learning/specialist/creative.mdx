@@ -22,6 +22,7 @@ Passing earns the **AdCP specialist — Creative** credential.
 - Work with stateful ad servers: browse a creative library, generate tags per media buy, track delivery
 - Work with stateful sales agents: push creatives, preview in the publisher's environment
 - Adapt a single creative concept across multiple channels and formats
+- Understand creative agent pricing: how rates are established via accounts, how `list_creatives` shows your rate, how `build_creative` returns cost, and how `report_usage` closes the loop
 - Reason about format edge cases, accessibility, and provenance
 
 ## Prerequisite reading
@@ -103,20 +104,43 @@ Passing earns the **AdCP specialist — Creative** credential.
 2. **Ad server workflow** — Connect to a pre-loaded ad server, browse the creative library with `list_creatives`, generate tags for multiple media buys using `build_creative`, and check delivery metrics.
 3. **Push-and-preview** — Connect to a sales agent, discover its accepted formats, push catalog assets with `sync_creatives`, and preview how they render in the publisher's environment.
 
+### Creative pricing
+
+4. **Pricing lifecycle** — Using the same sandbox ad server from exercise 2:
+   - Establish an account with the ad server
+   - `list_creatives` with `account` and `include_pricing: true` — observe `pricing_options` on each creative reflecting your rate card
+   - Switch to a second sandbox account, `list_creatives` again — observe that `pricing_options` reflects a different rate (different CPM, model, or currency)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` in the response
+   - `build_creative` without `account` — observe the rejection error
+   - Call `report_usage` with `creative_id` + `pricing_option_id`, verify the values match what `build_creative` returned
+   - Explain: why is `vendor_cost` zero on a CPM-priced creative at build time?
+   - Compare the entire flow with the Lab 1 stateless transformation agent (no account, no pricing, no persistence)
+
+<Note>
+**Vendor pricing is consistent across protocols**
+
+All vendor services use the same pattern: `pricing_options[]` on discovery responses, `pricing_option_id` in `report_usage`. Signals, content standards, creative agents, and property list agents all follow this.
+
+In practice, signal providers typically offer multiple options (CPM vs. percent-of-media) for the buyer to choose from. Creative agents with predetermined rate cards typically return a single-element array. The protocol surface is the same — the difference is how many options are in the array.
+
+For signals, the buyer selects a pricing option at activation time (`activate_signal`). For creative agents, the account's rate card has already resolved the option — there is nothing to select.
+</Note>
+
 ### Cross-platform skills
 
-4. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
-5. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
-6. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
+5. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
+6. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+7. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Interaction models | 30% | Correctly identifies and works with all three creative agent types |
+| Interaction models | 20% | Correctly identifies and works with all three creative agent types |
 | Cross-platform | 25% | Adapts creatives across channels and formats |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
-| Analytical skill | 20% | Interprets creative feature evaluation and delivery results |
+| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives`, interprets build costs, closes the `report_usage` loop |
+| Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
 
 Passing threshold: 70%.
 

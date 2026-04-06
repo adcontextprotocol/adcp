@@ -21,6 +21,24 @@
           "format": "uri",
           "description": "URL to the vendor's full assessment report. The vendor controls what information is disclosed and access control."
         },
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Which rate card pricing option was applied for this evaluation. Present when the governance agent charges for evaluations and account was provided in the request."
+        },
+        "vendor_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost incurred for this evaluation, denominated in currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code for vendor_cost."
+        },
+        "consumption": {
+          "$ref": "/schemas/core/creative-consumption.json",
+          "description": "Structured consumption details for this evaluation. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },

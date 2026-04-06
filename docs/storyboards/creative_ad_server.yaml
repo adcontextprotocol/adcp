@@ -1,8 +1,8 @@
 id: creative_ad_server
-version: "1.0.0"
+version: "1.1.0"
 title: "Creative ad server"
 category: creative_ad_server
-summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy."
+summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy with pricing and billing."
 
 narrative: |
   You run a creative ad server — think Innovid, Flashtalking, or CM360. Your clients
@@ -12,6 +12,10 @@ narrative: |
   Your agent is stateful: creatives already exist in your system. The buyer never pushes
   assets to you. Instead, they browse your library, pick creatives, and ask you to generate
   tags for specific placements. For a campaign with 25 media buys, you'll generate 25 tags.
+
+  If you charge for your services, pricing is part of the flow. The buyer's account
+  determines the rate card. list_creatives shows the applicable pricing, build_creative
+  returns the cost, and report_usage closes the billing loop after delivery.
 
   This storyboard walks through that flow from the buyer's perspective.
 
@@ -34,6 +38,9 @@ prerequisites:
     platform's own UI or API. The buyer does not push assets — they browse and
     request tags for what's already there.
 
+    For pricing steps, the buyer must have an established account with the ad server.
+    The account's rate card determines creative pricing.
+
 phases:
   - id: browse_library
     title: "Browse the creative library"
@@ -42,16 +49,20 @@ phases:
       available for a campaign. They call list_creatives to browse concepts and
       individual creatives in your library.
 
-      For an Innovid-like platform, this returns the advertiser's uploaded video
-      creatives, display ads, and any other assets managed in the platform.
+      When the buyer provides an account and requests pricing, each creative
+      includes the applicable rate from the account's rate card.
 
     steps:
       - id: list_creatives
-        title: "Browse available creatives"
+        title: "Browse available creatives with pricing"
         narrative: |
-          The buyer asks: "What creatives do you have for this advertiser?" This is
-          the primary entry point for ad server interactions — the buyer browses your
-          library to find creatives to use in their media buys.
+          The buyer asks: "What creatives do you have for this advertiser, and what
+          do they cost?" This is the primary entry point for ad server interactions.
+
+          With include_pricing=true and an account reference, the response includes
+          pricing_options on each creative — the available rates from the account's
+          rate card. For agents with predetermined rate cards, this is typically a
+          single-element array.
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"
@@ -64,6 +75,26 @@ phases:
           - format_id referencing the creative's format
           - name and status (approved, pending_review, rejected)
           - concept_id grouping related creatives across sizes
+          - pricing_options array with pricing_option_id, model, rate, currency
+            (when include_pricing=true and account provided)
+
+        sample_request:
+          account:
+            account_id: "acct_acme_creative"
+          include_pricing: true
+          filters:
+            statuses:
+              - "approved"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].pricing_options"
+            description: "First creative includes pricing_options from account rate card"
+          - check: field_present
+            path: "creatives[0].pricing_options[0].pricing_option_id"
+            description: "Pricing option includes pricing_option_id for billing reference"
 
       - id: list_output_formats
         title: "Check available output formats"
@@ -87,11 +118,13 @@ phases:
     narrative: |
       The buyer has selected creatives from your library and now needs serving tags
       for their media buys. They call build_creative for each media buy/package
-      combination, passing the creative_id and the context needed to generate the
-      right tag.
+      combination, passing the creative_id, account, and the context needed to
+      generate the right tag.
 
-      This is the core of the ad server interaction: turning library creatives into
-      traffickable tags.
+      When an account is provided, the response includes pricing fields — the
+      pricing_option_id that was applied and the vendor_cost for this build.
+      For CPM-priced creatives, vendor_cost is zero at build time because cost
+      accrues when impressions are served.
 
     steps:
       - id: build_tag
@@ -103,6 +136,9 @@ phases:
           For Innovid, this produces a VAST tag for a CTV placement. For Flashtalking,
           this might produce an HTML tag for a display placement. The media_buy_id and
           package_id provide the trafficking context.
+
+          The response includes pricing_option_id and vendor_cost so the buyer knows
+          which rate applies and what the build cost (zero for CPM).
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
@@ -114,9 +150,14 @@ phases:
           - An HTML, JavaScript, or VAST asset containing the tag
           - The format_id matching the target format
           - Macro placeholders (CLICK_URL, CACHEBUSTER) if applicable
+          - pricing_option_id from the account's rate card
+          - vendor_cost (0 for CPM — cost accrues at serve time)
+          - currency (ISO 4217)
 
         sample_request:
           creative_id: "campaign_hero_video"
+          account:
+            account_id: "acct_acme_creative"
           target_format_id:
             agent_url: "https://your-ad-server.example.com"
             id: "vast_30s"
@@ -129,6 +170,9 @@ phases:
           - check: field_present
             path: "creative_manifest.assets"
             description: "Output includes a serving tag asset"
+          - check: field_present
+            path: "pricing_option_id"
+            description: "Response includes pricing_option_id"
 
   - id: track_delivery
     title: "Track creative delivery"
@@ -163,3 +207,55 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-creative-delivery-response.json schema"
+
+  - id: report_billing
+    title: "Report usage for billing"
+    narrative: |
+      After delivery, the buyer reports creative usage to the ad server for billing
+      reconciliation. Each usage record includes the creative_id and pricing_option_id
+      from the build_creative response, along with impressions served and the computed
+      vendor_cost.
+
+      The ad server validates that the pricing_option_id matches its records. If the
+      IDs don't match, the record is rejected with a descriptive error.
+
+    steps:
+      - id: report_usage
+        title: "Report impressions and cost"
+        narrative: |
+          The buyer sends a usage report covering a billing period. Each record
+          includes the creative_id, pricing_option_id (from the build_creative
+          response), impressions served, and the computed vendor_cost. The ad server
+          verifies the rate matches its rate card and accepts the record.
+        task: report_usage
+        schema_ref: "account/report-usage-request.json"
+        response_schema_ref: "account/report-usage-response.json"
+        doc_ref: "/accounts/tasks/report_usage"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Response includes:
+          - accepted count (number of records successfully stored)
+          - errors array (empty if all records pass validation)
+
+        sample_request:
+          idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          reporting_period:
+            start: "2026-03-01T00:00:00Z"
+            end: "2026-03-31T23:59:59Z"
+          usage:
+            - account:
+                account_id: "acct_acme_creative"
+              creative_id: "campaign_hero_video"
+              pricing_option_id: "po_vast_30s_cpm"
+              impressions: 2400000
+              vendor_cost: 1200.00
+              currency: "USD"
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-usage-response.json schema"
+          - check: field_value
+            path: "accepted"
+            value: 1
+            description: "One usage record accepted"

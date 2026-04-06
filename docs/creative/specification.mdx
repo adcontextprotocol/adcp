@@ -90,6 +90,8 @@ These models compose — an agent can support multiple. A creative ad server wit
 
 Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
+A transformation or generation agent that charges for its services becomes stateful: it persists `creative_id` on build output, implements the Accounts Protocol, and returns pricing in `build_creative` responses. Free transformation agents remain stateless and unchanged.
+
 ### Format authority
 
 Each format has exactly one authoritative creative agent, identified by the `agent_url` in the format ID:
@@ -183,6 +185,43 @@ Creative agents MUST reject operations that reference a `rejected` creative for 
 
 Creative agents MUST include `status` and `rejection_reason` (when rejected) in `list_creatives` responses.
 
+## Pricing
+
+Creative agents that charge for their services expose pricing through the same discover → build → report loop used by signals agents and content standards agents.
+
+### Pricing flow
+
+1. **Account setup** — rate card agreed. Determines pricing for all subsequent operations.
+2. **Discovery** — `list_creatives` with `account` and `include_pricing: true` returns `pricing_options[]` on each creative. For creative agents with predetermined rate cards, this typically contains a single option. The pattern is the same as signals (`get_signals` returns `pricing_options[]`) and content standards.
+3. **Build** — `build_creative` with `account`. The agent computes the cost and returns `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` in the response.
+4. **Report** — `report_usage` with `creative_id` and `pricing_option_id` for reconciliation.
+
+### Pricing models
+
+Creative agents reuse the vendor pricing models defined in [`vendor-pricing-option.json`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json):
+
+| Model | Creative use case |
+|---|---|
+| `cpm` | Cost per thousand impressions served — ad server model, DCO platforms |
+| `percent_of_media` | Percentage of media spend — agency/platform model |
+| `flat_fee` | Fixed charge per period — licensed creative suites, subscription access |
+
+### Consumption details
+
+**Schema**: [`core/creative-consumption.json`](https://adcontextprotocol.org/schemas/latest/core/creative-consumption.json)
+
+The `build_creative` response includes a `consumption` object with structured details about what was consumed. Well-known fields: `tokens` (LLM tokens consumed), `images_generated`, `renders` (render passes), `duration_seconds` (processing time). Agents MAY include additional fields.
+
+The `consumption` object is informational — it lets the buyer verify that `vendor_cost` is consistent with the rate card. `vendor_cost` is the billing source of truth.
+
+### Accounts requirement
+
+Creative agents that charge for their services MUST implement the [Accounts Protocol](/docs/accounts/overview). This applies to any creative agent with pricing — ad servers, generation platforms, and transformation agents that bill for usage.
+
+### Bundled mode
+
+When a publisher uses a creative agent internally (bundled), the buyer never sees the creative agent's pricing. The cost is absorbed into product pricing. The sales agent is the buyer in the creative agent relationship — it establishes an account, calls `build_creative`, and handles `report_usage`. The protocol surface is the same.
+
 ## Tasks
 
 The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
@@ -222,6 +261,9 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
 - Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
 - `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.
+- When `account` is provided and the agent charges, the response MUST include `pricing_option_id`, `vendor_cost`, and `currency`. The `consumption` object SHOULD be included when relevant.
+- For async builds, pricing fields appear on the final completed response only, not on intermediate status responses.
+- When a paid creative agent receives a `build_creative` request without `account` and the agent requires an account, the agent MUST return an error.
 
 ### preview_creative
 
@@ -251,11 +293,13 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
+- When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. For agents with predetermined rate cards, this typically contains a single option.
 
 **Account requirements:**
-- Creative agents that host a library SHOULD implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying
-- This is the same accounts protocol used by sales agents — there is no separate version
-- Sales agents that already implement accounts for media buys do not need to do anything additional
+- Creative agents that charge for their services MUST implement the [Accounts Protocol](/docs/accounts/overview). This applies to any creative agent with pricing — ad servers, generation platforms, and transformation agents that bill for usage.
+- Creative agents that host a library but do not charge SHOULD implement the Accounts Protocol so buyers can establish access before querying.
+- This is the same accounts protocol used by sales agents — there is no separate version.
+- Sales agents that already implement accounts for media buys do not need to do anything additional.
 
 ### sync_creatives
 

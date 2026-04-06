@@ -101,7 +101,7 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
+import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -516,7 +516,7 @@ const TOOLS = [
   },
   {
     name: 'list_creatives',
-    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. Not for uploading or updating creatives (use sync_creatives). Only returns creatives from the current session.',
+    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -525,6 +525,8 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
+        include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
+        filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
       },
     },
   },
@@ -645,6 +647,36 @@ const TOOLS = [
   ...GOVERNANCE_TOOLS,
   ...BRAND_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
+  {
+    name: 'report_usage',
+    description: 'Report consumption data for billing verification. Send creative_id and pricing_option_id for creative agents, signal_agent_segment_id for signals agents. The vendor verifies the reported cost against its rate card.',
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        idempotency_key: { type: 'string', description: 'UUID for retry safety' },
+        reporting_period: { type: 'object', properties: { start: { type: 'string' }, end: { type: 'string' } }, required: ['start', 'end'] },
+        usage: {
+          type: 'array', items: {
+            type: 'object', properties: {
+              account: ACCOUNT_REF_SCHEMA,
+              creative_id: { type: 'string', description: 'Creative identifier (creative agents)' },
+              signal_agent_segment_id: { type: 'string', description: 'Signal identifier (signals agents)' },
+              pricing_option_id: { type: 'string', description: 'Pricing option from discovery or build response' },
+              impressions: { type: 'number' },
+              media_spend: { type: 'number' },
+              vendor_cost: { type: 'number' },
+              currency: { type: 'string' },
+            },
+            required: ['account', 'vendor_cost', 'currency'],
+          },
+        },
+      },
+      required: ['reporting_period', 'usage'] as const,
+    },
+  },
   {
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
@@ -1549,7 +1581,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[] };
+  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
@@ -1557,6 +1589,8 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   }
+
+  const includePricing = req.include_pricing && req.account;
 
   return {
     query_summary: {
@@ -1567,14 +1601,37 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       has_more: false,
       total_count: creatives.length,
     },
-    creatives: creatives.map(c => ({
-      creative_id: c.creativeId,
-      format_id: c.formatId,
-      name: c.name,
-      status: c.status,
-      synced_at: c.syncedAt,
-    })),
+    creatives: creatives.map(c => {
+      const base: Record<string, unknown> = {
+        creative_id: c.creativeId,
+        format_id: c.formatId,
+        name: c.name,
+        status: c.status,
+        synced_at: c.syncedAt,
+      };
+      if (includePricing) {
+        base.pricing_options = [getCreativePricing(req.account!, c)];
+      }
+      return base;
+    }),
     sandbox: true,
+  };
+}
+
+/** Sandbox rate card: returns CPM pricing based on account and creative format. */
+function getCreativePricing(account: { account_id?: string }, creative: import('./types.js').CreativeState) {
+  // Two sandbox rate cards: "premium" accounts get lower CPM
+  const isPremium = account.account_id?.includes('premium');
+  const isVideo = creative.formatId.id.includes('video') || creative.formatId.id.includes('vast');
+  const cpm = isPremium
+    ? (isVideo ? 0.25 : 0.10)
+    : (isVideo ? 0.50 : 0.20);
+  const pricingOptionId = `po_${creative.formatId.id}_cpm`;
+  return {
+    pricing_option_id: pricingOptionId,
+    model: 'cpm',
+    cpm,
+    currency: 'USD',
   };
 }
 
@@ -2211,7 +2268,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     const format = validFormatIds.get(formatId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    const result: Record<string, unknown> = {
       creative_manifest: {
         creative_id: req.creative_id,
         format_id: { agent_url: agentUrl, id: formatId.id },
@@ -2225,6 +2282,19 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
       },
       sandbox: true,
     };
+
+    // Return pricing when account is provided (paid creative agent mode)
+    if (req.account) {
+      const pricing = getCreativePricing(req.account, creative);
+      creative.pricingOptionId = pricing.pricing_option_id;
+      result.pricing_option_id = pricing.pricing_option_id;
+      // CPM-priced: vendor_cost is 0 at build time (cost accrues at serve time)
+      result.vendor_cost = 0;
+      result.currency = pricing.currency;
+      result.consumption = {};
+    }
+
+    return result;
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -2368,6 +2438,118 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
+// ── report_usage handler ──────────────────────────────────────────
+
+interface ReportUsageArgs extends ToolArgs {
+  idempotency_key?: string;
+  reporting_period: { start: string; end: string };
+  usage: Array<{
+    account: { account_id?: string; brand?: { domain: string }; operator?: string };
+    creative_id?: string;
+    signal_agent_segment_id?: string;
+    pricing_option_id?: string;
+    impressions?: number;
+    media_spend?: number;
+    vendor_cost: number;
+    currency: string;
+  }>;
+}
+
+function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as ReportUsageArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!req.reporting_period || !req.usage?.length) {
+    return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
+  }
+
+  if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {
+    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded.` }] };
+  }
+
+  let accepted = 0;
+  const errors: Array<{ code: string; message: string; field?: string }> = [];
+
+  for (let i = 0; i < req.usage.length; i++) {
+    const record = req.usage[i];
+
+    // Validate required fields
+    if (record.vendor_cost === undefined || record.vendor_cost === null) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'vendor_cost is required.', field: `usage[${i}].vendor_cost` });
+      continue;
+    }
+    if (record.vendor_cost < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'vendor_cost must be non-negative.', field: `usage[${i}].vendor_cost` });
+      continue;
+    }
+    if (!record.currency) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'currency is required.', field: `usage[${i}].currency` });
+      continue;
+    }
+    if (!record.account) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'account is required.', field: `usage[${i}].account` });
+      continue;
+    }
+    if (record.impressions !== undefined && record.impressions < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'impressions must be non-negative.', field: `usage[${i}].impressions` });
+      continue;
+    }
+
+    // Validate creative_id exists if provided
+    if (record.creative_id) {
+      const creative = session.creatives.get(record.creative_id);
+      if (!creative) {
+        errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
+        continue;
+      }
+
+      // Validate pricing_option_id matches if provided
+      if (record.pricing_option_id && creative.pricingOptionId && record.pricing_option_id !== creative.pricingOptionId) {
+        errors.push({
+          code: 'INVALID_PRICING_OPTION',
+          message: `pricing_option_id mismatch: expected ${creative.pricingOptionId}, received ${record.pricing_option_id}`,
+          field: `usage[${i}].pricing_option_id`,
+        });
+        continue;
+      }
+    }
+
+    // Validate signal_agent_segment_id exists if provided
+    if (record.signal_agent_segment_id) {
+      const activation = session.signalActivations.get(record.signal_agent_segment_id);
+      if (!activation) {
+        errors.push({ code: 'NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
+        continue;
+      }
+    }
+
+    // Store the usage record
+    session.usageRecords.push({
+      account: record.account as import('./types.js').AccountRef,
+      creativeId: record.creative_id,
+      signalAgentSegmentId: record.signal_agent_segment_id,
+      pricingOptionId: record.pricing_option_id,
+      impressions: record.impressions,
+      mediaSpend: record.media_spend,
+      vendorCost: record.vendor_cost,
+      currency: record.currency,
+      reportedAt: new Date().toISOString(),
+    });
+    accepted++;
+  }
+
+  // Use 'rejected' instead of 'errors' for partial acceptance to avoid
+  // the MCP server's error detection wrapping the response as an error.
+  // When all records are rejected (accepted === 0), return as errors for
+  // proper error signaling.
+  if (accepted === 0 && errors.length) {
+    return { accepted: 0, errors, sandbox: true };
+  }
+  const result: Record<string, unknown> = { accepted, sandbox: true };
+  if (errors.length) result.rejected = errors;
+  return result;
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
 type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
@@ -2395,6 +2577,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   acquire_rights: handleAcquireRights,
   update_rights: handleUpdateRights,
   get_adcp_capabilities: handleGetAdcpCapabilities,
+  report_usage: handleReportUsage,
   comply_test_controller: handleComplyTestController,
 };
 

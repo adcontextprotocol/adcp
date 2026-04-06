@@ -176,6 +176,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 - **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
 - **Cross-platform adaptation** — agents adapt assets across display, video, audio, native formats
 - **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
+- **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
 
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/chat">

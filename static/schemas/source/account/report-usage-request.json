@@ -63,6 +63,14 @@
           "rights_id": {
             "type": "string",
             "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation."
+          },
+          "creative_id": {
+            "type": "string",
+            "description": "Creative identifier from build_creative or list_creatives. Required for creative agents. Links usage records to specific creatives for billing verification."
+          },
+          "property_list_id": {
+            "type": "string",
+            "description": "Property list identifier from list_property_lists. Required for property list agents. Links usage records to specific property lists for billing verification."
           }
         },
         "required": [

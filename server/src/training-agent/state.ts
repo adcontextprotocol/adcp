@@ -6,7 +6,7 @@
  * TTL-based cleanup runs every 5 minutes.
  */
 
-import type { SessionState, AccountRef, BrandRef } from './types.js';
+import type { SessionState, AccountRef, BrandRef, UsageRecord } from './types.js';
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -27,6 +27,7 @@ function createSession(): SessionState {
     governanceOutcomes: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
+    usageRecords: [],
     createdAt: now,
     lastAccessedAt: now,
   };
@@ -58,7 +59,9 @@ export function getSession(key: string): SessionState {
   return session;
 }
 
-export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
+const MAX_USAGE_RECORDS_PER_SESSION = 1000;
+
+export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION };
 
 /** Read-only access to all sessions (for cross-session lookups). */
 export function getAllSessions(): ReadonlyMap<string, SessionState> {
