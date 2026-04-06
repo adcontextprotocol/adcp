@@ -12,6 +12,7 @@
     "dooh",
     "podcast",
     "radio",
+    "linear_tv",
     "streaming_audio",
     "ai_assistant"
   ],
@@ -22,7 +23,8 @@
     "desktop_app": "Desktop applications (Electron, native, Chromium wrappers), identified by application bundle IDs",
     "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
     "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
-    "radio": "Radio station properties, identified by call signs or station IDs",
+    "radio": "Radio station properties, identified by station ID or facility ID",
+    "linear_tv": "Linear television stations and networks, identified by station ID or facility ID",
     "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs",
     "ai_assistant": "AI-powered conversational interfaces including chatbots, AI assistants, and conversational AI platforms, identified by platform-specific IDs"
   }
