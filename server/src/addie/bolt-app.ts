@@ -108,7 +108,6 @@ import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
 import { CERTIFICATION_TOOLS, createCertificationToolHandlers, buildCertificationContext } from './mcp/certification-tools.js';
 import * as certDb from '../db/certification-db.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
-import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
   extractArticleUrls,
@@ -698,9 +697,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
-
-  // Initialize email handler (for responding to emails)
-  initializeEmailHandler();
 
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
