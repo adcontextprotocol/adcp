@@ -192,7 +192,7 @@ Creative agents that charge for their services expose pricing through the same d
 ### Pricing flow
 
 1. **Account setup** — rate card agreed. Determines pricing for all subsequent operations.
-2. **Discovery** — `list_creatives` with `account` and `include_pricing: true` returns `pricing_options[]` on each creative. For creative agents with predetermined rate cards, this typically contains a single option. The pattern is the same as signals (`get_signals` returns `pricing_options[]`) and content standards.
+2. **Discovery** — `list_creatives` with `account` and `include_pricing: true` returns `pricing_options[]` on each creative. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as signals and content standards.
 3. **Build** — `build_creative` with `account`. The agent computes the cost and returns `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` in the response.
 4. **Report** — `report_usage` with `creative_id` and `pricing_option_id` for reconciliation.
 
@@ -294,7 +294,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
-- When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. For agents with predetermined rate cards, this typically contains a single option.
+- When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
 
 **Account requirements:**
 - Creative agents that charge for their services MUST implement the [Accounts Protocol](/docs/accounts/overview). This applies to any creative agent with pricing — ad servers, generation platforms, and transformation agents that bill for usage.

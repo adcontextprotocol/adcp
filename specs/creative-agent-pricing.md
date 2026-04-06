@@ -33,29 +33,25 @@ All vendor services use the same pattern: `pricing_options[]` on discovery respo
 | Creative governance | `get_creative_features` → pricing in response | `standards_id` |
 | Rights | `get_rights` → `pricing_options[]` per right | `rights_id` |
 
-In practice, signal providers typically offer multiple options (CPM vs. percent-of-media).
-Creative agents with predetermined rate cards typically return a single-element array.
-The protocol surface is the same.
+Vendors commonly offer multiple options per item — volume/commitment tiers, context-specific
+rates (premium vs. standard placements), or different pricing models for different product
+lines (CPM for rich media, per-unit for social variants).
 
 ## Design
 
-### Core principle: rate cards are predetermined per account
+### Core principle: pricing is account-scoped
 
-Creative pricing is established when the account is set up — it's a contractual
-relationship, not a per-call negotiation. The buyer doesn't shop for a price on each
-build. The account's rate card determines what applies.
+Creative pricing is scoped to the account relationship. The account's rate card
+determines the available options. `list_creatives` returns `pricing_options[]` reflecting
+the account's negotiated rates.
 
-This means `list_creatives` returns the **one pricing option that applies** to the
-requesting account's rate card for each creative. There's nothing to choose. The agent
-computed the applicable rate from the account relationship.
+Creative vendors commonly offer multiple options per creative:
+- **Volume/commitment tiers** — lower CPM at higher spend commitments
+- **Context-specific rates** — premium placements vs. standard
+- **Product-line pricing** — CPM for rich media, per-unit for social variants
 
-The pricing object represents the **current applicable rate** for the account. The agent
-may adjust this as volume thresholds are crossed (e.g., tiered rate cards). The
-`build_creative` response is always authoritative — what it returns is what you owe.
-
-Signals are different because a data provider may genuinely offer the same segment as CPM
-or percent-of-media, and the buyer picks based on campaign economics. Creative vendors
-don't work that way — you negotiate a rate card, and that's what you pay.
+The `build_creative` response is authoritative — `vendor_cost` is what the buyer owes
+for that specific build, computed from the selected pricing option.
 
 ### Core principle: if you charge, you're stateful
 
@@ -436,10 +432,9 @@ Include a brief conceptual section in the pricing lab:
 - All vendor services use `pricing_options[]` on discovery responses and
   `pricing_option_id` in `report_usage`. Signals, content standards, creative agents,
   and property list agents all follow this pattern.
-- Signal providers typically offer multiple options (CPM vs. percent-of-media).
-  Creative agents with predetermined rate cards typically return a single option.
-  The protocol surface is the same — the difference is how many options are in the
-  array.
+- Vendors commonly offer multiple options — volume tiers, context-specific rates,
+  or different models per product line (CPM for rich media, per-unit for social
+  variants).
 
 **Assessment dimensions:**
 

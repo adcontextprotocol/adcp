@@ -60,9 +60,8 @@ phases:
           do they cost?" This is the primary entry point for ad server interactions.
 
           With include_pricing=true and an account reference, the response includes
-          pricing_options on each creative — the available rates from the account's
-          rate card. For agents with predetermined rate cards, this is typically a
-          single-element array.
+          pricing_options on each creative. Vendors may offer multiple options —
+          volume tiers, context-specific rates, or different models per product line.
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"

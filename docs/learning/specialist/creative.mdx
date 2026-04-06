@@ -121,9 +121,7 @@ Passing earns the **AdCP specialist — Creative** credential.
 
 All vendor services use the same pattern: `pricing_options[]` on discovery responses, `pricing_option_id` in `report_usage`. Signals, content standards, creative agents, and property list agents all follow this.
 
-In practice, signal providers typically offer multiple options (CPM vs. percent-of-media) for the buyer to choose from. Creative agents with predetermined rate cards typically return a single-element array. The protocol surface is the same — the difference is how many options are in the array.
-
-For signals, the buyer selects a pricing option at activation time (`activate_signal`). For creative agents, the account's rate card has already resolved the option — there is nothing to select.
+Vendors often offer multiple pricing options per creative — volume/commitment tiers (lower CPM at higher spend), context-specific rates (premium vs. standard placements), or different pricing models for different product lines (CPM for rich media, per-unit for social variants). The buyer selects the appropriate `pricing_option_id` and passes it in `report_usage`.
 </Note>
 
 ### Cross-platform skills

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/vendor-pricing-option.json",
   "title": "Vendor Pricing Option",
-  "description": "A pricing option offered by a vendor agent (signals, creative, governance). Combines pricing_option_id with the pricing model fields. Pass pricing_option_id in report_usage for billing verification. For signals agents, get_signals returns an array of options and the buyer selects one at activation. For creative agents, list_creatives returns the single option determined by the account's rate card.",
+  "description": "A pricing option offered by a vendor agent (signals, creative, governance). Combines pricing_option_id with the pricing model fields. Pass pricing_option_id in report_usage for billing verification. All vendor discovery responses return pricing_options as an array — vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).",
   "allOf": [
     {
       "type": "object",
