@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 
 // ── Types ────────────────────────────────────────────────────────

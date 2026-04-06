@@ -255,7 +255,7 @@ describe('sync_governance', () => {
   }
 
   it('registers governance agents on an existing account', async () => {
-    const acct = await createSandboxAccount();
+    await createSandboxAccount();
 
     const { result } = await simulateCallTool(server, 'sync_governance', {
       accounts: [{
