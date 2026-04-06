@@ -102,6 +102,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { TRAINING_AGENT_HOSTNAMES } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1184,7 +1185,7 @@ export class HTTPServer {
 
     // Host-based routing: serve embedded agents at root for legacy standalone URLs
     this.app.use((req, res, next) => {
-      if (req.hostname === 'test-agent.adcontextprotocol.org') {
+      if (TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return trainingAgentRouter(req, res, next);
       }
       if (req.hostname === 'creative.adcontextprotocol.org') {
@@ -1696,10 +1697,8 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/organization${query}`);
     });
-    this.app.get('/dashboard/team', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#team`);
-    });
+    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
+    this.app.get('/dashboard/agents', (req, res) => serveDashboardPage(req, res, 'dashboard-agents.html'));
     this.app.get('/dashboard/settings', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
@@ -3607,7 +3606,8 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       membership_tier = $8,
+                       subscription_canceled_at = $8,
+                       membership_tier = $9,
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
@@ -3618,6 +3618,9 @@ export class HTTPServer {
                     currency,
                     interval,
                     org.workos_organization_id,
+                    subscription.canceled_at
+                      ? new Date(subscription.canceled_at * 1000)
+                      : null,
                     membershipTier,
                   ]
                 );

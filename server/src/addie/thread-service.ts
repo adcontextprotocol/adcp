@@ -130,6 +130,8 @@ export interface CreateMessageInput {
   };
   // Configuration version ID (rules + router config snapshot)
   config_version_id?: number;
+  // Email threading — RFC 822 Message-ID or Resend ID for threading replies
+  email_message_id?: string;
 }
 
 export interface ThreadMessage {
@@ -182,6 +184,8 @@ export interface ThreadMessage {
   } | null;
   // Configuration version ID
   config_version_id: number | null;
+  // Email threading
+  email_message_id: string | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -426,8 +430,8 @@ export class ThreadService {
           flagged, flag_reason, sequence_number,
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
-          router_decision, config_version_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+          router_decision, config_version_id, email_message_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING *`,
         [
           input.thread_id,
@@ -453,6 +457,7 @@ export class ThreadService {
           input.active_rule_ids ?? null,
           input.router_decision ? JSON.stringify(input.router_decision) : null,
           input.config_version_id ?? null,
+          input.email_message_id ?? null,
         ]
       );
 
@@ -477,6 +482,57 @@ export class ThreadService {
       [threadId]
     );
     return result.rows;
+  }
+
+  /**
+   * Find a thread by looking up an email Message-ID in thread messages.
+   * Used to link inbound email replies to existing conversations.
+   */
+  async findThreadByEmailMessageId(emailMessageId: string): Promise<Thread | null> {
+    const result = await query<Thread>(
+      `SELECT t.* FROM addie_threads t
+       JOIN addie_thread_messages m ON m.thread_id = t.thread_id
+       WHERE m.email_message_id = $1
+       LIMIT 1`,
+      [emailMessageId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find the most recent email thread for a sender with the same subject.
+   * Fallback when In-Reply-To header doesn't match any stored message IDs.
+   * Requires subject match to avoid mixing unrelated conversations.
+   */
+  async findRecentEmailThread(senderIdentifier: string, subject: string, withinDays: number = 2): Promise<Thread | null> {
+    const result = await query<Thread>(
+      `SELECT * FROM addie_threads
+       WHERE channel = 'email'
+         AND user_id = $1
+         AND last_message_at > NOW() - INTERVAL '1 day' * $2
+         AND title = $3
+       ORDER BY last_message_at DESC
+       LIMIT 1`,
+      [senderIdentifier, withinDays, subject]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Count recent email messages from a sender within a time window.
+   * Used for rate limiting email conversations.
+   */
+  async countRecentEmailMessages(senderEmail: string, withinHours: number = 1): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM addie_thread_messages m
+       JOIN addie_threads t ON t.thread_id = m.thread_id
+       WHERE t.channel = 'email'
+         AND t.user_id = $1
+         AND m.role = 'user'
+         AND m.created_at > NOW() - INTERVAL '1 hour' * $2`,
+      [senderEmail, withinHours]
+    );
+    return parseInt(result.rows[0]?.count || '0', 10);
   }
 
   /**

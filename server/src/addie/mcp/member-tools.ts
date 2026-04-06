@@ -16,6 +16,7 @@ import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-ag
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
+import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
   setAgentTesterLogger,
@@ -381,12 +382,26 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'join_working_group',
     description:
-      'Join a public working group on behalf of the current user. Only works for public groups - private groups require an invitation. The user must be a member of AgenticAdvertising.org.',
+      'Join a working group on behalf of the current user. If the group is private, suggests using request_working_group_invitation instead. The user must be a member of AgenticAdvertising.org.',
     usage_hints: 'use when user explicitly wants to join a group',
     input_schema: {
       type: 'object',
       properties: {
         slug: { type: 'string', description: 'Group slug to join' },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'request_working_group_invitation',
+    description:
+      'Request an invitation to a private working group on behalf of the user. Creates an escalation so an admin can process the invite. Use this when join_working_group fails because a group is private.',
+    usage_hints: 'use when a user wants to join a private working group',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Group slug to request invitation for' },
+        reason: { type: 'string', description: 'Why the user wants to join (optional but helpful for admins)' },
       },
       required: ['slug'],
     },
@@ -962,6 +977,21 @@ export const MEMBER_TOOLS: AddieTool[] = [
       required: ['title', 'body'],
     },
   },
+  {
+    name: 'create_github_issue',
+    description:
+      'Create a GitHub issue directly via the API. Use this after showing the user a draft and getting their confirmation. Requires GITHUB_TOKEN to be configured. Attribution is added automatically. All issues go to the "adcp" repository.',
+    usage_hints: 'use after draft_github_issue when user confirms they want the issue created, or when user explicitly asks to create an issue directly',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Issue title' },
+        body: { type: 'string', description: 'Issue body (no PII - GitHub is public)' },
+        repo: { type: 'string', description: 'Repo name (default: "adcp")' },
+      },
+      required: ['title', 'body'],
+    },
+  },
 
   // ============================================
   // INDUSTRY FEED PROPOSALS
@@ -1293,11 +1323,24 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
+
+    // Check group visibility before attempting to join
+    const groupResult = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
+    if (groupResult.ok) {
+      const groupData = groupResult.data as { working_group: { is_private?: boolean; name?: string } };
+      if (groupData.working_group?.is_private) {
+        return `"${groupData.working_group.name || slug}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
+      }
+    }
+
     const result = await callApi('POST', `/api/working-groups/${slug}/join`, memberContext);
 
     if (!result.ok) {
       if (result.status === 403) {
-        return `Cannot join "${slug}" - this is a private working group that requires an invitation.`;
+        return `Cannot join "${slug}" — this is a private working group. Use request_working_group_invitation to request access.`;
+      }
+      if (result.status === 404) {
+        return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
       }
       if (result.status === 409) {
         return `You're already a member of the "${slug}" working group!`;
@@ -1305,7 +1348,49 @@ export function createMemberToolHandlers(
       throw new ToolError(`Failed to join working group: ${result.error}`);
     }
 
-    return `✅ Successfully joined the "${slug}" working group! You can now participate in discussions and see group posts.`;
+    return `Successfully joined the "${slug}" working group! You can now participate in discussions and see group posts.`;
+  });
+
+  handlers.set('request_working_group_invitation', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to request a working group invitation. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.slug as string;
+    const reason = input.reason as string | undefined;
+
+    // Verify the group exists
+    const groupResult = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
+    if (!groupResult.ok) {
+      if (groupResult.status === 404) {
+        return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
+      }
+    }
+
+    const userDisplayName = memberContext?.slack_user?.display_name
+      ?? (memberContext?.workos_user?.first_name
+        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
+        : undefined);
+    const orgName = memberContext?.organization?.name;
+    const userEmail = memberContext?.workos_user?.email;
+
+    const summary = `${userDisplayName || 'A member'}${orgName ? ` (${orgName})` : ''} is requesting an invitation to the ${slug} working group.${reason ? ` Reason: ${reason}` : ''}`;
+
+    const escalation = await createEscalation({
+      workos_user_id: memberContext.workos_user.workos_user_id,
+      slack_user_id: memberContext?.slack_user?.slack_user_id,
+      user_display_name: userDisplayName,
+      user_email: userEmail,
+      category: 'needs_human_action',
+      priority: 'normal',
+      summary,
+      original_request: `Request to join private working group: ${slug}`,
+      addie_context: reason || undefined,
+    });
+
+    logger.info({ escalationId: escalation.id, slug, userId: memberContext.workos_user.workos_user_id }, 'Working group invitation request created');
+
+    return `Invitation request submitted for the "${slug}" working group. The team has been notified and will send an invite to ${userEmail || 'your account'}. You can check the status with get_escalation_status.`;
   });
 
   handlers.set('get_my_working_groups', async () => {
@@ -3926,6 +4011,77 @@ export function createMemberToolHandlers(
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
 
     return response;
+  });
+
+  handlers.set('create_github_issue', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to create GitHub issues. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      return 'GitHub issue creation is not configured (GITHUB_TOKEN not set). Use draft_github_issue to generate a link instead.';
+    }
+
+    const title = input.title as string;
+    const body = input.body as string;
+    const org = 'adcontextprotocol';
+    const ALLOWED_REPOS = new Set(['adcp']);
+    const repo = ALLOWED_REPOS.has(input.repo as string) ? (input.repo as string) : 'adcp';
+
+    // Add attribution
+    const userDisplayName = memberContext?.slack_user?.display_name
+      ?? (memberContext?.workos_user?.first_name
+        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
+        : undefined);
+    const orgName = memberContext?.organization?.name;
+    const attribution = userDisplayName
+      ? `\n\n---\n*Filed by Addie on behalf of ${userDisplayName}${orgName ? ` (${orgName})` : ''}*`
+      : '\n\n---\n*Filed by Addie*';
+
+    const ghHeaders = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github.v3+json',
+    };
+    const apiUrl = `https://api.github.com/repos/${org}/${repo}/issues`;
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: ghHeaders,
+        body: JSON.stringify({
+          title,
+          body: body + attribution,
+          labels: ['community-reported'],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error({ status: response.status, repo }, 'create_github_issue: GitHub API error');
+        // Retry without labels only if the 422 is specifically about labels
+        if (response.status === 422 && errorText.includes('label')) {
+          const retryResponse = await fetch(apiUrl, {
+            method: 'POST',
+            headers: ghHeaders,
+            body: JSON.stringify({ title, body: body + attribution }),
+          });
+          if (retryResponse.ok) {
+            const issue = await retryResponse.json() as { html_url: string; number: number };
+            return `Issue created: [#${issue.number}](${issue.html_url})`;
+          }
+        }
+        return `Failed to create issue (${response.status}). Use draft_github_issue to generate a link instead.`;
+      }
+
+      const issue = await response.json() as { html_url: string; number: number };
+      logger.info({ issueUrl: issue.html_url, repo }, 'create_github_issue: Issue created');
+      return `Issue created: [#${issue.number}](${issue.html_url})`;
+    } catch (error) {
+      logger.error({ error, repo }, 'create_github_issue: Failed to create issue');
+      return 'Failed to create issue due to a network error. Use draft_github_issue to generate a link instead.';
+    }
   });
 
   // ============================================

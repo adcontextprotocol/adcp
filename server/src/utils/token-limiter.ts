@@ -16,8 +16,8 @@ import { logger } from '../logger.js';
  * Reserve buffer space for system prompt, tools, and response generation.
  */
 export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  'claude-opus-4-6': 200000,
-  'claude-sonnet-4-6': 200000,
+  'claude-opus-4-6': 1000000,
+  'claude-sonnet-4-6': 1000000,
   'claude-haiku-4-5': 200000,
   // Default for unknown models
   default: 200000,
@@ -262,17 +262,28 @@ export function trimConversationHistory(
   };
 }
 
+/** Tool results from knowledge searches are authoritative and should survive compaction */
+const PRESERVE_TOOL_RESULTS = new Set([
+  'search_docs',
+  'search_repos',
+  'get_doc',
+  'get_schema',
+]);
+
 /**
  * Compact old tool call results in conversation history to reclaim context.
  *
  * Replaces tool call results older than `keepRecentTurns` assistant turns
  * with a short placeholder. Checkpoints capture teaching state, so old
  * tool results (get_products responses, module content, etc.) are redundant.
+ * Knowledge search results are preserved up to 20K chars since they contain
+ * authoritative protocol verification.
  *
  * @param messages - Conversation history (newest last)
  * @param keepRecentTurns - Number of most-recent assistant turns to preserve fully
  * @returns New array with compacted tool results (does not mutate input)
  */
+
 export function compactOldToolResults(
   messages: MessageTurn[],
   keepRecentTurns: number = 4,
@@ -295,6 +306,8 @@ export function compactOldToolResults(
 
     const compactedCalls = msg.toolCalls.map(tc => {
       if (tc.result.length <= 200) return tc;
+      // Preserve knowledge search results under 20K chars — they're authoritative verification
+      if (PRESERVE_TOOL_RESULTS.has(tc.name) && tc.result.length <= 20000) return tc;
       return {
         ...tc,
         result: '[Result compacted — see checkpoint for current teaching state]',
@@ -303,6 +316,44 @@ export function compactOldToolResults(
 
     return { ...msg, toolCalls: compactedCalls };
   });
+}
+
+/**
+ * Build a structured summary of dropped conversation turns.
+ * Used to inject a context preamble when messages are trimmed.
+ *
+ * Only includes metadata (tool names, message counts) — never raw user content,
+ * since this gets injected into the system prompt.
+ *
+ * @param droppedMessages - Messages that were removed during trimming
+ * @returns A concise summary string, or null if nothing worth summarizing
+ */
+export function buildDroppedMessagesSummary(droppedMessages: MessageTurn[]): string | null {
+  if (droppedMessages.length < 5) return null;
+
+  const toolsUsed = new Set<string>();
+  let userMessageCount = 0;
+
+  for (const msg of droppedMessages) {
+    if (msg.toolCalls) {
+      for (const tc of msg.toolCalls) {
+        toolsUsed.add(tc.name);
+      }
+    }
+    if (msg.role === 'user') userMessageCount++;
+  }
+
+  const parts: string[] = [];
+  parts.push(`## Earlier Conversation Summary`);
+  parts.push(`${droppedMessages.length} earlier messages (${userMessageCount} from the user) were dropped from context.`);
+
+  if (toolsUsed.size > 0) {
+    parts.push(`\n**Tools used earlier:** ${Array.from(toolsUsed).join(', ')}`);
+  }
+
+  parts.push(`\nIf the user references something from earlier that you don't recall, acknowledge the context was trimmed and offer to look it up or suggest starting a new thread.`);
+
+  return parts.join('\n');
 }
 
 /**

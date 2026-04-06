@@ -1456,7 +1456,7 @@
         }
 
         const result = await response.json();
-        window.orgAdminAuditResult = result; // Store for use in fix function
+        window.orgAdminAuditResult = result;
 
         const banner = document.getElementById('orgAdminBanner');
         const reviewList = document.getElementById('reviewOrgsList');
@@ -1467,35 +1467,25 @@
           return;
         }
 
-        // Build status message
-        const parts = [];
-        if (result.single_member_orgs > 0) {
-          parts.push(`${result.single_member_orgs} single-member (auto-fixable)`);
-        }
-        if (result.needs_review > 0) {
-          parts.push(`${result.needs_review} multi-member (need review)`);
-        }
-
         document.getElementById('orgAdminStatus').textContent =
           `${result.orgs_without_admin} org${result.orgs_without_admin > 1 ? 's' : ''} without admin`;
-        document.getElementById('orgAdminDetails').textContent = parts.join(', ');
+        document.getElementById('orgAdminDetails').textContent =
+          'Longest-tenured member will be promoted to admin';
 
-        // Only show fix button if there are single-member orgs to auto-fix
         const fixBtn = document.getElementById('fixOrgAdminsBtn');
-        fixBtn.style.display = result.single_member_orgs > 0 ? 'inline-flex' : 'none';
+        fixBtn.style.display = 'inline-flex';
         fixBtn.disabled = false;
-        fixBtn.textContent = `Fix ${result.single_member_orgs} Single-Member Org${result.single_member_orgs !== 1 ? 's' : ''}`;
+        fixBtn.textContent = `Fix ${result.orgs_without_admin} Org${result.orgs_without_admin !== 1 ? 's' : ''}`;
 
-        // Show review button if there are multi-member orgs
+        // Show review button to inspect which orgs are affected
         const reviewBtn = document.getElementById('showReviewOrgsBtn');
-        reviewBtn.style.display = result.needs_review > 0 ? 'inline-flex' : 'none';
-        reviewBtn.textContent = `Show ${result.needs_review} Org${result.needs_review !== 1 ? 's' : ''}`;
+        reviewBtn.style.display = 'inline-flex';
+        reviewBtn.textContent = `Show ${result.orgs_without_admin} Org${result.orgs_without_admin !== 1 ? 's' : ''}`;
 
-        // Populate review list
-        const multiMemberOrgs = result.details.filter(d => d.needs_manual_review);
+        // Populate review list with all orgs needing admin
         const listContent = document.getElementById('reviewOrgsListContent');
-        listContent.innerHTML = multiMemberOrgs.map(org => {
-          const memberEmails = org.members.map(m => m.email).join(', ');
+        listContent.innerHTML = result.details.map(org => {
+          const memberEmails = org.members.map(m => escapeHtml(m.email)).join(', ');
           return `<a href="/admin/accounts/${encodeURIComponent(org.org_id)}"
                      class="btn btn-small btn-secondary"
                      style="font-size: var(--text-xs);"
@@ -1504,9 +1494,7 @@
                   </a>`;
         }).join('');
 
-        // Hide review list initially (user can toggle)
         reviewList.style.display = 'none';
-
         banner.style.display = 'flex';
       } catch (error) {
         console.error('Error checking org admins:', error);
@@ -1518,9 +1506,10 @@
       const btn = document.getElementById('showReviewOrgsBtn');
       const isHidden = list.style.display === 'none';
       list.style.display = isHidden ? 'block' : 'none';
+      const count = window.orgAdminAuditResult?.orgs_without_admin || 0;
       btn.textContent = isHidden
         ? 'Hide Orgs'
-        : `Show ${window.orgAdminAuditResult?.needs_review || 0} Org${(window.orgAdminAuditResult?.needs_review || 0) !== 1 ? 's' : ''}`;
+        : `Show ${count} Org${count !== 1 ? 's' : ''}`;
     }
 
     async function fixOrgAdmins() {
@@ -1539,17 +1528,16 @@
 
           let message = '';
           if (result.auto_fixed > 0) {
-            message += `Auto-fixed ${result.auto_fixed} single-member org(s):\n\n${fixedList}`;
+            message += `Promoted admins in ${result.auto_fixed} org(s):\n\n${fixedList}`;
           }
-          if (result.needs_review > 0) {
-            message += `\n\n${result.needs_review} multi-member org(s) still need manual admin assignment.`;
+          if (result.remaining > 0) {
+            message += `\n\n${result.remaining} org(s) could not be fixed (check logs).`;
+          }
+          if (!result.auto_fixed && !result.remaining) {
+            message = 'No orgs needed fixing.';
           }
 
-          if (message) {
-            alert(message.trim());
-          }
-
-          // Re-check to update banner
+          alert(message.trim());
           await checkOrgAdmins();
         } else {
           alert('Failed to fix organizations');
@@ -1559,7 +1547,6 @@
         alert('Error fixing org admins');
       }
 
-      // Always reset button state
       btn.disabled = false;
       btn.textContent = 'Fix Now';
     }

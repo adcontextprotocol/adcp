@@ -738,10 +738,10 @@ export function createMeetingRouters(): {
   // PUBLIC API ROUTES (/api/meetings)
   // =========================================================================
 
-  // GET /api/meetings - List upcoming meetings (public)
+  // GET /api/meetings - List meetings (public)
   publicApiRouter.get('/', optionalAuth, async (req: Request, res: Response) => {
     try {
-      const { working_group_id, limit } = req.query;
+      const { working_group_id, limit, past } = req.query;
 
       // Validate working_group_id if provided
       if (working_group_id && !isValidUuid(working_group_id as string)) {
@@ -751,9 +751,12 @@ export function createMeetingRouters(): {
         });
       }
 
+      const isPast = past === 'true';
+
       const meetings = await meetingsDb.listMeetings({
         working_group_id: working_group_id as string,
-        upcoming_only: true,
+        upcoming_only: !isPast,
+        past_only: isPast,
         limit: limit ? Math.min(parseInt(limit as string, 10), 500) : undefined,
       });
 

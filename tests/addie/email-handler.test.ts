@@ -1,88 +1,23 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
-import type { MemberContext } from '../../server/src/addie/member-context.js';
+import { describe, test, expect, vi } from 'vitest';
 
-const { mockMemberContext, state } = vi.hoisted(() => {
-  const mockMemberContext: MemberContext = {
-    is_mapped: true,
-    is_member: true,
-    slack_linked: false,
-    organization: {
-      workos_organization_id: 'org_test_123',
-      name: 'Responsible Media Ltd',
-      subscription_status: null,
-      is_personal: false,
-    },
-    workos_user: {
-      workos_user_id: 'user_emily_123',
-      email: 'emily@responsiblem.com',
-      first_name: 'Emily',
-      last_name: 'Roberts',
-    },
-  } as MemberContext;
-  return { mockMemberContext, state: { billingHandlersCalledWith: [] as unknown[] } };
-});
+// Mock the transitive dependencies that require env vars
+vi.mock('../../server/src/routes/addie-chat.js', () => ({
+  getChatClaudeClient: vi.fn(),
+  prepareRequestWithMemberTools: vi.fn(),
+  buildTieredAccess: vi.fn(),
+}));
 
-// --- Mock modules (must be before imports) ---
-vi.mock('../../server/src/addie/claude-client.js', () => ({
-  AddieClaudeClient: vi.fn().mockImplementation(function () {
-    return {
-      processMessage: vi.fn<any>().mockResolvedValue({
-        text: 'Here is your payment link.',
-        tools_used: ['create_payment_link'],
-        flagged: false,
-      }),
-    };
-  }),
+vi.mock('../../server/src/addie/thread-service.js', () => ({
+  getThreadService: vi.fn(),
 }));
 
 vi.mock('../../server/src/addie/security.js', () => ({
-  sanitizeInput: vi.fn().mockImplementation((input: string) => ({
-    sanitized: input,
-    flagged: false,
-  })),
-  validateOutput: vi.fn().mockImplementation((input: string) => ({
-    sanitized: input,
-    flagged: false,
-  })),
-  generateInteractionId: vi.fn().mockReturnValue('test-interaction-id'),
-}));
-
-vi.mock('../../server/src/addie/member-context.js', () => ({
-  getWebMemberContext: vi.fn<any>().mockResolvedValue(mockMemberContext),
-  formatMemberContextForPrompt: vi.fn().mockReturnValue('Member context summary'),
-}));
-
-vi.mock('../../server/src/addie/mcp/admin-tools.js', () => ({
-  isWebUserAAOAdmin: vi.fn<any>().mockResolvedValue(false),
-  ADMIN_TOOLS: [],
-  createAdminToolHandlers: vi.fn().mockReturnValue(new Map()),
-}));
-
-vi.mock('../../server/src/addie/mcp/member-tools.js', () => ({
-  MEMBER_TOOLS: [],
-  createMemberToolHandlers: vi.fn().mockReturnValue(new Map()),
-}));
-
-vi.mock('../../server/src/addie/mcp/billing-tools.js', () => ({
-  BILLING_TOOLS: [],
-  createBillingToolHandlers: vi.fn<any>().mockImplementation((...args: unknown[]) => {
-    state.billingHandlersCalledWith = args;
-    return new Map();
-  }),
+  sanitizeInput: vi.fn().mockImplementation((input: string) => ({ sanitized: input, flagged: false })),
+  validateOutput: vi.fn().mockImplementation((input: string) => ({ sanitized: input, flagged: false })),
 }));
 
 vi.mock('../../server/src/notifications/email.js', () => ({
-  sendEmailReply: vi.fn<any>().mockResolvedValue({ success: true, messageId: 'msg_123' }),
-}));
-
-vi.mock('../../server/src/db/addie-db.js', () => ({
-  AddieDatabase: vi.fn().mockImplementation(function () {
-    return { logInteraction: vi.fn<any>().mockResolvedValue(undefined) };
-  }),
-}));
-
-vi.mock('../../server/src/config/models.js', () => ({
-  AddieModelConfig: { chat: 'claude-sonnet-4-20250514' },
+  sendEmailReply: vi.fn(),
 }));
 
 vi.mock('../../server/src/utils/markdown.js', () => ({
@@ -96,39 +31,73 @@ vi.mock('../../server/src/logger.js', () => ({
   }),
 }));
 
-describe('email-handler', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    state.billingHandlersCalledWith = [];
-  });
+import { stripQuotedContent } from '../../server/src/addie/email-conversation-handler.js';
 
-  describe('handleEmailInvocation', () => {
-    test('passes member context to billing tool handlers', async () => {
-      const { initializeEmailHandler, handleEmailInvocation } = await import(
-        '../../server/src/addie/email-handler.js'
-      );
+describe('email-conversation-handler', () => {
+  describe('stripQuotedContent', () => {
+    test('removes "On ... wrote:" quoted replies', () => {
+      const text = `Thanks for the info!
 
-      // Set ANTHROPIC_API_KEY so initialization succeeds
-      process.env.ADDIE_ANTHROPIC_API_KEY = 'test-key';
-      initializeEmailHandler();
+On Mon, Jan 6, 2025 at 3:00 PM Brian wrote:
+> Here's the pricing breakdown.
+> Let me know if you have questions.`;
 
-      await handleEmailInvocation(
-        {
-          emailId: 'email_123',
-          messageId: 'msg_123',
-          from: 'emily@responsiblem.com',
-          to: ['addie@agenticadvertising.org'],
-          subject: 'Membership purchase',
-          textContent: 'Addie, please send a payment link for the Individual membership',
-          addieAddress: 'addie@agenticadvertising.org',
-        },
-        'user_emily_123'
-      );
+      expect(stripQuotedContent(text)).toBe('Thanks for the info!');
+    });
 
-      // The key assertion: createBillingToolHandlers must receive the member context,
-      // not be called with no arguments (which was the bug)
-      expect(state.billingHandlersCalledWith).toHaveLength(1);
-      expect(state.billingHandlersCalledWith[0]).toEqual(mockMemberContext);
+    test('removes forwarded message markers', () => {
+      const text = `Please review this.
+
+---------- Forwarded message ----------
+From: someone@example.com
+Subject: Original topic`;
+
+      expect(stripQuotedContent(text)).toBe('Please review this.');
+    });
+
+    test('removes signature dividers', () => {
+      const text = `Sounds good, let's proceed.
+--
+Jane Smith
+VP of Media`;
+
+      expect(stripQuotedContent(text)).toBe("Sounds good, let's proceed.");
+    });
+
+    test('removes lines starting with >', () => {
+      const text = `I agree.
+> Previous message content
+> More quoted text
+My follow-up.`;
+
+      expect(stripQuotedContent(text)).toBe('I agree.\nMy follow-up.');
+    });
+
+    test('returns empty string for empty input', () => {
+      expect(stripQuotedContent('')).toBe('');
+    });
+
+    test('returns original text when no quotes present', () => {
+      const text = 'Just a plain message with no quotes.';
+      expect(stripQuotedContent(text)).toBe(text);
+    });
+
+    test('handles "Begin forwarded message:" marker', () => {
+      const text = `FYI see below.
+
+Begin forwarded message:
+From: someone@example.com`;
+
+      expect(stripQuotedContent(text)).toBe('FYI see below.');
+    });
+
+    test('handles "Original Message" marker', () => {
+      const text = `Please handle this.
+
+-----Original Message-----
+From: someone@example.com`;
+
+      expect(stripQuotedContent(text)).toBe('Please handle this.');
     });
   });
 });

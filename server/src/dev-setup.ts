@@ -12,6 +12,7 @@ const logger = createLogger("dev-setup");
 export async function seedDevData(orgDb: OrganizationDatabase): Promise<void> {
   await seedDevOrganizations(orgDb);
   await seedDevUsers();
+  await seedDevMemberships();
   await seedDevMemberProfiles();
   await seedDevHierarchyData(orgDb);
 }
@@ -32,6 +33,14 @@ async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> 
       company_type: null,
       revenue_tier: null,
     },
+    {
+      id: 'org_dev_builder_001',
+      name: 'Acme Ad Tech',
+      is_personal: false,
+      company_type: 'adtech' as const,
+      revenue_tier: '5m_50m' as const,
+      membership_tier: 'company_standard' as const,
+    },
   ];
 
   for (const devOrg of devOrgs) {
@@ -44,8 +53,17 @@ async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> 
           is_personal: devOrg.is_personal,
           company_type: devOrg.company_type || undefined,
           revenue_tier: devOrg.revenue_tier || undefined,
+          membership_tier: (devOrg as any).membership_tier || undefined,
         });
         logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
+      } else if ((devOrg as any).membership_tier) {
+        // Ensure tier and subscription status are set for paid dev orgs
+        const pool = getPool();
+        await pool.query(
+          `UPDATE organizations SET membership_tier = $1, subscription_status = 'active'
+           WHERE workos_organization_id = $2 AND (membership_tier IS DISTINCT FROM $1 OR subscription_status IS DISTINCT FROM 'active')`,
+          [(devOrg as any).membership_tier, devOrg.id]
+        );
       }
     } catch (error) {
       if (error instanceof Error && error.message.includes('duplicate key')) {
@@ -78,6 +96,19 @@ async function seedDevMemberProfiles(): Promise<void> {
       description: 'A personal account for testing portrait generation and offerings.',
       offerings: '{consulting}',
       agents: JSON.stringify([]),
+      isPublic: true,
+    },
+    {
+      orgId: 'org_dev_builder_001',
+      displayName: 'Acme Ad Tech',
+      slug: 'acme-ad-tech',
+      tagline: 'Agentic media buying for mid-market brands',
+      description: 'Acme builds buyer and seller agents for programmatic advertising. Builder-tier member with active team and compliance monitoring.',
+      offerings: '{buyer_agent,seller_agent,consulting}',
+      agents: JSON.stringify([
+        { url: 'https://buyer.acme-adtech.dev', name: 'Acme Buyer Agent', type: 'buyer', is_public: true },
+        { url: 'https://seller.acme-adtech.dev', name: 'Acme Seller Agent', type: 'seller', is_public: true },
+      ]),
       isPublic: true,
     },
   ];
@@ -209,4 +240,35 @@ async function seedDevUsers(): Promise<void> {
       logger.debug({ userId: devUser.id, key }, 'Dev user seed skipped');
     }
   }
+}
+
+async function seedDevMemberships(): Promise<void> {
+  const pool = getPool();
+  const memberships = [
+    // Admin user in their default org
+    { userId: 'user_dev_admin_001', orgId: 'org_dev_company_001', membershipId: 'mem_dev_admin_001', email: 'admin@test.local', firstName: 'Admin', lastName: 'Tester', role: 'owner' },
+    // Admin user in IPG hierarchy org
+    { userId: 'user_dev_admin_001', orgId: 'org_dev_ipg_um', membershipId: 'mem_dev_admin_ipg', email: 'admin@test.local', firstName: 'Admin', lastName: 'Tester', role: 'owner' },
+    // Member user
+    { userId: 'user_dev_member_001', orgId: 'org_dev_company_001', membershipId: 'mem_dev_member_001', email: 'member@test.local', firstName: 'Member', lastName: 'User', role: 'member' },
+    // Builder user (paid tier org)
+    { userId: 'user_dev_builder_001', orgId: 'org_dev_builder_001', membershipId: 'mem_dev_builder_001', email: 'builder@test.local', firstName: 'Builder', lastName: 'Member', role: 'owner' },
+    // Extra team members for the builder org (to show team dynamics)
+    { userId: 'user_dev_learner_001', orgId: 'org_dev_builder_001', membershipId: 'mem_dev_learner1_builder', email: 'learner1@test.local', firstName: 'Learner', lastName: 'One', role: 'member' },
+    { userId: 'user_dev_learner_002', orgId: 'org_dev_builder_001', membershipId: 'mem_dev_learner2_builder', email: 'learner2@test.local', firstName: 'Learner', lastName: 'Two', role: 'member' },
+  ];
+
+  for (const m of memberships) {
+    try {
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, seat_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'contributor')
+         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+        [m.userId, m.orgId, m.membershipId, m.email, m.firstName, m.lastName, m.role]
+      );
+    } catch (error) {
+      logger.debug({ userId: m.userId, orgId: m.orgId }, 'Dev membership seed skipped');
+    }
+  }
+  logger.info('Seeded dev organization memberships');
 }

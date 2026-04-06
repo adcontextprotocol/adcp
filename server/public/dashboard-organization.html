@@ -415,343 +415,6 @@
     .hub-card-link:hover { text-decoration: underline; }
 
     /* =========================================================================
-       Agent Compliance
-       ========================================================================= */
-    .agent-compliance-card {
-      padding: var(--space-4);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-lg);
-      margin-bottom: var(--space-3);
-    }
-    .agent-compliance-card:last-child { margin-bottom: 0; }
-
-    .agent-compliance-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-3);
-      flex-wrap: wrap;
-    }
-
-    .agent-hostname {
-      font-weight: var(--font-semibold);
-      color: var(--color-text-heading);
-      font-size: var(--text-sm);
-    }
-
-    .agent-status-dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .agent-status-dot--passing { background: var(--color-success-500); }
-    .agent-status-dot--degraded { background: var(--color-warning-500); }
-    .agent-status-dot--failing { background: var(--color-error-500); }
-    .agent-status-dot--unknown { background: var(--color-gray-400); }
-
-    .agent-status-label {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    .agent-streak {
-      padding: 1px var(--space-2);
-      background: var(--color-success-50);
-      color: var(--color-success-700);
-      border-radius: var(--radius-full);
-      font-size: 10px;
-      font-weight: var(--font-semibold);
-    }
-
-    .agent-headline {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      margin-top: var(--space-2);
-    }
-
-    .agent-tracks {
-      display: flex;
-      gap: 3px;
-      flex-wrap: wrap;
-      margin-top: var(--space-2);
-    }
-
-    .agent-track {
-      padding: 1px var(--space-2);
-      border-radius: var(--radius-full);
-      font-size: 10px;
-      font-weight: var(--font-semibold);
-      border: none;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .agent-track:hover { opacity: 0.8; }
-    .agent-track.active { outline: 2px solid var(--color-primary-500); outline-offset: 1px; }
-
-    .agent-track-detail {
-      margin-top: var(--space-3);
-      padding: var(--space-3);
-      background: var(--color-gray-50);
-      border-radius: var(--radius-md);
-      font-size: var(--text-xs);
-    }
-    .agent-track-detail h4 { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
-    .track-scenario { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-gray-200); }
-    .track-scenario:last-child { border-bottom: none; }
-    .track-scenario-name { font-weight: var(--font-semibold); }
-    .track-scenario--pass .track-scenario-name::before { content: '\2713 '; color: var(--color-success-600); }
-    .track-scenario--fail .track-scenario-name::before { content: '\2717 '; color: var(--color-error-600); }
-    .track-scenario-steps { margin-top: var(--space-1); padding-left: var(--space-4); color: var(--color-text-muted); }
-    .track-step--fail { color: var(--color-error-600); }
-
-    .agent-history-btn {
-      background: none;
-      border: none;
-      color: var(--color-primary-600);
-      font-size: var(--text-xs);
-      cursor: pointer;
-      padding: 0;
-    }
-    .agent-history-btn:hover { text-decoration: underline; }
-
-    .agent-history-panel {
-      margin-top: var(--space-3);
-      font-size: var(--text-xs);
-    }
-    .history-run {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-2) 0;
-      border-bottom: 1px solid var(--color-gray-200);
-      cursor: pointer;
-    }
-    .history-run:last-child { border-bottom: none; }
-    .history-run:hover { background: var(--color-gray-50); }
-    .history-run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .history-run-detail { display: none; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
-    .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
-    .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
-    .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .agent-track--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
-
-    .agent-sparkline {
-      display: flex;
-      gap: 2px;
-      margin-top: var(--space-2);
-      height: 16px;
-      align-items: flex-end;
-    }
-
-    .agent-sparkline-bar {
-      flex: 1;
-      min-width: 4px;
-      max-width: 16px;
-      height: 100%;
-      border-radius: 2px;
-    }
-
-    .agent-meta-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      margin-top: var(--space-2);
-    }
-    .agent-action-link {
-      font-size: var(--text-xs);
-      font-weight: var(--font-semibold);
-      color: var(--color-primary-600);
-      text-decoration: none;
-    }
-    .agent-action-link:hover {
-      text-decoration: underline;
-    }
-    .agent-auth-section {
-      margin-top: var(--space-3);
-      padding-top: var(--space-3);
-      border-top: var(--border-1) solid var(--color-border);
-    }
-    .agent-auth-status {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    .agent-lifecycle-select {
-      font-size: var(--text-xs);
-      padding: 2px var(--space-2);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-bg-card);
-      color: var(--color-text-secondary);
-      cursor: pointer;
-    }
-
-    .agent-toggle {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-      cursor: pointer;
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-    }
-
-    .agent-toggle input { cursor: pointer; }
-    .agent-toggle-label { user-select: none; }
-
-    /* =========================================================================
-       Storyboards
-       ========================================================================= */
-    .agent-storyboard-btn {
-      background: var(--color-primary-600);
-      color: white;
-      border: none;
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
-      cursor: pointer;
-    }
-    .agent-storyboard-btn:hover { background: var(--color-primary-700); }
-
-    .agent-storyboard-panel {
-      border-top: 1px solid var(--color-border);
-      margin-top: var(--space-3);
-      padding-top: var(--space-3);
-    }
-
-    .storyboard-picker {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .storyboard-picker-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-3);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: border-color 0.15s;
-    }
-    .storyboard-picker-item:hover { border-color: var(--color-primary-500); }
-
-    .storyboard-picker-title { font-weight: 600; font-size: var(--text-sm); }
-    .storyboard-picker-summary { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
-
-    .storyboard-phase {
-      margin-bottom: var(--space-4);
-    }
-
-    .storyboard-phase-title {
-      font-weight: 600;
-      font-size: var(--text-sm);
-      margin-bottom: var(--space-2);
-      color: var(--color-text-primary);
-    }
-
-    .storyboard-phase-narrative {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-3);
-      line-height: 1.5;
-    }
-
-    .storyboard-step {
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      margin-bottom: var(--space-2);
-    }
-
-    .storyboard-step-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: var(--space-2);
-    }
-
-    .storyboard-step-title { font-weight: 500; font-size: var(--text-sm); }
-
-    .storyboard-step-result {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      font-weight: 600;
-    }
-    .storyboard-step-result--pass { background: var(--color-success-100); color: var(--color-success-700); }
-    .storyboard-step-result--fail { background: var(--color-error-100); color: var(--color-error-700); }
-    .storyboard-step-result--pending { background: var(--color-warning-100); color: var(--color-warning-700); }
-
-    .storyboard-step-narrative {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      line-height: 1.5;
-      margin-bottom: var(--space-2);
-    }
-
-    .storyboard-step-meta {
-      display: flex;
-      gap: var(--space-3);
-      font-size: var(--text-xs);
-      color: var(--color-text-tertiary);
-    }
-
-    .storyboard-step-meta a { color: var(--color-primary-600); text-decoration: none; }
-    .storyboard-step-meta a:hover { text-decoration: underline; }
-
-    .storyboard-actions {
-      display: flex;
-      gap: var(--space-2);
-      margin-top: var(--space-3);
-    }
-
-    .storyboard-run-btn {
-      background: var(--color-primary-600);
-      color: white;
-      border: none;
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
-      cursor: pointer;
-    }
-    .storyboard-run-btn:hover { background: var(--color-primary-700); }
-    .storyboard-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .storyboard-compare-btn {
-      background: transparent;
-      color: var(--color-primary-600);
-      border: 1px solid var(--color-primary-600);
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
-      cursor: pointer;
-    }
-    .storyboard-compare-btn:hover { background: var(--color-primary-50); }
-    .storyboard-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .storyboard-progress {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      padding: var(--space-3) 0;
-    }
-
-    .storyboard-back-btn {
-      background: none;
-      border: none;
-      color: var(--color-primary-600);
-      font-size: var(--text-sm);
-      cursor: pointer;
-      padding: 0;
-      margin-bottom: var(--space-3);
-    }
-    .storyboard-back-btn:hover { text-decoration: underline; }
-
-    /* =========================================================================
        Persona
        ========================================================================= */
     .persona-display { text-align: center; padding: var(--space-4) 0; }
@@ -1001,6 +664,96 @@
     .hub-empty a { color: var(--color-brand); text-decoration: none; font-weight: var(--font-medium); }
     .hub-empty a:hover { text-decoration: underline; }
 
+    /* Welcome banner for new orgs */
+    .welcome-banner {
+      background: var(--color-primary-50);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-8);
+      margin-bottom: var(--space-6);
+    }
+    .welcome-banner h2 {
+      font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--color-text-heading); margin: 0 0 var(--space-2);
+    }
+    .welcome-banner > p {
+      font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0 0 var(--space-6);
+    }
+    .welcome-checklist {
+      display: flex; flex-direction: column; gap: var(--space-3);
+    }
+    .welcome-checklist-item {
+      display: flex; align-items: center; gap: var(--space-4);
+      padding: var(--space-4); background: var(--color-bg-card);
+      border-radius: var(--radius-lg); border: var(--border-1) solid var(--color-border);
+    }
+    .welcome-checklist-item .wc-icon {
+      font-size: var(--text-xl); flex-shrink: 0; width: 32px; text-align: center;
+    }
+    .welcome-checklist-item .wc-text {
+      flex: 1; min-width: 0;
+    }
+    .welcome-checklist-item .wc-label {
+      font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading);
+    }
+    .welcome-checklist-item .wc-desc {
+      font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-0.5);
+    }
+
+    /* Upgrade teaser card */
+    .upgrade-teaser {
+      border-left: 3px solid var(--color-brand);
+      background: var(--color-primary-50);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+      height: 100%;
+      box-sizing: border-box;
+      display: flex; flex-direction: column;
+    }
+    .upgrade-teaser-label {
+      font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase;
+      letter-spacing: var(--tracking-wide); color: var(--color-brand); margin-bottom: var(--space-2);
+    }
+    .upgrade-teaser-title {
+      font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading); margin-bottom: var(--space-1);
+    }
+    .upgrade-teaser-price {
+      font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);
+    }
+    .upgrade-teaser-unlocks {
+      list-style: none; padding: 0; margin: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-2);
+    }
+    .upgrade-teaser-unlocks li {
+      font-size: var(--text-sm); color: var(--color-text-secondary); padding-left: var(--space-5); position: relative;
+    }
+    .upgrade-teaser-unlocks li::before {
+      content: '✓'; position: absolute; left: 0; color: var(--color-success-500); font-weight: var(--font-bold);
+    }
+    .upgrade-teaser-actions {
+      margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2);
+    }
+    .upgrade-teaser-actions .compare-link {
+      font-size: var(--text-xs); color: var(--color-text-secondary); text-align: center;
+    }
+    .upgrade-teaser-actions .compare-link a {
+      color: var(--color-brand); text-decoration: none;
+    }
+
+    /* Value context in suggested actions */
+    .health-action-value {
+      font-size: var(--text-xs); color: var(--color-brand); margin-top: var(--space-1);
+    }
+
+    /* Persona benefits list */
+    .persona-benefits-list {
+      list-style: none; padding: 0; margin: var(--space-3) 0; display: flex; flex-direction: column; gap: var(--space-2);
+    }
+    .persona-benefits-list li {
+      font-size: var(--text-sm); color: var(--color-text-secondary); padding-left: var(--space-5); position: relative;
+    }
+    .persona-benefits-list li::before {
+      content: '→'; position: absolute; left: 0; color: var(--color-brand);
+    }
+
     /* =========================================================================
        Responsive
        ========================================================================= */
@@ -1085,7 +838,7 @@
             window.location.href = '/auth/login?return_to=/organization';
             return;
           }
-          if (engRes.status === 404) {
+          if (engRes.status === 404 || engRes.status === 403) {
             document.getElementById('hub-loading').innerHTML =
               '<p style="color:var(--color-text-secondary)">Your account is not yet associated with a member organization. ' +
               '<a href="/membership">Learn about membership</a>.</p>';
@@ -1124,33 +877,10 @@
           } catch (e) { /* ignore cert fetch errors */ }
         }
 
-        // Fetch compliance data for org's agents
-        const agentCompliance = new Map();
-        const agents = profileData?.profile?.agents || [];
-        if (agents.length > 0) {
-          const results = await Promise.allSettled(
-            agents.map(async (agent) => {
-              const encoded = encodeURIComponent(agent.url);
-              const [statusRes, historyRes] = await Promise.all([
-                fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
-                fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
-              ]);
-              const status = statusRes.ok ? await statusRes.json() : null;
-              const history = historyRes.ok ? await historyRes.json() : null;
-              return { url: agent.url, status, history };
-            }),
-          );
-          for (const r of results) {
-            if (r.status === 'fulfilled' && r.value.status) {
-              agentCompliance.set(r.value.url, r.value);
-            }
-          }
-        }
-
         const healthData = healthRes.ok ? await healthRes.json() : null;
 
         currentOrgId = currentOrg?.id || null;
-        renderHub(data, profileData?.profile || null, currentOrgId, certSummary, agentCompliance, healthData);
+        renderHub(data, profileData?.profile || null, currentOrgId, certSummary, healthData, currentOrg?.role || 'member');
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -1166,6 +896,8 @@
       'aware', 'evaluating', 'joined', 'onboarding',
       'participating', 'contributing', 'leading', 'advocating',
     ];
+
+    const DISPLAY_STAGES = ['onboarding', 'participating', 'contributing', 'leading', 'advocating'];
 
     const STAGE_DESCS = {
       aware:         'Just getting started',
@@ -1231,6 +963,149 @@
     };
     var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
 
+    const TIER_VALUE_SUMMARY = {
+      'Explorer':     'Addie, certification, and training included',
+      'Professional': 'Slack, working groups, directory, and voting',
+      'Builder':      'API access, 10 seats, and board eligibility',
+      'Partner':      'Featured directory, invoice billing, 60 seats',
+      'Leader':       'Full access — council convening and priority marketing',
+    };
+
+    const NEXT_TIER_TEASER = {
+      'individual_academic': {
+        nextLabel: 'Professional', nextPrice: '$250/yr', priceContext: 'Less than $21/month for your whole team',
+        unlocks: [
+          'Slack access to 300+ practitioners',
+          'Join working groups shaping industry standards',
+          'Directory listing so partners can find you',
+        ],
+      },
+      'individual_professional': {
+        nextLabel: 'Builder', nextPrice: '$2,500/yr', priceContext: 'Less than $210/month for your team',
+        unlocks: [
+          'API access for agent integration and testing',
+          '5 contributor + 5 community seats for your team',
+          'Board eligibility and deeper governance role',
+        ],
+      },
+      'company_standard': {
+        nextLabel: 'Partner', nextPrice: '$10,000/yr', priceContext: 'Less than $835/month',
+        unlocks: [
+          'Your company in front of every partner search',
+          'Seat your whole team — 10 contributors, 50 community',
+          'Dedicated account support with enterprise billing',
+        ],
+      },
+      'company_icl': {
+        nextLabel: 'Leader', nextPrice: '$50,000/yr', priceContext: 'For organizations shaping the standard',
+        unlocks: [
+          'Convene industry councils under your leadership',
+          'Unlimited community access, 20+ contributor seats',
+          'First access to co-marketing and co-publishing',
+        ],
+      },
+    };
+
+    const ACTION_CTA_LABELS = {
+      'increase_certification': 'Get team certified',
+      'join_working_groups':    'Join a group',
+      'reactivate_members':     'View team',
+      'reassign_seats':         'Invite a colleague',
+      'register_agent':         'Register agent',
+      'contribute_content':     'Propose an article',
+    };
+
+    const ACTION_VALUE_CONTEXT = {
+      'increase_certification': 'Certified teams get recognized in the directory and qualify for speaking opportunities.',
+      'join_working_groups':    'Working group members shape the protocols your agents will run on.',
+      'reactivate_members':     'Active members drive your health score and unlock champion recognition.',
+      'reassign_seats':         'Free up seats for team members who will use them.',
+      'register_agent':         'Registered agents get free compliance monitoring and public trust signals.',
+      'contribute_content':     'Published content appears in the directory and builds your team\'s industry reputation.',
+    };
+
+    function isNewOrg(engagementData, healthData) {
+      // Show welcome banner for orgs in their first 14 days, not based on score
+      const memberDays = engagementData?.milestones?.member_days;
+      if (memberDays != null) return memberDays <= 14;
+      // Fallback: no health data means likely very new
+      return !healthData;
+    }
+
+    function renderWelcomeBanner(orgName, orgId) {
+      return `
+        <div class="welcome-banner">
+          <h2>Welcome to AAO, ${escapeHtml(orgName)}</h2>
+          <p>Here's how to get started and make the most of your membership:</p>
+          <div class="welcome-checklist">
+            <a href="/certification" class="welcome-checklist-item" style="text-decoration: none;">
+              <span class="wc-icon">🎓</span>
+              <div class="wc-text">
+                <div class="wc-label">Get your first team member certified</div>
+                <div class="wc-desc">Free with your membership and takes about 30 minutes.</div>
+              </div>
+            </a>
+            <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) : '/member-profile'}" class="welcome-checklist-item" style="text-decoration: none;">
+              <span class="wc-icon">🏢</span>
+              <div class="wc-text">
+                <div class="wc-label">Complete your directory listing</div>
+                <div class="wc-desc">Help other members find you and understand what you do.</div>
+              </div>
+            </a>
+            <a href="/committees?type=working_group" class="welcome-checklist-item" style="text-decoration: none;">
+              <span class="wc-icon">👥</span>
+              <div class="wc-text">
+                <div class="wc-label">Explore working groups</div>
+                <div class="wc-desc">Where the real collaboration happens — protocol development and shared standards.</div>
+              </div>
+            </a>
+          </div>
+        </div>`;
+    }
+
+    function renderUpgradeTeaser(tierKey, orgId, healthData, orgRole) {
+      const canUpgrade = orgRole === 'owner' || orgRole === 'admin';
+      const teaser = NEXT_TIER_TEASER[tierKey];
+      if (!teaser) {
+        // Leader tier — show org footprint instead of empty affirmation
+        const bd = healthData?.health_breakdown || {};
+        const certCount = Math.round((bd.certification_pct || 0) * (healthData?.people?.length || 0) / 100);
+        const agentCount = bd.tech_integration?.agents_registered || 0;
+        const groupCount = Math.round((bd.working_group_pct || 0) * (healthData?.people?.length || 0) / 100);
+        return `
+          <div class="hub-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+            <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); margin-bottom: var(--space-3);">Your org's footprint</div>
+            <div style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading); margin-bottom: var(--space-2);">${certCount} certified · ${agentCount} agent${agentCount !== 1 ? 's' : ''} · ${groupCount} in groups</div>
+            <a href="/membership" style="font-size: var(--text-sm); color: var(--color-brand); text-decoration: none;">View your plan details &rarr;</a>
+          </div>`;
+      }
+
+      const ctaHtml = canUpgrade ? `
+        <div class="upgrade-teaser-actions">
+          <button data-action="billing-portal" data-org-id="${escapeHtml(orgId)}" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">
+            Upgrade to ${escapeHtml(teaser.nextLabel)}
+          </button>
+          <div class="compare-link"><a href="/membership">Compare all plans &rarr;</a></div>
+        </div>
+      ` : `
+        <div class="upgrade-teaser-actions">
+          <div style="font-size: var(--text-sm); color: var(--color-text-secondary); text-align: center; padding: var(--space-3) 0;">Ask your org admin to upgrade</div>
+          <div class="compare-link"><a href="/membership">Learn about plans &rarr;</a></div>
+        </div>
+      `;
+
+      return `
+        <div class="upgrade-teaser">
+          <div class="upgrade-teaser-label">${tierKey === 'individual_academic' ? 'Ready to contribute?' : 'For your team'}</div>
+          <div class="upgrade-teaser-title">${escapeHtml(teaser.nextLabel)}</div>
+          <div class="upgrade-teaser-price">${escapeHtml(teaser.nextPrice)}${teaser.priceContext ? ` — ${escapeHtml(teaser.priceContext)}` : ''}</div>
+          <ul class="upgrade-teaser-unlocks">
+            ${teaser.unlocks.map(u => `<li>${escapeHtml(u)}</li>`).join('')}
+          </ul>
+          ${ctaHtml}
+        </div>`;
+    }
+
     function renderTeamCertProgress(summary) {
       if (!summary || !summary.total_members || summary.members_with_credentials == null) return '';
       const pct = Math.round((summary.members_with_credentials / summary.total_members) * 100);
@@ -1242,7 +1117,7 @@
         </div>`;
     }
 
-    function renderHub(data, profile, orgId, certSummary, agentCompliance, healthData) {
+    function renderHub(data, profile, orgId, certSummary, healthData, orgRole) {
       const {
         organization_name,
         membership_tier, team_size,
@@ -1258,9 +1133,36 @@
       const usage = seat_usage || { contributor: 0, community_only: 0 };
       const communityLimit = tier.community === -1 ? '&infin;' : tier.community;
       const isFreeTier = !membership_tier || membership_tier === 'individual_academic';
+      const tierKey = membership_tier || 'individual_academic';
+      const valueSummary = TIER_VALUE_SUMMARY[tier.label] || '';
 
       // Build team cert progress if available
       const teamCertHtml = certSummary ? renderTeamCertProgress(certSummary) : '';
+
+      // Membership card: simplified for free users, detailed for paid
+      const membershipCardContent = isFreeTier ? `
+        <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
+          <div style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading);">1 community seat</div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">Addie, certification, and training access</div>
+        </div>
+      ` : `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
+          <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
+            <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
+            <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>
+          </div>
+          <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
+            <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.community_only} / ${communityLimit}</div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Community seats</div>
+            <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Addie, certification, training</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+          <button data-action="billing-portal" data-org-id="${escapeHtml(orgId)}" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+          <a href="/aao-w9.pdf" download="AAO-W9.pdf" class="btn btn-ghost btn-sm" style="cursor: pointer;">Download W-9</a>
+        </div>
+      `;
 
       el.innerHTML = `
         <!-- Header -->
@@ -1270,62 +1172,55 @@
             <div class="hub-header-meta">
               <span class="level-badge">${escapeHtml(tier.label)}</span>
               ${profile?.is_founding_member ? '<span class="level-badge level-badge-founding">Founding Member</span>' : ''}
-              <span class="stage-desc">${escapeHtml(tier.price)}</span>
+              <span class="stage-desc">${escapeHtml(tier.price)}${valueSummary ? ' · ' + escapeHtml(valueSummary) : ''}</span>
             </div>
           </div>
         </div>
 
-        ${healthData ? renderHealthScore(healthData) : ''}
+        <!-- ===== Welcome banner or Health score ===== -->
+        ${isNewOrg(data, healthData) ? renderWelcomeBanner(organization_name || 'Your organization', orgId)
+          : (healthData ? renderHealthScore(healthData) : '')}
 
-        <!-- ===== Membership ===== -->
+        <!-- ===== Team certification ===== -->
+        ${certSummary ? `<section class="dashboard-section"><div class="hub-card">${renderCertificationSummary(certSummary)}</div></section>` : ''}
+
+        <!-- ===== Membership journey ===== -->
+        ${(() => {
+          const stage = data.journey_stage || 'aware';
+          const stageIdx = STAGES.indexOf(stage);
+          const nextReq = NEXT_LEVEL_REQUIREMENTS[stage] || '';
+          return `<section class="dashboard-section">${renderLevelProgress(stage, stageIdx, stageIdx + 1, nextReq, data.milestones)}</section>`;
+        })()}
+
+        <!-- ===== Membership + Upgrade teaser ===== -->
         <section id="membership" class="dashboard-section">
           <div class="hub-grid">
             <div class="hub-card">
               <div class="hub-card-header">
                 <span class="hub-card-title">Membership</span>
               </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
-                <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
-                  <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
-                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
-                  <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>
-                </div>
-                <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
-                  <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.community_only} / ${communityLimit}</div>
-                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Community seats</div>
-                  <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Addie, certification, training</div>
-                </div>
-              </div>
-              ${isFreeTier ? `
-                <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
-              ` : `
-                <div style="display: flex; align-items: center; gap: var(--space-3);">
-                  <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
-                  <a href="/aao-w9.pdf" download="AAO-W9.pdf" class="btn btn-ghost btn-sm" style="cursor: pointer;">Download W-9</a>
-                </div>
-              `}
+              ${membershipCardContent}
             </div>
-
-            <div class="hub-card">${renderPersona(persona, persona_source, persona_aspiration)}</div>
+            ${renderUpgradeTeaser(tierKey, orgId, healthData, orgRole)}
           </div>
         </section>
 
-        <!-- ===== Team ===== -->
-        <section id="team" class="dashboard-section">
+        <!-- ===== Team / Agents summary ===== -->
+        <section class="dashboard-section">
+          <div style="display: flex; gap: var(--space-6); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            <a href="/dashboard/team?org=${encodeURIComponent(orgId)}" style="color: var(--color-text-secondary); text-decoration: none;">
+              <span style="font-weight: var(--font-bold); color: var(--color-text-heading);">${team_size || 0}</span> team members
+            </a>
+            <a href="/dashboard/agents?org=${encodeURIComponent(orgId)}" style="color: var(--color-text-secondary); text-decoration: none;">
+              <span style="font-weight: var(--font-bold); color: var(--color-text-heading);">${(profile?.agents || []).length}</span> registered agents
+            </a>
+          </div>
+        </section>
+
+        <!-- ===== Organization type ===== -->
+        <section class="dashboard-section">
           <div class="hub-card">
-            <div class="hub-card-header">
-              <span class="hub-card-title">Team</span>
-              <a href="/dashboard/team?org=${encodeURIComponent(orgId)}" class="hub-card-link">Manage team &rarr;</a>
-            </div>
-            <div style="display: flex; align-items: center; gap: var(--space-6); padding: var(--space-2) 0;">
-              <div>
-                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${team_size || 0}</div>
-                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Team members</div>
-              </div>
-              ${teamCertHtml}
-            </div>
-            ${healthData?.people ? renderPeopleTable(healthData.people) : ''}
-            ${healthData?.champions?.length ? renderChampions(healthData.champions) : ''}
+            ${renderPersona(persona, persona_source, persona_aspiration)}
           </div>
         </section>
 
@@ -1339,20 +1234,10 @@
                 <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) : '/member-profile'}" class="hub-card-link">Edit &rarr;</a>
               </div>
             </div>
-            ${renderProfileCard(profile, orgId)}
+            ${renderProfileCard(profile, orgId, isFreeTier)}
           </div>
         </section>
 
-        <!-- ===== Agents ===== -->
-        <section id="agents" class="dashboard-section">
-          <div class="hub-card">
-            <div class="hub-card-header">
-              <span class="hub-card-title">Agents</span>
-              <a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}" class="hub-card-link">+ Add agent</a>
-            </div>
-            ${renderAgentsSection(profile?.agents || [], agentCompliance, orgId)}
-          </div>
-        </section>
       `;
     }
 
@@ -1373,35 +1258,49 @@
     function renderHealthScore(health) {
       const score = health.health_score || 0;
       const bd = health.health_breakdown || {};
+      const isLowScore = score < 10;
 
-      const signals = [
-        { label: 'Certified', value: `${bd.certification_pct || 0}%`, color: bd.certification_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
-        { label: 'In working groups', value: `${bd.working_group_pct || 0}%`, color: bd.working_group_pct >= 30 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
-        { label: 'Active (30d)', value: `${bd.active_pct || 0}%`, color: bd.active_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
-        { label: 'Contributions', value: bd.content_contributions || 0, color: bd.content_contributions > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
-        { label: 'Leadership roles', value: bd.leadership_roles || 0, color: bd.leadership_roles > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
-        { label: 'Agents registered', value: bd.tech_integration?.agents_registered || 0, color: bd.tech_integration?.agents_registered > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
+      // Ordered by weight (matches server-side health score computation)
+      const rawSignals = [
+        { label: 'Certified', weight: 25, raw: bd.certification_pct || 0, value: `${bd.certification_pct || 0}%`, color: bd.certification_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)', href: '/dashboard/team' },
+        { label: 'In working groups', weight: 25, raw: bd.working_group_pct || 0, value: `${bd.working_group_pct || 0}%`, color: bd.working_group_pct >= 30 ? 'var(--color-success-500)' : 'var(--color-warning-500)', href: '/committees?type=working_group' },
+        { label: 'Active (30d)', weight: 15, raw: bd.active_pct || 0, value: `${bd.active_pct || 0}%`, color: bd.active_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)', href: '/dashboard/team' },
+        { label: 'Contributions', weight: 10, raw: bd.content_contributions || 0, value: bd.content_contributions || 0, color: bd.content_contributions > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)', href: '/my-content' },
+        { label: 'Leadership', weight: 10, raw: bd.leadership_roles || 0, value: bd.leadership_roles || 0, color: bd.leadership_roles > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)', href: '/committees?type=working_group' },
+        { label: 'Agents', weight: 10, raw: bd.tech_integration?.agents_registered || 0, value: bd.tech_integration?.agents_registered || 0, color: bd.tech_integration?.agents_registered > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)', href: '/dashboard/agents' },
       ];
 
+      // For very new orgs, show dashes instead of alarming 0% values
+      const signals = rawSignals.map(s => ({
+        ...s,
+        displayValue: (isLowScore && s.raw === 0) ? '—' : s.value,
+        displayColor: (isLowScore && s.raw === 0) ? 'var(--color-text-muted)' : s.color,
+      }));
+
       const signalCards = signals.map(s => `
-        <div class="health-signal-card">
-          <div class="health-signal-value" style="color: ${s.color};">${s.value}</div>
-          <div class="health-signal-label">${s.label}</div>
-        </div>
+        <a href="${s.href}" style="text-decoration: none; color: inherit;">
+          <div class="health-signal-card">
+            <div class="health-signal-value" style="color: ${s.displayColor};">${s.displayValue}</div>
+            <div class="health-signal-label">${s.label} <span style="color: var(--color-text-muted); font-weight: normal;">${s.weight}%</span></div>
+          </div>
+        </a>
       `).join('');
 
-      const actionsHtml = (health.suggested_actions || []).map(a => `
-        <div class="health-action-item">
-          <div style="flex: 1;">
-            <div class="health-action-label">${escapeHtml(a.label)}</div>
-            <div class="health-action-impact">${escapeHtml(a.impact)}</div>
-          </div>
-          ${a.url ? `<a href="${a.url}" class="btn btn-ghost btn-sm">Do this</a>` : ''}
-        </div>
-      `).join('');
+      const actionsHtml = (health.suggested_actions || []).map(a => {
+        const valueCtx = ACTION_VALUE_CONTEXT[a.action] || '';
+        return `
+          <div class="health-action-item">
+            <div style="flex: 1;">
+              <div class="health-action-label">${escapeHtml(a.label)}</div>
+              <div class="health-action-impact">${escapeHtml(a.impact)}</div>
+              ${valueCtx ? `<div class="health-action-value">${escapeHtml(valueCtx)}</div>` : ''}
+            </div>
+            ${a.url ? `<a href="${a.url}" class="btn btn-ghost btn-sm">${escapeHtml(ACTION_CTA_LABELS[a.action] || 'Do this')}</a>` : ''}
+          </div>`;
+      }).join('');
 
       let scoreColor, statusLabel;
-      if (score < 30)      { scoreColor = 'var(--color-gray-400)';    statusLabel = 'Getting started'; }
+      if (score < 30)      { scoreColor = 'var(--color-gray-400)';    statusLabel = 'Building your foundation'; }
       else if (score < 60) { scoreColor = 'var(--color-warning-500)'; statusLabel = 'Building momentum'; }
       else                 { scoreColor = 'var(--color-success-500)'; statusLabel = 'Healthy'; }
 
@@ -1515,134 +1414,14 @@
       `;
     }
 
-    // -------------------------------------------------------------------------
-
-    function renderAgentsSection(agents, complianceMap, orgId) {
-      if (!agents || agents.length === 0) {
-        return `
-          <div style="text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">
-            <p>No agents registered yet.</p>
-            <p style="font-size: var(--text-sm);"><a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}">Ask Addie</a> to connect your agent and start compliance monitoring.</p>
-          </div>
-        `;
-      }
-
-      return agents.map(agent => {
-        const data = complianceMap?.get(agent.url);
-        const cs = data?.status;
-        const history = data?.history;
-        const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
-        const hasData = cs && cs.status && cs.status !== 'unknown';
-        const hasAuth = cs?.has_compliance_auth;
-
-        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
-
-        // No compliance data yet — show onboarding state
-        if (!hasData) {
-          return `
-          <div class="agent-compliance-card" id="${cardId}">
-            <div class="agent-compliance-header">
-              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
-                <span class="agent-status-dot agent-status-dot--unknown"></span>
-                <span class="agent-hostname">${escapeHtml(hostname)}</span>
-                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
-              </div>
-            </div>
-            <div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
-              ${hasAuth
-                ? 'Auth configured. Compliance check will run on the next heartbeat cycle.'
-                : 'Connect this agent through <a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '">Addie</a> to save credentials and start compliance monitoring.'}
-            </div>
-            <div class="agent-meta-row">
-              <span></span>
-              <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
-            </div>
-            <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
-          </div>`;
-        }
-
-        // Has compliance data — show full card
-        const statusClass = cs.status;
-        const statusLabel = cs.status;
-        const tracks = cs.tracks || {};
-
-        const clickableTrackPills = Object.entries(tracks)
-          .filter(([, status]) => status !== 'skip' && status !== 'expected')
-          .map(([track, status]) => {
-          const cls = status === 'pass' ? 'agent-track--pass'
-            : status === 'fail' ? 'agent-track--fail'
-            : status === 'partial' ? 'agent-track--partial'
-            : 'agent-track--skip';
-          return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
-        }).join('');
-
-        const runs = history?.runs || [];
-        const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
-          runs.slice().reverse().map(r => {
-            const color = r.overall_status === 'passing' ? 'var(--color-success-500)'
-              : r.overall_status === 'failing' ? 'var(--color-error-500)'
-              : 'var(--color-warning-500)';
-            return '<div class="agent-sparkline-bar" style="background:' + color + ';" title="' + escapeHtml(r.overall_status) + ' — ' + new Date(r.tested_at).toLocaleDateString() + '"></div>';
-          }).join('') + '</div>' : '';
-
-        const lastChecked = cs.last_checked_at
-          ? timeAgo(new Date(cs.last_checked_at))
-          : 'never';
-
-        const isPublic = !(cs.compliance_opt_out ?? false);
-
-        return `
-          <div class="agent-compliance-card" id="${cardId}">
-            <div class="agent-compliance-header">
-              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
-                <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
-                <span class="agent-hostname">${escapeHtml(hostname)}</span>
-                <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
-                ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
-              </div>
-              <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
-                <label class="agent-toggle" title="Show compliance on public registry">
-                  <input type="checkbox" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
-                  <span class="agent-toggle-label">Show on registry</span>
-                </label>
-              </div>
-            </div>
-            ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
-            ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
-            <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
-            ${sparkline}
-            <div class="agent-meta-row">
-              <span>Last checked: ${escapeHtml(lastChecked)}</span>
-              <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
-                <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
-              </div>
-            </div>
-            <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
-            <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function timeAgo(date) {
-      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-      if (seconds < 60) return 'just now';
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return minutes + 'm ago';
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return hours + 'h ago';
-      const days = Math.floor(hours / 24);
-      return days + 'd ago';
-    }
-
     function renderLevelProgress(stage, stageIdx, levelNum, nextReq, milestones) {
-      const steps = STAGES.map((s, i) => {
+      const displayIdx = Math.max(0, DISPLAY_STAGES.indexOf(stage));
+      const displayLevelNum = displayIdx + 1;
+      const steps = DISPLAY_STAGES.map((s, i) => {
         let cls = 'level-step';
-        if (i < stageIdx) cls += ' level-step--completed';
-        else if (i === stageIdx) cls += ' level-step--current';
-        const icon = i < stageIdx ? '✓' : (i === stageIdx ? levelNum : i + 1);
+        if (i < displayIdx) cls += ' level-step--completed';
+        else if (i === displayIdx) cls += ' level-step--current';
+        const icon = i < displayIdx ? '✓' : (i === displayIdx ? displayLevelNum : i + 1);
         return `
           <div class="${cls}">
             <div class="level-step-dot">${icon}</div>
@@ -1652,10 +1431,15 @@
 
       const ms = milestones || {};
       const achievements = [
-        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      stage: 'Participant',   href: '/committees?type=working_group', action: 'Browse groups' },
-        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           stage: 'Contributor',   href: '/my-content',              action: 'Propose content' },
-        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', stage: 'Leader',        href: '/committees?type=working_group', action: 'View openings' },
-        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague to AAO',          stage: 'Advocate',      href: '/community/people',             action: 'Introduce a colleague' },
+        // Product-usage milestones (things paying members do first)
+        { key: 'has_subscription',        icon: '⭐', label: 'Supporting member',        desc: 'Active membership — funding the standard',    reputation: 'Your org is backing the mission',       href: '/membership',                    action: 'View plans' },
+        { key: 'has_certified_members',   icon: '🎓', label: 'Certified team',           desc: 'At least one member holds an AdCP credential', reputation: 'Your org has verified expertise',       href: '/dashboard/team',                action: 'Get team certified' },
+        { key: 'has_registered_agents',   icon: '🤖', label: 'Agent operator',           desc: 'Registered agents in the ecosystem',           reputation: 'Your org is building on the protocol',  href: '/dashboard/agents',              action: 'Register agent' },
+        // Community-participation milestones
+        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',     desc: 'Joined at least one working group',            reputation: 'Your org is an active participant',     href: '/committees?type=working_group', action: 'Browse groups' },
+        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',      desc: 'Proposed or published content',                reputation: 'Your org is a recognized contributor',  href: '/my-content',                    action: 'Propose an article' },
+        { key: 'has_leadership',          icon: '🏆', label: 'Group leader',             desc: 'Chair or vice-chair of a working group',      reputation: 'Your org is shaping the standard',      href: '/committees?type=working_group', action: 'View openings' },
+        { key: 'has_recruiting_activity', icon: '📣', label: 'Community advocate',       desc: 'Introduced a colleague to AAO',               reputation: 'Your org is growing the community',     href: '/community/people',              action: 'Introduce a colleague' },
       ];
 
       const achHtml = achievements.map(a => {
@@ -1666,7 +1450,7 @@
             <div class="achievement-body">
               <div class="achievement-name">${a.label}</div>
               <div class="achievement-desc">${a.desc}</div>
-              ${!earned ? `<div class="achievement-unlocks">Unlocks: ${a.stage}</div>` : ''}
+              ${!earned ? `<div class="achievement-unlocks">${a.reputation}</div>` : ''}
             </div>
             ${!earned ? `<a href="${a.href}" class="achievement-action">${a.action} →</a>` : ''}
           </div>`;
@@ -1691,8 +1475,14 @@
           <div class="hub-card-header"><span class="hub-card-title">Organization type</span></div>
           <div class="persona-cta">
             <div class="persona-cta-icon">?</div>
-            <p>Discover your organization's type to unlock tailored group recommendations.</p>
-            <a href="/persona-assessment" class="btn btn-ghost btn-sm">Take the assessment &rarr;</a>
+            <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-1);">What type of organization are you?</p>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Your type shapes which working groups we recommend, what content surfaces for your team, and how Addie prioritizes your dashboard.</p>
+            <ul class="persona-benefits-list">
+              <li>Personalized working group recommendations</li>
+              <li>Tailored certification paths for your team</li>
+              <li>Content feeds matched to your focus area</li>
+            </ul>
+            <a href="/persona-assessment" class="btn btn-primary btn-sm">Take a 2-minute assessment &rarr;</a>
           </div>`;
       }
       const cfg = PERSONA_CFG[persona] || { label: persona, desc: '', icon: '?' };
@@ -1747,15 +1537,24 @@
 
     // -------------------------------------------------------------------------
 
-    function renderProfileCard(profile, orgId) {
+    function renderProfileCard(profile, orgId, isFreeTier) {
       const profileUrl = orgId ? `/member-profile?org=${encodeURIComponent(orgId)}` : '/member-profile';
       const hdr = '';
 
       if (!profile) {
+        if (isFreeTier) {
+          return `${hdr}
+            <div class="hub-empty">
+              <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Get found by partners and collaborators</p>
+              <p>Directory listings are available on Professional plans and above. Your listing appears in the member directory where organizations browse for partners.</p>
+              <a href="/membership" class="btn btn-ghost btn-sm" style="margin-top: var(--space-3); display: inline-block;">See plans that include directory access &rarr;</a>
+            </div>`;
+        }
         return `${hdr}
           <div class="hub-empty">
-            <p>Your directory listing isn't set up yet.</p>
-            <a href="${profileUrl}">Create your listing →</a>
+            <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Your directory listing is ready to set up</p>
+            <p>Complete your profile so other members can find you.</p>
+            <a href="${profileUrl}" class="btn btn-primary btn-sm" style="margin-top: var(--space-3); display: inline-block;">Create your listing</a>
           </div>`;
       }
 
@@ -1920,7 +1719,7 @@
       const hdr = `
         <div class="hub-card-header">
           <span class="hub-card-title">Team certification</span>
-          <a href="/certification" class="hub-card-link">View portal →</a>
+          <a href="/dashboard/team" class="hub-card-link">Manage team certification →</a>
         </div>`;
 
       if (members_with_credentials === 0 && members.every(m => m.modules_completed === 0)) {
@@ -1978,476 +1777,6 @@
     // Utilities
     // =========================================================================
 
-    // Agent compliance controls — event delegation to avoid inline JS with URLs
-    document.addEventListener('change', async function(e) {
-      const select = e.target.closest('.agent-lifecycle-select');
-      if (select) {
-        const agentUrl = select.dataset.agentUrl;
-        const previousValue = select.dataset.previousValue || 'production';
-        try {
-          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/lifecycle`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ lifecycle_stage: select.value }),
-          });
-          if (!res.ok) {
-            select.value = previousValue;
-          } else {
-            select.dataset.previousValue = select.value;
-          }
-        } catch {
-          select.value = previousValue;
-        }
-        return;
-      }
-
-      const checkbox = e.target.closest('.agent-toggle input[type="checkbox"]');
-      if (checkbox) {
-        const agentUrl = checkbox.dataset.agentUrl;
-        try {
-          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/opt-out`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ opt_out: !checkbox.checked }),
-          });
-          if (!res.ok) {
-            checkbox.checked = !checkbox.checked;
-          }
-        } catch {
-          checkbox.checked = !checkbox.checked;
-        }
-      }
-    });
-
-    // Track pill click — fetch history and show scenario details for that track
-    document.addEventListener('click', async function(e) {
-      const trackBtn = e.target.closest('.agent-track[data-track]');
-      if (trackBtn) {
-        const track = trackBtn.dataset.track;
-        const agentUrl = trackBtn.dataset.agentUrl;
-        const card = trackBtn.closest('.agent-compliance-card');
-        const detailEl = card?.querySelector('.agent-track-detail');
-        if (!detailEl) return;
-
-        // Toggle off if already showing this track
-        if (trackBtn.classList.contains('active')) {
-          trackBtn.classList.remove('active');
-          detailEl.style.display = 'none';
-          return;
-        }
-
-        // Remove active from siblings
-        card.querySelectorAll('.agent-track').forEach(b => b.classList.remove('active'));
-        trackBtn.classList.add('active');
-        detailEl.style.display = 'block';
-        detailEl.innerHTML = '<em>Loading...</em>';
-
-        try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=1', { credentials: 'include' });
-          const data = await res.json();
-          const run = data.runs?.[0];
-          if (!run || !run.tracks_json) {
-            detailEl.innerHTML = '<em>No detailed data available for this run.</em>';
-            return;
-          }
-          const trackData = run.tracks_json.find(t => t.track === track);
-          if (!trackData) {
-            detailEl.innerHTML = '<em>Track "' + escapeHtml(track) + '" not found in latest run.</em>';
-            return;
-          }
-
-          const statusLabel = trackData.status === 'pass' ? 'Passing'
-            : trackData.status === 'fail' ? 'Failing'
-            : trackData.status === 'partial' ? 'Partial' : trackData.status;
-
-          let html = '<h4>' + escapeHtml(track) + ' — ' + escapeHtml(statusLabel) + '</h4>';
-          html += '<div>' + parseInt(trackData.passed_count, 10) + ' of ' + parseInt(trackData.scenario_count, 10) + ' scenarios passing';
-          if (trackData.duration_ms) html += ' (' + (trackData.duration_ms / 1000).toFixed(1) + 's)';
-          html += '</div>';
-
-          // If the run has scenario-level details (from tracks_json with scenarios)
-          if (trackData.scenarios) {
-            for (const s of trackData.scenarios) {
-              const cls = s.overall_passed ? 'track-scenario--pass' : 'track-scenario--fail';
-              html += '<div class="track-scenario ' + cls + '">';
-              html += '<div class="track-scenario-name">' + escapeHtml(s.name) + '</div>';
-              if (!s.overall_passed && s.steps) {
-                html += '<div class="track-scenario-steps">';
-                for (const st of s.steps) {
-                  if (!st.passed) {
-                    html += '<div class="track-step--fail">' + escapeHtml(st.name);
-                    if (st.error) html += ': ' + escapeHtml(String(st.error).substring(0, 200));
-                    html += '</div>';
-                  }
-                }
-                html += '</div>';
-              }
-              html += '</div>';
-            }
-          }
-
-          detailEl.innerHTML = html;
-        } catch {
-          detailEl.innerHTML = '<em>Failed to load track details.</em>';
-        }
-        return;
-      }
-
-      // History button click
-      const historyBtn = e.target.closest('.agent-history-btn');
-      if (historyBtn) {
-        const agentUrl = historyBtn.dataset.agentUrl;
-        const cardId = historyBtn.dataset.cardId;
-        const panel = document.getElementById(cardId + '-history');
-        if (!panel) return;
-
-        if (panel.style.display !== 'none') {
-          panel.style.display = 'none';
-          return;
-        }
-        panel.style.display = 'block';
-        panel.innerHTML = '<em>Loading history...</em>';
-
-        try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=10', { credentials: 'include' });
-          const data = await res.json();
-
-          if (!data.runs || data.runs.length === 0) {
-            panel.innerHTML = '<em>No compliance history yet.</em>';
-            return;
-          }
-
-          let html = '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Compliance History</div>';
-          for (const run of data.runs) {
-            const dotColor = run.overall_status === 'passing' ? 'var(--color-success-500)'
-              : run.overall_status === 'failing' ? 'var(--color-error-500)'
-              : 'var(--color-warning-500)';
-            const date = new Date(run.tested_at).toLocaleString();
-
-            // Track pills for this run
-            let runTracks = '';
-            if (run.tracks_json) {
-              for (const t of run.tracks_json) {
-                const cls = t.status === 'pass' ? 'agent-track--pass'
-                  : t.status === 'fail' ? 'agent-track--fail'
-                  : t.status === 'partial' ? 'agent-track--partial'
-                  : 'agent-track--skip';
-                runTracks += '<span class="agent-track ' + cls + '" style="cursor:default;">' + escapeHtml(t.track) + '</span>';
-              }
-            }
-
-            html += '<div class="history-run">';
-            html += '<span class="history-run-dot" style="background:' + dotColor + ';"></span>';
-            html += '<span>' + escapeHtml(date) + '</span>';
-            html += '<span>' + escapeHtml(run.overall_status) + '</span>';
-            html += '<span>' + parseInt(run.tracks_passed, 10) + '/' + (parseInt(run.tracks_passed, 10) + parseInt(run.tracks_failed, 10) + parseInt(run.tracks_partial, 10)) + ' tracks</span>';
-            html += '</div>';
-            if (runTracks) {
-              html += '<div style="padding:var(--space-1) 0 var(--space-2) var(--space-5);display:flex;gap:3px;flex-wrap:wrap;">' + runTracks + '</div>';
-            }
-          }
-          panel.innerHTML = html;
-        } catch {
-          panel.innerHTML = '<em>Failed to load history.</em>';
-        }
-      }
-
-      // Shared: render the storyboard picker into a panel
-      async function renderStoryboardPicker(panel, agentUrl, cardId) {
-        panel.style.display = 'block';
-        panel.innerHTML = '<em>Loading storyboards...</em>';
-        try {
-          const res = await fetch('/api/storyboards', { credentials: 'include' });
-          const data = await res.json();
-          if (!data.storyboards || data.storyboards.length === 0) {
-            panel.innerHTML = '<em>No storyboards available yet.</em>';
-            return;
-          }
-          let html = '<div class="storyboard-picker">';
-          for (const sb of data.storyboards) {
-            html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-            html += '<div>';
-            html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-            html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-            html += '</div>';
-            html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
-            html += '</div>';
-          }
-          html += '</div>';
-          panel.innerHTML = html;
-        } catch {
-          panel.innerHTML = '<em>Failed to load storyboards.</em>';
-        }
-      }
-
-      // Storyboard "Test your agent" button
-      const storyboardBtn = e.target.closest('.agent-storyboard-btn');
-      if (storyboardBtn) {
-        const agentUrl = storyboardBtn.dataset.agentUrl;
-        const cardId = storyboardBtn.dataset.cardId;
-        const panel = document.getElementById(cardId + '-storyboard');
-        if (!panel) return;
-
-        if (panel.style.display !== 'none') {
-          panel.style.display = 'none';
-          return;
-        }
-        await renderStoryboardPicker(panel, agentUrl, cardId);
-        return;
-      }
-
-      // Storyboard picker item click — show storyboard detail
-      const pickerItem = e.target.closest('.storyboard-picker-item');
-      if (pickerItem) {
-        const storyboardId = pickerItem.dataset.storyboardId;
-        const agentUrl = pickerItem.dataset.agentUrl;
-        const cardId = pickerItem.dataset.cardId;
-        const panel = document.getElementById(cardId + '-storyboard');
-        if (!panel) return;
-
-        panel.innerHTML = '<em>Loading storyboard...</em>';
-
-        try {
-          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId), { credentials: 'include' });
-          const data = await res.json();
-          const sb = data.storyboard;
-          if (!sb) {
-            panel.innerHTML = '<em>Storyboard not found.</em>';
-            return;
-          }
-
-          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
-          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(sb.title) + '</strong></div>';
-          html += '<div class="storyboard-phase-narrative" style="margin-bottom:var(--space-4);">' + escapeHtml(sb.narrative).replace(/\n/g, '<br>') + '</div>';
-
-          for (const phase of sb.phases) {
-            html += '<div class="storyboard-phase">';
-            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
-            html += '<div class="storyboard-phase-narrative">' + escapeHtml(phase.narrative).replace(/\n/g, '<br>') + '</div>';
-
-            for (const step of phase.steps) {
-              html += '<div class="storyboard-step">';
-              html += '<div class="storyboard-step-header">';
-              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
-              html += '<code style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + escapeHtml(step.task) + '</code>';
-              html += '</div>';
-              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
-              html += '<div class="storyboard-step-meta">';
-              if (step.doc_ref) {
-                html += '<a href="/docs' + escapeHtml(step.doc_ref) + '" target="_blank">Docs</a>';
-              }
-              if (step.schema_ref) {
-                html += '<span>Schema: ' + escapeHtml(step.schema_ref) + '</span>';
-              }
-              html += '</div>';
-              html += '</div>';
-            }
-
-            html += '</div>';
-          }
-
-          html += '<div class="storyboard-actions">';
-          html += '<button class="storyboard-run-btn" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Run storyboard</button>';
-          html += '<button class="storyboard-compare-btn" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Compare with reference</button>';
-          html += '</div>';
-
-          panel.innerHTML = html;
-        } catch {
-          panel.innerHTML = '<em>Failed to load storyboard.</em>';
-        }
-        return;
-      }
-
-      // Back button in storyboard view
-      const backBtn = e.target.closest('.storyboard-back-btn');
-      if (backBtn) {
-        // Re-trigger the storyboard picker
-        const agentUrl = backBtn.dataset.agentUrl;
-        const cardId = backBtn.dataset.cardId;
-        const panel = document.getElementById(cardId + '-storyboard');
-        if (panel) await renderStoryboardPicker(panel, agentUrl, cardId);
-        return;
-      }
-
-      // Run storyboard button
-      const runBtn = e.target.closest('.storyboard-run-btn');
-      if (runBtn) {
-        const storyboardId = runBtn.dataset.storyboardId;
-        const agentUrl = runBtn.dataset.agentUrl;
-        const cardId = runBtn.dataset.cardId;
-        const panel = document.getElementById(cardId + '-storyboard');
-        if (!panel) return;
-
-        runBtn.disabled = true;
-        runBtn.textContent = 'Running...';
-
-        // Show progress below
-        const progressEl = document.createElement('div');
-        progressEl.className = 'storyboard-progress';
-        progressEl.textContent = 'Running storyboard evaluation against your agent. This may take up to 90 seconds...';
-        runBtn.parentElement.after(progressEl);
-
-        try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/run', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (res.status === 429) {
-            progressEl.textContent = 'Rate limit exceeded. You can run 5 evaluations per hour. Please try again later.';
-            runBtn.disabled = false;
-            runBtn.textContent = 'Run storyboard';
-            return;
-          }
-
-          const data = await res.json();
-          progressEl.remove();
-
-          // Re-render phases with results
-          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
-          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
-          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(data.summary.headline) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
-
-          for (const phase of data.phases) {
-            html += '<div class="storyboard-phase">';
-            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
-
-            for (const step of phase.steps) {
-              const resultClass = step.result.passed === true ? 'pass'
-                : step.result.passed === false ? 'fail' : 'pending';
-              const resultLabel = step.result.passed === true ? 'Pass'
-                : step.result.passed === false ? 'Fail' : 'N/A';
-
-              html += '<div class="storyboard-step">';
-              html += '<div class="storyboard-step-header">';
-              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
-              html += '<span class="storyboard-step-result storyboard-step-result--' + resultClass + '">' + resultLabel + '</span>';
-              html += '</div>';
-              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
-
-              // Show failed scenario details
-              if (step.result.scenarios) {
-                for (const s of step.result.scenarios) {
-                  if (!s.overall_passed && s.steps) {
-                    html += '<div style="margin-top:var(--space-2);padding:var(--space-2);background:var(--color-error-50);border-radius:var(--radius-sm);font-size:var(--text-xs);">';
-                    for (const st of s.steps) {
-                      if (!st.passed) {
-                        html += '<div style="color:var(--color-error-700);">' + escapeHtml(st.step || st.name || 'Step');
-                        if (st.error) html += ': ' + escapeHtml(String(st.error).substring(0, 300));
-                        html += '</div>';
-                      }
-                    }
-                    html += '</div>';
-                  }
-                }
-              }
-
-              html += '</div>';
-            }
-            html += '</div>';
-          }
-
-          // Observations
-          if (data.observations && data.observations.length > 0) {
-            html += '<div style="margin-top:var(--space-3);">';
-            html += '<div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Observations</div>';
-            for (const obs of data.observations) {
-              const color = obs.severity === 'error' ? 'var(--color-error-600)'
-                : obs.severity === 'warning' ? 'var(--color-warning-600)'
-                : 'var(--color-text-secondary)';
-              html += '<div style="font-size:var(--text-xs);color:' + color + ';margin-bottom:var(--space-1);">';
-              html += '<strong>' + escapeHtml(obs.severity) + '</strong>: ' + escapeHtml(obs.message);
-              html += '</div>';
-            }
-            html += '</div>';
-          }
-
-          panel.innerHTML = html;
-        } catch {
-          progressEl.textContent = 'Failed to run storyboard evaluation.';
-          runBtn.disabled = false;
-          runBtn.textContent = 'Run storyboard';
-        }
-        return;
-      }
-
-      // Compare with reference button
-      const compareBtn = e.target.closest('.storyboard-compare-btn');
-      if (compareBtn) {
-        const storyboardId = compareBtn.dataset.storyboardId;
-        const agentUrl = compareBtn.dataset.agentUrl;
-        const cardId = compareBtn.dataset.cardId;
-        const panel = document.getElementById(cardId + '-storyboard');
-        if (!panel) return;
-
-        compareBtn.disabled = true;
-        compareBtn.textContent = 'Comparing...';
-
-        const progressEl = document.createElement('div');
-        progressEl.className = 'storyboard-progress';
-        progressEl.textContent = 'Running comparison against your agent and the reference test agent...';
-        compareBtn.parentElement.after(progressEl);
-
-        try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/compare', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (res.status === 429) {
-            progressEl.textContent = 'Rate limit exceeded. Please try again later.';
-            compareBtn.disabled = false;
-            compareBtn.textContent = 'Compare with reference';
-            return;
-          }
-
-          const data = await res.json();
-          progressEl.remove();
-
-          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
-          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Comparison</div>';
-
-          // Summary row
-          html += '<div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-4);font-size:var(--text-sm);">';
-          html += '<div><strong>Your agent:</strong> ' + escapeHtml(data.user_agent.summary.headline) + '</div>';
-          html += '<div><strong>Reference:</strong> ' + escapeHtml(data.reference_agent.summary.headline) + '</div>';
-          html += '</div>';
-
-          for (const phase of data.phases) {
-            html += '<div class="storyboard-phase">';
-            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
-
-            for (const step of phase.steps) {
-              const userClass = step.user_result.passed === true ? 'pass' : step.user_result.passed === false ? 'fail' : 'pending';
-              const refClass = step.reference_result.passed === true ? 'pass' : step.reference_result.passed === false ? 'fail' : 'pending';
-
-              html += '<div class="storyboard-step">';
-              html += '<div class="storyboard-step-header">';
-              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
-              html += '<div style="display:flex;gap:var(--space-2);">';
-              html += '<span class="storyboard-step-result storyboard-step-result--' + userClass + '">You: ' + (step.user_result.passed === true ? 'Pass' : step.user_result.passed === false ? 'Fail' : 'N/A') + '</span>';
-              html += '<span class="storyboard-step-result storyboard-step-result--' + refClass + '">Ref: ' + (step.reference_result.passed === true ? 'Pass' : step.reference_result.passed === false ? 'Fail' : 'N/A') + '</span>';
-              html += '</div></div>';
-              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
-              html += '</div>';
-            }
-            html += '</div>';
-          }
-
-          panel.innerHTML = html;
-        } catch {
-          progressEl.textContent = 'Failed to run comparison.';
-          compareBtn.disabled = false;
-          compareBtn.textContent = 'Compare with reference';
-        }
-        return;
-      }
-    });
-
     // Store current org ID
     let currentOrgId = null;
 
@@ -2472,6 +1801,14 @@
 
     // Event delegation for nudge buttons (avoids inline onclick XSS risk)
     document.addEventListener('click', async function(e) {
+      // Billing portal buttons (upgrade, manage billing)
+      const billingBtn = e.target.closest('[data-action="billing-portal"]');
+      if (billingBtn) {
+        const orgId = billingBtn.dataset.orgId;
+        if (orgId) openBillingPortal(orgId);
+        return;
+      }
+
       const btn = e.target.closest('.nudge-btn');
       if (!btn) return;
 
