@@ -808,7 +808,7 @@ if (adcpMeta) {
 - Enable compatibility checks based on version
 
 :::note
-The `adcp_version` string in server card metadata is a static discovery hint. For runtime version negotiation, use the `adcp_major_version` integer field on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) and subsequent requests. The major version component of `adcp_version` (e.g., `2` from `"2.6.0"`) corresponds to `adcp_major_version`.
+The `adcp_version` field in server card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
 :::
 
 **Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.

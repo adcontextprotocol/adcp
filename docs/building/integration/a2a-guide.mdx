@@ -763,7 +763,7 @@ if (adcpExt) {
 **Extension Params**: The `adcp-extension.json` schema was used in v2 to describe these params, but was removed in v3. For v3+ agents, use the `get_adcp_capabilities` task for runtime capability discovery instead. The extension `params` object above shows the typical structure.
 
 :::note
-The `adcp_version` string in agent card metadata is a static discovery hint. For runtime version negotiation, use the `adcp_major_version` integer field on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) and subsequent requests. The major version component of `adcp_version` (e.g., `2` from `"2.6.0"`) corresponds to `adcp_major_version`.
+The `adcp_version` field in agent card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
 :::
 
 **Benefits**:
