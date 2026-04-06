@@ -157,4 +157,110 @@ const pubPreviewData = (pubPreview.data as any)?.previews?.[0];
 console.log(`  preview_creative → format: ${pubPreviewData?.format_id?.id}`);
 console.log(`  Has preview URL: ${!!pubPreviewData?.renders?.[0]?.url}`);
 
+// 5. Test Media Buy Seller storyboard (full lifecycle)
+console.log('\n--- Media Buy Seller Storyboard (full lifecycle) ---\n');
+
+console.log('Phase 1: Account setup');
+const acctResult = run('sync_accounts', {
+  accounts: [{
+    brand: { domain: 'acmeoutdoor.com', name: 'Acme Outdoor' },
+    operator: 'pinnacle-agency.com',
+    billing: 'operator',
+    payment_terms: 'net_30',
+    sandbox: true,
+  }],
+});
+const accts = (acctResult.data as any)?.accounts;
+console.log(`  sync_accounts → ${accts?.[0]?.account_id}: ${accts?.[0]?.action} (${accts?.[0]?.status})`);
+console.log(`  Billing: ${accts?.[0]?.billing}, Terms: ${accts?.[0]?.payment_terms}`);
+
+console.log('\nPhase 2: Governance setup');
+const govResult = run('sync_governance', {
+  accounts: [{
+    account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+    governance_agents: [{
+      url: 'https://governance.pinnacle-agency.example',
+      authentication: { schemes: ['Bearer'], credentials: 'test-gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+      categories: ['budget_authority', 'brand_policy'],
+    }],
+  }],
+});
+const govAccts = (govResult.data as any)?.accounts;
+console.log(`  sync_governance → ${govAccts?.[0]?.status}`);
+console.log(`  Agents: ${govAccts?.[0]?.governance_agents?.length}`);
+
+console.log('\nPhase 3: Product discovery (brief)');
+const products = run('get_products', {
+  buying_mode: 'brief',
+  brief: 'Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget.',
+  brand: { domain: 'acmeoutdoor.com' },
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+});
+const prods = (products.data as any)?.products;
+console.log(`  get_products (brief) → ${prods?.length} products`);
+if (prods?.length > 0) {
+  console.log(`  First product: ${prods[0].product_id} — ${prods[0].name}`);
+  console.log(`  Delivery: ${prods[0].delivery_type}, Pricing: ${prods[0].pricing_options?.[0]?.pricing_model}`);
+}
+
+console.log('\nPhase 4: Proposal refinement');
+const refined = run('get_products', {
+  buying_mode: 'refine',
+  refine: [{ scope: 'request', ask: 'Only guaranteed packages with CPM under $30' }],
+  brand: { domain: 'acmeoutdoor.com' },
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+});
+const refinedProds = (refined.data as any)?.products;
+console.log(`  get_products (refine) → ${refinedProds?.length} products`);
+
+console.log('\nPhase 5: Create media buy');
+const firstProduct = prods?.[0];
+const firstPricing = firstProduct?.pricing_options?.[0];
+const buy = run('create_media_buy', {
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+  brand: { domain: 'acmeoutdoor.com' },
+  start_time: '2026-04-01T00:00:00Z',
+  end_time: '2026-06-30T23:59:59Z',
+  packages: [{
+    product_id: firstProduct?.product_id || 'sports_preroll_q2',
+    pricing_option_id: firstPricing?.pricing_option_id || 'cpm_guaranteed',
+    budget: 25000,
+  }],
+});
+const buyData = buy.data as any;
+const mediaBuyId = buyData?.media_buy_id;
+console.log(`  create_media_buy → ${mediaBuyId}: ${buyData?.status}`);
+console.log(`  Packages: ${buyData?.packages?.length}`);
+
+console.log('\nPhase 5b: Check media buy status');
+const buyStatus = run('get_media_buys', {
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+  media_buy_ids: [mediaBuyId],
+});
+const buys = (buyStatus.data as any)?.media_buys;
+console.log(`  get_media_buys → ${buys?.[0]?.media_buy_id}: ${buys?.[0]?.status}`);
+
+console.log('\nPhase 6: Creative sync');
+const fmts = run('list_creative_formats', {});
+console.log(`  list_creative_formats → ${(fmts.data as any)?.formats?.length} formats`);
+
+const creativeSync = run('sync_creatives', {
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+  creatives: [{
+    creative_id: 'video_30s_trail_pro',
+    name: 'Trail Pro 3000 - 30s CTV Spot',
+    format_id: { agent_url: ctx.agentUrl, id: 'display_300x250' },
+  }],
+});
+const syncedCreatives = (creativeSync.data as any)?.creatives;
+console.log(`  sync_creatives → ${syncedCreatives?.[0]?.creative_id}: ${syncedCreatives?.[0]?.action}`);
+
+console.log('\nPhase 7: Delivery monitoring');
+const delivery = run('get_media_buy_delivery', {
+  account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+  media_buy_id: mediaBuyId,
+});
+const deliveryData = (delivery.data as any)?.media_buys?.[0] || delivery.data;
+console.log(`  get_media_buy_delivery → impressions: ${deliveryData?.total?.impressions ?? deliveryData?.delivery?.impressions ?? 'n/a'}`);
+
 console.log('\n=== All storyboards exercised successfully ===');

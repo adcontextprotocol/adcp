@@ -118,6 +118,11 @@ import {
   handleUpdateRights,
 } from './brand-handlers.js';
 import {
+  ACCOUNT_TOOLS,
+  handleSyncAccounts,
+  handleSyncGovernance,
+} from './account-handlers.js';
+import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
@@ -642,6 +647,7 @@ const TOOLS = [
       required: [] as const,
     },
   },
+  ...ACCOUNT_TOOLS,
   ...GOVERNANCE_TOOLS,
   ...BRAND_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
@@ -2386,6 +2392,8 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,
+  sync_accounts: handleSyncAccounts,
+  sync_governance: handleSyncGovernance,
   sync_plans: handleSyncPlans,
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,

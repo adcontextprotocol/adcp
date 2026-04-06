@@ -11,12 +11,17 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(3);
+    expect(results.length).toBeGreaterThanOrEqual(8);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('creative_template');
     expect(ids).toContain('creative_ad_server');
     expect(ids).toContain('creative_sales_agent');
+    expect(ids).toContain('media_buy_seller');
+    expect(ids).toContain('media_buy_guaranteed_approval');
+    expect(ids).toContain('media_buy_non_guaranteed');
+    expect(ids).toContain('media_buy_proposal_mode');
+    expect(ids).toContain('media_buy_governance_escalation');
   });
 
   it('each summary has required fields', () => {
@@ -119,7 +124,7 @@ describe('getStoryboard', () => {
 
   it('schema_ref paths point to known schema directories', () => {
     const storyboards = listStoryboards();
-    const validPrefixes = ['creative/', 'media-buy/'];
+    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/'];
     for (const summary of storyboards) {
       const sb = getStoryboard(summary.id)!;
       for (const phase of sb.phases) {
@@ -182,6 +187,114 @@ describe('getTestKitForStoryboard', () => {
   it('returns undefined for unknown storyboard', () => {
     const kit = getTestKitForStoryboard('nonexistent');
     expect(kit).toBeUndefined();
+  });
+});
+
+describe('media buy storyboard', () => {
+  it('media_buy_seller has media_buy_seller interaction model', () => {
+    const sb = getStoryboard('media_buy_seller')!;
+    expect(sb.agent.interaction_model).toBe('media_buy_seller');
+    expect(sb.agent.capabilities).toContain('sells_media');
+    expect(sb.agent.capabilities).toContain('accepts_briefs');
+  });
+
+  it('media_buy_seller covers the full buy lifecycle', () => {
+    const sb = getStoryboard('media_buy_seller')!;
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('account_setup');
+    expect(phaseIds).toContain('governance_setup');
+    expect(phaseIds).toContain('product_discovery');
+    expect(phaseIds).toContain('proposal_refinement');
+    expect(phaseIds).toContain('create_buy');
+    expect(phaseIds).toContain('creative_sync');
+    expect(phaseIds).toContain('delivery_monitoring');
+  });
+
+  it('media_buy_seller uses core media buy tasks', () => {
+    const sb = getStoryboard('media_buy_seller')!;
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('sync_accounts');
+    expect(tasks).toContain('sync_governance');
+    expect(tasks).toContain('get_products');
+    expect(tasks).toContain('create_media_buy');
+    expect(tasks).toContain('get_media_buys');
+    expect(tasks).toContain('sync_creatives');
+    expect(tasks).toContain('get_media_buy_delivery');
+    expect(tasks).toContain('list_creative_formats');
+  });
+
+  it('filters by media_buy_seller category', () => {
+    const results = listStoryboards('media_buy_seller');
+    expect(results.length).toBe(1);
+    expect(results[0].id).toBe('media_buy_seller');
+  });
+});
+
+describe('media buy storyboard variants', () => {
+  it('guaranteed_approval focuses on async IO signing', () => {
+    const sb = getStoryboard('media_buy_guaranteed_approval')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('create_buy_submitted');
+    expect(phaseIds).toContain('poll_approval');
+    expect(phaseIds).toContain('confirm_active');
+  });
+
+  it('non_guaranteed uses auction-based buying with bid adjustments', () => {
+    const sb = getStoryboard('media_buy_non_guaranteed')!;
+    expect(sb).toBeDefined();
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('update_media_buy');
+    // No account setup needed for non-guaranteed
+    expect(tasks).not.toContain('sync_accounts');
+  });
+
+  it('proposal_mode uses proposal_id instead of packages', () => {
+    const sb = getStoryboard('media_buy_proposal_mode')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('accept_proposal');
+    expect(phaseIds).toContain('brief_with_proposals');
+  });
+
+  it('governance_escalation covers the full governance loop', () => {
+    const sb = getStoryboard('media_buy_governance_escalation')!;
+    expect(sb).toBeDefined();
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('sync_governance');
+    expect(tasks).toContain('sync_plans');
+    expect(tasks).toContain('check_governance');
+    expect(tasks).toContain('report_plan_outcome');
+    expect(tasks).toContain('get_plan_audit_logs');
+  });
+
+  it('each variant has a unique category', () => {
+    const variants = [
+      'media_buy_seller',
+      'media_buy_guaranteed_approval',
+      'media_buy_non_guaranteed',
+      'media_buy_proposal_mode',
+      'media_buy_governance_escalation',
+    ];
+    for (const id of variants) {
+      const results = listStoryboards(id);
+      expect(results.length).toBe(1);
+      expect(results[0].id).toBe(id);
+    }
+  });
+
+  it('all media buy variants resolve acme_outdoor test kit', () => {
+    const variants = [
+      'media_buy_seller',
+      'media_buy_guaranteed_approval',
+      'media_buy_proposal_mode',
+      'media_buy_governance_escalation',
+    ];
+    for (const id of variants) {
+      const kit = getTestKitForStoryboard(id);
+      expect(kit).toBeDefined();
+      expect(kit!.id).toBe('acme_outdoor');
+    }
   });
 });
 
