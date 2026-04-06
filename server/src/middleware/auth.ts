@@ -316,6 +316,17 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     isMember: true,
     description: 'Certification test persona 3',
   },
+  // Builder-tier user for testing paid member experiences
+  builder: {
+    id: 'user_dev_builder_001',
+    email: 'builder@test.local',
+    firstName: 'Builder',
+    lastName: 'Member',
+    isAdmin: false,
+    isMember: true,
+    organizationId: 'org_dev_builder_001',
+    description: 'Builder-tier member with team activity',
+  },
 };
 
 // Dev session cookie name

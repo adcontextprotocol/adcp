@@ -66,17 +66,19 @@
   const isDashboardPage = window.location.pathname === '/dashboard' || window.location.pathname === '/dashboard/';
   const isOrgPage = window.location.pathname === '/dashboard/organization' || window.location.pathname === '/dashboard/organization/' || window.location.pathname === '/organization' || window.location.pathname === '/organization/';
   const isAccountPage = window.location.pathname === '/account' || window.location.pathname === '/account/';
-  const isAnchorPage = isDashboardPage || isOrgPage || isAccountPage;
+  const isAnchorPage = isDashboardPage || isAccountPage;
+
+  const isTeamPage = window.location.pathname === '/dashboard/team' || window.location.pathname === '/dashboard/team/';
+  const isAgentsPage = window.location.pathname === '/dashboard/agents' || window.location.pathname === '/dashboard/agents/';
 
   const NAV_CONFIG = {
     sections: [
       {
         label: 'Organization',
         items: [
-          { href: isOrgPage ? '#membership' : '/organization#membership', label: 'Membership', icon: '⭐', anchor: isOrgPage ? 'membership' : null },
-          { href: isOrgPage ? '#team' : '/organization#team', label: 'Team', icon: '👥', anchor: isOrgPage ? 'team' : null },
-          { href: isOrgPage ? '#directory' : '/organization#directory', label: 'Directory listing', icon: '🏢', anchor: isOrgPage ? 'directory' : null },
-          { href: isOrgPage ? '#agents' : '/organization#agents', label: 'Agents', icon: '🤖', anchor: isOrgPage ? 'agents' : null },
+          { href: '/organization', label: 'Overview', icon: '📊' },
+          { href: '/dashboard/team', label: 'Team', icon: '👥' },
+          { href: '/dashboard/agents', label: 'Agents', icon: '🤖' },
         ]
       },
       {
@@ -567,9 +569,6 @@
       : NAV_CONFIG.sections;
 
     const sectionsHTML = navSections.map(section => {
-      if (section.label === 'Organization' && !canManageOrg) {
-        return '';
-      }
 
       const itemsHTML = section.items.map(item => {
         // Hide Team, Directory listing, and Agents for personal workspaces

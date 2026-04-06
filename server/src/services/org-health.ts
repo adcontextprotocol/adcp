@@ -136,14 +136,15 @@ export function suggestActions(
 
   if (breakdown.certification_pct < 50 && contributorCount > 0) {
     const needed = Math.ceil(contributorCount * 0.5) - Math.round(contributorCount * breakdown.certification_pct / 100);
+    const people = needed === 1 ? 'person' : 'people';
     const label = persona === 'molecule_builder' || persona === 'resops_integrator'
-      ? `Certify ${needed} more people on your media buying team`
-      : `Get ${needed} more people certified`;
+      ? `Certify ${needed} more ${people} on your media buying team`
+      : `Get ${needed} more ${people} certified`;
     actions.push({
       action: 'increase_certification',
       label,
       impact: `Would bring your certification rate to 50%`,
-      url: '/certification',
+      url: '/dashboard/team',
     });
   }
 
