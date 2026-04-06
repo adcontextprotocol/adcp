@@ -441,4 +441,137 @@ On Mon, Apr 1, 2026 at 3:00 PM Addie wrote:
       expect(result.threadId).not.toBe('other_thread');
     });
   });
+
+  describe('persona scenarios', () => {
+    test('cold prospect: first email to addie@ creates new thread', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Alex Chen" <alex@meridianmedia.example>',
+        senderEmail: 'alex@meridianmedia.example',
+        senderDisplayName: 'Alex Chen',
+        subject: 'Interested in agentic advertising',
+        textContent: 'Hi, I heard about AgenticAdvertising.org at a conference. Can you tell me what membership looks like for a mid-size media agency?',
+        addiePosition: 'to',
+      }));
+
+      expect(result.responded).toBe(true);
+      expect(state.createdThread).not.toBeNull();
+      expect(state.createdThread!.title).toBe('Interested in agentic advertising');
+      expect(state.createdThread!.user_type).toBe('anonymous');
+      // Verify Claude was called with the prospect's message
+      expect(mockClaudeClient.processMessage).toHaveBeenCalled();
+      expect(state.sentEmails).toHaveLength(1);
+    });
+
+    test('cold prospect follow-up: reply threads correctly via In-Reply-To', async () => {
+      // First message created a thread
+      const existingThread = makeThread({
+        thread_id: 'alex_thread',
+        user_id: 'alex@meridianmedia.example',
+        title: 'Interested in agentic advertising',
+      });
+      state.foundThread = existingThread;
+      state.threadMessages = [
+        makeMessage({ role: 'user', content: 'Can you tell me what membership looks like?' }),
+        makeMessage({ role: 'assistant', content: 'AgenticAdvertising.org offers several tiers...' }),
+      ];
+
+      const result = await handleEmailConversation(baseInput({
+        from: '"Alex Chen" <alex@meridianmedia.example>',
+        senderEmail: 'alex@meridianmedia.example',
+        subject: 'Re: Interested in agentic advertising',
+        textContent: 'That sounds interesting. What does the Builder tier include exactly?',
+        addiePosition: 'to',
+        inReplyTo: '<prev-msg@resend.dev>',
+      }));
+
+      expect(result.responded).toBe(true);
+      expect(result.threadId).toBe('alex_thread');
+      // Claude gets conversation history
+      const callArgs = mockClaudeClient.processMessage.mock.calls[0];
+      expect(callArgs[1]).toHaveLength(2); // 2 prior messages as context
+    });
+
+    test('admin CC scenario: admin CCs Addie on prospect email, Addie stays quiet', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Brian OKelley" <bokelley@scope3.com>',
+        to: ['prospect@acme.com'],
+        cc: ['addie+prospect@agenticadvertising.org'],
+        senderEmail: 'bokelley@scope3.com',
+        senderDisplayName: 'Brian OKelley',
+        subject: 'Following up on our conversation',
+        textContent: 'Hi team, just wanted to follow up on what we discussed at the conference.',
+        addiePosition: 'cc',
+      }));
+
+      // Addie should NOT respond — no explicit invocation
+      expect(result.responded).toBe(false);
+      expect(state.sentEmails).toHaveLength(0);
+    });
+
+    test('admin CC scenario: admin CCs Addie with explicit request', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Brian OKelley" <bokelley@scope3.com>',
+        to: ['prospect@acme.com'],
+        cc: ['addie+prospect@agenticadvertising.org'],
+        senderEmail: 'bokelley@scope3.com',
+        senderDisplayName: 'Brian OKelley',
+        subject: 'Membership pricing',
+        textContent: 'Hi team, Addie can you send the latest pricing details for the Builder tier?',
+        addiePosition: 'cc',
+      }));
+
+      expect(result.responded).toBe(true);
+      expect(state.sentEmails).toHaveLength(1);
+    });
+
+    test('email-preference prospect: direct question about protocol', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Riley Harper" <riley@spectrumads.example>',
+        senderEmail: 'riley@spectrumads.example',
+        senderDisplayName: 'Riley Harper',
+        subject: 'How does AdCP handle creative formats?',
+        textContent: 'I work on the creative side at Spectrum Ads. We\'re looking at standardized creative delivery. How does the protocol handle multi-format creative packages?',
+        addiePosition: 'to',
+      }));
+
+      expect(result.responded).toBe(true);
+      expect(state.sentEmails).toHaveLength(1);
+      // Always anonymous-tier (email is unverified)
+      expect(state.addedMessages.find(m => m.role === 'assistant')?.model).toBe('claude-sonnet-4-20250514');
+    });
+
+    test('newsletter reply: someone replies to a newsletter email', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Jordan Lee" <jordan@agency.example>',
+        senderEmail: 'jordan@agency.example',
+        senderDisplayName: 'Jordan Lee',
+        subject: 'Re: The Prompt — Week of April 1',
+        textContent: 'This was a great newsletter. Quick question — you mentioned campaign governance. Is there a guide for setting that up?',
+        addieAddress: 'addie@updates.agenticadvertising.org',
+        addiePosition: 'to',
+        inReplyTo: '<newsletter-msg-id@resend.dev>',
+      }));
+
+      // In-Reply-To won't match (newsletter wasn't a conversation) but should create new thread
+      expect(result.responded).toBe(true);
+      expect(state.createdThread).not.toBeNull();
+    });
+
+    test('empty reply: someone replies with only a signature', async () => {
+      const result = await handleEmailConversation(baseInput({
+        from: '"Empty Reply" <empty@example.com>',
+        senderEmail: 'empty@example.com',
+        subject: 'Re: Question',
+        textContent: `
+--
+John Smith
+CEO, Example Corp
+john@example.com`,
+        addiePosition: 'to',
+      }));
+
+      expect(result.responded).toBe(false);
+      expect(state.sentEmails).toHaveLength(0);
+    });
+  });
 });
