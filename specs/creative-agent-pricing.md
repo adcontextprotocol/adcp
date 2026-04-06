@@ -192,6 +192,7 @@ percent_of_media, flat_fee).
 | `cpm` | Cost per thousand impressions served — ad server model, DCO platforms |
 | `percent_of_media` | Percentage of media spend — agency/platform model |
 | `flat_fee` | Fixed charge per period — licensed creative suites, subscription access |
+| `per_unit` | Fixed price per unit of work — per format adapted, per image generated, per token, per variant rendered |
 
 ```json
 {
@@ -205,14 +206,22 @@ percent_of_media, flat_fee).
 The `pricing_option_id` identifies the specific rate card entry so both sides can
 reference it in `report_usage`.
 
-**Future: per-unit pricing.** The three models above cover launch use cases. AI
-generation and multi-format rendering introduce per-unit pricing patterns (per asset
-generated, per variant rendered, per format adapted) that none of the current models
-cleanly express. Today this works because `build_creative` returns `vendor_cost` and
-`consumption` — the agent computes the cost and the buyer verifies it. But the discovery
-surface (`pricing_options`) cannot yet express "this creative costs $0.15 per image
-generated." A `per_unit` pricing model (unit type, unit price, currency) is a natural
-extension when the use cases mature.
+**Per-unit pricing** covers transformation and generation use cases:
+
+```json
+{
+  "pricing_option_id": "po_gen_per_image",
+  "model": "per_unit",
+  "unit": "image",
+  "unit_price": 0.15,
+  "currency": "USD"
+}
+```
+
+The `unit` field is a free-form string describing what is counted (e.g., `"format"`,
+`"image"`, `"token"`, `"variant"`, `"render"`, `"evaluation"`). The buyer discovers
+the per-unit rate at `list_creatives` time and verifies it against the `consumption`
+object on the `build_creative` response.
 
 #### 4. `account` on `build_creative` request
 

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-pricing.json",
-  "title": "Signal Pricing",
-  "description": "Pricing model for a signal. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), or 'flat_fee' (fixed charge per reporting period, e.g. monthly licensed segments).",
+  "title": "Vendor Pricing",
+  "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), or 'per_unit' (fixed price per unit of work).",
   "type": "object",
   "oneOf": [
     {
@@ -92,6 +92,36 @@
         }
       },
       "required": ["model", "amount", "period", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "PerUnitPricing",
+      "description": "Fixed price per unit of work. Used for creative transformation (per format), AI generation (per image, per token), and rendering (per variant). The unit field describes what is counted; unit_price is the cost per one unit.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "per_unit"
+        },
+        "unit": {
+          "type": "string",
+          "description": "What is counted — e.g. 'format', 'image', 'token', 'variant', 'render', 'evaluation'."
+        },
+        "unit_price": {
+          "type": "number",
+          "description": "Cost per one unit",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "unit", "unit_price", "currency"],
       "additionalProperties": true
     }
   ]
