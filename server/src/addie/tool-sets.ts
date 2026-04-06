@@ -95,6 +95,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_working_groups',
       'get_working_group',
       'join_working_group',
+      'request_working_group_invitation',
       'get_my_working_groups',
       'express_council_interest',
       'withdraw_council_interest',
@@ -214,6 +215,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, add or update committee documents (admin actions)',
     tools: [
       'draft_github_issue',
+      'create_github_issue',
       'propose_news_source',
       'list_pending_content',
       'approve_content',
