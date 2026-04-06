@@ -73,6 +73,10 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "measurement_terms": {
+      "$ref": "/schemas/core/measurement-terms.json",
+      "description": "Buyer's proposed measurement and verification terms for this package. Overrides the product's defaults. The seller validates against its policy and either accepts (echoed on the confirmed package), rejects with TERMS_REJECTED, or adjusts and returns the actual terms. When absent, the product's measurement_terms apply."
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",

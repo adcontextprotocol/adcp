@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/cancellation-policy.json",
+  "title": "Cancellation Policy",
+  "description": "Seller-declared cancellation terms for a product. Declares the minimum notice period required before cancellation takes effect and any associated penalties. Buyers accept these terms by creating a media buy against the product.",
+  "type": "object",
+  "properties": {
+    "notice_period": {
+      "$ref": "/schemas/core/duration.json",
+      "description": "Minimum notice period before cancellation takes effect (e.g., { interval: 30, unit: 'days' }). A guaranteed buy canceled without sufficient notice may incur cancellation penalties."
+    },
+    "penalty_description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable description of the cancellation penalty when the notice period is not met (e.g., '50% of remaining committed spend', 'full flight cost'). Informational for buyer agents."
+    }
+  },
+  "required": ["notice_period"],
+  "additionalProperties": true
+}

@@ -50,6 +50,66 @@ Publishers specify their measurement provider in the product:
 
 By accepting the product, buyers agree to use the declared measurement provider as the authoritative source for delivery metrics.
 
+### Measurement Terms
+
+Beyond declaring a provider, sellers can publish structured `measurement_terms` on products — and buyers can negotiate them at buy creation:
+
+```json
+{
+  "product_id": "premium_guaranteed_video",
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with DoubleVerify verification",
+    "notes": "MRC-accredited viewability. DV IVT filtering enabled."
+  },
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "admanager.google.com" },
+      "max_variance_percent": 10
+    },
+    "ivt_threshold": {
+      "max_percent": 5,
+      "vendor": { "domain": "doubleverify.com" }
+    },
+    "viewability": {
+      "min_percent": 70,
+      "standard": "mrc",
+      "vendor": { "domain": "doubleverify.com" }
+    }
+  }
+}
+```
+
+**Fields:**
+
+- **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution.
+- **`ivt_threshold`** — Maximum acceptable Invalid Traffic rate. The `vendor` is identified by domain using the standard brand reference (e.g., `{ "domain": "doubleverify.com" }`). When agreed on a confirmed package, creatives MUST include `tracker_script` or `tracker_pixel` assets from the specified vendor.
+- **`viewability`** — Minimum viewability floor with the measurement `standard` (`"mrc"` or `"groupm"`) and the vendor measuring it. When agreed on a confirmed package, creatives MUST include corresponding tracker assets.
+
+**Negotiation flow:**
+
+1. Seller publishes `measurement_terms` on the product (defaults)
+2. Buyer proposes terms on the package request at `create_media_buy` (overrides)
+3. Seller accepts (echoes on confirmed package), rejects (`TERMS_REJECTED`), or adjusts (returns modified terms)
+
+When the buyer omits `measurement_terms`, the product's defaults apply.
+
+### Cancellation Policy
+
+Guaranteed products can declare a `cancellation_policy` with the minimum notice period required before cancellation takes effect:
+
+```json
+{
+  "product_id": "premium_guaranteed_video",
+  "delivery_type": "guaranteed",
+  "cancellation_policy": {
+    "notice_period": { "interval": 30, "unit": "days" },
+    "penalty_description": "50% of remaining committed spend"
+  }
+}
+```
+
+Unlike `measurement_terms`, cancellation policy is not a negotiation surface — the seller declares it and the buyer accepts it by creating a media buy against the product. A guaranteed buy canceled without sufficient notice may incur the declared penalty.
+
 ### Best Practices
 
 **For Publishers:**

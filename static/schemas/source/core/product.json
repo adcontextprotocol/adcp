@@ -87,6 +87,14 @@
         "provider"
       ]
     },
+    "measurement_terms": {
+      "$ref": "/schemas/core/measurement-terms.json",
+      "description": "Seller's default measurement and verification terms for this product. Declares IVT thresholds, billing measurement vendors, and viewability floors the seller supports. Buyers may propose different terms at media buy creation — sellers accept, reject (TERMS_REJECTED), or adjust per their policy. When absent, terms are unstructured and default to the seller's standard policy."
+    },
+    "cancellation_policy": {
+      "$ref": "/schemas/core/cancellation-policy.json",
+      "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
+    },
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"
     },

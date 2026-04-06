@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-terms.json",
+  "title": "Measurement Terms",
+  "description": "Measurement and verification terms for media buys. Appears on products (seller defaults), package requests (buyer proposals), and confirmed packages (agreed terms). All fields are optional — presence indicates the term is declared or proposed.",
+  "type": "object",
+  "properties": {
+    "billing_measurement": {
+      "type": "object",
+      "description": "Which vendor's count of the billing metric governs invoicing. The billing metric is determined by the pricing_model on the selected pricing_option (e.g., impressions for CPM, completed views for CPCV).",
+      "properties": {
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
+        },
+        "max_variance_percent": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "Maximum acceptable variance between the billing vendor's count and the other party's count before resolution is triggered (e.g., 10 means a 10% divergence triggers review)."
+        }
+      },
+      "required": ["vendor"],
+      "additionalProperties": true
+    },
+    "ivt_threshold": {
+      "type": "object",
+      "description": "Invalid Traffic threshold and the vendor responsible for measuring it.",
+      "properties": {
+        "max_percent": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "Maximum acceptable IVT percentage (e.g., 5 means less than 5% invalid traffic). Measured by the specified vendor."
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor responsible for IVT detection and measurement (e.g., { domain: 'doubleverify.com' }). When specified on a confirmed package, creatives assigned to this package MUST include tracker_script or tracker_pixel assets from this vendor."
+        }
+      },
+      "required": ["max_percent", "vendor"],
+      "additionalProperties": true
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Viewability threshold, measurement standard, and the vendor responsible for measuring it.",
+      "properties": {
+        "min_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum viewability percentage (e.g., 70 means at least 70% of impressions must be viewable)."
+        },
+        "standard": {
+          "$ref": "/schemas/enums/viewability-standard.json",
+          "description": "Viewability measurement standard applied."
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor measuring viewability (e.g., { domain: 'integralads.com' }). When specified on a confirmed package, creatives assigned to this package MUST include corresponding tracker assets from this vendor."
+        }
+      },
+      "required": ["min_percent", "standard", "vendor"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -244,9 +244,8 @@
           "maximum": 1
         },
         "standard": {
-          "type": "string",
-          "enum": ["mrc", "groupm"],
-          "description": "Viewability measurement standard. 'mrc': 50% of pixels in view for 1 second (display) or 2 seconds (video), per MRC/IAB guidelines. 'groupm': 100% of pixels in view for the same durations. These are materially different thresholds and should not be compared across standards."
+          "$ref": "/schemas/enums/viewability-standard.json",
+          "description": "Viewability measurement standard applied to these metrics."
         }
       },
       "additionalProperties": true

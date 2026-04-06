@@ -55,6 +55,14 @@
           "type": "string",
           "description": "Payment terms",
           "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
+        },
+        "measurement_terms": {
+          "$ref": "/schemas/core/measurement-terms.json",
+          "description": "Measurement terms applied across all packages in this IO. Package-level measurement_terms override IO-level terms where both are present."
+        },
+        "cancellation_policy": {
+          "$ref": "/schemas/core/cancellation-policy.json",
+          "description": "Cancellation terms for all packages in this IO. Overrides product-level cancellation policy when present."
         }
       },
       "additionalProperties": true
