@@ -468,6 +468,9 @@ export async function buildCertificationContext(
   lines.push('');
   lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more get_products calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
+  lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
+  lines.push('');
+
   // Inject training agent URL for demos
   const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
   lines.push('');

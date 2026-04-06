@@ -510,7 +510,7 @@ export async function prepareRequestWithMemberTools(
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext),
-    ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
+    ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadExternalId),
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
@@ -770,13 +770,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Process with Claude — certification sessions get more conversation history
+      // Process with Claude
       let response;
       try {
         response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
           ...processOptions,
           requestContext,
-          maxMessages: hasCertificationContext ? 50 : undefined,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
         });
@@ -1028,7 +1027,6 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
         requestContext,
-        maxMessages: hasCertCtx ? 50 : undefined,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
       })) {

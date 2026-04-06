@@ -835,6 +835,24 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   video: ['video ads', 'outstream', 'instream', 'vast'],
   pbjs: ['prebid.js', 'prebid'],
   pbs: ['prebid server', 'server-side bidding'],
+  // IAB UCP / Agentic Audiences
+  ucp: ['user context protocol', 'agentic audiences', 'agent context'],
+  'user context protocol': ['ucp', 'agentic audiences', 'agent context'],
+  'agentic audiences': ['ucp', 'user context protocol', 'agent context'],
+  // IAB ARTF
+  artf: ['agentic rtb framework', 'agentic rtb'],
+  'agentic rtb': ['artf', 'agentic rtb framework'],
+  // Identity
+  uid2: ['unified id', 'uid 2.0', 'identity'],
+  identity: ['uid2', 'user id', 'id module'],
+  // OpenRTB
+  openrtb: ['ortb', 'rtb', 'real-time bidding', 'bid request'],
+  ortb: ['openrtb', 'rtb', 'real-time bidding'],
+  // Signals
+  signals: ['signal agent', 'activate_signal', 'get_signals'],
+  // MCP / A2A
+  mcp: ['model context protocol'],
+  a2a: ['agent-to-agent', 'agent to agent'],
 };
 
 /**

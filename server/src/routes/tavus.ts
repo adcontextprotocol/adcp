@@ -224,7 +224,7 @@ async function buildVoiceRequestTools(
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadId),
     ...createAdcpToolHandlers(memberContext),
-    ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
+    ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
   ]);
 
