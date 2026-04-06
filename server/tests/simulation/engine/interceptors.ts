@@ -118,31 +118,41 @@ export function createAnthropicInterceptor(clock: SimulationClock): AnthropicInt
   return interceptor;
 }
 
+// Shared mutable state for mock factories.
+// vi.mock factories in test files reference these at call time (not hoist time).
+// Test files set these before tests run via _anthropicState.interceptor = ...
+export const _anthropicState: { interceptor: AnthropicInterceptor | null; clock: SimulationClock | null } = {
+  interceptor: null,
+  clock: null,
+};
+
 /**
- * Create the Anthropic SDK mock module.
- * Call this BEFORE importing any module that uses @anthropic-ai/sdk.
+ * @deprecated Use inline vi.mock in test files with _anthropicState instead.
+ * vi.mock inside imported functions is NOT hoisted by vitest.
  */
 export function mockAnthropicModule(interceptor: AnthropicInterceptor, clock: SimulationClock) {
+  _anthropicState.interceptor = interceptor;
+  _anthropicState.clock = clock;
+
   vi.mock('@anthropic-ai/sdk', () => {
     return {
       default: class MockAnthropic {
         messages = {
           create: async (params: { system?: string; messages: Array<{ content: string }> }) => {
+            const ic = _anthropicState.interceptor!;
+            const cl = _anthropicState.clock!;
             const userPrompt = params.messages[0]?.content ?? '';
             const system = (params.system as string) ?? '';
 
-            // Try to find a canned response based on context clues
-            let response = interceptor.defaultResponse;
+            let response = ic.defaultResponse;
 
-            // Check for stage-specific canned responses
-            for (const [step, cannedText] of interceptor.cannedResponses) {
+            for (const [step, cannedText] of ic.cannedResponses) {
               if (userPrompt.includes(step) || system.includes(step)) {
                 response = cannedText;
                 break;
               }
             }
 
-            // Check if this is an email composition (JSON format expected)
             if (userPrompt.includes('Email —')) {
               response = JSON.stringify({
                 subject: 'Welcome to AgenticAdvertising.org',
@@ -150,17 +160,16 @@ export function mockAnthropicModule(interceptor: AnthropicInterceptor, clock: Si
               });
             }
 
-            // If context suggests a skip (e.g., nothing meaningful)
             if (userPrompt.includes('None — they seem to have everything set up') &&
                 userPrompt.includes('contributing')) {
               response = JSON.stringify({ skip: true, reason: 'Person is fully engaged, no action needed' });
             }
 
-            interceptor.calls.push({
+            ic.calls.push({
               system,
               userPrompt,
               response,
-              timestamp: clock.now(),
+              timestamp: cl.now(),
             });
 
             return {
@@ -200,17 +209,29 @@ export function createResendInterceptor(clock: SimulationClock): ResendIntercept
   return interceptor;
 }
 
+export const _resendState: { interceptor: ResendInterceptor | null; clock: SimulationClock | null } = {
+  interceptor: null,
+  clock: null,
+};
+
+/**
+ * @deprecated Use inline vi.mock in test files with _resendState instead.
+ * vi.mock inside imported functions is NOT hoisted by vitest.
+ */
 export function mockResendModule(interceptor: ResendInterceptor, clock: SimulationClock) {
+  _resendState.interceptor = interceptor;
+  _resendState.clock = clock;
+
   vi.mock('resend', () => {
     return {
       Resend: class {
         emails = {
           send: async (params: { to: string; subject: string; text?: string }) => {
-            interceptor.sentEmails.push({
+            _resendState.interceptor!.sentEmails.push({
               to: Array.isArray(params.to) ? params.to[0] : params.to,
               subject: params.subject,
               text: params.text ?? '',
-              timestamp: clock.now(),
+              timestamp: _resendState.clock!.now(),
             });
             return { data: { id: `sim_email_${Date.now()}` }, error: null };
           },

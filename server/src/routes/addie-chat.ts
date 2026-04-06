@@ -143,7 +143,7 @@ const ANONYMOUS_MAX_ITERATIONS = 5;
  * Merge per-request member tools with cached authenticated-only tools,
  * and select model + iteration limits based on auth status.
  */
-function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
+export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
   let requestTools = memberTools;
   if (isAuth && authenticatedOnlyTools) {
     // Per-request member tools (with memberContext) must override cached auth tools
@@ -275,6 +275,20 @@ async function initializeChatClient(): Promise<void> {
   }, "Addie Chat: Initialized with tiered access");
 }
 
+/**
+ * Get the initialized chat Claude client.
+ * Ensures initialization has run before returning the client.
+ */
+export async function getChatClaudeClient(): Promise<AddieClaudeClient> {
+  if (!initialized) {
+    await initializeChatClient();
+  }
+  if (!claudeClient) {
+    throw new Error('Chat Claude client not initialized — missing ANTHROPIC_API_KEY');
+  }
+  return claudeClient;
+}
+
 interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
@@ -333,7 +347,7 @@ function hashIp(ip: string | undefined): string {
   return crypto.createHash("sha256").update(ip).digest("hex").substring(0, 16);
 }
 
-interface PreparedRequest {
+export interface PreparedRequest {
   messageToProcess: string;
   requestContext: string;
   memberContext: MemberContext | null;
@@ -387,7 +401,7 @@ function extractSiSessionFromToolExecutions(
  * Creates member tools and SI host tools with the user's actual context
  * Also retrieves relevant SI agents for RAG-style context injection
  */
-async function prepareRequestWithMemberTools(
+export async function prepareRequestWithMemberTools(
   sanitizedInput: string,
   userId: string | undefined,
   threadExternalId: string,
