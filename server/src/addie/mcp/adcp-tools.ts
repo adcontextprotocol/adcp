@@ -2394,7 +2394,7 @@ export function createAdcpToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl, task }, `AdCP: ${task} failed`);
+      logger.warn({ error, agentUrl, task }, `AdCP: ${task} failed`);
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
