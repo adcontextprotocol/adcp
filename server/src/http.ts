@@ -102,6 +102,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { TRAINING_AGENT_HOSTNAMES } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1184,7 +1185,7 @@ export class HTTPServer {
 
     // Host-based routing: serve embedded agents at root for legacy standalone URLs
     this.app.use((req, res, next) => {
-      if (req.hostname === 'test-agent.adcontextprotocol.org') {
+      if (TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return trainingAgentRouter(req, res, next);
       }
       if (req.hostname === 'creative.adcontextprotocol.org') {
@@ -3319,7 +3320,7 @@ export class HTTPServer {
       let event: Stripe.Event;
 
       try {
-        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+        event = stripe.webhooks.constructEvent(req.body, sig as string, STRIPE_WEBHOOK_SECRET);
       } catch (err) {
         logger.error({ err }, 'Stripe webhook signature verification failed');
         notifySystemError({ source: 'stripe-webhook-sig', errorMessage: 'Stripe webhook signature verification failed — check STRIPE_WEBHOOK_SECRET' });

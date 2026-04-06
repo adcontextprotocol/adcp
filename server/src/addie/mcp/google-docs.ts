@@ -185,7 +185,12 @@ async function readViaDocsApi(
   );
 
   if (!response.ok) {
-    logger.debug({ status: response.status, docId }, 'Google Docs API: request failed, will try Drive API');
+    let errorDetail = '';
+    try {
+      const body = await response.json() as { error?: { message?: string; status?: string } };
+      errorDetail = body.error?.message || body.error?.status || '';
+    } catch { /* ignore parse errors */ }
+    logger.warn({ status: response.status, docId, errorDetail }, 'Google Docs API: request failed, will try Drive API');
     return null;
   }
 
@@ -229,7 +234,12 @@ async function readViaSheetsApi(
   );
 
   if (!metaResponse.ok) {
-    logger.debug({ status: metaResponse.status, spreadsheetId }, 'Google Sheets API: metadata request failed, will try Drive API');
+    let errorDetail = '';
+    try {
+      const body = await metaResponse.json() as { error?: { message?: string; status?: string } };
+      errorDetail = body.error?.message || body.error?.status || '';
+    } catch { /* ignore parse errors */ }
+    logger.warn({ status: metaResponse.status, spreadsheetId, errorDetail }, 'Google Sheets API: metadata request failed, will try Drive API');
     return null;
   }
 
@@ -388,15 +398,20 @@ async function readGoogleDoc(
 
     if (!metadataResponse.ok) {
       if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        let driveError = '';
+        try {
+          const body = await metadataResponse.json() as { error?: { message?: string; errors?: Array<{ reason?: string }> } };
+          driveError = body.error?.message || body.error?.errors?.[0]?.reason || '';
+        } catch { /* ignore parse errors */ }
         // Drive API may be blocked for unverified OAuth apps. Try direct APIs
         // as a fallback before telling the user we can't access the document.
-        logger.debug({ status: metadataResponse.status, docId }, 'Google Docs: Drive API inaccessible, trying direct APIs');
+        logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: Drive API inaccessible, trying direct APIs');
         const docsResult = await readViaDocsApi(docId, accessToken);
         if (docsResult !== null) return docsResult;
         const sheetsResult = await readViaSheetsApi(docId, accessToken);
         if (sheetsResult !== null) return sheetsResult;
 
-        logger.warn({ status: metadataResponse.status, docId }, 'Google Docs: document inaccessible via all APIs');
+        logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: document inaccessible via all APIs');
         return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await metadataResponse.text();

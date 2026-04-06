@@ -1050,12 +1050,12 @@ export async function createAndSendInvoice(
 
     // When backdating or setting explicit due date, update the draft invoice
     // before sending (sendInvoice auto-finalizes, so updates must happen first)
-    let sentInvoice: Stripe.Invoice;
+    let sentInvoice: Awaited<ReturnType<typeof stripe.invoices.sendInvoice>>;
     if (invoiceDateUnix || dueDateUnix) {
-      const updateParams: Stripe.InvoiceUpdateParams = {};
-      if (invoiceDateUnix) updateParams.effective_at = invoiceDateUnix;
-      if (dueDateUnix) updateParams.due_date = dueDateUnix;
-      await stripe.invoices.update(invoiceId, updateParams);
+      await stripe.invoices.update(invoiceId, {
+        ...(invoiceDateUnix ? { effective_at: invoiceDateUnix } : {}),
+        ...(dueDateUnix ? { due_date: dueDateUnix } : {}),
+      });
 
       sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
     } else {
@@ -1254,16 +1254,30 @@ export async function createCheckoutSession(
     const price = await stripe.prices.retrieve(data.priceId);
     const mode = price.recurring ? 'subscription' : 'payment';
 
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    // Resolve discounts before building the params object
+    let discounts: Array<{ coupon?: string; promotion_code?: string }> | undefined;
+    let allow_promotion_codes: boolean | undefined;
+
+    if (data.couponId) {
+      discounts = [{ coupon: data.couponId }];
+    } else if (data.promotionCode) {
+      const promoCodes = await stripe.promotionCodes.list({ code: data.promotionCode, limit: 1 });
+      if (promoCodes.data.length > 0) {
+        discounts = [{ promotion_code: promoCodes.data[0].id }];
+      } else {
+        logger.warn({ promotionCode: data.promotionCode }, 'Promotion code not found, proceeding without discount');
+        allow_promotion_codes = true;
+      }
+    } else {
+      allow_promotion_codes = true;
+    }
+
+    const session = await stripe.checkout.sessions.create({
       mode,
-      line_items: [
-        {
-          price: data.priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: data.priceId, quantity: 1 }],
       success_url: data.successUrl,
       cancel_url: data.cancelUrl,
+      billing_address_collection: 'required',
       metadata: {
         ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
         ...(data.workosUserId && { workos_user_id: data.workosUserId }),
@@ -1272,57 +1286,23 @@ export async function createCheckoutSession(
         ...(data.eventSponsorshipId && { event_sponsorship_id: data.eventSponsorshipId }),
         ...(data.sponsorshipTierId && { sponsorship_tier_id: data.sponsorshipTierId }),
       },
-    };
-
-    // Set customer or email
-    if (data.customerId) {
-      sessionParams.customer = data.customerId;
-    } else if (data.customerEmail) {
-      sessionParams.customer_email = data.customerEmail;
-    }
-
-    // Handle discounts - either pre-apply a specific coupon/promotion code, or allow user entry
-    if (data.couponId) {
-      // Pre-apply a specific coupon
-      sessionParams.discounts = [{ coupon: data.couponId }];
-      // Don't allow additional promotion codes when one is pre-applied
-    } else if (data.promotionCode) {
-      // Look up the promotion code to get its ID
-      const promoCodes = await stripe.promotionCodes.list({ code: data.promotionCode, limit: 1 });
-      if (promoCodes.data.length > 0) {
-        sessionParams.discounts = [{ promotion_code: promoCodes.data[0].id }];
-      } else {
-        logger.warn({ promotionCode: data.promotionCode }, 'Promotion code not found, proceeding without discount');
-        sessionParams.allow_promotion_codes = true;
-      }
-    } else {
-      // Allow manual entry of promotion codes
-      sessionParams.allow_promotion_codes = true;
-    }
-    sessionParams.billing_address_collection = 'required';
-
-    // For subscriptions, copy org metadata to the subscription so webhook handlers
-    // can resolve the org even if checkout.session.completed hasn't linked the customer yet.
-    if (mode === 'subscription') {
-      sessionParams.subscription_data = {
-        metadata: {
-          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+      ...(data.customerId ? { customer: data.customerId } : data.customerEmail ? { customer_email: data.customerEmail } : {}),
+      ...(discounts ? { discounts } : {}),
+      ...(allow_promotion_codes ? { allow_promotion_codes } : {}),
+      // For subscriptions, copy org metadata so webhook handlers can resolve the org
+      ...(mode === 'subscription' ? {
+        subscription_data: {
+          metadata: {
+            ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+          },
         },
-      };
-    }
-
-    // For one-time payments, also create invoices and customers
-    // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
-    if (mode === 'payment') {
-      sessionParams.invoice_creation = {
-        enabled: true,
-      };
-      if (!data.customerId) {
-        sessionParams.customer_creation = 'always';
-      }
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
+      } : {}),
+      // For one-time payments, create invoices and customers
+      ...(mode === 'payment' ? {
+        invoice_creation: { enabled: true },
+        ...(!data.customerId ? { customer_creation: 'always' as const } : {}),
+      } : {}),
+    });
 
     logger.info({
       sessionId: session.id,
@@ -1413,21 +1393,16 @@ export async function createProduct(input: CreateProductInput): Promise<BillingP
     });
 
     // Create the price with lookup key
-    const priceParams: Stripe.PriceCreateParams = {
+    const price = await stripe.prices.create({
       product: product.id,
       unit_amount: input.amountCents,
       currency: input.currency || 'usd',
       lookup_key: input.lookupKey,
-      transfer_lookup_key: true, // Transfer lookup key if it exists on another price
-    };
-
-    if (input.billingType === 'subscription') {
-      priceParams.recurring = {
-        interval: input.billingInterval || 'year',
-      };
-    }
-
-    const price = await stripe.prices.create(priceParams);
+      transfer_lookup_key: true,
+      ...(input.billingType === 'subscription' ? {
+        recurring: { interval: input.billingInterval || 'year' },
+      } : {}),
+    });
 
     logger.info({
       productId: product.id,
@@ -1484,11 +1459,11 @@ export async function updateProductMetadata(input: UpdateProductInput): Promise<
     if (input.sortOrder !== undefined) metadata.sort_order = String(input.sortOrder);
 
     // Update product
-    const updateParams: Stripe.ProductUpdateParams = { metadata };
-    if (input.name) updateParams.name = input.name;
-    if (input.description !== undefined) updateParams.description = input.description;
-
-    const product = await stripe.products.update(input.productId, updateParams);
+    const product = await stripe.products.update(input.productId, {
+      metadata,
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    });
 
     // Get the price to return full billing product
     const price = await stripe.prices.retrieve(input.priceId);
@@ -2014,32 +1989,21 @@ export async function createCoupon(input: CreateCouponInput): Promise<{
   }
 
   try {
-    const params: Stripe.CouponCreateParams = {
+    const coupon = await stripe.coupons.create({
       name: input.name,
       duration: input.duration,
       metadata: input.metadata,
-    };
-
-    if (input.percent_off !== undefined) {
-      params.percent_off = input.percent_off;
-    } else if (input.amount_off_cents !== undefined) {
-      params.amount_off = input.amount_off_cents;
-      params.currency = input.currency || 'usd';
-    }
-
-    if (input.duration === 'repeating' && input.duration_in_months) {
-      params.duration_in_months = input.duration_in_months;
-    }
-
-    if (input.max_redemptions) {
-      params.max_redemptions = input.max_redemptions;
-    }
-
-    if (input.redeem_by) {
-      params.redeem_by = Math.floor(input.redeem_by.getTime() / 1000);
-    }
-
-    const coupon = await stripe.coupons.create(params);
+      ...(input.percent_off !== undefined
+        ? { percent_off: input.percent_off }
+        : input.amount_off_cents !== undefined
+          ? { amount_off: input.amount_off_cents, currency: input.currency || 'usd' }
+          : {}),
+      ...(input.duration === 'repeating' && input.duration_in_months
+        ? { duration_in_months: input.duration_in_months }
+        : {}),
+      ...(input.max_redemptions ? { max_redemptions: input.max_redemptions } : {}),
+      ...(input.redeem_by ? { redeem_by: Math.floor(input.redeem_by.getTime() / 1000) } : {}),
+    });
 
     logger.info({
       couponId: coupon.id,
@@ -2072,30 +2036,19 @@ export async function createPromotionCode(input: CreatePromotionCodeInput): Prom
   }
 
   try {
-    const params: Stripe.PromotionCodeCreateParams = {
+    const promoCode = await stripe.promotionCodes.create({
       promotion: {
         type: 'coupon',
         coupon: input.coupon_id,
       },
       code: input.code.toUpperCase(),
       metadata: input.metadata,
-    };
-
-    if (input.max_redemptions) {
-      params.max_redemptions = input.max_redemptions;
-    }
-
-    if (input.expires_at) {
-      params.expires_at = Math.floor(input.expires_at.getTime() / 1000);
-    }
-
-    if (input.first_time_transaction !== undefined) {
-      params.restrictions = {
-        first_time_transaction: input.first_time_transaction,
-      };
-    }
-
-    const promoCode = await stripe.promotionCodes.create(params);
+      ...(input.max_redemptions ? { max_redemptions: input.max_redemptions } : {}),
+      ...(input.expires_at ? { expires_at: Math.floor(input.expires_at.getTime() / 1000) } : {}),
+      ...(input.first_time_transaction !== undefined ? {
+        restrictions: { first_time_transaction: input.first_time_transaction },
+      } : {}),
+    });
 
     logger.info({
       promotionCodeId: promoCode.id,
