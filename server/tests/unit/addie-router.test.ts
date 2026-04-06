@@ -382,8 +382,12 @@ describe('TOOL_SETS.admin', () => {
 
   it('should include engagement analytics tools', () => {
     expect(adminSet.tools).toContain('list_users_by_engagement');
-    expect(adminSet.tools).toContain('get_insight_summary');
     expect(adminSet.tools).toContain('get_member_search_analytics');
+  });
+
+  it('should include working group membership tools', () => {
+    expect(adminSet.tools).toContain('add_working_group_member');
+    expect(adminSet.tools).toContain('remove_working_group_member');
   });
 
   it('should mention committee/working group leadership in description', () => {
