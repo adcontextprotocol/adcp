@@ -273,6 +273,13 @@ const VALID_CATALOG_TYPES = ['product', 'offering', 'inventory', 'store', 'promo
 
 export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCatalogsInput;
+
+  if (!req.account) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'account is required' }],
+    };
+  }
+
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const catalogs = getCatalogMap(sessionKey);
   const now = new Date().toISOString();
@@ -305,7 +312,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
       results.push({
         catalog_id: 'unknown',
         action: 'failed',
-        errors: ['catalog_id is required'],
+        errors: [{ code: 'INVALID_REQUEST', message: 'catalog_id is required' }],
       });
       continue;
     }
@@ -314,15 +321,16 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
       results.push({
         catalog_id: input.catalog_id,
         action: 'failed',
-        errors: [`catalog_type must be one of: ${VALID_CATALOG_TYPES.join(', ')}`],
+        errors: [{ code: 'INVALID_REQUEST', message: `catalog_type must be one of: ${VALID_CATALOG_TYPES.join(', ')}` }],
       });
       continue;
     }
 
     const existing = catalogs.get(input.catalog_id);
     const itemCount = input.items?.length || (input.feed_url ? 50 : 0); // Simulate feed fetch
-    const itemsApproved = Math.floor(itemCount * 0.9);
-    const itemsRejected = Math.floor(itemCount * 0.02);
+    // Small inline catalogs: approve all. Larger feeds: simulate realistic review rates.
+    const itemsApproved = itemCount <= 10 ? itemCount : Math.floor(itemCount * 0.9);
+    const itemsRejected = itemCount <= 10 ? 0 : Math.floor(itemCount * 0.02);
     const itemsPending = itemCount - itemsApproved - itemsRejected;
 
     if (req.dry_run) {
@@ -385,6 +393,13 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncEventSourcesInput;
+
+  if (!req.account) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'account is required' }],
+    };
+  }
+
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const sources = getEventSourceMap(sessionKey);
   const now = new Date().toISOString();
@@ -409,7 +424,7 @@ export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
       results.push({
         event_source_id: input.event_source_id || 'unknown',
         action: 'failed',
-        errors: ['event_source_id and name are required'],
+        errors: [{ code: 'INVALID_REQUEST', message: 'event_source_id and name are required' }],
       });
       continue;
     }
@@ -460,6 +475,15 @@ export function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   if (!req.events || !Array.isArray(req.events) || req.events.length === 0) {
     return {
       errors: [{ code: 'INVALID_REQUEST', message: 'events array is required and must not be empty' }],
+    };
+  }
+
+  // Validate event source exists in session
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sources = getEventSourceMap(sessionKey);
+  if (!sources.has(req.event_source_id)) {
+    return {
+      errors: [{ code: 'EVENT_SOURCE_NOT_FOUND', message: `Event source '${req.event_source_id}' not found. Call sync_event_sources first to configure the event source.` }],
     };
   }
 
@@ -521,5 +545,21 @@ export function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingCo
     };
   }
 
-  return { success: true };
+  // Validate media buy exists in session
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = getSession(sessionKey);
+  if (!session.mediaBuys.has(req.media_buy_id)) {
+    return {
+      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy '${req.media_buy_id}' not found. Create a media buy first via create_media_buy.` }],
+    };
+  }
+
+  return {
+    success: true,
+    media_buy_id: req.media_buy_id,
+    measurement_period: req.measurement_period,
+    performance_index: req.performance_index,
+    ...(req.package_id && { package_id: req.package_id }),
+    ...(req.metric_type && { metric_type: req.metric_type }),
+  };
 }
