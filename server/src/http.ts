@@ -26,7 +26,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, inferMembershipTier, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, inferMembershipTier, tierFromLookupKey, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -3504,7 +3504,7 @@ export class HTTPServer {
                         if (adminEmails.length > 0) {
                           // Compute seat limits for the welcome message
                           const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeTier = inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
+                          const welcomeTier = tierFromLookupKey(firstItem?.price?.lookup_key) ?? inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
                           const seatLimits = getSeatLimits(welcomeTier);
 
                           await notifySubscriptionThankYou({
@@ -3586,9 +3586,9 @@ export class HTTPServer {
                 const currency = priceData?.currency ?? null;
                 const interval = priceData?.recurring?.interval ?? null;
 
-                // Infer membership tier from amount for seat entitlements
+                // Resolve membership tier: lookup key is authoritative, amount is fallback
                 const membershipTier = subscription.status === 'active'
-                  ? inferMembershipTier(amount, interval, org.is_personal)
+                  ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(amount, interval, org.is_personal))
                   : null;
 
                 // Capture current tier before update for change detection
@@ -3606,8 +3606,8 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       membership_tier = COALESCE($9, membership_tier),
                        subscription_canceled_at = $8,
+                       membership_tier = $9,
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
