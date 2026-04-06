@@ -2148,6 +2148,11 @@ export class HTTPServer {
       res.redirect(301, '/about#leadership');
     });
 
+    // Roadmap page - redirect to docs
+    this.app.get("/roadmap", (req, res) => {
+      res.redirect(301, 'https://docs.adcontextprotocol.org/docs/reference/roadmap');
+    });
+
     // Perspectives index redirects to perspectives section
     this.app.get("/perspectives", (req, res) => {
       res.redirect(301, "/latest/perspectives");
