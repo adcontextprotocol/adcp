@@ -772,6 +772,94 @@
 
       .hidden { display: none; }
 
+      /* Upload modal */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+
+      .modal {
+        background: var(--color-bg-card);
+        border-radius: var(--radius-xl);
+        width: 100%;
+        max-width: 520px;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: var(--space-6);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      }
+
+      .modal h3 {
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-lg);
+      }
+
+      .drop-zone {
+        border: 2px dashed var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-8) var(--space-4);
+        text-align: center;
+        cursor: pointer;
+        transition: var(--transition-all);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-4);
+      }
+
+      .drop-zone:hover, .drop-zone.dragover {
+        border-color: var(--color-brand);
+        color: var(--color-brand);
+        background: var(--color-primary-50);
+      }
+
+      .drop-zone-preview {
+        max-width: 200px;
+        max-height: 100px;
+        object-fit: contain;
+        margin-top: var(--space-3);
+      }
+
+      .tag-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        margin-bottom: var(--space-4);
+      }
+
+      .tag-picker label {
+        font-size: var(--text-xs);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-full);
+        border: 1px solid var(--color-border);
+        cursor: pointer;
+        transition: var(--transition-all);
+        user-select: none;
+      }
+
+      .tag-picker label:has(input:checked) {
+        background: var(--color-brand);
+        border-color: var(--color-brand);
+        color: white;
+      }
+
+      .tag-picker input { display: none; }
+
+      .upload-field label {
+        display: block;
+        font-size: var(--text-sm);
+        font-weight: var(--font-medium);
+        margin-bottom: var(--space-1);
+        color: var(--color-text-secondary);
+      }
+
+      .upload-field {
+        margin-bottom: var(--space-4);
+      }
+
       /* Responsive */
       @media (max-width: 768px) {
         .logo-grid {
@@ -914,17 +1002,6 @@
         </div>
       </div>
 
-      <!-- Revision History (shown for community/enriched brands, outside brand-content so it survives error state) -->
-      <div id="history-section" class="hidden" style="margin-bottom: var(--space-8);">
-        <div class="section-heading" style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
-          <span class="section-icon">&#128196;</span>
-          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Revision history</span>
-        </div>
-        <div class="card" style="padding: var(--space-4);">
-          <div id="revisions-list"></div>
-        </div>
-      </div>
-
       <!-- Brand content -->
       <div id="brand-content" class="hidden">
         <!-- Hierarchy -->
@@ -948,7 +1025,10 @@
               <span class="section-icon">&#127912;</span>
               Logos
             </span>
-            <button class="btn btn-sm btn-ghost" id="download-all-btn" onclick="downloadAllLogos()">Download all</button>
+            <div style="display:flex;gap:var(--space-2);">
+              <button class="btn btn-sm btn-primary hidden" id="upload-logo-btn" onclick="showUploadModal()">Upload logo</button>
+              <button class="btn btn-sm btn-ghost" id="download-all-btn" onclick="downloadAllLogos()">Download all</button>
+            </div>
           </div>
           <div id="logo-grid" class="logo-grid"></div>
         </div>
@@ -1018,6 +1098,43 @@
         </div>
 
       </div>
+
+      <!-- Revision History (shown for community/enriched brands) -->
+      <div id="history-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading" style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+          <span class="section-icon">&#128196;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Revision history</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="revisions-list"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal-overlay hidden" onclick="if(event.target===this)hideUploadModal()">
+      <div class="modal">
+        <h3>Upload logo</h3>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div id="drop-zone-text">Drop a file here or click to browse<br><span style="font-size:var(--text-xs);">PNG, JPEG, SVG, WebP, GIF &middot; Max 5 MB</span></div>
+          <img id="drop-zone-preview" class="drop-zone-preview hidden" alt="Preview">
+          <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileSelect(this.files[0])">
+        </div>
+        <div class="upload-field">
+          <label>Tags (select at least one)</label>
+          <div class="tag-picker" id="tag-picker"></div>
+        </div>
+        <div class="upload-field">
+          <label for="upload-note">Source note (optional)</label>
+          <input type="text" id="upload-note" class="edit-form-input" placeholder="e.g. From official press kit" maxlength="500">
+        </div>
+        <div id="upload-status" style="font-size:var(--text-sm);margin-bottom:var(--space-3);"></div>
+        <div style="display:flex;gap:var(--space-2);justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="hideUploadModal()">Cancel</button>
+          <button class="btn btn-primary" id="upload-submit-btn" onclick="submitUpload()" disabled>Upload</button>
+        </div>
+      </div>
     </div>
 
     <!-- Footer -->
@@ -1029,6 +1146,119 @@
       let currentBrandId = null;
       let currentEditStatus = null;
       let currentDomain = '';
+      let uploadFile = null;
+
+      const LOGO_TAGS = {
+        'Variant': ['icon', 'wordmark', 'full-lockup', 'symbol', 'primary', 'secondary'],
+        'Shape': ['square', 'horizontal', 'vertical', 'stacked'],
+        'Background': ['light-bg', 'dark-bg', 'transparent-bg'],
+        'Use': ['favicon', 'social'],
+      };
+
+      function initUploadUI() {
+        const user = window.__APP_CONFIG__?.user;
+        if (user?.isMember) {
+          const btn = document.getElementById('upload-logo-btn');
+          if (btn) btn.classList.remove('hidden');
+        }
+
+        // Build tag picker
+        const picker = document.getElementById('tag-picker');
+        if (picker) {
+          picker.innerHTML = Object.entries(LOGO_TAGS).map(([group, tags]) =>
+            tags.map(t => `<label><input type="checkbox" name="logo-tag" value="${t}" onchange="updateUploadButton()"> ${t}</label>`).join('')
+          ).join('');
+        }
+
+        // Drag and drop
+        const zone = document.getElementById('drop-zone');
+        if (zone) {
+          zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+          zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+          zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
+          });
+        }
+      }
+
+      function handleFileSelect(file) {
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+          document.getElementById('upload-status').textContent = 'File too large (max 5 MB)';
+          return;
+        }
+        uploadFile = file;
+        const preview = document.getElementById('drop-zone-preview');
+        const text = document.getElementById('drop-zone-text');
+        if (file.type.startsWith('image/')) {
+          preview.src = URL.createObjectURL(file);
+          preview.classList.remove('hidden');
+        }
+        text.textContent = file.name;
+        updateUploadButton();
+      }
+
+      function updateUploadButton() {
+        const selectedTags = Array.from(document.querySelectorAll('input[name="logo-tag"]:checked'));
+        document.getElementById('upload-submit-btn').disabled = !uploadFile || selectedTags.length === 0;
+      }
+
+      function showUploadModal() {
+        uploadFile = null;
+        document.getElementById('file-input').value = '';
+        document.getElementById('drop-zone-preview').classList.add('hidden');
+        document.getElementById('drop-zone-text').innerHTML = 'Drop a file here or click to browse<br><span style="font-size:var(--text-xs);">PNG, JPEG, SVG, WebP, GIF &middot; Max 5 MB</span>';
+        document.getElementById('upload-note').value = '';
+        document.getElementById('upload-status').textContent = '';
+        document.getElementById('upload-submit-btn').disabled = true;
+        document.querySelectorAll('input[name="logo-tag"]').forEach(cb => cb.checked = false);
+        document.getElementById('upload-modal').classList.remove('hidden');
+      }
+
+      function hideUploadModal() {
+        document.getElementById('upload-modal').classList.add('hidden');
+      }
+
+      async function submitUpload() {
+        const btn = document.getElementById('upload-submit-btn');
+        const status = document.getElementById('upload-status');
+        btn.disabled = true;
+        btn.textContent = 'Uploading...';
+        status.textContent = '';
+
+        const tags = Array.from(document.querySelectorAll('input[name="logo-tag"]:checked')).map(cb => cb.value);
+        const note = document.getElementById('upload-note').value.trim();
+
+        const form = new FormData();
+        form.append('file', uploadFile);
+        form.append('tags', tags.join(','));
+        if (note) form.append('note', note);
+
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/logos`, {
+            method: 'POST',
+            body: form,
+          });
+          const result = await resp.json();
+          if (resp.ok) {
+            status.innerHTML = '<span style="color:var(--color-success-600);">Logo uploaded — pending review.</span>';
+            setTimeout(() => {
+              hideUploadModal();
+              window.location.reload();
+            }, 1500);
+          } else {
+            status.innerHTML = `<span style="color:var(--color-error-600);">${escapeHtml(result.error)}</span>`;
+            btn.disabled = false;
+            btn.textContent = 'Upload';
+          }
+        } catch (err) {
+          status.innerHTML = '<span style="color:var(--color-error-600);">Upload failed</span>';
+          btn.disabled = false;
+          btn.textContent = 'Upload';
+        }
+      }
 
       function escapeHtml(str) {
         if (str == null) return '';
@@ -1210,6 +1440,8 @@
         }
 
         document.getElementById('hero-subtitle').textContent = domain;
+        currentDomain = domain;
+        initUploadUI();
 
         let brandJsonLoaded = false;
         try {
@@ -1445,9 +1677,16 @@
       function renderLogos(logos) {
         const section = document.getElementById('logos-section');
         const grid = document.getElementById('logo-grid');
+        const user = window.__APP_CONFIG__?.user;
 
         if (!logos || logos.length === 0) {
-          section.classList.add('hidden');
+          if (user?.isMember) {
+            // Show empty section with upload button for members
+            section.classList.remove('hidden');
+            grid.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);">No logos yet. Be the first to contribute one.</p>';
+          } else {
+            section.classList.add('hidden');
+          }
           return;
         }
 
