@@ -11,7 +11,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { AuthenticationRequiredError } from '@adcp/client';
-import { TRAINING_AGENT_HOSTNAME } from '../../training-agent/config.js';
+import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -2274,12 +2274,10 @@ export function createAdcpToolHandlers(
     return undefined;
   }
 
-  // The training agent is served at two hostnames:
-  //   1. test-agent.adcontextprotocol.org (canonical, used in docs and certification)
-  //   2. agenticadvertising.org/api/training-agent (internal path on main server)
-  // Both resolve to the same embedded agent. Recognize either for the in-process shortcut.
+  // The training agent is served at multiple hostnames and as an internal path
+  // on the main server. Recognize any of them for the in-process shortcut.
   function isTrainingAgentUrl(url: URL): boolean {
-    if (url.hostname === TRAINING_AGENT_HOSTNAME) return true;
+    if (TRAINING_AGENT_HOSTNAMES.has(url.hostname)) return true;
     const selfHost = new URL(getBaseUrl()).hostname;
     return url.pathname.startsWith('/api/training-agent') && url.hostname === selfHost;
   }

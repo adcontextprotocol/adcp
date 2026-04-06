@@ -508,7 +508,7 @@ export function parseRouterResponse(response: string): ParsedPlan {
     logger.warn({ parsed }, 'Router: Unknown action, defaulting to ignore');
     return { action: 'ignore', reason: 'Unknown action type' };
   } catch (error) {
-    logger.error({ error, response }, 'Router: Failed to parse response');
+    logger.warn({ error, response }, 'Router: Failed to parse response, using knowledge fallback');
     // On parse error, default to respond with knowledge tools (safe fallback)
     return { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', reason: 'Parse error - defaulting to knowledge tools' };
   }
@@ -540,7 +540,7 @@ export class AddieRouter {
 
       const response = await this.client.messages.create({
         model: ModelConfig.fast, // Haiku for speed
-        max_tokens: 200,
+        max_tokens: 300,
         messages: [{ role: 'user', content: prompt }],
       });
 
