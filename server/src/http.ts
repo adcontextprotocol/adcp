@@ -1697,10 +1697,8 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/organization${query}`);
     });
-    this.app.get('/dashboard/team', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#team`);
-    });
+    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
+    this.app.get('/dashboard/agents', (req, res) => serveDashboardPage(req, res, 'dashboard-agents.html'));
     this.app.get('/dashboard/settings', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
