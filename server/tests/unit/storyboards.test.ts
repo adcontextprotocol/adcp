@@ -11,7 +11,7 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(8);
+    expect(results.length).toBeGreaterThanOrEqual(9);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('creative_template');
@@ -22,6 +22,7 @@ describe('listStoryboards', () => {
     expect(ids).toContain('media_buy_non_guaranteed');
     expect(ids).toContain('media_buy_proposal_mode');
     expect(ids).toContain('media_buy_governance_escalation');
+    expect(ids).toContain('media_buy_catalog_creative');
   });
 
   it('each summary has required fields', () => {
@@ -268,6 +269,17 @@ describe('media buy storyboard variants', () => {
     expect(tasks).toContain('get_plan_audit_logs');
   });
 
+  it('catalog_creative covers catalog sync, events, and optimization', () => {
+    const sb = getStoryboard('media_buy_catalog_creative')!;
+    expect(sb).toBeDefined();
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('sync_catalogs');
+    expect(tasks).toContain('sync_event_sources');
+    expect(tasks).toContain('log_event');
+    expect(tasks).toContain('provide_performance_feedback');
+    expect(tasks).toContain('get_media_buy_delivery');
+  });
+
   it('each variant has a unique category', () => {
     const variants = [
       'media_buy_seller',
@@ -275,6 +287,7 @@ describe('media buy storyboard variants', () => {
       'media_buy_non_guaranteed',
       'media_buy_proposal_mode',
       'media_buy_governance_escalation',
+      'media_buy_catalog_creative',
     ];
     for (const id of variants) {
       const results = listStoryboards(id);

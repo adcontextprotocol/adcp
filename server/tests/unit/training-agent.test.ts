@@ -848,7 +848,11 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('preview_creative');
     expect(toolNames).toContain('sync_accounts');
     expect(toolNames).toContain('sync_governance');
-    expect(toolNames).toHaveLength(25);
+    expect(toolNames).toContain('sync_catalogs');
+    expect(toolNames).toContain('sync_event_sources');
+    expect(toolNames).toContain('log_event');
+    expect(toolNames).toContain('provide_performance_feedback');
+    expect(toolNames).toHaveLength(29);
   });
 
   it('returns error for unknown tool', async () => {
