@@ -14,20 +14,69 @@ import { SimulationClock } from '../engine/clock.js';
 import { SimulationEngine } from '../engine/engine.js';
 import {
   createInterceptors,
-  mockAnthropicModule,
-  mockResendModule,
 } from '../engine/interceptors.js';
 import { writeReport } from '../engine/report.js';
 import { slackNewJoiner } from '../fixtures/profiles/archetypes.js';
 
+// Shared state accessible to vi.mock factories via vi.hoisted
+const { mockState } = vi.hoisted(() => {
+  const mockState = {
+    anthropic: null as any,
+    resend: null as any,
+    clock: null as any,
+  };
+  return { mockState };
+});
+
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: class MockAnthropic {
+    messages = {
+      create: async (params: { system?: string; messages: Array<{ content: string }> }) => {
+        const ic = mockState.anthropic;
+        const cl = mockState.clock;
+        const userPrompt = params.messages[0]?.content ?? '';
+        const system = (params.system as string) ?? '';
+        let response = ic.defaultResponse;
+        for (const [step, cannedText] of ic.cannedResponses) {
+          if (userPrompt.includes(step) || system.includes(step)) { response = cannedText; break; }
+        }
+        if (userPrompt.includes('Email —')) {
+          response = JSON.stringify({ subject: 'Welcome to AgenticAdvertising.org', body: 'Hi! I\'m Addie. Would you like to learn more about our working groups?' });
+        }
+        if (userPrompt.includes('None — they seem to have everything set up') && userPrompt.includes('contributing')) {
+          response = JSON.stringify({ skip: true, reason: 'Person is fully engaged, no action needed' });
+        }
+        ic.calls.push({ system, userPrompt, response, timestamp: cl.now() });
+        return { content: [{ type: 'text', text: response }], model: 'claude-sonnet-4-6', usage: { input_tokens: 100, output_tokens: 50 } };
+      },
+    };
+  },
+}));
+
+vi.mock('resend', () => ({
+  Resend: class {
+    emails = {
+      send: async (params: { to: string; subject: string; text?: string }) => {
+        mockState.resend.sentEmails.push({
+          to: Array.isArray(params.to) ? params.to[0] : params.to,
+          subject: params.subject, text: params.text ?? '', timestamp: mockState.clock.now(),
+        });
+        return { data: { id: `sim_email_${Date.now()}` }, error: null };
+      },
+    };
+  },
+}));
+
 const clock = new SimulationClock(new Date('2026-03-15T10:00:00Z'));
 const interceptors = createInterceptors(clock);
-mockAnthropicModule(interceptors.anthropic, clock);
-mockResendModule(interceptors.resend, clock);
+mockState.anthropic = interceptors.anthropic;
+mockState.resend = interceptors.resend;
+mockState.clock = clock;
 
 vi.stubEnv('OUTREACH_ENABLED', 'true');
 vi.stubEnv('EMAIL_OUTREACH_ENABLED', 'true');
 vi.stubEnv('ADDIE_ANTHROPIC_API_KEY', 'sim-test-key');
+vi.stubEnv('RESEND_API_KEY', 'sim-test-resend-key');
 
 describe('Stage progression', () => {
   let pool: Pool;
