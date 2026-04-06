@@ -1365,9 +1365,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       } else if (action === "use_stripe_metadata") {
         // Switch to metadata customer, remove the DB customer
-        await orgDb.updateOrganization(org_id, {
-          stripe_customer_id: keepCustomerId,
-        });
+        await orgDb.setStripeCustomerId(org_id, keepCustomerId, { force: true });
 
         if (stripe) {
           if (delete_inactive && !removeCustomerActivity?.has_activity) {
