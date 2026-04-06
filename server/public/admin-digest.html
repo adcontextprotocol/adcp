@@ -144,10 +144,17 @@
           <div class="editable" id="editNote" contenteditable="false" onclick="startEdit(this, 'editorsNote')"></div>
         </div>
 
-        <!-- Worth Your Time -->
+        <!-- This Edition (official AAO content) -->
+        <div class="section" id="sectionEdition" style="display:none;">
+          <h2>This Edition <span class="count" id="editionCount"></span></h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Key AAO content — Town Hall recaps, white papers, reports</p>
+          <div id="editionList"></div>
+        </div>
+
+        <!-- Industry Intel (external articles) -->
         <div class="section">
-          <h2>Worth Your Time <span class="count" id="articleCount"></span></h2>
-          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Curated articles, videos, and community suggestions</p>
+          <h2>Industry Intel <span class="count" id="articleCount"></span></h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">External articles with Addie's take on why they matter</p>
           <div id="articlesList"></div>
         </div>
 
@@ -353,24 +360,47 @@
       shareEl.style.color = c.shareableTake ? '#333' : '#aaa';
       if (!c.shareableTake) shareEl.textContent = 'Click to add a shareable take...';
 
-      // Articles
-      const articles = c.whatToWatch || [];
-      document.getElementById('articleCount').textContent = `(${articles.length})`;
-      document.getElementById('articlesList').innerHTML = articles.length === 0
-        ? '<p style="color:#aaa;font-size:13px;">No articles yet. Use the instruction bar to add content, or community suggestions will appear here.</p>'
-        : articles.map((a, i) => `
-        <div class="article-card" id="article-${i}" draggable="true" ondragstart="dragArticle(event,${i})" ondragover="event.preventDefault();this.style.borderTop='3px solid #2563eb'" ondragleave="this.style.borderTop=''" ondrop="dropArticle(event,${i});this.style.borderTop=''">
-          <div class="article-actions">
-            <span style="cursor:grab;margin-right:8px;color:#aaa;" title="Drag to reorder">⠿</span>
-            <button class="btn btn-sm btn-secondary" onclick="editArticle(${i})">Edit</button>
-            <button class="btn btn-sm btn-danger" onclick="removeArticle(${i})">Remove</button>
+      // Split content into This Edition (official) and Industry Intel (external)
+      const allItems = c.whatToWatch || [];
+      const editionItems = allItems.filter(a => a.tags && a.tags.includes('official'));
+      const externalItems = allItems.filter(a => !a.tags || !a.tags.includes('official'));
+
+      // This Edition
+      const editionSection = document.getElementById('sectionEdition');
+      if (editionItems.length > 0) {
+        editionSection.style.display = 'block';
+        document.getElementById('editionCount').textContent = `(${editionItems.length})`;
+        document.getElementById('editionList').innerHTML = editionItems.map((a, i) => `
+          <div class="article-card" id="edition-${i}">
+            <div class="article-title">${esc(a.title)}</div>
+            <div class="article-url">${esc(a.url)}</div>
+            <div class="article-summary">${esc(a.summary)}</div>
+            <div class="article-take">${esc(a.whyItMatters)}</div>
           </div>
-          <div class="article-title">${esc(a.title)}</div>
-          <div class="article-url">${esc(a.url)}</div>
-          <div class="article-summary">${esc(a.summary)}</div>
-          <div class="article-take">${esc(a.whyItMatters)}</div>
-        </div>
-      `).join('');
+        `).join('');
+      } else {
+        editionSection.style.display = 'none';
+      }
+
+      // Industry Intel
+      document.getElementById('articleCount').textContent = `(${externalItems.length})`;
+      document.getElementById('articlesList').innerHTML = externalItems.length === 0
+        ? '<p style="color:#aaa;font-size:13px;">No external articles. Use the instruction bar to add content.</p>'
+        : externalItems.map((a, i) => {
+          const globalIndex = allItems.indexOf(a);
+          return `
+          <div class="article-card" id="article-${globalIndex}" draggable="true" ondragstart="dragArticle(event,${globalIndex})" ondragover="event.preventDefault();this.style.borderTop='3px solid #2563eb'" ondragleave="this.style.borderTop=''" ondrop="dropArticle(event,${globalIndex});this.style.borderTop=''">
+            <div class="article-actions">
+              <span style="cursor:grab;margin-right:8px;color:#aaa;" title="Drag to reorder">⠿</span>
+              <button class="btn btn-sm btn-secondary" onclick="editArticle(${globalIndex})">Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="removeArticle(${globalIndex})">Remove</button>
+            </div>
+            <div class="article-title">${esc(a.title)}</div>
+            <div class="article-url">${esc(a.url)}</div>
+            <div class="article-summary">${esc(a.summary)}</div>
+            <div class="article-take">${esc(a.whyItMatters)}</div>
+          </div>`;
+        }).join('');
 
       // What shipped
       const shipped = c.whatShipped || [];
