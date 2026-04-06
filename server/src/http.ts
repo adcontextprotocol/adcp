@@ -3606,7 +3606,8 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       membership_tier = COALESCE($8, membership_tier),
+                       membership_tier = COALESCE($9, membership_tier),
+                       subscription_canceled_at = $8,
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
@@ -3617,6 +3618,9 @@ export class HTTPServer {
                     currency,
                     interval,
                     org.workos_organization_id,
+                    subscription.canceled_at
+                      ? new Date(subscription.canceled_at * 1000)
+                      : null,
                     membershipTier,
                   ]
                 );
