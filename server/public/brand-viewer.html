@@ -816,13 +816,6 @@
         background: var(--color-primary-50);
       }
 
-      .drop-zone-preview {
-        max-width: 200px;
-        max-height: 100px;
-        object-fit: contain;
-        margin-top: var(--space-3);
-      }
-
       .tag-picker {
         display: flex;
         flex-wrap: wrap;
@@ -1118,7 +1111,6 @@
         <h3>Upload logo</h3>
         <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
           <div id="drop-zone-text">Drop a file here or click to browse<br><span style="font-size:var(--text-xs);">PNG, JPEG, SVG, WebP, GIF &middot; Max 5 MB</span></div>
-          <img id="drop-zone-preview" class="drop-zone-preview hidden" alt="Preview">
           <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileSelect(this.files[0])">
         </div>
         <div class="upload-field">
@@ -1190,14 +1182,8 @@
           return;
         }
         uploadFile = file;
-        const preview = document.getElementById('drop-zone-preview');
         const text = document.getElementById('drop-zone-text');
-        if (file.type.startsWith('image/')) {
-          const blobUrl = URL.createObjectURL(file);
-          preview.setAttribute('src', blobUrl);
-          preview.classList.remove('hidden');
-        }
-        text.textContent = file.name;
+        text.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
         updateUploadButton();
       }
 
@@ -1209,8 +1195,7 @@
       function showUploadModal() {
         uploadFile = null;
         document.getElementById('file-input').value = '';
-        document.getElementById('drop-zone-preview').classList.add('hidden');
-        document.getElementById('drop-zone-text').innerHTML = 'Drop a file here or click to browse<br><span style="font-size:var(--text-xs);">PNG, JPEG, SVG, WebP, GIF &middot; Max 5 MB</span>';
+        document.getElementById('drop-zone-text').textContent = 'Drop a file here or click to browse';
         document.getElementById('upload-note').value = '';
         document.getElementById('upload-status').textContent = '';
         document.getElementById('upload-submit-btn').disabled = true;
