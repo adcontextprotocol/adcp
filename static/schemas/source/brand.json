@@ -81,15 +81,22 @@
     },
     "colors": {
       "type": "object",
-      "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role.",
+      "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role. Beyond the core five roles, brands can provide additional color roles for finer granularity — heading, body, label, border, divider, surface_1, surface_2, etc.",
       "properties": {
         "primary": { "$ref": "#/definitions/color_value" },
         "secondary": { "$ref": "#/definitions/color_value" },
         "accent": { "$ref": "#/definitions/color_value" },
         "background": { "$ref": "#/definitions/color_value" },
-        "text": { "$ref": "#/definitions/color_value" }
+        "text": { "$ref": "#/definitions/color_value" },
+        "heading": { "$ref": "#/definitions/color_value" },
+        "body": { "$ref": "#/definitions/color_value" },
+        "label": { "$ref": "#/definitions/color_value" },
+        "border": { "$ref": "#/definitions/color_value" },
+        "divider": { "$ref": "#/definitions/color_value" },
+        "surface_1": { "$ref": "#/definitions/color_value" },
+        "surface_2": { "$ref": "#/definitions/color_value" }
       },
-      "additionalProperties": true
+      "additionalProperties": { "$ref": "#/definitions/color_value" }
     },
     "font_file": {
       "type": "object",
@@ -293,9 +300,9 @@
         },
         "industries": {
           "type": "array",
-          "items": { "$ref": "/schemas/enums/advertiser-industry.json" },
+          "items": { "type": "string" },
           "minItems": 1,
-          "description": "Brand industries (e.g., ['automotive'] or ['healthcare.pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that). When create_media_buy omits advertiser_industry, sellers may infer from this field."
+          "description": "Brand industries (e.g., ['automotive'] or ['pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
         },
         "target_audience": {
           "type": "string",
@@ -682,7 +689,7 @@
         },
         "corner_radius": {
           "type": "string",
-          "description": "Default corner radius for rounded elements (e.g., '12px', '8px', 'sharp')"
+          "description": "Default corner radius for graphic and illustration elements (e.g., '12px', '8px', 'sharp'). For UI component radii (buttons, cards, inputs), see visual_guidelines.border_radius."
         },
         "tags": {
           "type": "array",
@@ -691,6 +698,86 @@
         }
       },
       "additionalProperties": true
+    },
+    "border_radius": {
+      "type": "object",
+      "description": "Named border radius presets for UI components and layout elements. One of the most visible brand differentiators — Airbnb uses generous 20px, Stripe uses precise 4–8px, Spotify uses pill/999px.",
+      "properties": {
+        "none": {
+          "type": "string",
+          "description": "Explicitly sharp corners (e.g., '0')"
+        },
+        "default": {
+          "type": "string",
+          "description": "Default border radius for UI components (e.g., '8px', '12px', '0'). For graphic/illustration elements, see graphic_style.corner_radius."
+        },
+        "small": {
+          "type": "string",
+          "description": "Small border radius for compact elements (e.g., '4px')"
+        },
+        "large": {
+          "type": "string",
+          "description": "Large border radius for cards and containers (e.g., '16px', '24px')"
+        },
+        "pill": {
+          "type": "string",
+          "description": "Fully rounded / pill shape (e.g., '999px')"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "elevation": {
+      "type": "object",
+      "description": "Named shadow/elevation levels. Brands use elevation as identity — from Stripe's blue-tinted multi-layer shadows to Apple's single diffuse shadow. Values are CSS box-shadow syntax.",
+      "properties": {
+        "none": {
+          "type": "string",
+          "description": "No shadow (e.g., 'none')"
+        },
+        "subtle": {
+          "type": "string",
+          "description": "Subtle shadow for slight lift (e.g., '0 1px 2px rgba(0,0,0,0.05)')"
+        },
+        "card": {
+          "type": "string",
+          "description": "Card-level shadow (e.g., '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)')"
+        },
+        "modal": {
+          "type": "string",
+          "description": "Modal/overlay shadow (e.g., '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)')"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "spacing": {
+      "type": "object",
+      "description": "Spacing system for consistent layout rhythm. Most design systems use an 8px base grid.",
+      "properties": {
+        "unit": {
+          "type": "string",
+          "description": "Base grid unit this scale was designed from (e.g., '8px', '4px'). Informational — agents should use the named scale values, not compute from this."
+        },
+        "scale": {
+          "type": "object",
+          "description": "Named spacing scale built from the base unit",
+          "properties": {
+            "xs": { "type": "string", "description": "Extra small spacing (e.g., '4px')" },
+            "sm": { "type": "string", "description": "Small spacing (e.g., '8px')" },
+            "md": { "type": "string", "description": "Medium spacing (e.g., '16px')" },
+            "lg": { "type": "string", "description": "Large spacing (e.g., '24px')" },
+            "xl": { "type": "string", "description": "Extra large spacing (e.g., '32px')" },
+            "2xl": { "type": "string", "description": "Section-level spacing (e.g., '48px', '64px')" }
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "brand_shapes": {
       "type": "object",
@@ -1028,6 +1115,9 @@
         "shapes": { "$ref": "#/definitions/brand_shapes" },
         "iconography": { "$ref": "#/definitions/iconography" },
         "composition": { "$ref": "#/definitions/composition_rules" },
+        "border_radius": { "$ref": "#/definitions/border_radius" },
+        "elevation": { "$ref": "#/definitions/elevation" },
+        "spacing": { "$ref": "#/definitions/spacing" },
         "graphic_elements": {
           "type": "array",
           "items": { "$ref": "#/definitions/graphic_element" },
@@ -1223,7 +1313,7 @@
               "usage": "Full lockup for dark backgrounds"
             }
           ],
-          "colors": {"primary": "#FF6600", "secondary": "#0066CC"},
+          "colors": {"primary": "#FF6600", "secondary": "#0066CC", "background": "#FFFFFF", "text": "#1A1A1A", "heading": "#FF6600", "body": "#333333", "label": "#666666", "border": "#E5E5E5", "divider": "#F0F0F0", "surface_1": "#F9F9F9", "surface_2": "#EFEFEF"},
           "tone": {
             "voice": "clean, fresh, trustworthy",
             "attributes": ["reliable", "family-friendly", "confident"],
@@ -1288,6 +1378,30 @@
               },
               "backgrounds": {
                 "types_allowed": ["solid_color", "gradient", "blurred_photo"]
+              }
+            },
+            "border_radius": {
+              "none": "0",
+              "default": "12px",
+              "small": "4px",
+              "large": "20px",
+              "pill": "999px"
+            },
+            "elevation": {
+              "none": "none",
+              "subtle": "0 1px 3px rgba(0,0,0,0.08)",
+              "card": "0 4px 8px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.06)",
+              "modal": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.06)"
+            },
+            "spacing": {
+              "unit": "8px",
+              "scale": {
+                "xs": "4px",
+                "sm": "8px",
+                "md": "16px",
+                "lg": "24px",
+                "xl": "32px",
+                "2xl": "48px"
               }
             },
             "motion": {
