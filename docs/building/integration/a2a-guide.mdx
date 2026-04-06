@@ -762,6 +762,10 @@ if (adcpExt) {
 
 **Extension Params**: The `adcp-extension.json` schema was used in v2 to describe these params, but was removed in v3. For v3+ agents, use the `get_adcp_capabilities` task for runtime capability discovery instead. The extension `params` object above shows the typical structure.
 
+:::note
+The `adcp_version` field in agent card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
+:::
+
 **Benefits**:
 - Clients can discover AdCP capabilities without making test calls
 - Declare which protocol domains you implement (media_buy, creative, signals)

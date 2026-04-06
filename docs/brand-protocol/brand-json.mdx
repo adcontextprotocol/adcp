@@ -166,6 +166,40 @@ Brand architecture classifications from marketing theory:
 | `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately from house | Converse |
 
+### Extended color roles
+
+The `colors` object has five standard roles (`primary`, `secondary`, `accent`, `background`, `text`), but brands can and should provide additional roles for finer granularity. The schema accepts any additional color role via `additionalProperties`.
+
+```json
+{
+  "colors": {
+    "primary": "#FF6600",
+    "secondary": "#0066CC",
+    "background": "#FFFFFF",
+    "text": "#1A1A1A",
+    "heading": "#FF6600",
+    "body": "#333333",
+    "label": "#666666",
+    "border": "#E5E5E5",
+    "divider": "#F0F0F0",
+    "surface_1": "#F9F9F9",
+    "surface_2": "#F0F0F0"
+  }
+}
+```
+
+| Role | Purpose |
+|------|---------|
+| `heading` | Heading text color (when different from body text) |
+| `body` | Body text color |
+| `label` | Label/caption text color |
+| `border` | Border/outline color |
+| `divider` | Divider/separator color |
+| `surface_1` | Primary surface/card background |
+| `surface_2` | Secondary surface background |
+
+These extended roles help creative agents distinguish between text hierarchies and surface levels without guessing.
+
 ## Visual guidelines
 
 The `visual_guidelines` object provides structured rules that generative creative systems can use to produce on-brand assets consistently. These are brand constants — they don't change campaign to campaign.
@@ -238,7 +272,7 @@ Style types: `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_colla
 | `style_type` | enum | `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_collage`, `hand_drawn`, `minimal_line_art`, `3d_render`, `isometric`, `photographic_composite` |
 | `stroke_style` | enum | `rounded`, `square`, `mixed`, `none` |
 | `stroke_weight` | string | Stroke weight (e.g., `2px`) |
-| `corner_radius` | string | Corner radius for rounded elements (e.g., `12px`) |
+| `corner_radius` | string | Corner radius for graphic/illustration elements (e.g., `12px`). For UI components, see `border_radius`. |
 | `tags` | array | Additional style descriptors |
 
 ### Shapes
@@ -317,6 +351,89 @@ Layout rules for overlays, textures, and backgrounds:
 Texture styles: `none`, `subtle_grain`, `noise`, `paper`, `fabric`, `concrete`. Intensity: `low`, `medium`, `high`.
 
 Background types: `solid_color`, `gradient`, `blurred_photo`, `image`, `video`, `pattern`, `transparent`.
+
+### Border radius
+
+Named border radius presets for UI components and layout elements. Border radius is one of the most visible brand differentiators — generous radii feel warm and approachable, while small or zero radii feel precise and editorial.
+
+```json
+{
+  "border_radius": {
+    "none": "0",
+    "default": "12px",
+    "small": "4px",
+    "large": "20px",
+    "pill": "999px"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `none` | string | Explicitly sharp corners (`0`) |
+| `default` | string | Default border radius for UI components (e.g., `8px`, `12px`) |
+| `small` | string | Small radius for compact elements (e.g., `4px`) |
+| `large` | string | Large radius for cards and containers (e.g., `16px`, `24px`) |
+| `pill` | string | Fully rounded / pill shape (e.g., `999px`) |
+
+Additional named presets can be added beyond the five standard levels.
+
+<Info>
+`graphic_style.corner_radius` defines a default radius for graphic/illustration elements. `border_radius` defines a named scale for UI components and layout — buttons, cards, inputs, modals.
+</Info>
+
+### Elevation
+
+Named shadow levels that define how elements appear to lift off the surface. Brands use elevation as identity — some prefer dramatic multi-layer shadows, others use a single diffuse shadow.
+
+```json
+{
+  "elevation": {
+    "none": "none",
+    "subtle": "0 1px 3px rgba(0,0,0,0.08)",
+    "card": "0 4px 8px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.06)",
+    "modal": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.06)"
+  }
+}
+```
+
+Values use CSS `box-shadow` syntax. Generative systems can apply these directly.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `none` | string | No shadow (`none`) |
+| `subtle` | string | Slight lift for interactive elements |
+| `card` | string | Card-level elevation |
+| `modal` | string | Modal/overlay elevation |
+
+Additional named levels (e.g., `dropdown`, `tooltip`) can be added.
+
+### Spacing
+
+Spacing system for consistent layout rhythm. A base unit plus a named scale enables creative agents to produce correctly-spaced layouts without guessing.
+
+```json
+{
+  "spacing": {
+    "unit": "8px",
+    "scale": {
+      "xs": "4px",
+      "sm": "8px",
+      "md": "16px",
+      "lg": "24px",
+      "xl": "32px",
+      "2xl": "48px"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `unit` | string | Base grid unit this scale was designed from (e.g., `8px`). Informational — agents should use the named scale values directly. |
+| `scale` | object | Named spacing scale (`xs` through `2xl`) |
+
+The `scale` object supports standard sizes (`xs`, `sm`, `md`, `lg`, `xl`, `2xl`) and can include additional named values (e.g., `3xl`, `section`).
 
 ### Graphic elements
 
@@ -695,7 +812,7 @@ A talent agency managing athlete brands with licensable rights:
       "id": "daan_janssen",
       "names": [{"en": "Daan Janssen"}],
       "description": "Dutch Olympic speed skater, 2x gold medalist",
-      "industries": ["sports_fitness"],
+      "industries": ["sports"],
       "logos": [
         {
           "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",

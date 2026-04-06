@@ -5,6 +5,12 @@
   "description": "Request parameters for batch validating delivery records against content safety policies",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "standards_id": {
       "type": "string",
       "description": "Standards configuration to validate against"
@@ -57,12 +63,17 @@
             }
           }
         },
-        "required": ["record_id", "artifact"]
+        "required": [
+          "record_id",
+          "artifact"
+        ]
       }
     },
     "feature_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "Specific features to evaluate (defaults to all)"
     },
@@ -78,5 +89,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["standards_id", "records"]
+  "required": [
+    "standards_id",
+    "records"
+  ]
 }

@@ -13,6 +13,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createLogger } from "../../logger.js";
 import { query } from "../../db/client.js";
 import { ModelConfig } from "../../config/models.js";
+import { submitBatch, extractText } from "../../utils/batch.js";
+import type { BatchRequest } from "../../utils/batch.js";
 
 const logger = createLogger("geo-content-planner");
 
@@ -111,21 +113,20 @@ export async function runGeoContentPlannerJob(options: {
     return { promptsAnalyzed: 0, briefsCreated: 0 };
   }
 
-  logger.info({ count: prompts.length }, "Analyzing content gaps");
+  logger.info({ count: prompts.length }, "Analyzing content gaps via batch API");
 
   const anthropic = getClient();
-  let briefsCreated = 0;
 
-  for (let i = 0; i < prompts.length; i++) {
-    const prompt = prompts[i];
-    try {
-      const existingPages = CATEGORY_PAGE_MAP[prompt.category] || [];
-      const suggestedPath = existingPages[0] || null;
+  // Build batch requests — one per prompt
+  const batchRequests: BatchRequest[] = prompts.map((prompt) => {
+    const existingPages = CATEGORY_PAGE_MAP[prompt.category] || [];
+    const suggestedPath = existingPages[0] || null;
+    const safePromptText = prompt.prompt_text.slice(0, 500);
+    const safeCompetitor = prompt.competitor_mentioned?.slice(0, 100) ?? null;
 
-      const safePromptText = prompt.prompt_text.slice(0, 500);
-      const safeCompetitor = prompt.competitor_mentioned?.slice(0, 100) ?? null;
-
-      const briefResponse = await anthropic.messages.create({
+    return {
+      customId: `geo-brief-${prompt.prompt_id}`,
+      params: {
         model: ModelConfig.fast,
         max_tokens: 512,
         system: `You generate content briefs for documentation pages. Be concise and specific. Output only the brief — no preamble.`,
@@ -145,49 +146,56 @@ Write a content brief (3-5 bullet points) describing what content would help an 
 - What facts about AdCP are relevant to this query`,
           },
         ],
-      });
+      },
+    };
+  });
 
-      const briefText = briefResponse.content
-        .filter(
-          (block): block is Anthropic.TextBlock => block.type === "text"
-        )
-        .map((block) => block.text)
-        .join("\n");
+  const results = await submitBatch(anthropic, batchRequests, {
+    operationName: "geo-content-planner",
+  });
 
-      await query(
-        `INSERT INTO geo_content_briefs
-          (prompt_id, prompt_category, target_query, suggested_page_path, brief, status)
-         VALUES ($1, $2, $3, $4, $5, 'draft')`,
-        [
-          prompt.prompt_id,
-          prompt.category,
-          prompt.prompt_text,
-          suggestedPath,
-          briefText,
-        ]
-      );
+  // Process results and store in DB
+  let briefsCreated = 0;
 
-      briefsCreated++;
+  for (const prompt of prompts) {
+    const result = results.get(`geo-brief-${prompt.prompt_id}`);
+    const briefText = extractText(result);
 
-      logger.info(
-        {
-          promptId: prompt.prompt_id,
-          category: prompt.category,
-          suggestedPath,
-        },
-        "Content brief created"
-      );
-    } catch (error) {
+    if (!briefText) {
+      const status = result?.status ?? "missing";
       logger.error(
-        { error, promptId: prompt.prompt_id },
-        "Failed to generate content brief"
+        { promptId: prompt.prompt_id, status },
+        "No response for prompt in batch"
       );
+      continue;
     }
 
-    // Rate limit between Claude calls
-    if (i < prompts.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
+    const existingPages = CATEGORY_PAGE_MAP[prompt.category] || [];
+    const suggestedPath = existingPages[0] || null;
+
+    await query(
+      `INSERT INTO geo_content_briefs
+        (prompt_id, prompt_category, target_query, suggested_page_path, brief, status)
+       VALUES ($1, $2, $3, $4, $5, 'draft')`,
+      [
+        prompt.prompt_id,
+        prompt.category,
+        prompt.prompt_text,
+        suggestedPath,
+        briefText,
+      ]
+    );
+
+    briefsCreated++;
+
+    logger.info(
+      {
+        promptId: prompt.prompt_id,
+        category: prompt.category,
+        suggestedPath,
+      },
+      "Content brief created"
+    );
   }
 
   logger.info(

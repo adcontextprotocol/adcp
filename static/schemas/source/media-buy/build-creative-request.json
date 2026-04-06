@@ -5,6 +5,12 @@
   "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "message": {
       "type": "string",
       "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."
@@ -64,7 +70,7 @@
     },
     "preview_inputs": {
       "type": "array",
-      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids \u2014 multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
       "items": {
         "type": "object",
         "properties": {
@@ -93,7 +99,7 @@
     },
     "preview_quality": {
       "$ref": "/schemas/enums/creative-quality.json",
-      "description": "Render quality for inline preview when include_preview is true. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Independent of the build quality parameter \u2014 you can build at draft quality and preview at production quality, or vice versa. If omitted, the creative agent uses its own default. Ignored when include_preview is false or omitted."
+      "description": "Render quality for inline preview when include_preview is true. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Independent of the build quality parameter — you can build at draft quality and preview at production quality, or vice versa. If omitted, the creative agent uses its own default. Ignored when include_preview is false or omitted."
     },
     "preview_output_format": {
       "$ref": "/schemas/enums/preview-output-format.json",
@@ -102,7 +108,7 @@
     },
     "macro_values": {
       "type": "object",
-      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal \u2014 all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize \u2014 unknown macro names are not an error.",
+      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
       "additionalProperties": {
         "type": "string"
       }

@@ -230,8 +230,10 @@ async function buildInsiderSection(): Promise<DigestInsiderGroup[]> {
       let summary: string;
       if (wgContent.meetingRecaps.length > 0 && wgContent.meetingRecaps[0].summary) {
         summary = wgContent.meetingRecaps[0].summary.slice(0, 200);
-      } else {
+      } else if (wgContent.activeThreads.length > 0) {
         summary = wgContent.activeThreads[0].summary.slice(0, 200);
+      } else {
+        summary = '';
       }
 
       results.push({

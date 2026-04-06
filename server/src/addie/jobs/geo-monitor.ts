@@ -11,6 +11,8 @@ import { logger as baseLogger } from '../../logger.js';
 import { query } from '../../db/client.js';
 import { ModelConfig } from '../../config/models.js';
 import { syncGeoPromptsFromLLMPulse } from '../../services/geo-prompt-sync.js';
+import { submitBatch, extractText } from '../../utils/batch.js';
+import type { BatchRequest } from '../../utils/batch.js';
 
 const logger = baseLogger.child({ module: 'geo-monitor' });
 
@@ -159,51 +161,56 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
   }
 
   const model = getModelForCurrentWeek();
-  logger.info({ count: prompts.length, model }, 'Checking GEO prompts');
+  logger.info({ count: prompts.length, model }, 'Checking GEO prompts via batch API');
   const anthropic = getClient();
+
+  // Build batch requests — one per prompt
+  const batchRequests: BatchRequest[] = prompts.map((prompt) => ({
+    customId: `geo-${prompt.id}`,
+    params: {
+      model,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt.prompt_text }],
+    },
+  }));
+
+  const results = await submitBatch(anthropic, batchRequests, {
+    operationName: 'geo-monitor',
+  });
+
+  // Process results and store in DB
   let mentions = 0;
   let checked = 0;
 
   for (const prompt of prompts) {
-    try {
-      const response = await anthropic.messages.create({
-        model,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: prompt.prompt_text }],
-      });
+    const result = results.get(`geo-${prompt.id}`);
+    const responseText = extractText(result);
 
-      const responseText = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('\n');
-
-      const adcpMentioned = detectAdcpMention(responseText);
-      const competitorMentioned = detectCompetitor(responseText);
-      const sentiment = detectSentiment(responseText, adcpMentioned);
-
-      if (adcpMentioned) mentions++;
-
-      await query(
-        `INSERT INTO geo_prompt_results (prompt_id, model, response_text, adcp_mentioned, competitor_mentioned, sentiment)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [prompt.id, model, responseText, adcpMentioned, competitorMentioned, sentiment]
-      );
-
-      checked++;
-
-      logger.info(
-        { promptId: prompt.id, category: prompt.category, adcpMentioned, competitorMentioned, sentiment },
-        'Prompt checked'
-      );
-
-      // Rate limit: 2s between calls to avoid hitting API limits
-      if (checked < prompts.length) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-    } catch (error) {
-      logger.error({ error, promptId: prompt.id }, 'Failed to check prompt');
+    if (!responseText) {
+      const status = result?.status ?? 'missing';
+      logger.error({ promptId: prompt.id, status }, 'No response for prompt in batch');
+      continue;
     }
+
+    const adcpMentioned = detectAdcpMention(responseText);
+    const competitorMentioned = detectCompetitor(responseText);
+    const sentiment = detectSentiment(responseText, adcpMentioned);
+
+    if (adcpMentioned) mentions++;
+
+    await query(
+      `INSERT INTO geo_prompt_results (prompt_id, model, response_text, adcp_mentioned, competitor_mentioned, sentiment)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [prompt.id, model, responseText, adcpMentioned, competitorMentioned, sentiment]
+    );
+
+    checked++;
+
+    logger.info(
+      { promptId: prompt.id, category: prompt.category, adcpMentioned, competitorMentioned, sentiment },
+      'Prompt checked'
+    );
   }
 
   logger.info({ checked, mentions }, 'GEO monitor job complete');

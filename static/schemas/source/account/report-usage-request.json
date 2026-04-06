@@ -5,6 +5,12 @@
   "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request. Prevents duplicate billing on retries."
@@ -110,8 +116,8 @@
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 4200000,
-            "media_spend": 21000.0,
-            "vendor_cost": 2100.0,
+            "media_spend": 21000,
+            "vendor_cost": 2100,
             "currency": "USD"
           }
         ]
@@ -132,7 +138,7 @@
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 2100000,
-            "vendor_cost": 1050.0,
+            "vendor_cost": 1050,
             "currency": "USD"
           },
           {
@@ -142,7 +148,7 @@
             "signal_agent_segment_id": "eco_conscious_shoppers",
             "pricing_option_id": "po_eco_cpm",
             "impressions": 800000,
-            "vendor_cost": 400.0,
+            "vendor_cost": 400,
             "currency": "USD"
           }
         ]

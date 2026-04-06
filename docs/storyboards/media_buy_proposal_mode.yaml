@@ -1,0 +1,360 @@
+id: media_buy_proposal_mode
+version: "1.0.0"
+title: "Media buy via proposal acceptance"
+category: media_buy_proposal_mode
+summary: "Seller agent that generates curated media plan proposals the buyer can review, refine, and accept."
+
+narrative: |
+  Your seller generates curated media plan proposals. The buyer sends a brief, your platform
+  returns products alongside proposals — curated bundles with budget allocations and rationale
+  for each recommendation. The buyer reviews, optionally refines, and then accepts a proposal
+  as-is instead of manually building packages.
+
+  Proposal mode is the recommended flow for buyers who trust the seller's product
+  recommendations. Instead of the buyer cherry-picking individual products and assembling
+  packages, the seller's AI builds an optimized media plan that the buyer can accept with a
+  single call.
+
+  This storyboard walks through the proposal lifecycle: brief, proposal generation, optional
+  refinement, acceptance, creative sync, and delivery monitoring.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+  examples:
+    - "Full-service publisher with AI planning"
+    - "Retail media network with curated packages"
+    - "Premium video platform with proposal engine"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials for account setup.
+    The test kit provides a sample brand (Acme Outdoor) with campaign parameters
+    suitable for testing the proposal acceptance flow.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      The buyer establishes an account relationship with your platform before
+      requesting proposals.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account relationship"
+        narrative: |
+          The buyer registers their brand and operator with your platform.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with:
+          - account_id: your platform's identifier for this relationship
+          - action: created or updated
+          - status: active or pending_approval
+          - payment_terms: net_30, prepay, etc.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              billing: "operator"
+              payment_terms: "net_30"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: brief_with_proposals
+    title: "Brief with proposals"
+    narrative: |
+      The buyer sends a brief. Your platform returns products and — because you support
+      proposal mode — also returns proposals: curated media plans with budget allocations,
+      product selections, and rationale for each recommendation. The buyer can review
+      multiple proposals side by side.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief and receive proposals"
+        narrative: |
+          The buyer describes what they want. Your platform returns products alongside
+          one or more proposals. Each proposal bundles products with budget allocations
+          and explains why those products were selected and how the budget was distributed.
+
+          Proposals give the buyer a ready-to-accept media plan instead of requiring
+          manual package assembly.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return products and proposals matching the brief:
+          - products: individual products with pricing and forecasts
+          - proposals: curated media plans, each containing:
+            - proposal_id: unique identifier for this proposal
+            - name: descriptive label (e.g., "Balanced Reach Plan")
+            - budget_allocations: how the total budget is split across products
+            - rationale: why these products were selected and how the budget was distributed
+            - total_budget: sum of allocations
+            - forecast: aggregate impressions, reach, frequency
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K total budget. Adults 25-54, US and Canada. Looking for a balanced plan across CTV, online video, and display."
+          brand:
+            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains a proposals array"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "Each proposal has a proposal_id"
+
+  - id: review_refine
+    title: "Refine a proposal"
+    narrative: |
+      The buyer reviews the proposals and wants to adjust one. They call get_products
+      in refine mode targeting a specific proposal_id. The refinement might adjust
+      budget splits, swap a product, or add constraints. Your platform returns the
+      updated proposal.
+
+    steps:
+      - id: get_products_refine
+        title: "Refine a specific proposal"
+        narrative: |
+          The buyer targets a specific proposal for refinement. They reference the
+          proposal_id and describe what they want to change. Your platform applies
+          the refinements to that proposal and returns the updated version.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return the refined proposal:
+          - proposals: updated proposal reflecting the requested changes
+          - refinement_applied: how each refinement was handled
+          - Updated budget allocations, product selections, and forecasts
+          - products: updated product set if products were swapped
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "balanced_reach_q2"
+              ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
+            - scope: "request"
+              ask: "All products must support frequency capping at 3 per day."
+          brand:
+            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains updated proposals"
+
+  - id: accept_proposal
+    title: "Accept the proposal"
+    narrative: |
+      The buyer is satisfied with the refined proposal and accepts it by creating a
+      media buy with the proposal_id. Instead of specifying individual packages, the
+      buyer passes the proposal_id and total_budget. Your platform converts the proposal
+      into a confirmed media buy with the exact product selections and budget allocations
+      from the proposal.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy from proposal"
+        narrative: |
+          The buyer accepts a proposal by passing proposal_id to create_media_buy. The
+          buyer does NOT specify a packages array — the platform uses the proposal's
+          product selections and budget allocations to build the packages automatically.
+
+          This is the key difference from manual package creation: the buyer trusts the
+          seller's recommendation and accepts the plan as-is.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Convert the proposal into a confirmed media buy:
+          - media_buy_id: your platform's identifier
+          - status: confirmed or active
+          - confirmed_at: timestamp
+          - packages: line items derived from the proposal's budget allocations
+          - proposal_id: echoed back to confirm which proposal was accepted
+          - valid_actions: creative sync, pause, get_delivery
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "acmeoutdoor.com"
+          proposal_id: "balanced_reach_q2"
+          total_budget: 50000
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+  - id: creative_sync
+    title: "Creative sync"
+    narrative: |
+      With the proposal accepted and the media buy confirmed, the buyer syncs creative
+      assets. The buyer first checks what formats the accepted products require, then
+      pushes matching creative assets.
+
+    steps:
+      - id: list_formats
+        title: "Check creative format requirements"
+        narrative: |
+          The buyer confirms what creative formats the accepted proposal's products
+          require. Your platform returns format specs with asset requirements.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        stateful: false
+        expected: |
+          Return creative formats your platform accepts. Each format should define:
+          - format_id with your agent_url and unique id
+          - Asset requirements (dimensions, file sizes, mime types)
+          - Render dimensions
+
+        sample_request: {}
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+
+      - id: sync_creatives
+        title: "Push creative assets"
+        narrative: |
+          The buyer uploads creative assets for the products in the accepted proposal.
+          Your platform validates each creative against the format specs and returns
+          per-creative status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          Accept and validate creatives:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation errors for rejected creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "video_30s_trail_pro"
+              name: "Trail Pro 3000 - 30s CTV Spot"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "ssai_30s"
+              assets:
+                - asset_id: "video"
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  mime_type: "video/mp4"
+            - creative_id: "video_15s_trail_pro"
+              name: "Trail Pro 3000 - 15s Online Video"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "preroll_15s"
+              assets:
+                - asset_id: "video"
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-15s.mp4"
+                  mime_type: "video/mp4"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "results[0].action"
+            description: "Each creative has an action (created/updated)"
+
+  - id: delivery
+    title: "Delivery and reporting"
+    narrative: |
+      The campaign from the accepted proposal is live. The buyer monitors delivery
+      to verify the proposal's forecasts are tracking.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data for the media buy created from the proposal.
+          Your platform returns performance metrics that the buyer can compare against
+          the proposal's original forecasts.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery metrics for the media buy:
+          - Per-package delivery: impressions, clicks, spend, completion rates
+          - Pacing against the proposal's original forecast
+          - Budget utilization: spent vs. committed per package
+          - Daily breakdown if requested
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_proposal"
+          include_package_daily_breakdown: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "Response contains media buy delivery data"

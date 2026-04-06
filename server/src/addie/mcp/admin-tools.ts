@@ -146,7 +146,7 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
     const mapping = await slackDb.getBySlackUserId(slackUserId);
 
     if (!mapping?.workos_user_id) {
-      logger.debug({ slackUserId }, 'No WorkOS mapping for Slack user');
+      logger.debug({ slackUserId }, 'Admin check: no WorkOS mapping for Slack user');
       adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
       return false;
     }
@@ -155,7 +155,7 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
     const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
 
     if (!adminGroup) {
-      logger.warn('AAO Admin working group not found');
+      logger.warn('Admin check: aao-admin working group not found in DB');
       // Cache the negative result for a shorter time to avoid repeated DB lookups
       adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
       return false;
@@ -167,7 +167,7 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
     // Cache the result
     adminStatusCache.set(slackUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
 
-    logger.debug({ slackUserId, workosUserId: mapping.workos_user_id, isAdmin }, 'Checked admin status');
+    logger.info({ slackUserId, workosUserId: mapping.workos_user_id, isAdmin, adminGroupId: adminGroup.id }, 'Admin status check result');
     return isAdmin;
   } catch (error) {
     logger.error({ error, slackUserId }, 'Error checking if Slack user is admin');
@@ -805,6 +805,37 @@ Returns a list of organizations with open or draft invoices.`,
         committee_slug: { type: 'string', description: 'Committee slug' },
       },
       required: ['committee_slug'],
+    },
+  },
+
+  // ============================================
+  // WORKING GROUP MEMBERSHIP (admin)
+  // ============================================
+  {
+    name: 'add_working_group_member',
+    description: 'Add a user as a member of a working group, council, chapter, or industry gathering.',
+    usage_hints: 'Use for adding regular members — use add_committee_leader to add leaders instead. Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
+        user_email: { type: 'string', description: 'User email (optional, helps identify them)' },
+      },
+      required: ['committee_slug', 'user_id'],
+    },
+  },
+  {
+    name: 'remove_working_group_member',
+    description: 'Remove a user from a working group, council, chapter, or industry gathering. The user is deactivated, not deleted.',
+    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
+      },
+      required: ['committee_slug', 'user_id'],
     },
   },
 
@@ -4696,6 +4727,123 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, committeeSlug }, 'Error listing committee leaders');
       return '❌ Failed to list committee leaders. Please try again.';
+    }
+  });
+
+  // ============================================
+  // WORKING GROUP MEMBERSHIP HANDLERS
+  // ============================================
+
+  handlers.set('add_working_group_member', async (input) => {
+    const committeeSlug = (input.committee_slug as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
+    const userEmail = input.user_email as string | undefined;
+
+    if (!committeeSlug) {
+      return '❌ Please provide a committee_slug (e.g., "media-buy-wg", "india-chapter").';
+    }
+    if (!userId) {
+      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
+    }
+
+    try {
+      // Resolve Slack user IDs to WorkOS user IDs
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      let slackMapping: Awaited<ReturnType<SlackDatabase['getBySlackUserId']>> = null;
+      if (slackUserIdPattern.test(userId)) {
+        slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        } else {
+          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+        }
+      }
+
+      const group = await wgDb.getWorkingGroupBySlug(committeeSlug);
+      if (!group) {
+        return `❌ Committee "${committeeSlug}" not found. Use list_working_groups to find the correct slug.`;
+      }
+
+      // Check if already a member
+      const existing = await wgDb.getMembership(group.id, userId);
+      if (existing && existing.status === 'active') {
+        return `ℹ️ User is already a member of **${group.name}**.`;
+      }
+
+      await wgDb.addMembership({
+        working_group_id: group.id,
+        workos_user_id: userId,
+        user_email: userEmail,
+        user_name: slackMapping?.slack_real_name || slackMapping?.slack_display_name || undefined,
+      });
+      invalidateWebAdminStatusCache(userId);
+
+      // Auto-invite to the group's Slack channel
+      if (group.slack_channel_id) {
+        const slackUserMapping = slackMapping ?? await slackDb.getByWorkosUserId(userId);
+        if (slackUserMapping?.slack_user_id) {
+          inviteToChannel(group.slack_channel_id, [slackUserMapping.slack_user_id]).catch(err => {
+            logger.error({ err, userId, channelId: group.slack_channel_id }, 'Failed to auto-invite member to Slack channel');
+          });
+        }
+      }
+
+      const displayName = slackMapping?.slack_real_name || slackMapping?.slack_display_name || userId;
+      const emailInfo = userEmail ? ` (${userEmail})` : '';
+      const privacyNote = group.is_private ? ' (private group)' : '';
+      logger.info({ committeeSlug, groupName: group.name, userId, userEmail }, 'Added working group member via Addie');
+
+      return `✅ Added **${displayName}**${emailInfo} as a member of **${group.name}**${privacyNote}.`;
+    } catch (error) {
+      logger.error({ error, committeeSlug, userId }, 'Error adding working group member');
+      return '❌ Failed to add working group member. Please try again.';
+    }
+  });
+
+  handlers.set('remove_working_group_member', async (input) => {
+    const committeeSlug = (input.committee_slug as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
+
+    if (!committeeSlug) {
+      return '❌ Please provide a committee_slug (e.g., "media-buy-wg", "india-chapter").';
+    }
+    if (!userId) {
+      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
+    }
+
+    try {
+      // Resolve Slack user IDs to WorkOS user IDs
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        } else {
+          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+        }
+      }
+
+      const group = await wgDb.getWorkingGroupBySlug(committeeSlug);
+      if (!group) {
+        return `❌ Committee "${committeeSlug}" not found. Use list_working_groups to find the correct slug.`;
+      }
+
+      const existing = await wgDb.getMembership(group.id, userId);
+      if (!existing || existing.status !== 'active') {
+        return `ℹ️ User is not an active member of **${group.name}**.`;
+      }
+
+      await wgDb.removeMembership(group.id, userId);
+      invalidateWebAdminStatusCache(userId);
+
+      logger.info({ committeeSlug, groupName: group.name, userId }, 'Removed working group member via Addie');
+
+      return `✅ Removed user from **${group.name}**. They can rejoin if the group is public.`;
+    } catch (error) {
+      logger.error({ error, committeeSlug, userId }, 'Error removing working group member');
+      return '❌ Failed to remove working group member. Please try again.';
     }
   });
 

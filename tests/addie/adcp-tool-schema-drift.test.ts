@@ -36,7 +36,7 @@ const TOOL_SCHEMA_MAP: Record<string, string> = {
 };
 
 /** Protocol metadata fields — not useful for LLM tool schemas */
-const PROTOCOL_ONLY = new Set(['ext', 'context']);
+const PROTOCOL_ONLY = new Set(['ext', 'context', 'adcp_major_version']);
 
 /** Addie-specific routing fields — not in protocol schemas */
 const ADDIE_ONLY = new Set(['agent_url', 'debug']);
