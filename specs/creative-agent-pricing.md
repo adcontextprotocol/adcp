@@ -205,6 +205,15 @@ percent_of_media, flat_fee).
 The `pricing_option_id` identifies the specific rate card entry so both sides can
 reference it in `report_usage`.
 
+**Future: per-unit pricing.** The three models above cover launch use cases. AI
+generation and multi-format rendering introduce per-unit pricing patterns (per asset
+generated, per variant rendered, per format adapted) that none of the current models
+cleanly express. Today this works because `build_creative` returns `vendor_cost` and
+`consumption` — the agent computes the cost and the buyer verifies it. But the discovery
+surface (`pricing_options`) cannot yet express "this creative costs $0.15 per image
+generated." A `per_unit` pricing model (unit type, unit price, currency) is a natural
+extension when the use cases mature.
+
 #### 4. `account` on `build_creative` request
 
 Add an optional `account` field (AccountRef). When present, the creative agent:
