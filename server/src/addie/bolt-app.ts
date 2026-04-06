@@ -902,7 +902,9 @@ async function createUserScopedTools(
     for (const [name, handler] of adminHandlers) {
       allHandlers.set(name, handler);
     }
-    logger.debug('Addie Bolt: Admin tools enabled for this user');
+    logger.debug({ slackUserId }, 'Addie Bolt: Admin tools enabled for this user');
+  } else if (slackUserId) {
+    logger.debug({ slackUserId }, 'Addie Bolt: User is NOT an admin — admin tools withheld');
   }
 
   // Add event tools if user can create events (admin or committee lead)
