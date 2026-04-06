@@ -39,10 +39,30 @@ This approach:
 The agent card extension (`adcp-extension.json`) has been removed in v3. Use tool-based discovery instead.
 :::
 
+## Version Negotiation
+
+Sellers declare which major versions they support via `adcp.major_versions` in the response. Buyers declare which version they're using via `adcp_major_version` on the request.
+
+```
+Version Negotiation Flow:
+1. Buyer calls get_adcp_capabilities with adcp_major_version: 2
+2. Seller checks 2 against its major_versions: [2, 3]
+3. Version is supported → seller returns capabilities for v2
+4. Buyer proceeds with v2-conformant requests
+```
+
+**Seller behavior:**
+- If `adcp_major_version` is provided and supported → respond using that version's schemas
+- If `adcp_major_version` is provided but unsupported → return `VERSION_UNSUPPORTED` (buyer should call without `adcp_major_version` to discover supported versions)
+- If `adcp_major_version` is omitted → assume the highest supported version
+
+**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version. A seller at 3.1 can serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
+
 ## Request Parameters
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns `VERSION_UNSUPPORTED` if not in range. When omitted, the seller assumes the highest major version it supports. |
 | `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`). If omitted, returns all supported protocols. |
 
 ## Response Structure
@@ -762,6 +782,7 @@ New fields:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `VERSION_UNSUPPORTED` | Declared `adcp_major_version` not in seller's `major_versions` | Call without `adcp_major_version` to discover supported versions, then retry |
 | `INTERNAL_ERROR` | Server error | Retry with backoff |
 
 ## Best Practices

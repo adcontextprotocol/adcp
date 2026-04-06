@@ -28,6 +28,26 @@ Implementations built against 3.0 will continue to function against any 3.x rele
 
 ---
 
+## Version negotiation
+
+When a seller supports multiple major versions simultaneously (e.g., during a v2→v3 migration), buyers and sellers negotiate using `get_adcp_capabilities`:
+
+1. **Seller advertises**: `adcp.major_versions` in the `get_adcp_capabilities` response lists all supported major versions (e.g., `[2, 3]`).
+2. **Buyer declares**: `adcp_major_version` on the `get_adcp_capabilities` request tells the seller which version the buyer's payloads conform to.
+3. **Seller validates**: If the declared version is outside the supported range, the seller returns `VERSION_UNSUPPORTED`. If omitted, the seller assumes its highest supported version.
+
+This lets sellers upgrade first — declare multi-version support, and let buyers migrate on their own schedule.
+
+### Features over versions
+
+Version negotiation handles major architectural boundaries. For feature-level compatibility, use the capability model instead. Sellers declare specific features, targeting systems, execution integrations, and extensions in `get_adcp_capabilities`. Buyers check the capabilities they need and proceed if they're present.
+
+Not every seller at a given major version will support every feature. Not every buyer needs every feature. The capability contract is: **if declared, the seller MUST honor it**. This gives finer-grained compatibility than version numbers alone.
+
+See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for the full capability reference.
+
+---
+
 ## Schema changes in releases: scope and limits
 
 Schema changes are accepted in releases under the following conditions:
