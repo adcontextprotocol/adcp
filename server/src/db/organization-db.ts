@@ -140,10 +140,10 @@ export function getSeatLimits(tier: string | null): SeatLimits {
  *
  * Covers both current tier products (Explorer, Professional, Builder, Partner, Leader)
  * and legacy founding-member products (individual, individual_discounted, corporate_*,
- * industry_council_leader). Entries are ordered longest-prefix-first so that
- * "aao_membership_individual_discounted" matches before "aao_membership_individual".
+ * industry_council_leader). Sorted by descending prefix length so that more-specific
+ * keys (e.g. "individual_discounted") match before shorter ones ("individual").
  */
-const LOOKUP_KEY_TIERS: [prefix: string, tier: MembershipTier][] = [
+const LOOKUP_KEY_TIERS: [prefix: string, tier: MembershipTier][] = ([
   // Current tier products
   ['aao_membership_explorer', 'individual_academic'],
   ['aao_membership_professional', 'individual_professional'],
@@ -157,7 +157,7 @@ const LOOKUP_KEY_TIERS: [prefix: string, tier: MembershipTier][] = [
   ['aao_membership_corporate_under5m', 'company_standard'],
   ['aao_membership_corporate', 'company_icl'],
   ['aao_membership_industry_council_leader', 'company_leader'],
-];
+] as [string, MembershipTier][]).sort((a, b) => b[0].length - a[0].length);
 
 /**
  * Resolve tier from a Stripe price lookup key.

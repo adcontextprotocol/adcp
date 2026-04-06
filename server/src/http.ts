@@ -3607,7 +3607,7 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       membership_tier = COALESCE($8, membership_tier),
+                       membership_tier = $8,
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
