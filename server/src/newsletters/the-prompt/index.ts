@@ -227,8 +227,8 @@ export const thePromptConfig: NewsletterConfig = {
   generateSubject: (c) => generateDigestSubject(c as DigestContent),
   buildMarkdown: buildPromptMarkdown,
   extractTags: extractPromptTags,
-  renderEmail: (content, trackingId, editionDate, segment, firstName, userWGs, personaCluster) =>
-    renderDigestEmail(content as DigestContent, trackingId, editionDate, segment as Parameters<typeof renderDigestEmail>[3], firstName, userWGs, personaCluster as Parameters<typeof renderDigestEmail>[6]),
+  renderEmail: (content, trackingId, editionDate, segment, firstName, userWGs, personaCluster, recipient) =>
+    renderDigestEmail(content as DigestContent, trackingId, editionDate, segment as Parameters<typeof renderDigestEmail>[3], firstName, userWGs, personaCluster as Parameters<typeof renderDigestEmail>[6], recipient as Parameters<typeof renderDigestEmail>[7]),
   renderSlack: (content, editionDate) => renderDigestSlack(content as DigestContent, editionDate),
   renderReview: (content, editionDate) => renderDigestReview(content as DigestContent, editionDate),
   db: promptDB,
