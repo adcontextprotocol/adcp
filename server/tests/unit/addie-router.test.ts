@@ -536,6 +536,16 @@ describe('parseRouterResponse', () => {
     expect('confidence' in plan).toBe(false);
   });
 
+  it('should fall back to knowledge tools when JSON is truncated by max_tokens cutoff', () => {
+    const plan = parseRouterResponse('{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"The user is asking about AdCP protoc');
+    expect(plan.action).toBe('respond');
+    if (plan.action === 'respond') {
+      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.confidence).toBe('high');
+      expect(plan.reason).toBe('Parse error - defaulting to knowledge tools');
+    }
+  });
+
   it('should convert stale clarify action to respond with knowledge tools', () => {
     const plan = parseRouterResponse('{"action":"clarify","question":"What do you mean?","reason":"ambiguous"}');
     expect(plan.action).toBe('respond');
