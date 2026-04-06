@@ -449,7 +449,7 @@
             window.location.href = '/auth/login?return_to=/dashboard/agents';
             return;
           }
-          if (profileRes.status === 404) {
+          if (profileRes.status === 404 || profileRes.status === 403) {
             document.getElementById('hub-loading').innerHTML =
               '<p style="color:var(--color-text-secondary)">Your account is not yet associated with a member organization. ' +
               '<a href="/membership">Learn about membership</a>.</p>';

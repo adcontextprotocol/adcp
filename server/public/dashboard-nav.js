@@ -68,9 +68,6 @@
   const isAccountPage = window.location.pathname === '/account' || window.location.pathname === '/account/';
   const isAnchorPage = isDashboardPage || isAccountPage;
 
-  const isTeamPage = window.location.pathname === '/dashboard/team' || window.location.pathname === '/dashboard/team/';
-  const isAgentsPage = window.location.pathname === '/dashboard/agents' || window.location.pathname === '/dashboard/agents/';
-
   const NAV_CONFIG = {
     sections: [
       {
