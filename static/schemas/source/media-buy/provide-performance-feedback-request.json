@@ -5,6 +5,12 @@
   "description": "Request payload for provide_performance_feedback task",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Seller's media buy identifier",

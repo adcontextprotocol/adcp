@@ -5,6 +5,12 @@
   "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "$schema": {
       "type": "string",
       "format": "uri",

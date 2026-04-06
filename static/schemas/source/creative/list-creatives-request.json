@@ -5,6 +5,12 @@
   "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "filters": {
       "$ref": "/schemas/core/creative-filters.json"
     },
@@ -83,7 +89,9 @@
       "description": "List all approved creatives",
       "data": {
         "filters": {
-          "statuses": ["approved"]
+          "statuses": [
+            "approved"
+          ]
         }
       }
     },
@@ -91,7 +99,9 @@
       "description": "List creatives in a specific concept matching a format",
       "data": {
         "filters": {
-          "concept_ids": ["concept_holiday_2026"],
+          "concept_ids": [
+            "concept_holiday_2026"
+          ],
           "format_ids": [
             {
               "agent_url": "https://creative.example.com",
@@ -109,7 +119,9 @@
       "data": {
         "filters": {
           "has_variables": true,
-          "statuses": ["approved"]
+          "statuses": [
+            "approved"
+          ]
         },
         "include_variables": true
       }

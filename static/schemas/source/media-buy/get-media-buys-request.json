@@ -5,6 +5,12 @@
   "description": "Request parameters for retrieving media buy status, creative approval state, and optional delivery snapshots",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account to retrieve media buys for. When omitted, returns data across all accessible accounts."

@@ -5,6 +5,12 @@
   "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "accounts": {
       "type": "array",
       "description": "Advertiser accounts to sync",
@@ -91,12 +97,18 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
             "operator": "pinnacle-media.com",
             "billing": "operator"
           },
           {
-            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
             "operator": "pinnacle-media.com",
             "billing": "agent"
           }
@@ -108,7 +120,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "billing": "operator",
             "payment_terms": "net_30"
@@ -121,13 +135,19 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
             "operator": "pinnacle-media.com",
             "billing": "agent",
             "payment_terms": "net_60"
           },
           {
-            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
             "operator": "pinnacle-media.com",
             "billing": "agent",
             "payment_terms": "net_60"
@@ -140,7 +160,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "pinnacle-media.com",
             "billing": "advertiser",
             "billing_entity": {

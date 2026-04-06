@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering creative formats provided by this creative agent",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "format_ids": {
       "type": "array",
       "description": "Return only these specific format IDs",

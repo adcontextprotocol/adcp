@@ -5,6 +5,12 @@
   "description": "Request financial status for an operator-billed account. Returns spend summary, credit/balance status, and invoice history. Only applicable when the seller declares account_financials capability.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account to query financials for. Must be an operator-billed account."
@@ -20,20 +26,26 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account"],
+  "required": [
+    "account"
+  ],
   "additionalProperties": true,
   "examples": [
     {
       "description": "Query by account ID for current billing cycle",
       "data": {
-        "account": { "account_id": "acc_acme_001" }
+        "account": {
+          "account_id": "acc_acme_001"
+        }
       }
     },
     {
       "description": "Query by natural key for a specific period",
       "data": {
         "account": {
-          "brand": { "domain": "acme-corp.com" },
+          "brand": {
+            "domain": "acme-corp.com"
+          },
           "operator": "acme-corp.com"
         },
         "period": {
@@ -46,7 +58,10 @@
       "description": "Agency querying financials for a client account",
       "data": {
         "account": {
-          "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
           "operator": "pinnacle-media.com"
         }
       }

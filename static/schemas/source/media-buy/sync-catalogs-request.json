@@ -5,6 +5,12 @@
   "description": "Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across multiple catalog types (products, inventory, stores, promotions, offerings). Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs is omitted, the call is discovery-only: returns all catalogs on the account without modification.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account that owns these catalogs."
@@ -53,13 +59,23 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account"],
+  "required": [
+    "account"
+  ],
   "if": {
-    "properties": { "delete_missing": { "const": true } },
-    "required": ["delete_missing"]
+    "properties": {
+      "delete_missing": {
+        "const": true
+      }
+    },
+    "required": [
+      "delete_missing"
+    ]
   },
   "then": {
-    "required": ["catalogs"],
+    "required": [
+      "catalogs"
+    ],
     "errorMessage": "catalogs is required when delete_missing is true — omitting it would delete all buyer-managed catalogs on the account"
   },
   "additionalProperties": true,
@@ -67,7 +83,9 @@
     {
       "description": "Sync product and inventory feeds for a retail media campaign",
       "data": {
-        "account": { "account_id": "acct_acmecorp" },
+        "account": {
+          "account_id": "acct_acmecorp"
+        },
         "catalogs": [
           {
             "catalog_id": "product-feed",
@@ -91,7 +109,9 @@
     {
       "description": "Sync inline offerings for a recruitment campaign",
       "data": {
-        "account": { "account_id": "acct_restaurants" },
+        "account": {
+          "account_id": "acct_restaurants"
+        },
         "catalogs": [
           {
             "catalog_id": "chef-vacancies",
@@ -104,8 +124,12 @@
                 "description": "Lead our kitchen team in central Amsterdam",
                 "landing_url": "https://jobs.acme-restaurants.com/chef-amsterdam-42",
                 "geo_targets": {
-                  "countries": ["NL"],
-                  "regions": ["NL-NH"]
+                  "countries": [
+                    "NL"
+                  ],
+                  "regions": [
+                    "NL-NH"
+                  ]
                 }
               }
             ]
@@ -116,7 +140,9 @@
     {
       "description": "Discovery-only: list all catalogs on the account",
       "data": {
-        "account": { "account_id": "acct_acmecorp" }
+        "account": {
+          "account_id": "acct_acmecorp"
+        }
       }
     }
   ]

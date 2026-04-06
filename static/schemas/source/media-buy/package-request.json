@@ -5,6 +5,12 @@
   "description": "Package configuration for media buy creation",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "product_id": {
       "type": "string",
       "description": "Product ID for this package"
@@ -42,7 +48,9 @@
     "start_time": {
       "type": "string",
       "format": "date-time",
-      "not": { "const": "asap" },
+      "not": {
+        "const": "asap"
+      },
       "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
     },
     "end_time": {

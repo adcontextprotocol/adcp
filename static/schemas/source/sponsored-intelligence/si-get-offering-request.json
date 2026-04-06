@@ -5,6 +5,12 @@
   "description": "Get offering details and availability before session handoff. Returns offering information, availability status, and optionally matching products based on context.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "offering_id": {
       "type": "string",
       "description": "Offering identifier from the catalog to get details for"
@@ -29,6 +35,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["offering_id"],
+  "required": [
+    "offering_id"
+  ],
   "additionalProperties": true
 }

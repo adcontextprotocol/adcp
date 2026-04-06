@@ -5,6 +5,12 @@
   "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "filters": {
       "type": "object",
       "description": "Filter criteria for querying tasks",

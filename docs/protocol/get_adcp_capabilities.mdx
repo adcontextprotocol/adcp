@@ -48,13 +48,16 @@ Version Negotiation Flow:
 1. Buyer calls get_adcp_capabilities with adcp_major_version: 2
 2. Seller checks 2 against its major_versions: [2, 3]
 3. Version is supported → seller returns capabilities for v2
-4. Buyer proceeds with v2-conformant requests
+4. Buyer includes adcp_major_version: 2 on all subsequent requests
 ```
+
+`adcp_major_version` is an optional field on every AdCP request schema. Buyers SHOULD include it on all requests when interacting with a multi-version seller.
 
 **Seller behavior:**
 - If `adcp_major_version` is provided and supported → respond using that version's schemas
 - If `adcp_major_version` is provided but unsupported → return `VERSION_UNSUPPORTED` (buyer should call without `adcp_major_version` to discover supported versions)
-- If `adcp_major_version` is omitted → assume the highest supported version
+- If `adcp_major_version` is omitted on `get_adcp_capabilities` → assume the highest supported version
+- If `adcp_major_version` is omitted on other requests → seller uses the version from the most recent `get_adcp_capabilities` call, or its highest supported version
 
 **Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version. A seller at 3.1 can serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
 

@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products and proposals.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions. When omitted on get_adcp_capabilities, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "buying_mode": {
       "type": "string",
       "enum": [
@@ -12,7 +18,7 @@
         "wholesale",
         "refine"
       ],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences \u2014 brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'."
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'."
     },
     "brief": {
       "type": "string",
@@ -30,7 +36,7 @@
               "scope": {
                 "type": "string",
                 "const": "request",
-                "description": "Change scoped to the overall request \u2014 direction for the selection as a whole."
+                "description": "Change scoped to the overall request — direction for the selection as a whole."
               },
               "ask": {
                 "type": "string",
@@ -129,7 +135,7 @@
     },
     "preferred_delivery_types": {
       "type": "array",
-      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation \u2014 the publisher may still include other delivery types when they match the brief well.",
+      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation — the publisher may still include other delivery types when they match the brief well.",
       "items": {
         "$ref": "/schemas/enums/delivery-type.json"
       },
