@@ -1193,7 +1193,8 @@
         const preview = document.getElementById('drop-zone-preview');
         const text = document.getElementById('drop-zone-text');
         if (file.type.startsWith('image/')) {
-          preview.src = URL.createObjectURL(file);
+          const blobUrl = URL.createObjectURL(file);
+          preview.setAttribute('src', blobUrl);
           preview.classList.remove('hidden');
         }
         text.textContent = file.name;
