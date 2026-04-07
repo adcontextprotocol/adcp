@@ -518,7 +518,7 @@
         },
         "property-type": {
           "$ref": "/schemas/enums/property-type.json",
-          "description": "Types of advertising properties (website, mobile_app, ctv_app, dooh, podcast, radio, streaming_audio)"
+          "description": "Types of addressable advertising properties with verifiable ownership"
         },
         "dimension-unit": {
           "$ref": "/schemas/enums/dimension-unit.json",

@@ -1589,6 +1589,7 @@
             <option value="">All Channels</option>
             <option value="web">Web</option>
             <option value="slack">Slack</option>
+            <option value="email">Email</option>
             <option value="a2a">A2A</option>
             <option value="video">Video</option>
           </select>
@@ -3507,6 +3508,16 @@
           </div>
         `;
 
+        // Email context panel (for email threads)
+        const emailContext = data.channel === 'email' && data.context ? `
+          <div style="margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); font-size: var(--text-sm);">
+            <div style="display: flex; gap: var(--space-4); flex-wrap: wrap;">
+              ${data.context.sender_email ? `<div><span style="color: var(--color-text-muted);">From:</span> <strong>${escapeHtml(data.context.sender_email)}</strong></div>` : ''}
+              ${data.context.subject ? `<div><span style="color: var(--color-text-muted);">Subject:</span> ${escapeHtml(data.context.subject)}</div>` : ''}
+            </div>
+          </div>
+        ` : '';
+
         // Shadow evaluation panel (if present in thread context)
         const shadowEval = data.context?.shadow_eval_status === 'complete' ? data.context : null;
         const shadowPanel = shadowEval ? `
@@ -3538,7 +3549,7 @@
           </div>
         ` : '');
 
-        detailEl.innerHTML = threadInfo + shadowPanel + `
+        detailEl.innerHTML = threadInfo + emailContext + shadowPanel + `
           <div class="message-thread">
             ${data.messages.map(msg => renderThreadMessage(msg)).join('')}
           </div>

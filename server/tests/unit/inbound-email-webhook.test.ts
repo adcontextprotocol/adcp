@@ -15,9 +15,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Helper Functions (extracted from webhooks.ts for unit testing)
 // ============================================================================
 
+type AddiePosition = 'to' | 'cc';
+
 type AddieContext =
-  | { type: 'prospect' }
-  | { type: 'working-group'; groupId: string }
+  | { type: 'prospect'; addiePosition: AddiePosition; addieAddress: string }
+  | { type: 'working-group'; groupId: string; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'feed'; slug: string }
   | { type: 'unrouted' };
 
@@ -52,36 +54,44 @@ function parseEmailAddress(emailStr: string): { email: string; displayName: stri
 }
 
 function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): AddieContext {
-  const allAddresses = [...toAddresses, ...ccAddresses];
+  const addressLists: Array<{ addresses: string[]; position: AddiePosition }> = [
+    { addresses: toAddresses, position: 'to' },
+    { addresses: ccAddresses, position: 'cc' },
+  ];
 
-  for (const addr of allAddresses) {
-    const { email } = parseEmailAddress(addr);
+  for (const { addresses, position } of addressLists) {
+    for (const addr of addresses) {
+      const { email } = parseEmailAddress(addr);
 
-    // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
-    if (email.endsWith('@updates.agenticadvertising.org')) {
-      const localPart = email.split('@')[0];
-      if (localPart.startsWith('feed-')) {
-        return { type: 'feed', slug: localPart };
+      // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
+      if (email.endsWith('@updates.agenticadvertising.org')) {
+        const localPart = email.split('@')[0];
+        if (localPart.startsWith('feed-')) {
+          return { type: 'feed', slug: localPart };
+        }
+        if (localPart === 'addie' || localPart === 'sage' || localPart === 'hello') {
+          return { type: 'prospect', addiePosition: position, addieAddress: email };
+        }
       }
-    }
 
-    if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
-    const localPart = email.split('@')[0];
-    if (!localPart.startsWith('addie')) continue;
+      if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
+      const localPart = email.split('@')[0];
+      if (!localPart.startsWith('addie')) continue;
 
-    const plusIndex = localPart.indexOf('+');
-    if (plusIndex === -1) {
-      continue;
-    }
+      const plusIndex = localPart.indexOf('+');
+      if (plusIndex === -1) {
+        return { type: 'prospect', addiePosition: position, addieAddress: email };
+      }
 
-    const context = localPart.substring(plusIndex + 1);
+      const context = localPart.substring(plusIndex + 1);
 
-    if (context === 'prospect') {
-      return { type: 'prospect' };
-    }
+      if (context === 'prospect') {
+        return { type: 'prospect', addiePosition: position, addieAddress: email };
+      }
 
-    if (context.startsWith('wg-')) {
-      return { type: 'working-group', groupId: context.substring(3) };
+      if (context.startsWith('wg-')) {
+        return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
+      }
     }
   }
 
@@ -176,32 +186,35 @@ describe('Inbound Email Webhook', () => {
   });
 
   describe('parseAddieContext', () => {
-    it('should return prospect context for addie+prospect@', () => {
+    it('should return prospect context for addie+prospect@ in TO', () => {
       const result = parseAddieContext(['addie+prospect@agenticadvertising.org']);
-      expect(result).toEqual({ type: 'prospect' });
+      expect(result).toEqual({ type: 'prospect', addiePosition: 'to', addieAddress: 'addie+prospect@agenticadvertising.org' });
     });
 
-    it('should return prospect context when in CC', () => {
+    it('should return prospect context with cc position when in CC', () => {
       const result = parseAddieContext(
         ['prospect@company.com'],
         ['addie+prospect@agenticadvertising.org']
       );
-      expect(result).toEqual({ type: 'prospect' });
+      expect(result).toEqual({ type: 'prospect', addiePosition: 'cc', addieAddress: 'addie+prospect@agenticadvertising.org' });
     });
 
     it('should return working-group context for addie+wg-*@', () => {
       const result = parseAddieContext(['addie+wg-governance@agenticadvertising.org']);
-      expect(result).toEqual({ type: 'working-group', groupId: 'governance' });
+      expect(result).toEqual({ type: 'working-group', groupId: 'governance', addiePosition: 'to', addieAddress: 'addie+wg-governance@agenticadvertising.org' });
     });
 
     it('should extract correct group ID from wg context', () => {
       const result = parseAddieContext(['addie+wg-creative-formats@agenticadvertising.org']);
-      expect(result).toEqual({ type: 'working-group', groupId: 'creative-formats' });
+      expect(result.type).toBe('working-group');
+      if (result.type === 'working-group') {
+        expect(result.groupId).toBe('creative-formats');
+      }
     });
 
-    it('should return unrouted for plain addie@', () => {
+    it('should return prospect for plain addie@ (direct reply)', () => {
       const result = parseAddieContext(['addie@agenticadvertising.org']);
-      expect(result).toEqual({ type: 'unrouted' });
+      expect(result).toEqual({ type: 'prospect', addiePosition: 'to', addieAddress: 'addie@agenticadvertising.org' });
     });
 
     it('should return unrouted when no addie address present', () => {
@@ -214,35 +227,52 @@ describe('Inbound Email Webhook', () => {
       expect(result).toEqual({ type: 'unrouted' });
     });
 
-    it('should prioritize first valid context found', () => {
-      const result = parseAddieContext([
-        'addie+prospect@agenticadvertising.org',
-        'addie+wg-governance@agenticadvertising.org',
-      ]);
-      expect(result).toEqual({ type: 'prospect' });
+    it('should prioritize TO over CC (TO checked first)', () => {
+      const result = parseAddieContext(
+        ['addie+prospect@agenticadvertising.org'],
+        ['addie+wg-governance@agenticadvertising.org']
+      );
+      expect(result.type).toBe('prospect');
+      if (result.type === 'prospect') {
+        expect(result.addiePosition).toBe('to');
+      }
     });
 
     it('should handle case-insensitive matching', () => {
       const result = parseAddieContext(['Addie+Prospect@AgenticAdvertising.org']);
-      expect(result).toEqual({ type: 'prospect' });
+      expect(result.type).toBe('prospect');
     });
 
     it('should handle updates.agenticadvertising.org subdomain for prospect', () => {
       const result = parseAddieContext(['addie+prospect@updates.agenticadvertising.org']);
-      expect(result).toEqual({ type: 'prospect' });
+      expect(result.type).toBe('prospect');
+      if (result.type === 'prospect') {
+        expect(result.addieAddress).toBe('addie+prospect@updates.agenticadvertising.org');
+      }
     });
 
-    it('should handle updates.agenticadvertising.org subdomain in CC', () => {
+    it('should track cc position for updates.agenticadvertising.org subdomain', () => {
       const result = parseAddieContext(
         ['prospect@company.com'],
         ['addie+prospect@updates.agenticadvertising.org']
       );
-      expect(result).toEqual({ type: 'prospect' });
+      expect(result.type).toBe('prospect');
+      if (result.type === 'prospect') {
+        expect(result.addiePosition).toBe('cc');
+      }
     });
 
     it('should handle updates.agenticadvertising.org subdomain for working-group', () => {
       const result = parseAddieContext(['addie+wg-governance@updates.agenticadvertising.org']);
-      expect(result).toEqual({ type: 'working-group', groupId: 'governance' });
+      expect(result.type).toBe('working-group');
+      if (result.type === 'working-group') {
+        expect(result.groupId).toBe('governance');
+      }
+    });
+
+    it('should return prospect for newsletter reply addresses (addie@updates)', () => {
+      const result = parseAddieContext(['addie@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'prospect', addiePosition: 'to', addieAddress: 'addie@updates.agenticadvertising.org' });
     });
 
     it('should return feed context for feed-*@updates.agenticadvertising.org', () => {
@@ -251,11 +281,8 @@ describe('Inbound Email Webhook', () => {
     });
 
     it('should preserve full feed slug including feed- prefix', () => {
-      // This is critical: the slug must include the "feed-" prefix
-      // because that's what gets stored in the database email_slug column
       const result = parseAddieContext(['feed-adexchanger@updates.agenticadvertising.org']);
       expect(result).toEqual({ type: 'feed', slug: 'feed-adexchanger' });
-      // The slug should NOT be 'adexchanger' (without prefix)
       expect((result as { type: 'feed'; slug: string }).slug).toMatch(/^feed-/);
     });
 
@@ -270,13 +297,11 @@ describe('Inbound Email Webhook', () => {
     });
 
     it('should not match feed addresses on main domain', () => {
-      // Feed addresses only work on updates.agenticadvertising.org
       const result = parseAddieContext(['feed-campaign-uk@agenticadvertising.org']);
       expect(result).toEqual({ type: 'unrouted' });
     });
 
     it('should prioritize feed context over addie context', () => {
-      // Feed addresses are checked first
       const result = parseAddieContext([
         'feed-campaign-uk@updates.agenticadvertising.org',
         'addie+prospect@agenticadvertising.org',

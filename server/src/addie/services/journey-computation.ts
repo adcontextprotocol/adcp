@@ -26,6 +26,8 @@ export interface MilestoneCheck {
   has_content_proposals: boolean;
   has_working_groups: boolean;
   has_recruiting_activity: boolean;
+  has_registered_agents: boolean;
+  has_certified_members: boolean;
   member_days: number;
   has_subscription: boolean;
 }
@@ -61,7 +63,17 @@ export async function checkMilestones(orgId: string): Promise<MilestoneCheck | n
          WHERE mp.workos_organization_id = $1
            AND msa.event_type = 'introduction_sent'
            AND msa.created_at > NOW() - INTERVAL '90 days'
-       ) as has_recruiting_activity
+       ) as has_recruiting_activity,
+       EXISTS (
+         SELECT 1 FROM member_profiles mp
+         WHERE mp.workos_organization_id = $1
+           AND mp.agents IS NOT NULL AND mp.agents != '[]'::jsonb
+       ) as has_registered_agents,
+       EXISTS (
+         SELECT 1 FROM user_credentials uc
+         JOIN organization_memberships om ON om.workos_user_id = uc.workos_user_id
+         WHERE om.workos_organization_id = $1
+       ) as has_certified_members
      FROM organizations o
      WHERE o.workos_organization_id = $1`,
     [orgId]
@@ -79,6 +91,8 @@ export async function checkMilestones(orgId: string): Promise<MilestoneCheck | n
     has_content_proposals: row.has_content_proposals,
     has_working_groups: row.has_working_groups,
     has_recruiting_activity: row.has_recruiting_activity,
+    has_registered_agents: row.has_registered_agents,
+    has_certified_members: row.has_certified_members,
     member_days: memberDays,
     has_subscription: row.subscription_status === 'active',
   };

@@ -5,6 +5,12 @@
   "description": "Sync governance agent endpoints against specific accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously synced agents on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "accounts": {
       "type": "array",
       "description": "Per-account governance agent configuration. Each entry pairs an account reference with the governance agents for that account.",
@@ -33,7 +39,9 @@
                   "properties": {
                     "schemes": {
                       "type": "array",
-                      "items": { "$ref": "/schemas/enums/auth-scheme.json" },
+                      "items": {
+                        "$ref": "/schemas/enums/auth-scheme.json"
+                      },
                       "minItems": 1,
                       "maxItems": 1
                     },
@@ -43,24 +51,37 @@
                       "minLength": 32
                     }
                   },
-                  "required": ["schemes", "credentials"],
+                  "required": [
+                    "schemes",
+                    "credentials"
+                  ],
                   "additionalProperties": false
                 },
                 "categories": {
                   "type": "array",
-                  "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
+                  "items": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
                   "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
                   "maxItems": 20
                 }
               },
-              "required": ["url", "authentication"],
+              "required": [
+                "url",
+                "authentication"
+              ],
               "additionalProperties": false
             },
             "minItems": 1,
             "maxItems": 10
           }
         },
-        "required": ["account", "governance_agents"],
+        "required": [
+          "account",
+          "governance_agents"
+        ],
         "additionalProperties": false
       },
       "minItems": 1,
@@ -73,7 +94,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["accounts"],
+  "required": [
+    "accounts"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -81,15 +104,21 @@
       "data": {
         "accounts": [
           {
-            "account": { "account_id": "acct-social-001" },
+            "account": {
+              "account_id": "acct-social-001"
+            },
             "governance_agents": [
               {
                 "url": "https://governance.pinnacle-media.com/budget",
                 "authentication": {
-                  "schemes": ["Bearer"],
+                  "schemes": [
+                    "Bearer"
+                  ],
                   "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 },
-                "categories": ["budget_authority"]
+                "categories": [
+                  "budget_authority"
+                ]
               }
             ]
           }
@@ -102,17 +131,24 @@
         "accounts": [
           {
             "account": {
-              "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+              "brand": {
+                "domain": "nova-brands.com",
+                "brand_id": "spark"
+              },
               "operator": "pinnacle-media.com"
             },
             "governance_agents": [
               {
                 "url": "https://governance.pinnacle-media.com/compliance",
                 "authentication": {
-                  "schemes": ["Bearer"],
+                  "schemes": [
+                    "Bearer"
+                  ],
                   "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
                 },
-                "categories": ["geo_compliance"]
+                "categories": [
+                  "geo_compliance"
+                ]
               }
             ]
           }

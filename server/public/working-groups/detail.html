@@ -1207,6 +1207,14 @@
       <div id="meetingsList" class="meetings-list"></div>
     </div>
 
+    <!-- Meeting Minutes Section -->
+    <div id="minutesSection" class="content-section" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">Meeting Minutes</h2>
+      </div>
+      <div id="minutesList" class="meetings-list"></div>
+    </div>
+
     <!-- Members Section -->
     <div id="membersSection" class="content-section" style="display: none;">
       <div class="section-header">
@@ -1356,6 +1364,7 @@
     let currentGroup = null;
     let isMember = false;
     let isLeader = false;
+    let isAdmin = false;
     let currentSlug = '';
     let postsData = [];
 
@@ -1382,6 +1391,7 @@
         if (response.ok) {
           const config = await response.json();
           currentUser = config.user || null;
+          isAdmin = config.user?.isAdmin || false;
         }
       } catch (err) {
         console.debug('Auth check failed:', err);
@@ -1421,7 +1431,7 @@
         }
 
         // Load meetings for all committee types
-        loadMeetings();
+        Promise.all([loadMeetings(), loadMinutes()]);
 
       } catch (error) {
         console.error('Error loading working group:', error);
@@ -1769,6 +1779,51 @@
       `;
     }
 
+    async function loadMinutes() {
+      try {
+        const response = await fetch(`/api/meetings?working_group_id=${currentGroup.id}&past=true&limit=20`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const pastMeetings = (data.meetings || []).filter(m => m.summary);
+
+        if (pastMeetings.length === 0) return;
+
+        const minutesSection = document.getElementById('minutesSection');
+        const minutesList = document.getElementById('minutesList');
+
+        minutesSection.style.display = 'block';
+        minutesList.innerHTML = pastMeetings.map(meeting => {
+          const startDate = new Date(meeting.start_time);
+          const tz = meeting.timezone || 'America/New_York';
+          const month = startDate.toLocaleDateString('en-US', { month: 'short', timeZone: tz });
+          const day = parseInt(startDate.toLocaleDateString('en-US', { day: 'numeric', timeZone: tz }), 10);
+          const dateStr = startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
+
+          // Truncate summary for preview
+          const summaryPreview = meeting.summary.length > 300
+            ? meeting.summary.substring(0, 300) + '...'
+            : meeting.summary;
+
+          return `
+            <a href="/meetings#meeting-${meeting.id}" class="meeting-card">
+              <div class="meeting-date-badge">
+                <div class="meeting-date-month">${month}</div>
+                <div class="meeting-date-day">${day}</div>
+              </div>
+              <div class="meeting-info">
+                <div class="meeting-title">${escapeHtml(meeting.title)}</div>
+                <div class="meeting-meta"><span>${dateStr}</span></div>
+                <div class="document-summary" style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted);">${escapeHtml(summaryPreview)}</div>
+              </div>
+            </a>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Error loading minutes:', error);
+      }
+    }
+
     async function loadDocuments() {
       try {
         const response = await fetch(`/api/working-groups/${currentSlug}/documents`);
@@ -1780,15 +1835,15 @@
         const documentsSection = document.getElementById('documentsSection');
         const documentsList = document.getElementById('documentsList');
 
-        // Show manage button for members
-        if (isMember || isLeader) {
+        // Show manage button for members and admins
+        if (isMember || isLeader || isAdmin) {
           const manageDocsBtn = document.getElementById('manageDocsBtn');
           manageDocsBtn.href = `/working-groups/${currentSlug}/manage?tab=documents`;
           manageDocsBtn.style.display = 'inline-flex';
         }
 
-        // Only show the section if there are documents or user is a member
-        if (documents.length === 0 && !isMember && !isLeader) {
+        // Only show the section if there are documents or user is a member/admin
+        if (documents.length === 0 && !isMember && !isLeader && !isAdmin) {
           return;
         }
 
@@ -1826,7 +1881,7 @@
                   ${doc.index_status !== 'success' ? `<span class="document-status ${statusClass}">${formatIndexStatus(doc.index_status)}</span>` : ''}
                 </div>
                 ${doc.document_summary ? `<div class="document-summary">${escapeHtml(doc.document_summary)}</div>` : ''}
-                ${doc.index_status === 'access_denied' && isMember ? `
+                ${doc.index_status === 'access_denied' && (isMember || isAdmin) ? `
                   <div class="document-fix-banner">
                     <p>Addie can't read this document. To fix it:</p>
                     <ol>

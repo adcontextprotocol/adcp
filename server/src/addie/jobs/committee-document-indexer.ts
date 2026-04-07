@@ -980,7 +980,10 @@ export async function reindexDocument(documentId: string): Promise<{
   }
 
   try {
-    await indexDocument(doc);
+    const result = await indexDocument(doc);
+    if (result.error) {
+      return { success: false, error: result.error };
+    }
     return { success: true };
   } catch (error) {
     return {

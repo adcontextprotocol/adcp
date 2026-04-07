@@ -5,7 +5,7 @@
  * Uses Addie's bot token for all operations.
  */
 
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import type {
@@ -14,6 +14,8 @@ import type {
   SlackPaginatedResponse,
   SlackBlockMessage,
 } from './types.js';
+
+const logger = createLogger('slack-client');
 
 // Lazy-initialized database instance for user persistence
 let slackDb: SlackDatabase | null = null;
@@ -481,7 +483,8 @@ export async function getChannelInfo(channelId: string): Promise<SlackChannel | 
 
     return response.channel;
   } catch (error) {
-    logger.error({ error, channelId }, 'Failed to get channel info');
+    const safeId = channelId.replace(/[^A-Za-z0-9]/g, '');
+    logger.warn({ error, channelId }, `Failed to get channel info for ${safeId}`);
     return null;
   }
 }
@@ -894,12 +897,16 @@ export async function inviteToChannel(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    // "already_in_channel" is not really an error
-    if (errorMessage.includes('already_in_channel')) {
+    // These Slack errors are expected and not actionable
+    if (errorMessage.includes('already_in_channel') || errorMessage.includes('cant_invite_self')) {
       return { ok: true };
     }
 
-    logger.error({ error: errorMessage, channelId }, 'Failed to invite users to channel');
+    logger.error(
+      error instanceof Error ? error : new Error(errorMessage),
+      'Failed to invite users to channel (channelId=%s)',
+      channelId,
+    );
     return { ok: false, error: errorMessage };
   }
 }

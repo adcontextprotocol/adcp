@@ -138,6 +138,7 @@ export interface NewsletterConfig {
     firstName?: string,
     userWGs?: string[],
     personaCluster?: string,
+    recipient?: NewsletterRecipient | null,
   ) => { html: string; text: string };
 
   /** Render Slack announcement message */

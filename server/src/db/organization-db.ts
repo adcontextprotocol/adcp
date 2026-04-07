@@ -136,6 +136,42 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
+ * Map Stripe price lookup key to membership tier.
+ *
+ * Covers both current tier products (Explorer, Professional, Builder, Partner, Leader)
+ * and legacy founding-member products (individual, individual_discounted, corporate_*,
+ * industry_council_leader). Sorted by descending prefix length so that more-specific
+ * keys (e.g. "individual_discounted") match before shorter ones ("individual").
+ */
+const LOOKUP_KEY_TIERS: [prefix: string, tier: MembershipTier][] = ([
+  // Current tier products
+  ['aao_membership_explorer', 'individual_academic'],
+  ['aao_membership_professional', 'individual_professional'],
+  ['aao_membership_builder', 'company_standard'],
+  ['aao_membership_member', 'company_icl'],
+  ['aao_membership_partner', 'company_icl'],
+  ['aao_membership_leader', 'company_leader'],
+  // Legacy founding-member products
+  ['aao_membership_individual_discounted', 'individual_academic'],
+  ['aao_membership_individual', 'individual_professional'],
+  ['aao_membership_corporate_under5m', 'company_standard'],
+  ['aao_membership_corporate', 'company_icl'],
+  ['aao_membership_industry_council_leader', 'company_leader'],
+] as [string, MembershipTier][]).sort((a, b) => b[0].length - a[0].length);
+
+/**
+ * Resolve tier from a Stripe price lookup key.
+ * Matches the tier portion of keys like "aao_membership_professional_250".
+ */
+export function tierFromLookupKey(lookupKey: string | null | undefined): MembershipTier | null {
+  if (!lookupKey) return null;
+  for (const [prefix, tier] of LOOKUP_KEY_TIERS) {
+    if (lookupKey.startsWith(prefix)) return tier;
+  }
+  return null;
+}
+
+/**
  * Resolve the effective membership tier for an organization.
  * Uses explicit membership_tier if set, otherwise infers from active subscription data.
  */
@@ -155,12 +191,17 @@ export function resolveMembershipTier(org: {
 
 /**
  * Infer membership tier from subscription amount and organization type.
- * Many orgs created before the membership_tier column was added have active subscriptions
- * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
+ * Used as a fallback when no lookup key is available (e.g., legacy founding
+ * member products). Amounts are in cents. Monthly amounts are annualized.
+ *
+ * Thresholds are set ~4% below the nominal annual price to account for
+ * integer-cent rounding on monthly billing. For example, $250/yr billed
+ * monthly is $20.83/mo = 2083¢. Annualized: 2083 × 12 = 24 996¢, which
+ * falls short of an exact 25 000¢ threshold.
  *
  * Tier mapping (annual):
  *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
- *   Company:    Builder ($3K+) → company_standard, Partner ($15K+) → company_icl, Leader ($50K+) → company_leader
+ *   Company:    Builder ($2.5K+) → company_standard, Partner ($7K+) → company_icl, Leader ($50K+) → company_leader
  */
 export function inferMembershipTier(
   amountCents: number | null,
@@ -172,13 +213,13 @@ export function inferMembershipTier(
   const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
 
   if (isPersonal) {
-    if (annualCents >= 25000) return 'individual_professional';
-    if (annualCents >= 5000) return 'individual_academic';
+    if (annualCents >= 24000) return 'individual_professional';
+    if (annualCents >= 4500) return 'individual_academic';
     return null;
   }
 
-  if (annualCents >= 5000000) return 'company_leader';
-  if (annualCents >= 1500000) return 'company_icl';
+  if (annualCents >= 4900000) return 'company_leader';
+  if (annualCents >= 700000) return 'company_icl';
   return 'company_standard';
 }
 

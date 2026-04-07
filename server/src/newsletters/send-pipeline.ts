@@ -52,7 +52,7 @@ export async function sendNewsletter(
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = config.renderEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster);
+        const { html, text } = config.renderEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster, recipient);
         return { htmlContent: html, textContent: text };
       },
       category: config.emailCategory,

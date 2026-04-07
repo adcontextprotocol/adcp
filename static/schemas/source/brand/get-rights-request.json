@@ -5,6 +5,12 @@
   "description": "Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first — no taxonomy for categories. The agent interprets intent from the query and filters based on the buyer's brand compatibility.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "query": {
       "type": "string",
       "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text.",
@@ -54,6 +60,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["query", "uses"],
+  "required": [
+    "query",
+    "uses"
+  ],
   "additionalProperties": true
 }

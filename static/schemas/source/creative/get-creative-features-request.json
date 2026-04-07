@@ -5,6 +5,12 @@
   "description": "Request payload for the get_creative_features task. Submits a creative manifest for evaluation by a governance agent, which analyzes the creative and returns scored feature values (brand safety, content categorization, quality metrics, etc.).",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
       "description": "The creative manifest to evaluate. Contains format_id and assets."
@@ -28,6 +34,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_manifest"],
+  "required": [
+    "creative_manifest"
+  ],
   "additionalProperties": true
 }

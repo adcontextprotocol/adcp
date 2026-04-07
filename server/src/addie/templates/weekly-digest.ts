@@ -1,6 +1,7 @@
-import type { DigestContent, DigestInsiderGroup, PersonaCluster } from '../../db/digest-db.js';
+import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailRecipient } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
+import { pickNudge } from '../services/digest-nudge.js';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
@@ -102,6 +103,7 @@ export function renderDigestEmail(
   firstName?: string,
   userWorkingGroupNames?: string[],
   personaCluster?: PersonaCluster,
+  recipient?: DigestEmailRecipient | null,
 ): { html: string; text: string } {
   const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
   const viewInBrowserUrl = t('view_browser', `${BASE_URL}/perspectives/the-prompt-${editionDate}`);
@@ -131,6 +133,17 @@ export function renderDigestEmail(
 
     <!-- Opening Take -->
     <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.openingTake)}</p>
+
+    <!-- Personalized Nudge -->
+    ${(() => {
+      const nudge = recipient ? pickNudge(recipient) : null;
+      if (!nudge) return '';
+      return `
+    <div style="margin: 16px 0; padding: 12px 16px; background: #f0f4ff; border-radius: 6px; display: flex; align-items: center; gap: 12px;">
+      <p style="font-size: 14px; color: #1a1a2e; margin: 0; flex: 1;">${escapeHtml(nudge.text)}</p>
+      <a href="${t('nudge', nudge.ctaUrl)}" style="display: inline-block; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; font-size: 13px; font-weight: 600; white-space: nowrap;">${escapeHtml(nudge.ctaLabel)}</a>
+    </div>`;
+    })()}
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">

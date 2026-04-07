@@ -14,7 +14,7 @@ import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
-import { formatTokenCount, getConversationTokenLimit, type MessageTurn } from '../utils/token-limiter.js';
+import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
 import { notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 
@@ -594,13 +594,12 @@ export class AddieClaudeClient {
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Certification sessions compact old tool results to reclaim context
-    const isCertSession = (options?.maxMessages ?? 0) > 20;
+    // Compact old tool results in all conversations to reclaim context
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
       maxMessages: options?.maxMessages,
-      compactToolResults: isCertSession,
+      compactToolResults: true,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -613,6 +612,15 @@ export class AddieClaudeClient {
         },
         'Addie: Trimmed conversation history to fit context limit'
       );
+      // Inject dropped conversation summary so Addie has context from earlier turns
+      if (messageTurnsResult.messagesRemoved > 10) {
+        const summary = messageTurnsResult.droppedMessages
+          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
+          : null;
+        const contextWarning = summary
+          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
+        systemBlocks.push({ type: 'text', text: contextWarning });
+      }
     }
 
     const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
@@ -1105,13 +1113,12 @@ export class AddieClaudeClient {
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Certification sessions compact old tool results to reclaim context
-    const isCertSession = (options?.maxMessages ?? 0) > 20;
+    // Compact old tool results in all conversations to reclaim context
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
       maxMessages: options?.maxMessages,
-      compactToolResults: isCertSession,
+      compactToolResults: true,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -1124,6 +1131,15 @@ export class AddieClaudeClient {
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
       );
+      // Inject dropped conversation summary so Addie has context from earlier turns
+      if (messageTurnsResult.messagesRemoved > 10) {
+        const summary = messageTurnsResult.droppedMessages
+          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
+          : null;
+        const contextWarning = summary
+          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
+        systemBlocks.push({ type: 'text', text: contextWarning });
+      }
     }
 
     const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);

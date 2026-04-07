@@ -8,6 +8,12 @@
       "type": "object",
       "description": "Single creative preview request",
       "properties": {
+        "adcp_major_version": {
+          "type": "integer",
+          "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        },
         "request_type": {
           "type": "string",
           "const": "single",
@@ -85,6 +91,12 @@
       "type": "object",
       "description": "Batch preview request for multiple creatives (5-10x faster than individual calls)",
       "properties": {
+        "adcp_major_version": {
+          "type": "integer",
+          "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        },
         "request_type": {
           "type": "string",
           "const": "batch",
@@ -152,7 +164,9 @@
                 "description": "Maximum number of catalog items to render in this preview."
               }
             },
-            "required": ["creative_manifest"],
+            "required": [
+              "creative_manifest"
+            ],
             "additionalProperties": true
           },
           "minItems": 1,
@@ -184,6 +198,12 @@
       "type": "object",
       "description": "Variant preview request - retrieve a post-flight preview of a specific creative variant that was served during delivery",
       "properties": {
+        "adcp_major_version": {
+          "type": "integer",
+          "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        },
         "request_type": {
           "type": "string",
           "const": "variant",
