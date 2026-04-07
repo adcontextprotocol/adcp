@@ -507,6 +507,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Plural form (SDK)' },
+        dry_run: { type: 'boolean' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -522,6 +523,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creatives: { type: 'array' },
         assignments: { type: 'array' },
+        dry_run: { type: 'boolean' },
       },
       required: ['account', 'creatives'],
     },
@@ -1285,7 +1287,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
+  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string; dry_run?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
@@ -1302,6 +1304,23 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   }
 
   if (!mb) {
+    // In dry-run mode, return empty delivery data instead of an error so
+    // storyboard steps that follow a dry-run create_media_buy still pass.
+    if (req.dry_run === true) {
+      const now = new Date().toISOString();
+      return {
+        dry_run: true,
+        reporting_period: { start: now, end: now },
+        currency: 'USD',
+        media_buy_deliveries: [{
+          media_buy_id: mediaBuyId,
+          status: 'active',
+          totals: { impressions: 0, spend: 0, clicks: 0 },
+          by_package: [],
+        }],
+        sandbox: true,
+      };
+    }
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
@@ -1467,8 +1486,9 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
 }
 
 function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as SyncCreativesRequest & ToolArgs;
+  const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const isDryRun = req.dry_run === true;
 
   if (!req.creatives?.length) {
     return {
@@ -1476,7 +1496,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  if (session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (!isDryRun && session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
@@ -1510,15 +1530,17 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 
     const existing = session.creatives.has(creativeId);
 
-    session.creatives.set(creativeId, {
-      creativeId,
-      formatId,
-      name: creative.name,
-      status: 'approved',
-      syncedAt: new Date().toISOString(),
-      // manifest is a training-agent extension, not in SDK CreativeAsset type
-      manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
-    });
+    if (!isDryRun) {
+      session.creatives.set(creativeId, {
+        creativeId,
+        formatId,
+        name: creative.name,
+        status: 'approved',
+        syncedAt: new Date().toISOString(),
+        // manifest is a training-agent extension, not in SDK CreativeAsset type
+        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+      });
+    }
 
     results.push({
       creative_id: creativeId,
@@ -1528,7 +1550,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 
   // Process creative assignments
   const assignmentResults: AssignmentResult[] = [];
-  if (req.assignments?.length) {
+  if (req.assignments?.length && !isDryRun) {
     for (const assignment of req.assignments) {
       const mediaBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
       const packageId = assignment.package_id;
@@ -1556,6 +1578,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   }
 
   return {
+    ...(isDryRun && { dry_run: true }),
     creatives: results,
     ...(assignmentResults.length > 0 && { assignments: assignmentResults }),
     sandbox: true,
@@ -2474,9 +2497,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
     }
 
-    // Check for task-augmented request (explicit `task` field in params)
+    // Check for task-augmented request (explicit `task` field in params).
+    // Dry-run requests always return synchronously — there's no reason to
+    // async a dry-run operation, and clients expect immediate results.
     const taskField = (request.params as { task?: { ttl?: number } }).task;
-    const isTaskRequest = taskField !== undefined;
+    const isDryRun = (args as Record<string, unknown> | undefined)?.dry_run === true;
+    const isTaskRequest = taskField !== undefined && !isDryRun;
     if (isTaskRequest && !toolSupportsTask(name)) {
       throw new Error(`Tool "${name}" does not support task augmentation`);
     }
