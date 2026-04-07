@@ -5,6 +5,7 @@
  */
 
 import { Router } from "express";
+import { validate as uuidValidate } from "uuid";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -65,6 +66,10 @@ function getAddieRouter(): AddieRouter {
 function parseNumericId(id: string): number | null {
   const parsed = parseInt(id, 10);
   return isNaN(parsed) || parsed <= 0 ? null : parsed;
+}
+
+function isValidUuid(id: string): boolean {
+  return uuidValidate(id);
 }
 
 /**
@@ -512,6 +517,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { id } = req.params;
 
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "Invalid thread ID" });
+      }
+
       const thread = await threadService.getThreadWithMessages(id);
 
       if (!thread) {
@@ -567,6 +576,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const { id } = req.params;
       const { notes } = req.body;
 
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "Invalid thread ID" });
+      }
+
       await threadService.reviewThread(id, req.user?.id || "admin", notes);
 
       logger.info({ threadId: id }, "Marked thread as reviewed");
@@ -586,6 +599,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { id } = req.params;
       const { reason } = req.body;
+
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "Invalid thread ID" });
+      }
 
       if (!reason || typeof reason !== "string") {
         return res.status(400).json({ error: "Flag reason is required" });
@@ -610,6 +627,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { id } = req.params;
 
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "Invalid thread ID" });
+      }
+
       await threadService.unflagThread(id);
 
       logger.info({ threadId: id }, "Unflagged thread");
@@ -629,6 +650,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { messageId } = req.params;
       const { rating, rating_category, rating_notes, feedback_tags, improvement_suggestion } = req.body;
+
+      if (!isValidUuid(messageId)) {
+        return res.status(400).json({ error: "Invalid message ID" });
+      }
 
       if (typeof rating !== "number" || rating < 1 || rating > 5) {
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
@@ -685,6 +710,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const { messageId } = req.params;
       const { outcome, user_sentiment, intent_category } = req.body;
 
+      if (!isValidUuid(messageId)) {
+        return res.status(400).json({ error: "Invalid message ID" });
+      }
+
       const validOutcomes = ["resolved", "partially_resolved", "unresolved", "escalated", "unknown"];
       if (!outcome || !validOutcomes.includes(outcome)) {
         return res.status(400).json({ error: `Outcome must be one of: ${validOutcomes.join(", ")}` });
@@ -709,6 +738,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { messageId } = req.params;
       const { reason } = req.body;
+
+      if (!isValidUuid(messageId)) {
+        return res.status(400).json({ error: "Invalid message ID" });
+      }
 
       if (!reason || typeof reason !== "string") {
         return res.status(400).json({ error: "Flag reason is required" });
@@ -743,6 +776,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       const threadService = getThreadService();
       const { id } = req.params;
       const { feedback } = req.body;
+
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "Invalid thread ID" });
+      }
 
       // Sanitize feedback input - limit length and escape special chars
       const sanitizedFeedback = feedback
