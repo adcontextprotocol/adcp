@@ -3782,8 +3782,8 @@ describe('MCP Tasks protocol', () => {
     expect(task.status).toBe('completed');
     expect(task.createdAt).toBeDefined();
     expect(task.lastUpdatedAt).toBeDefined();
-    // Defaults to 1 hour when no TTL requested (clamped by server)
-    expect(task.ttl).toBe(3_600_000);
+    // Defaults to 15 minutes when no TTL requested (clamped by server)
+    expect(task.ttl).toBe(900_000);
   });
 
   it('respects requested TTL', async () => {

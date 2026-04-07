@@ -522,6 +522,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creatives: { type: 'array' },
         assignments: { type: 'array' },
+        dry_run: { type: 'boolean' },
       },
       required: ['account', 'creatives'],
     },
@@ -1467,8 +1468,9 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
 }
 
 function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as SyncCreativesRequest & ToolArgs;
+  const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const isDryRun = req.dry_run === true;
 
   if (!req.creatives?.length) {
     return {
@@ -1476,7 +1478,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  if (session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (!isDryRun && session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
@@ -1510,15 +1512,17 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 
     const existing = session.creatives.has(creativeId);
 
-    session.creatives.set(creativeId, {
-      creativeId,
-      formatId,
-      name: creative.name,
-      status: 'approved',
-      syncedAt: new Date().toISOString(),
-      // manifest is a training-agent extension, not in SDK CreativeAsset type
-      manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
-    });
+    if (!isDryRun) {
+      session.creatives.set(creativeId, {
+        creativeId,
+        formatId,
+        name: creative.name,
+        status: 'approved',
+        syncedAt: new Date().toISOString(),
+        // manifest is a training-agent extension, not in SDK CreativeAsset type
+        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+      });
+    }
 
     results.push({
       creative_id: creativeId,
@@ -1528,7 +1532,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 
   // Process creative assignments
   const assignmentResults: AssignmentResult[] = [];
-  if (req.assignments?.length) {
+  if (req.assignments?.length && !isDryRun) {
     for (const assignment of req.assignments) {
       const mediaBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
       const packageId = assignment.package_id;
@@ -1556,6 +1560,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   }
 
   return {
+    ...(isDryRun && { dry_run: true }),
     creatives: results,
     ...(assignmentResults.length > 0 && { assignments: assignmentResults }),
     sandbox: true,
@@ -2474,9 +2479,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
     }
 
-    // Check for task-augmented request (explicit `task` field in params)
+    // Check for task-augmented request (explicit `task` field in params).
+    // Dry-run requests always return synchronously — there's no reason to
+    // async a dry-run operation, and clients expect immediate results.
     const taskField = (request.params as { task?: { ttl?: number } }).task;
-    const isTaskRequest = taskField !== undefined;
+    const isDryRun = (args as Record<string, unknown> | undefined)?.dry_run === true;
+    const isTaskRequest = taskField !== undefined && !isDryRun;
     if (isTaskRequest && !toolSupportsTask(name)) {
       throw new Error(`Tool "${name}" does not support task augmentation`);
     }
@@ -2517,29 +2525,26 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return toolResult;
     }
 
-    // Clamp TTL to prevent unbounded task lifetime / memory exhaustion
-    const MAX_TASK_TTL = 24 * 60 * 60 * 1000; // 24 hours
-    const DEFAULT_TASK_TTL = 60 * 60 * 1000;  // 1 hour
+    // Training agent tasks resolve immediately, so moderate TTLs suffice.
+    // 15 minutes gives developers time to inspect tasks while debugging.
+    // With the rate limiter (60 req/min) this caps live tasks at ~900.
+    const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
+    const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
 
-    // Task-augmented: prefer extra.taskStore (SDK wrapper that sends
-    // notifications/tasks/status and propagates session IDs). Falls back
-    // to the raw module-level store for test harness calls with empty extra.
+    // Task-augmented: use the raw module-level task store directly.
+    // The SDK's extra.taskStore wrapper sends notifications/tasks/status
+    // after storing results, which fails in stateless HTTP mode (each
+    // request uses a fresh transport). Using the raw store avoids this
+    // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
-    let task;
-    if (extra.taskStore) {
-      task = await extra.taskStore.createTask({ ttl: clampedTtl });
-      await extra.taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
-      task = await extra.taskStore.getTask(task.taskId);
-    } else {
-      task = await taskStore.createTask(
-        { ttl: clampedTtl },
-        0,
-        request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
-      );
-      await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
-      task = await taskStore.getTask(task.taskId);
-    }
+    const created = await taskStore.createTask(
+      { ttl: clampedTtl },
+      0,
+      request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
+    );
+    await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
+    const task = await taskStore.getTask(created.taskId);
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }
