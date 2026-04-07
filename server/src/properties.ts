@@ -1,5 +1,6 @@
 import { AdCPClient } from "@adcp/client";
 import type { Agent } from "./types.js";
+import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { AgentValidator } from "./validator.js";
 
 export interface PropertyInfo {
@@ -48,7 +49,7 @@ export class PropertiesService {
         agent_uri: agent.url,
         protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
       };
-      const multiClient = new AdCPClient([agentConfig]);
+      const multiClient = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent(agent.name);
       const result = await client.executeTask("list_authorized_properties", {});
 

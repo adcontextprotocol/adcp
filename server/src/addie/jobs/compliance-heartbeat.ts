@@ -11,6 +11,8 @@ import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
+import { logOutboundRequest } from '../../db/outbound-log-db.js';
+import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
@@ -48,6 +50,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
 
   for (const agent of agentsDue) {
+    const startTime = Date.now();
     try {
       // Use the owning org's saved credentials from agent_contexts.
       // These are credentials the owner saved when connecting through Addie.
@@ -61,6 +64,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
+
+      logOutboundRequest({
+        agent_url: agent.agent_url,
+        request_type: 'compliance',
+        user_agent: AAO_UA_COMPLIANCE,
+        response_time_ms: Date.now() - startTime,
+        success: true,
+      });
 
       // Map track results to storage format
       const tracksJson: TrackSummaryEntry[] = complianceResult.tracks.map(t => ({
@@ -126,6 +137,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
     } catch (error) {
       logger.error({ error, agentUrl: agent.agent_url }, 'Compliance check failed for agent');
+
+      logOutboundRequest({
+        agent_url: agent.agent_url,
+        request_type: 'compliance',
+        user_agent: AAO_UA_COMPLIANCE,
+        response_time_ms: Date.now() - startTime,
+        success: false,
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      });
 
       // Record failure so stale passing data doesn't persist
       try {

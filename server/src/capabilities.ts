@@ -2,6 +2,8 @@ import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
 import { is401Error, AuthenticationRequiredError } from "@adcp/client";
+import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
+import { logOutboundRequest } from "./db/outbound-log-db.js";
 
 const logger = createLogger('capabilities');
 
@@ -66,9 +68,18 @@ export class CapabilityDiscovery {
       return cached;
     }
 
+    const startTime = Date.now();
     try {
       const protocol = agent.protocol || "mcp";
       const tools = await this.discoverTools(agent.url, protocol);
+
+      logOutboundRequest({
+        agent_url: agent.url,
+        request_type: 'discovery',
+        user_agent: AAO_UA_DISCOVERY,
+        response_time_ms: Date.now() - startTime,
+        success: true,
+      });
 
       const profile: AgentCapabilityProfile = {
         agent_url: agent.url,
@@ -93,6 +104,15 @@ export class CapabilityDiscovery {
       this.cache.set(agent.url, profile);
       return profile;
     } catch (error: any) {
+      logOutboundRequest({
+        agent_url: agent.url,
+        request_type: 'discovery',
+        user_agent: AAO_UA_DISCOVERY,
+        response_time_ms: Date.now() - startTime,
+        success: false,
+        error_message: error.message,
+      });
+
       const isOAuthError = error instanceof AuthenticationRequiredError;
       const errorProfile: AgentCapabilityProfile = {
         agent_url: agent.url,
@@ -127,7 +147,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "mcp",
-      }]);
+      }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -164,7 +184,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "a2a",
-      }]);
+      }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
