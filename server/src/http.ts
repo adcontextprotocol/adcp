@@ -1945,14 +1945,13 @@ export class HTTPServer {
     // Auth via WorkOS AuthKit
     configureMCPRoutes(this.app);
 
-    // Health check - verifies critical services are operational
+    // Health check - verifies critical services are operational.
+    // Returns 503 when the database is unreachable so Fly's load balancer
+    // stops routing DB-dependent traffic to this machine.
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
       let dbError: string | null = null;
 
-      // Database check is informational only. The app serves static pages,
-      // docs, and cached content without DB. A DB blip must not take the
-      // machine out of Fly's load-balancer rotation.
       try {
         const pool = getPool();
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -1981,15 +1980,16 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
 
+      const status = checks.database ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
-        status: checks.database ? "ok" : "degraded",
+        status,
         checks,
         registry: {
           mode: "database",
           using_database: true,
         },
       };
-      res.status(200).json(body);
+      res.status(checks.database ? 200 : 503).json(body);
     });
 
     // Homepage route - serve different homepage based on host

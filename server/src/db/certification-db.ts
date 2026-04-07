@@ -1,4 +1,4 @@
-import { query } from './client.js';
+import { query, getClient } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('certification-db');
@@ -1491,11 +1491,18 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
  * Uses CONCURRENTLY to avoid locking reads during refresh.
  */
 export async function refreshEngagementTime(): Promise<void> {
+  const client = await getClient();
   try {
-    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
+    await client.query('BEGIN');
+    await client.query('SET LOCAL statement_timeout = 120000');
+    await client.query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
+    await client.query('COMMIT');
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     // Non-critical — view will be stale until next refresh
     logger.warn({ error }, 'Failed to refresh engagement time view');
+  } finally {
+    client.release();
   }
 }
 
