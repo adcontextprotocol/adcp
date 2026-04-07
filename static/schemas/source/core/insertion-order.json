@@ -62,7 +62,7 @@
         },
         "cancellation_policy": {
           "$ref": "/schemas/core/cancellation-policy.json",
-          "description": "Cancellation terms for all packages in this IO. Overrides product-level cancellation policy when present."
+          "description": "Seller-set cancellation terms for this IO, overriding the product-level defaults (e.g., a shorter notice period negotiated for a specific advertiser). Populated by the seller, not proposed by the buyer."
         }
       },
       "additionalProperties": true
