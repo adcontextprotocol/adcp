@@ -95,6 +95,12 @@ The transition from free/stateless to paid/stateful requires:
 
 Free transformation agents remain stateless and unchanged. No account, no pricing, no persistence required.
 
+#### Transformation agents that charge must implement `list_creatives`
+
+If you are a stateless transformation agent today and want to start charging, you need to add `list_creatives` to your agent. This is how buyers discover your pricing. Without `list_creatives`, there is no surface for `pricing_options` — `list_creative_formats` does not carry pricing because formats describe capabilities, not commercial terms.
+
+Your `list_creatives` response returns the creatives your agent has built for this account (persisted with `creative_id`), each with `pricing_options` from the account's rate card. This is the same task ad servers use to expose their libraries — the difference is that your library contains creatives your agent built, not creatives uploaded through a UI.
+
 #### Pricing walkthrough
 
 Here is the full round-trip for a transformation agent charging per format adapted.
