@@ -21,7 +21,7 @@
     },
     "vendor": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Vendor measuring this metric (e.g., { domain: 'doubleverify.com' }). The vendor's brand.json at this domain is the discovery point for their measurement agent. When specified on a confirmed package, creatives MUST include tracker_script or tracker_pixel assets from this vendor."
+      "description": "Vendor measuring this metric (e.g., { domain: 'doubleverify.com' }). The vendor's brand.json agents array (type: 'measurement') is the discovery point for their measurement agent. When specified on a confirmed package, creatives MUST include tracker_script or tracker_pixel assets from this vendor."
     }
   },
   "required": ["metric", "threshold", "vendor"],

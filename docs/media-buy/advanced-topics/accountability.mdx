@@ -174,9 +174,27 @@ All measurement and verification vendors are identified by domain using the stan
 - `{ "domain": "campaignmanager.google.com" }` — Google Campaign Manager
 - `{ "domain": "admanager.google.com" }` — Google Ad Manager
 
-The vendor's `brand.json` at their domain is the discovery point for their agent capabilities. This follows the same pattern as `brand_agent` (brand data via MCP) and `rights_agent` (rights licensing via MCP) — measurement vendors can advertise a measurement agent that provides live delivery rates for active media buys.
+The vendor's `brand.json` at their domain is the discovery point for their agent capabilities. Vendors declare agents in the `agents` array with `type: "measurement"`:
 
-This enables the same data flow pattern used by [content standards](/docs/governance/content-standards): the buyer or seller queries the measurement agent for current rates against agreed performance standards, rather than waiting for post-campaign reporting. The measurement vendor participates as an agent, not a black box.
+```json
+{
+  "house": {
+    "domain": "doubleverify.com",
+    "name": "DoubleVerify",
+    "agents": [
+      {
+        "type": "measurement",
+        "url": "https://api.doubleverify.com/adcp/measurement",
+        "id": "dv_measurement"
+      }
+    ]
+  }
+}
+```
+
+This follows the same pattern used for all agent types in brand.json — brand, rights, governance, creative, buying, and signals agents are all discovered the same way.
+
+The buyer or seller queries the measurement agent for current rates against agreed performance standards, rather than waiting for post-campaign reporting. The measurement vendor participates as an agent, not a black box.
 
 ### Relationship to Content Standards
 
