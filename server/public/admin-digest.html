@@ -195,6 +195,13 @@
           <p id="membersList" style="font-size:14px;color:#555;"></p>
         </div>
 
+        <!-- Take Actions -->
+        <div class="section" id="sectionTakeActions" style="display:none;">
+          <h2>Take Action</h2>
+          <p style="font-size:12px;color:#888;margin:-8px 0 8px 0;">Content-aware CTAs generated from this edition</p>
+          <div id="takeActionsList"></div>
+        </div>
+
         <!-- Instruction bar -->
         <div class="instruction-bar">
           <input type="text" id="instructionInput" placeholder="Tell Addie what to change..." onkeydown="if(event.key==='Enter')applyInstruction()">
@@ -375,7 +382,11 @@
             <div class="article-title">${esc(a.title)}</div>
             <div class="article-url">${esc(a.url)}</div>
             <div class="article-summary">${esc(a.summary)}</div>
-            <div class="article-take">${esc(a.whyItMatters)}</div>
+            ${a.takeaways && a.takeaways.length > 0 ? `
+            <ul style="margin:8px 0 0 0;padding-left:20px;">
+              ${a.takeaways.map(tw => `<li style="font-size:13px;color:#333;margin-bottom:4px;">${esc(tw)}</li>`).join('')}
+            </ul>` : `
+            <div class="article-take">${esc(a.whyItMatters)}</div>`}
           </div>
         `).join('');
       } else {
@@ -435,6 +446,18 @@
       if (members.length > 0) {
         document.getElementById('sectionMembers').style.display = 'block';
         document.getElementById('membersList').innerHTML = members.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
+      }
+
+      // Take actions
+      const takeActionsEl = document.getElementById('sectionTakeActions');
+      if (takeActionsEl) {
+        const actions = c.takeActions || [];
+        if (actions.length > 0) {
+          takeActionsEl.style.display = 'block';
+          document.getElementById('takeActionsList').innerHTML = actions.map(a =>
+            `<div style="margin-bottom:8px;font-size:14px;">${esc(a.text)} <a href="${esc(a.ctaUrl)}" style="color:#2563eb;font-weight:600;">${esc(a.ctaLabel)} →</a></div>`
+          ).join('');
+        }
       }
 
       // Hide instruction bar when locked

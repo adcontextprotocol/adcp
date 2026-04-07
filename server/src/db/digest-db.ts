@@ -11,6 +11,7 @@ export interface DigestContent {
   newMembers: DigestNewMember[];
   shareableTake?: string;
   whatShipped?: DigestShipment[];
+  takeActions?: DigestTakeAction[];
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: DigestEditEntry[];
@@ -55,6 +56,13 @@ export interface DigestNewsItem {
   tags: string[];
   knowledgeId?: number;
   suggestionId?: number;
+  takeaways?: string[];
+}
+
+export interface DigestTakeAction {
+  text: string;
+  ctaLabel: string;
+  ctaUrl: string;
 }
 
 export interface DigestNewMember {
@@ -212,6 +220,7 @@ export interface DigestPerspectiveRow {
   excerpt: string | null;
   author_name: string | null;
   published_at: Date | null;
+  body: string | null;
 }
 
 // ─── Database functions ─────────────────────────────────────────────────
@@ -454,7 +463,8 @@ export async function getRecentOfficialPerspectives(
         p.title,
         p.excerpt,
         p.author_name,
-        p.published_at
+        p.published_at,
+        p.body
      FROM perspectives p
      WHERE p.status = 'published'
        AND p.content_origin = 'official'
