@@ -476,7 +476,6 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
-        dry_run: { type: 'boolean' },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -508,7 +507,6 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Plural form (SDK)' },
-        dry_run: { type: 'boolean' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -916,7 +914,7 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
 }
 
 function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { dry_run?: boolean };
+  const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Enforce account status gates set by comply_test_controller
@@ -1138,32 +1136,6 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
-  // Dry-run: validation passed, return projected response without persisting
-  if (req.dry_run === true) {
-    return {
-      dry_run: true,
-      media_buy_id: mediaBuyId,
-      status: 'active',
-      revision: 1,
-      confirmed_at: now,
-      valid_actions: ['update', 'cancel'],
-      packages: createdPackages.map(pkg => ({
-        package_id: pkg.packageId,
-        product_id: pkg.productId,
-        budget: pkg.budget,
-        pricing_option_id: pkg.pricingOptionId,
-        ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
-        ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
-        paused: pkg.paused,
-        start_time: pkg.startTime,
-        end_time: pkg.endTime,
-        ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-        creative_assignments: [],
-      })),
-      sandbox: true,
-    };
-  }
-
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
@@ -1314,7 +1286,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string; dry_run?: boolean };
+  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
@@ -1331,33 +1303,6 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   }
 
   if (!mb) {
-    // In dry-run mode, return empty delivery data instead of an error so
-    // storyboard steps that follow a dry-run create_media_buy still pass.
-    if (req.dry_run === true) {
-      const now = new Date().toISOString();
-      return {
-        dry_run: true,
-        reporting_period: { start: now, end: now },
-        currency: 'USD',
-        media_buy_deliveries: [{
-          media_buy_id: mediaBuyId,
-          status: 'active',
-          totals: { impressions: 0, spend: 0, clicks: 0 },
-          by_package: [{
-            package_id: 'dry_run_pkg',
-            spend: 0,
-            impressions: 0,
-            clicks: 0,
-            pricing_model: 'cpm',
-            rate: 0,
-            currency: 'USD',
-            paused: false,
-            delivery_status: 'delivering',
-          }],
-        }],
-        sandbox: true,
-      };
-    }
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
@@ -2585,24 +2530,20 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const DEFAULT_TASK_TTL = 60 * 60 * 1000;  // 1 hour
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
 
-    // Task-augmented: prefer extra.taskStore (SDK wrapper that sends
-    // notifications/tasks/status and propagates session IDs). Falls back
-    // to the raw module-level store for test harness calls with empty extra.
+    // Task-augmented: use the raw module-level task store directly.
+    // The SDK's extra.taskStore wrapper sends notifications/tasks/status
+    // after storing results, which fails in stateless HTTP mode (each
+    // request uses a fresh transport). Using the raw store avoids this
+    // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
     let task;
-    if (extra.taskStore) {
-      task = await extra.taskStore.createTask({ ttl: clampedTtl });
-      await extra.taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
-      task = await extra.taskStore.getTask(task.taskId);
-    } else {
-      task = await taskStore.createTask(
-        { ttl: clampedTtl },
-        0,
-        request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
-      );
-      await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
-      task = await taskStore.getTask(task.taskId);
-    }
+    task = await taskStore.createTask(
+      { ttl: clampedTtl },
+      0,
+      request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
+    );
+    await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
+    task = await taskStore.getTask(task.taskId);
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }
