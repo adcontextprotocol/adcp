@@ -55,7 +55,7 @@
           "type": "string",
           "description": "Payment terms",
           "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
-        },
+        }
       },
       "additionalProperties": true
     },
