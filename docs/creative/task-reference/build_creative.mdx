@@ -318,6 +318,61 @@ To refine a single format from a multi-format build, call `build_creative` again
 Multi-format requests with `include_preview: true` generate one default preview per format. Custom `preview_inputs` are only supported with single-format requests. For multi-format builds where you need context-specific previews (device variants, different contexts), use a separate `preview_creative` batch call after building.
 </Note>
 
+### Paid build with pricing
+
+When the creative agent charges and `account` is provided, the response includes pricing fields. The agent selects the applicable pricing option server-side based on the account's rate card and the work performed — the buyer does not pass `pricing_option_id` in the request.
+
+**Per-unit pricing (transformation agent)**:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "account": { "account_id": "acct_acme_creative" },
+  "creative_id": "cr_hero_banner",
+  "target_format_id": {
+    "agent_url": "https://creative.example.com",
+    "id": "display_728x90"
+  }
+}
+```
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.example.com",
+      "id": "display_728x90"
+    },
+    "assets": {
+      "ad_tag": {
+        "content": "<div data-adcp-creative='cr_hero_banner' style='width:728px;height:90px;'>...</div>"
+      }
+    }
+  },
+  "pricing_option_id": "po_standard_per_format",
+  "vendor_cost": 2.00,
+  "currency": "USD",
+  "consumption": {
+    "renders": 1
+  }
+}
+```
+
+The `pricing_option_id` corresponds to one of the options from [`list_creatives`](/docs/creative/task-reference/list_creatives#pricing). The buyer passes it in [`report_usage`](/docs/accounts/tasks/report_usage) for reconciliation.
+
+**CPM pricing (ad server)** — `vendor_cost` is 0 at build time because cost accrues when impressions are served:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": { "..." : "..." },
+  "pricing_option_id": "po_video_cpm",
+  "vendor_cost": 0,
+  "currency": "USD"
+}
+```
+
 ## Response format
 
 ### Single-format response

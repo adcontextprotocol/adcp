@@ -155,11 +155,19 @@ Maya wants to see exactly what CommHub's AI generated for the hiking community. 
 
 The platform renders exactly what was served — the generated headline, the community-adapted imagery, the engagement UI. Maya can see that the AI leaned into trail photography and used language that resonated with the hiking community. She takes this insight back to her next brief.
 
+## Step 9: Pricing and billing
+
+Creative agents can charge for their services. Pinnacle's account with each creative agent includes a rate card — the agreed pricing. When Maya's platform calls `list_creatives`, each creative includes `pricing_options` showing the applicable rates. When `build_creative` runs, the response includes `vendor_cost` so the platform knows what each build cost.
+
+After the campaign, Maya's platform calls `report_usage` on each creative agent with the `creative_id` and `pricing_option_id` from the build response. This closes the billing loop — the creative agent can verify the reported cost matches its rate card.
+
+Different agents price differently. The CTV ad server charges CPM (cost per thousand impressions served). The transformation agent charges per format adapted. The AI generation platform charges per image generated. The protocol handles all of these through the same `pricing_options` pattern — see the [pricing specification](/docs/creative/specification#pricing) for details.
+
 ## The full picture
 
 <img src="/images/walkthrough/diagram-05-lifecycle.png" alt="The full creative lifecycle: Write brief, Discover formats, Generate and preview, Iterate and approve, Distribute to sellers, Campaign runs, Review delivery and replay variants, then Inform next brief — completing the cycle" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Every step uses a standard AdCP task. Every agent — creative tools, publishers, social platforms — speaks the same protocol. Maya writes one brief, and AdCP handles the rest: format adaptation, multi-agent routing, cross-seller distribution, variant tracking, and unified reporting.
+Every step uses a standard AdCP task. Every agent — creative tools, publishers, social platforms — speaks the same protocol. Maya writes one brief, and AdCP handles the rest: format adaptation, multi-agent routing, cross-seller distribution, variant tracking, unified reporting, and billing reconciliation.
 
 ## Go deeper
 
