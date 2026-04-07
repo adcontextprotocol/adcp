@@ -84,39 +84,40 @@ Some agents combine models. A creative management platform might be both a templ
 
 ### Pricing and statefulness
 
-A creative agent that charges for its services needs an account relationship and persistent creative identity. This means **if you charge, you're stateful** — even if you started as a stateless transformation engine.
+A creative agent that charges for its services needs an account relationship. Adding pricing requires:
 
-The transition from free/stateless to paid/stateful requires:
 1. **Implement the [Accounts Protocol](/docs/accounts/overview)** — buyers establish accounts with rate cards
-2. **Persist `creative_id`** — every build output gets a durable identity so it can be referenced in `list_creatives` and `report_usage`
-3. **Return `pricing_options` on `list_creatives`** — the buyer discovers your rates before building
-4. **Return pricing in `build_creative` responses** — `pricing_option_id`, `vendor_cost`, `currency`, and `consumption`
-5. **Accept `report_usage`** — orchestrators report what was served so you can track revenue
+2. **Expose `pricing_options` on discovery** — on `list_creative_formats` (transformation/generation agents) or `list_creatives` (ad servers/library agents)
+3. **Return pricing in `build_creative` responses** — `pricing_option_id`, `vendor_cost`, `currency`, and `consumption`
+4. **Accept `report_usage`** — orchestrators report what was served so you can track revenue
 
-Free transformation agents remain stateless and unchanged. No account, no pricing, no persistence required.
+Free transformation agents remain stateless and unchanged. No account, no pricing required.
 
-#### Transformation agents that charge must implement `list_creatives`
+#### Pricing discovery by agent type
 
-If you are a stateless transformation agent today and want to start charging, you need to add `list_creatives` to your agent. This is how buyers discover your pricing. Without `list_creatives`, there is no surface for `pricing_options` — `list_creative_formats` does not carry pricing because formats describe capabilities, not commercial terms.
+| Agent type | Discovery surface | Why |
+|---|---|---|
+| **Transformation** (Celtra) | `list_creative_formats` | Buyers see pricing per format before any creative exists |
+| **Generation** (AI platforms) | `list_creative_formats` | Same — pricing is on the capability, not a pre-existing creative |
+| **Ad server** (Innovid, CM360) | `list_creatives` | Buyers see pricing on specific creatives in the library |
+| **Both** (creative management platforms) | Both surfaces | Library pricing on `list_creatives`, format pricing on `list_creative_formats` |
 
-Your `list_creatives` response returns the creatives your agent has built for this account (persisted with `creative_id`), each with `pricing_options` from the account's rate card. This is the same task ad servers use to expose their libraries — the difference is that your library contains creatives your agent built, not creatives uploaded through a UI.
+Transformation and generation agents do not need to implement `list_creatives` for pricing — `list_creative_formats` is the natural surface since the format is the product.
 
 #### Pricing walkthrough
 
 Here is the full round-trip for a transformation agent charging per format adapted.
 
-**Step 1: Buyer discovers pricing via `list_creatives`**
+**Step 1: Buyer discovers pricing via `list_creative_formats`**
 
-The buyer calls `list_creatives` with `include_pricing: true` and their `account`. Your agent looks up the account's rate card and returns `pricing_options` on each creative:
+The buyer calls `list_creative_formats` with `include_pricing: true` and their `account`. Your agent looks up the account's rate card and returns `pricing_options` on each format:
 
 ```json
 {
-  "creatives": [
+  "formats": [
     {
-      "creative_id": "cr_hero_banner",
-      "name": "Summer Campaign Hero",
       "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" },
-      "status": "approved",
+      "name": "Display 300x250",
       "pricing_options": [
         {
           "pricing_option_id": "po_standard_per_format",
@@ -138,7 +139,7 @@ The buyer calls `list_creatives` with `include_pricing: true` and their `account
 }
 ```
 
-Multiple options are common — here the buyer sees a standard rate and a volume rate.
+Multiple options are common — here the buyer sees a standard rate and a volume rate. For ad servers, the same `pricing_options` pattern appears on `list_creatives` instead.
 
 **Step 2: Buyer builds a creative**
 

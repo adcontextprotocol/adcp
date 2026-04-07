@@ -90,7 +90,7 @@ These models compose — an agent can support multiple. A creative ad server wit
 
 Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
-A transformation or generation agent that charges for its services becomes stateful: it persists `creative_id` on build output, implements the Accounts Protocol, and returns pricing in `build_creative` responses. Free transformation agents remain stateless and unchanged.
+A transformation or generation agent that charges for its services implements the Accounts Protocol, exposes `pricing_options` on `list_creative_formats`, and returns pricing in `build_creative` responses. Agents that persist `creative_id` on build output can also expose pricing on `list_creatives`. Free transformation agents remain stateless and unchanged.
 
 ### Format authority
 
@@ -189,10 +189,21 @@ Creative agents MUST include `status` and `rejection_reason` (when rejected) in 
 
 Creative agents that charge for their services expose pricing through the same discover → build → report loop used by signals agents and content standards agents.
 
+### Pricing discovery surfaces
+
+Pricing is discovered via two surfaces depending on the agent's interaction model:
+
+- **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use.
+- **`list_creative_formats`** — transformation and generation agents expose `pricing_options[]` on each format. The buyer discovers pricing for the formats the agent can produce, before any creative exists.
+
+Both surfaces use the same `pricing_options[]` array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. Both require `account` and `include_pricing: true` on the request.
+
+An agent MAY expose pricing on both surfaces (e.g., a creative management platform that has both a library and transformation capabilities).
+
 ### Pricing flow
 
 1. **Account setup** — rate card agreed. Determines pricing for all subsequent operations.
-2. **Discovery** — `list_creatives` with `account` and `include_pricing: true` returns `pricing_options[]` on each creative. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as signals and content standards.
+2. **Discovery** — `list_creatives` or `list_creative_formats` with `account` and `include_pricing: true` returns `pricing_options[]`. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).
 3. **Build** — `build_creative` with `account`. The agent computes the cost and returns `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` in the response.
 4. **Report** — `report_usage` with `creative_id` and `pricing_option_id` for reconciliation.
 

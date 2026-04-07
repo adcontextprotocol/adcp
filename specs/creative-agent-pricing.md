@@ -173,8 +173,10 @@ include `pricing_options[]` on each creative — the pricing options from the ac
 rate card. For agents with predetermined rate cards, this typically contains a single
 option.
 
-**Pricing lives on creatives, not formats.** `list_creative_formats` does not carry pricing.
-Formats describe what can be built; creatives are what you pay for.
+**Two pricing discovery surfaces.** `list_creatives` carries `pricing_options` for
+ad servers and library agents. `list_creative_formats` carries `pricing_options` for
+transformation and generation agents where the format is the product. An agent MAY
+expose pricing on both.
 
 **Schema: vendor pricing option**
 
@@ -291,7 +293,7 @@ so this field is always available for usage reporting.
   The sales agent is the buyer in the creative agent relationship.
 - **`sync_creatives`** — asset sync is about getting creatives into a library. Pricing is
   discovered via `list_creatives`, not during sync.
-- **`list_creative_formats`** — format discovery remains pricing-free.
+- **`list_creative_formats`** — now carries `pricing_options` per format for transformation/generation agents.
 
 ### Pricing models by interaction model
 
