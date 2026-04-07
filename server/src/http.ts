@@ -7934,7 +7934,15 @@ Disallow: /api/admin/
     });
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
-    this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    this.app.use((err: Error & { status?: number; statusCode?: number }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+
+      // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
+      if (status === 416) {
+        logger.debug({ path: req.path }, 'Range not satisfiable');
+        return res.status(416).end();
+      }
+
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
       res.status(500).json({ error: 'Internal server error' });
     });
