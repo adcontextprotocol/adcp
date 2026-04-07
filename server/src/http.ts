@@ -4414,7 +4414,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          'SELECT * FROM agreements ORDER BY agreement_type, effective_date DESC'
+          'SELECT id, agreement_type, version, effective_date, created_at FROM agreements ORDER BY agreement_type, effective_date DESC'
         );
 
         res.json(result.rows);
@@ -4422,6 +4422,33 @@ export class HTTPServer {
         logger.error({ err: error }, 'Get all agreements error:');
         res.status(500).json({
           error: 'Failed to get agreements',
+        });
+      }
+    });
+
+    // GET /api/admin/agreements/:id - Get single agreement with full text
+    this.app.get('/api/admin/agreements/:id', requireAuth, requireAdmin, async (req, res) => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid agreement ID format' });
+      }
+
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          'SELECT id, agreement_type, version, text, effective_date, created_at FROM agreements WHERE id = $1',
+          [req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Agreement not found' });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get agreement error:');
+        res.status(500).json({
+          error: 'Failed to get agreement',
         });
       }
     });

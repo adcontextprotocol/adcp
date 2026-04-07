@@ -128,7 +128,7 @@ describe('Admin Endpoints Integration Tests', () => {
   });
 
   describe('GET /api/admin/agreements', () => {
-    it('should list all agreements', async () => {
+    it('should list all agreements without text', async () => {
       // Create a test agreement
       await pool.query(
         `INSERT INTO agreements (agreement_type, version, text, effective_date)
@@ -143,7 +143,38 @@ describe('Admin Endpoints Integration Tests', () => {
       expect(response.body).toBeInstanceOf(Array);
       expect(response.body.length).toBeGreaterThan(0);
       expect(response.body[0]).toHaveProperty('version');
-      expect(response.body[0]).toHaveProperty('text');
+      expect(response.body[0]).not.toHaveProperty('text');
+    });
+  });
+
+  describe('GET /api/admin/agreements/:id', () => {
+    it('should return a single agreement with full text', async () => {
+      const result = await pool.query(
+        `INSERT INTO agreements (agreement_type, version, text, effective_date)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id`,
+        ['membership', '1.0', 'Full agreement text here', new Date()]
+      );
+      const id = result.rows[0].id;
+
+      const response = await request(app)
+        .get(`/api/admin/agreements/${id}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('text', 'Full agreement text here');
+      expect(response.body).toHaveProperty('version', '1.0');
+    });
+
+    it('should return 404 for non-existent agreement', async () => {
+      await request(app)
+        .get('/api/admin/agreements/00000000-0000-0000-0000-000000000000')
+        .expect(404);
+    });
+
+    it('should return 400 for invalid id format', async () => {
+      await request(app)
+        .get('/api/admin/agreements/not-a-uuid')
+        .expect(400);
     });
   });
 
