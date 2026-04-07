@@ -59,10 +59,6 @@
         "measurement_terms": {
           "$ref": "/schemas/core/measurement-terms.json",
           "description": "Measurement terms applied across all packages in this IO. Package-level measurement_terms override IO-level terms where both are present."
-        },
-        "cancellation_policy": {
-          "$ref": "/schemas/core/cancellation-policy.json",
-          "description": "Seller-set cancellation terms for this IO, overriding the product-level defaults (e.g., a shorter notice period negotiated for a specific advertiser). Populated by the seller, not proposed by the buyer."
         }
       },
       "additionalProperties": true
