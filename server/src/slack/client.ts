@@ -483,7 +483,8 @@ export async function getChannelInfo(channelId: string): Promise<SlackChannel | 
 
     return response.channel;
   } catch (error) {
-    logger.warn({ error, channelId }, 'Failed to get channel info');
+    const safeId = channelId.replace(/[^A-Za-z0-9]/g, '');
+    logger.warn({ error, channelId }, `Failed to get channel info for ${safeId}`);
     return null;
   }
 }
