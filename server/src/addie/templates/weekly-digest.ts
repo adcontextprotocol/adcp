@@ -242,8 +242,8 @@ export function renderDigestEmail(
     ${content.takeActions && content.takeActions.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Take action</h2>
     ${content.takeActions.map((action, i) => `
-    <div style="margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px;">
-      <p style="font-size: 14px; color: #333; margin: 0; flex: 1; line-height: 1.5;">
+    <div style="margin-bottom: 12px;">
+      <p style="font-size: 14px; color: #333; margin: 0; line-height: 1.5;">
         ${escapeHtml(action.text)}
         <a href="${t(`action_${i}`, action.ctaUrl)}" style="color: #2563eb; font-weight: 600; text-decoration: none; white-space: nowrap;">${escapeHtml(action.ctaLabel)} &rarr;</a>
       </p>
