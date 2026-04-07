@@ -175,7 +175,8 @@ export async function handleEmailConversation(
       inputValidation.sanitized,
       undefined,
       thread.external_id,
-      isAuthenticated
+      isAuthenticated,
+      thread.thread_id
     );
     const { requestTools, processOptions, effectiveModel } = buildTieredAccess(
       prepared.requestTools,
