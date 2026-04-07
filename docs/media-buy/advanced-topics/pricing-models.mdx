@@ -103,12 +103,19 @@ Guaranteed products can declare a `cancellation_policy` with the minimum notice 
   "delivery_type": "guaranteed",
   "cancellation_policy": {
     "notice_period": { "interval": 30, "unit": "days" },
-    "penalty_description": "50% of remaining committed spend"
+    "penalty": { "type": "percent_remaining", "rate": 0.5 }
   }
 }
 ```
 
-Unlike `measurement_terms`, cancellation policy is not a negotiation surface — the seller declares it and the buyer accepts it by creating a media buy against the product. A guaranteed buy canceled without sufficient notice may incur the declared penalty.
+**Penalty types:**
+
+- **`percent_remaining`** — Percentage of remaining committed spend (requires `rate`, e.g., `0.5` for 50%)
+- **`full_commitment`** — Buyer owes the full committed budget regardless of delivery
+- **`fixed_fee`** — Flat monetary amount (requires `amount` in the buy's currency)
+- **`none`** — No financial penalty (cancellation with notice is free)
+
+Unlike `measurement_terms`, cancellation policy is not a negotiation surface — the seller declares it and the buyer accepts it by creating a media buy against the product. A guaranteed buy canceled without sufficient notice incurs the declared penalty.
 
 ### Best Practices
 

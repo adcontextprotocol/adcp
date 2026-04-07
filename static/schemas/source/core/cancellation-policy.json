@@ -2,19 +2,38 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/cancellation-policy.json",
   "title": "Cancellation Policy",
-  "description": "Seller-declared cancellation terms for a product. Declares the minimum notice period required before cancellation takes effect and any associated penalties. Buyers accept these terms by creating a media buy against the product.",
+  "description": "Seller-declared cancellation terms for a product. Declares the minimum notice period required before cancellation takes effect and the penalty for insufficient notice. Buyers accept these terms by creating a media buy against the product.",
   "type": "object",
   "properties": {
     "notice_period": {
       "$ref": "/schemas/core/duration.json",
-      "description": "Minimum notice period before cancellation takes effect (e.g., { interval: 30, unit: 'days' }). A guaranteed buy canceled without sufficient notice may incur cancellation penalties."
+      "description": "Minimum notice period before cancellation takes effect (e.g., { interval: 30, unit: 'days' }). A guaranteed buy canceled without sufficient notice incurs the declared penalty."
     },
-    "penalty_description": {
-      "type": "string",
-      "maxLength": 500,
-      "description": "Human-readable description of the cancellation penalty when the notice period is not met (e.g., '50% of remaining committed spend', 'full flight cost'). Informational for buyer agents."
+    "penalty": {
+      "type": "object",
+      "description": "Cancellation penalty applied when the notice period is not met.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["percent_remaining", "full_commitment", "fixed_fee", "none"],
+          "description": "Penalty calculation method. 'percent_remaining': percentage of remaining uncommitted spend. 'full_commitment': buyer owes the full committed budget regardless of delivery. 'fixed_fee': flat monetary amount. 'none': no financial penalty (cancellation with notice is free)."
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Penalty rate as a decimal proportion of remaining committed spend. Required when type is 'percent_remaining' (e.g., 0.5 means 50% of remaining spend)."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Fixed penalty amount in the buy's currency. Required when type is 'fixed_fee'."
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": true
     }
   },
-  "required": ["notice_period"],
+  "required": ["notice_period", "penalty"],
   "additionalProperties": true
 }
