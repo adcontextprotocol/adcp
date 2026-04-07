@@ -2538,14 +2538,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
-    let task;
-    task = await taskStore.createTask(
+    const created = await taskStore.createTask(
       { ttl: clampedTtl },
       0,
       request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
     );
-    await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
-    task = await taskStore.getTask(task.taskId);
+    await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
+    const task = await taskStore.getTask(created.taskId);
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }
