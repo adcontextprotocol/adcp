@@ -91,11 +91,11 @@
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Seller's default billing measurement and makegood terms. Declares who counts the billing metric and what remedies apply when thresholds are breached. Buyers may propose different terms at media buy creation — sellers accept, reject (TERMS_REJECTED), or adjust per their policy."
     },
-    "performance_guarantees": {
+    "performance_standards": {
       "type": "array",
-      "description": "Seller's default performance guarantees for this product: viewability, IVT, completion rate, brand safety, attention score. Buyers may propose different guarantees at media buy creation. When absent, no structured performance guarantees apply.",
+      "description": "Seller's default performance standards for this product: viewability, IVT, completion rate, brand safety, attention score. Buyers may propose different standards at media buy creation. When absent, no structured performance standards apply.",
       "items": {
-        "$ref": "/schemas/core/performance-guarantee.json"
+        "$ref": "/schemas/core/performance-standard.json"
       },
       "minItems": 1
     },

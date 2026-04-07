@@ -77,11 +77,11 @@
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
     },
-    "performance_guarantees": {
+    "performance_standards": {
       "type": "array",
-      "description": "Buyer's proposed performance guarantees for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_guarantees apply.",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
       "items": {
-        "$ref": "/schemas/core/performance-guarantee.json"
+        "$ref": "/schemas/core/performance-standard.json"
       },
       "minItems": 1
     },

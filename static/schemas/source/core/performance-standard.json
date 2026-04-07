@@ -1,19 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/performance-guarantee.json",
-  "title": "Performance Guarantee",
-  "description": "A guaranteed rate for a performance metric, measured by a specified vendor. The threshold is a floor or ceiling depending on the metric: viewability, completion_rate, brand_safety, and attention_score are floors (must exceed); ivt is a ceiling (must not exceed).",
+  "$id": "/schemas/core/performance-standard.json",
+  "title": "Performance Standard",
+  "description": "A rate threshold for a performance metric, measured by a specified vendor. The threshold is a floor or ceiling depending on the metric: viewability, completion_rate, brand_safety, and attention_score are floors (must exceed); ivt is a ceiling (must not exceed).",
   "type": "object",
   "properties": {
     "metric": {
-      "$ref": "/schemas/enums/guaranteed-metric.json",
-      "description": "The performance metric being guaranteed."
+      "$ref": "/schemas/enums/performance-standard-metric.json",
+      "description": "The performance metric this standard applies to."
     },
     "threshold": {
       "type": "number",
       "minimum": 0,
       "maximum": 1,
-      "description": "Guaranteed rate as a decimal (e.g., 0.70 for 70%). Whether this is a floor or ceiling depends on the metric: for viewability, completion_rate, brand_safety, attention_score the actual rate must be >= threshold; for ivt the actual rate must be <= threshold."
+      "description": "Rate threshold as a decimal (e.g., 0.70 for 70%). Whether this is a floor or ceiling depends on the metric: for viewability, completion_rate, brand_safety, attention_score the actual rate must be >= threshold; for ivt the actual rate must be <= threshold."
     },
     "standard": {
       "$ref": "/schemas/enums/viewability-standard.json",

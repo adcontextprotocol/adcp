@@ -198,8 +198,8 @@ npx adcp \
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
 | `context` | object | No | Opaque correlation data echoed unchanged in the package response. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. |
-| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-guarantees) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
-| `performance_guarantees` | [PerformanceGuarantee[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-guarantees) | No | Buyer's proposed performance guarantees (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_guarantees` apply. |
+| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
+| `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
 
 ## Response
 

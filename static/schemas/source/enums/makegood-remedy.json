@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/makegood-remedy.json",
   "title": "Makegood Remedy",
-  "description": "Remedy types available when a performance guarantee or billing measurement threshold is breached.",
+  "description": "Remedy types available when a performance standard or billing measurement threshold is breached.",
   "type": "string",
   "enum": [
     "additional_delivery",

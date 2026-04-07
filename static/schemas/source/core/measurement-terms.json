@@ -25,7 +25,7 @@
     },
     "makegood_policy": {
       "type": "object",
-      "description": "Remedies available when a performance guarantee or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
+      "description": "Remedies available when a performance standard or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
       "properties": {
         "available_remedies": {
           "type": "array",
