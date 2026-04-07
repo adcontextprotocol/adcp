@@ -37,6 +37,13 @@ const SESSION_CACHE_TTL_MS = 60 * 1000;
 const authFailureLog = new Map<string, number>();
 const AUTH_FAILURE_LOG_SUPPRESS_MS = 5 * 60 * 1000;
 
+// Negative cache: sessions confirmed dead (e.g. invalid_grant) skip the expensive
+// WorkOS refresh + DB fallback on subsequent requests. TTL kept short so users who
+// log in again aren't blocked.
+const deadSessionCache = new Map<string, number>();
+const DEAD_SESSION_TTL_MS = 60 * 1000;
+const DEAD_SESSION_MAX_SIZE = 50_000;
+
 /** Log at warn the first time a stale session is seen; demote repeats to debug. */
 function warnOncePerSession(
   cacheKey: string,
@@ -69,6 +76,9 @@ setInterval(() => {
   }
   for (const [key, ts] of authFailureLog.entries()) {
     if (now - ts > AUTH_FAILURE_LOG_SUPPRESS_MS) authFailureLog.delete(key);
+  }
+  for (const [key, ts] of deadSessionCache.entries()) {
+    if (now - ts > DEAD_SESSION_TTL_MS) deadSessionCache.delete(key);
   }
 }, 5 * 60 * 1000);
 
@@ -144,6 +154,7 @@ function hashSessionCookie(cookie: string): string {
 export function invalidateSessionCache(sessionCookie: string): void {
   const cacheKey = hashSessionCookie(sessionCookie);
   sessionCache.delete(cacheKey);
+  deadSessionCache.delete(cacheKey);
   logger.debug({ cacheKey }, 'Session cache invalidated');
 }
 
@@ -539,6 +550,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const cached = sessionCache.get(cacheKey);
     const now = Date.now();
 
+    // Fast-reject sessions already known to be dead (invalid_grant, etc.)
+    const deadAt = deadSessionCache.get(cacheKey);
+    if (deadAt) {
+      if (now - deadAt < DEAD_SESSION_TTL_MS) {
+        logger.debug({ path: req.path }, 'Rejected dead session from cache');
+        if (isHtmlRequest) {
+          return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+        }
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your session has expired. Please log in again.',
+          login_url: '/auth/login',
+        });
+      }
+      deadSessionCache.delete(cacheKey);
+    }
+
     if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
@@ -692,8 +720,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         'Session invalid (repeated — suppressed)',
       );
 
-      // Remove any stale cache entry
+      // Remove any stale positive cache entry and mark session as dead
+      // so subsequent requests skip the expensive WorkOS refresh + DB fallback
       sessionCache.delete(cacheKey);
+      if (deadSessionCache.size < DEAD_SESSION_MAX_SIZE) {
+        deadSessionCache.set(cacheKey, Date.now());
+      }
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -1290,6 +1322,15 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     const cached = sessionCache.get(cacheKey);
     const now = Date.now();
 
+    // Fast-reject sessions already known to be dead
+    const deadAt = deadSessionCache.get(cacheKey);
+    if (deadAt) {
+      if (now - deadAt < DEAD_SESSION_TTL_MS) {
+        return next(); // optional auth: just proceed without user
+      }
+      deadSessionCache.delete(cacheKey);
+    }
+
     if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
@@ -1385,6 +1426,14 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         } catch (dbError) {
           logger.debug({ err: dbError }, 'Failed to look up shared session (optional auth)');
         }
+      }
+    }
+
+    if (!result.authenticated || !('user' in result) || !result.user) {
+      // All refresh attempts failed — mark session as dead to avoid
+      // expensive retries on every subsequent request
+      if (deadSessionCache.size < DEAD_SESSION_MAX_SIZE) {
+        deadSessionCache.set(cacheKey, Date.now());
       }
     }
 
