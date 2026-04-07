@@ -344,6 +344,14 @@
       },
       "minItems": 1
     },
+    "required_performance_standards": {
+      "type": "array",
+      "description": "Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, minimum threshold, and optionally a required vendor and standard. Products that cannot meet these thresholds or do not support the specified vendors are excluded. Use this to tell the seller upfront: 'I need DoubleVerify for viewability at 70% MRC.'",
+      "items": {
+        "$ref": "/schemas/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
     "keywords": {
       "type": "array",
       "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",
