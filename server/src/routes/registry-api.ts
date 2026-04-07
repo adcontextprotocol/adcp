@@ -15,8 +15,8 @@ import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
-import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
-import { comply } from "../addie/services/compliance-testing.js";
+import { listStoryboards, getStoryboard, getTestKitForStoryboard, extractScenariosFromStoryboard } from "../services/storyboards.js";
+import { comply, filterToKnownScenarios } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -2485,10 +2485,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Resolve agent auth
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
 
-        // Run comply with the storyboard's referenced scenarios
+        // Only run scenarios this storyboard references, not the full suite
+        const storyboardScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
         const complyResult = await comply(agentUrl, {
           dry_run: true,
           timeout_ms: 90_000,
+          ...(storyboardScenarios.length > 0 && { scenarios: storyboardScenarios }),
           ...(auth && { auth }),
         });
 

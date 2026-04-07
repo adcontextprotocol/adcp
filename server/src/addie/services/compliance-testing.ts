@@ -17,6 +17,7 @@ export type ComplianceTrack =
   | 'creative'
   | 'reporting'
   | 'governance'
+  | 'campaign_governance'
   | 'signals'
   | 'si'
   | 'audiences';
@@ -42,6 +43,8 @@ export interface ComplyOptions extends TestOptions {
   tracks?: ComplianceTrack[];
   platform_type?: PlatformType;
   timeout_ms?: number;
+  /** Limit to specific scenarios (e.g. from a storyboard). Bypasses track-based selection. */
+  scenarios?: TestScenario[];
 }
 
 export interface PlatformProfile {
@@ -111,6 +114,7 @@ const TRACK_LABELS: Record<ComplianceTrack, string> = {
   creative: 'Creative workflows',
   reporting: 'Reporting',
   governance: 'Governance',
+  campaign_governance: 'Campaign governance',
   signals: 'Signals',
   si: 'Sponsored intelligence',
   audiences: 'Audience sync',
@@ -127,9 +131,16 @@ export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
     'validation',
     'temporal_validation',
   ],
-  creative: ['creative_sync', 'creative_inline', 'creative_flow'],
+  creative: ['creative_sync', 'creative_inline', 'creative_flow', 'creative_lifecycle'],
   reporting: ['deterministic_delivery'],
   governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
+  campaign_governance: [
+    'campaign_governance',
+    'campaign_governance_denied',
+    'campaign_governance_conditions',
+    'campaign_governance_delivery',
+    'seller_governance_context',
+  ],
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
   audiences: ['sync_audiences'],
@@ -409,14 +420,45 @@ function buildPlatformCoherence(
   };
 }
 
+const ALL_KNOWN_SCENARIOS = new Set<string>(
+  (Object.values(TRACK_SCENARIOS) as TestScenario[][]).flat(),
+);
+
+/**
+ * Filter an array of scenario name strings to only those that exist in TRACK_SCENARIOS.
+ * Logs a warning for any unknown scenario names.
+ */
+export function filterToKnownScenarios(candidates: string[]): TestScenario[] {
+  return candidates.filter((s) => ALL_KNOWN_SCENARIOS.has(s)) as TestScenario[];
+}
+
+/**
+ * Reverse-map a set of scenarios to the tracks that contain them.
+ */
+function tracksForScenarios(scenarios: TestScenario[]): ComplianceTrack[] {
+  const scenarioSet = new Set(scenarios);
+  const tracks: ComplianceTrack[] = [];
+  for (const [track, trackScenarios] of Object.entries(TRACK_SCENARIOS)) {
+    if (trackScenarios.some((s) => scenarioSet.has(s))) {
+      tracks.push(track as ComplianceTrack);
+    }
+  }
+  return tracks;
+}
+
 export async function comply(agentUrl: string, options: ComplyOptions = {}): Promise<ComplyResult> {
-  const requestedTracks = options.tracks?.length
-    ? options.tracks
-    : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
+  // When explicit scenarios are provided (e.g. from a storyboard), use them
+  // directly and derive tracks by reverse-mapping.
+  const scenarioList = options.scenarios ?? buildScenarioList(options.tracks);
+  const requestedTracks = options.scenarios
+    ? tracksForScenarios(options.scenarios)
+    : options.tracks?.length
+      ? options.tracks
+      : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
 
   const suite = await testAllScenarios(agentUrl, {
     ...options,
-    scenarios: buildScenarioList(requestedTracks),
+    scenarios: scenarioList,
   });
 
   const trackResults = buildTrackResults(requestedTracks, suite.results);
