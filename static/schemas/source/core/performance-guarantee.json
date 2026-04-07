@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/performance-guarantee.json",
+  "title": "Performance Guarantee",
+  "description": "A guaranteed minimum rate for a performance metric, measured by a specified vendor. Used in measurement_terms to declare, propose, or agree on performance thresholds.",
+  "type": "object",
+  "properties": {
+    "metric": {
+      "$ref": "/schemas/enums/guaranteed-metric.json",
+      "description": "The performance metric being guaranteed."
+    },
+    "min_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Minimum acceptable rate as a decimal (e.g., 0.70 means at least 70%). The denominator depends on the metric: viewability uses measurable_impressions, completion_rate uses total impressions."
+    },
+    "standard": {
+      "$ref": "/schemas/enums/viewability-standard.json",
+      "description": "Measurement standard applied. Required when metric is 'viewability' (MRC and GroupM define materially different thresholds). Omit for metrics without competing standards."
+    },
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Vendor measuring this metric (e.g., { domain: 'doubleverify.com' }). When specified on a confirmed package, creatives MUST include tracker_script or tracker_pixel assets from this vendor."
+    }
+  },
+  "required": ["metric", "min_rate", "vendor"],
+  "additionalProperties": true
+}

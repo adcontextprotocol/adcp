@@ -41,26 +41,29 @@
       "required": ["max_percent", "vendor"],
       "additionalProperties": true
     },
-    "viewability": {
+    "performance_guarantees": {
+      "type": "array",
+      "description": "Guaranteed minimum rates for performance metrics. Each entry specifies a metric, threshold, and measurement vendor. When agreed on a confirmed package, creatives MUST include tracker assets from vendors specified in the guarantees.",
+      "items": {
+        "$ref": "/schemas/core/performance-guarantee.json"
+      },
+      "minItems": 1
+    },
+    "makegood_policy": {
       "type": "object",
-      "description": "Viewability threshold, measurement standard, and the vendor responsible for measuring it.",
+      "description": "Remedies available when a performance guarantee, IVT threshold, or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
       "properties": {
-        "min_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Minimum viewability percentage (e.g., 70 means at least 70% of impressions must be viewable)."
-        },
-        "standard": {
-          "$ref": "/schemas/enums/viewability-standard.json",
-          "description": "Viewability measurement standard applied."
-        },
-        "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
-          "description": "Vendor measuring viewability (e.g., { domain: 'integralads.com' }). When specified on a confirmed package, creatives assigned to this package MUST include corresponding tracker assets from this vendor."
+        "available_remedies": {
+          "type": "array",
+          "description": "Remedy types the seller supports for this product. Ordered by seller preference (first = preferred). Seller proposes from this list when a breach occurs; buyer accepts or disputes.",
+          "items": {
+            "$ref": "/schemas/enums/makegood-remedy.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
-      "required": ["min_percent", "standard", "vendor"],
+      "required": ["available_remedies"],
       "additionalProperties": true
     }
   },

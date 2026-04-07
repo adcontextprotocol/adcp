@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/guaranteed-metric.json",
+  "title": "Guaranteed Metric",
+  "description": "Performance metrics that support minimum rate guarantees on media buys.",
+  "type": "string",
+  "enum": [
+    "viewability",
+    "completion_rate",
+    "brand_safety",
+    "attention_score"
+  ],
+  "enumDescriptions": {
+    "viewability": "Viewable impression rate. Requires a viewability_standard (MRC or GroupM). Denominator is measurable_impressions.",
+    "completion_rate": "Video or audio completion rate. Denominator is total impressions.",
+    "brand_safety": "Brand-safe impression rate. Denominator is total impressions.",
+    "attention_score": "Attention score rate from attention measurement vendors (e.g., Adelaide, Lumen). Denominator is measurable_impressions."
+  }
+}

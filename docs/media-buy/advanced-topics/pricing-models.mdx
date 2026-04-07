@@ -70,10 +70,21 @@ Beyond declaring a provider, sellers can publish structured `measurement_terms` 
       "max_percent": 5,
       "vendor": { "domain": "doubleverify.com" }
     },
-    "viewability": {
-      "min_percent": 70,
-      "standard": "mrc",
-      "vendor": { "domain": "doubleverify.com" }
+    "performance_guarantees": [
+      {
+        "metric": "viewability",
+        "min_rate": 0.70,
+        "standard": "mrc",
+        "vendor": { "domain": "doubleverify.com" }
+      },
+      {
+        "metric": "completion_rate",
+        "min_rate": 0.80,
+        "vendor": { "domain": "doubleverify.com" }
+      }
+    ],
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
     }
   }
 }
@@ -83,13 +94,15 @@ Beyond declaring a provider, sellers can publish structured `measurement_terms` 
 
 - **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution.
 - **`ivt_threshold`** — Maximum acceptable Invalid Traffic rate. The `vendor` is identified by domain using the standard brand reference (e.g., `{ "domain": "doubleverify.com" }`). When agreed on a confirmed package, creatives MUST include `tracker_script` or `tracker_pixel` assets from the specified vendor.
-- **`viewability`** — Minimum viewability floor with the measurement `standard` (`"mrc"` or `"groupm"`) and the vendor measuring it. When agreed on a confirmed package, creatives MUST include corresponding tracker assets.
+- **`performance_guarantees`** — Array of guaranteed minimum rates for performance metrics. Each entry specifies a `metric` (`viewability`, `completion_rate`, `brand_safety`, `attention_score`), a `min_rate` (decimal, e.g., 0.70 for 70%), an optional `standard` (required for viewability: `"mrc"` or `"groupm"`), and a `vendor`. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
+- **`makegood_policy`** — Closed menu of remedies available when any threshold is breached. Three remedy types: `additional_delivery` (extend/add impressions, like-for-like), `credit` (toward future buys), `invoice_adjustment` (reduce current invoice). Seller proposes from this menu; buyer accepts or disputes.
 
 **Negotiation flow:**
 
 1. Seller publishes `measurement_terms` on the product (defaults)
 2. Buyer proposes terms on the package request at `create_media_buy` (overrides)
 3. Seller accepts (echoes on confirmed package), rejects (`TERMS_REJECTED`), or adjusts (returns modified terms)
+4. If a threshold is breached, seller proposes a remedy from the agreed `makegood_policy`; buyer accepts or disputes
 
 When the buyer omits `measurement_terms`, the product's defaults apply.
 
