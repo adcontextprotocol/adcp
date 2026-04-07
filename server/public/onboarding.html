@@ -1389,11 +1389,19 @@
 
       try {
         // Create a personal workspace using the user's full name
+        // Strip characters not allowed in org names (e.g. parentheses from Google profiles)
+        var suffix = "'s Workspace";
         var fullName = [currentUser.first_name, currentUser.last_name]
           .filter(Boolean)
-          .join(' ');
+          .join(' ')
+          .normalize('NFC')
+          .replace(/[^\p{L}\p{N} \-_'.\u2018\u2019]/gu, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/^[^\p{L}\p{N}]+/u, '')
+          .substring(0, 100 - suffix.length);
         var workspaceName = fullName
-          ? fullName + "'s Workspace"
+          ? fullName + suffix
           : 'Personal Workspace';
 
         var body = {
