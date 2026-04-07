@@ -851,13 +851,21 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Check if user is already a member
+      // Check if user is already a member (include pending invitations)
       const existingMembership = await workos!.userManagement.listOrganizationMemberships({
         userId: slackUser.workos_user_id,
         organizationId: orgId,
+        statuses: ['active', 'inactive', 'pending'],
       });
 
       if (existingMembership.data.length > 0) {
+        const pending = existingMembership.data.some(m => m.status === 'pending');
+        if (pending) {
+          return res.status(409).json({
+            error: 'Pending invitation exists',
+            message: 'This user has a pending invitation that must be accepted or cancelled before they can be added directly.',
+          });
+        }
         return res.status(400).json({
           error: 'Already a member',
           message: 'This user is already a member of the organization.',
@@ -960,6 +968,13 @@ export function createOrganizationsRouter(): Router {
         return res.status(400).json({
           error: 'Already a member',
           message: 'This user is already a member of the organization.',
+        });
+      }
+
+      if (error?.code === 'cannot_reactivate_pending_organization_membership') {
+        return res.status(409).json({
+          error: 'Pending invitation exists',
+          message: 'This user has a pending invitation that must be accepted or cancelled before they can be added directly.',
         });
       }
 
