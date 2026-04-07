@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/insertion-order.json",
   "title": "Insertion Order",
-  "description": "A formal insertion order attached to a committed proposal. Contains structured terms for agent validation and optional signing URLs for human approval workflows.",
+  "description": "A signing wrapper attached to a committed proposal. The IO does not introduce new deal terms — all negotiated terms (performance standards, measurement terms, cancellation policy, pricing) live on the product and package. The IO exists for human signature workflows and provides summary fields so buyer agents can verify the IO matches the committed proposal before a human signs.",
   "type": "object",
   "properties": {
     "io_id": {
@@ -12,7 +12,7 @@
     },
     "terms": {
       "type": "object",
-      "description": "Structured terms for agent validation. Agents can programmatically verify these match the proposal and campaign requirements.",
+      "description": "Summary fields echoed from the committed proposal for agent verification. Buyer agents use these to confirm the IO matches what was negotiated before a human signs. These are read-only summaries, not negotiation surfaces — deal terms live on products and packages.",
       "properties": {
         "advertiser": {
           "type": "string",
