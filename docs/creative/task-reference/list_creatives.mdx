@@ -202,7 +202,7 @@ When `include_pricing=true` and `account` is provided, each creative includes `p
 }
 ```
 
-The buyer passes the selected `pricing_option_id` in `report_usage` for billing verification. Vendors may offer multiple options — volume/commitment tiers, context-specific rates (premium vs. standard placements), or entirely different pricing models for different product lines. This is the same pattern used by [signals](/docs/signals/tasks/get_signals) and [content standards](/docs/governance/content-standards/index).
+The buyer passes the applied `pricing_option_id` (from the `build_creative` response) in `report_usage` for billing verification. Vendors may offer multiple options — volume/commitment tiers, context-specific rates (premium vs. standard placements), or entirely different pricing models for different product lines. This is the same pattern used by [signals](/docs/signals/tasks/get_signals) and [content standards](/docs/governance/content-standards/index).
 
 ### Delivery snapshot
 
