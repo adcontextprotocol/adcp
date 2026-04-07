@@ -101,6 +101,16 @@ export function setupAccountRoutes(
 
         const churnedStatusList = CHURNED_STATUSES.map(s => `'${s}'`).join(', ');
 
+        // Pre-aggregate community points once, then reference in queries that need it
+        // This avoids expensive per-row LATERAL joins in count queries
+        const orgPointsCTE = `
+          WITH org_points AS (
+            SELECT om.workos_organization_id, COALESCE(SUM(cp.points), 0)::int AS org_points
+            FROM organization_memberships om
+            JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+            GROUP BY om.workos_organization_id
+          )`;
+
         const [
           needsAttention,
           newInsights,
@@ -118,14 +128,10 @@ export function setupAccountRoutes(
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
+            ${orgPointsCTE}
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
-            LEFT JOIN LATERAL (
-              SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
-              FROM organization_memberships om
-              JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
-              WHERE om.workos_organization_id = o.workos_organization_id
-            ) ocp ON true
+            LEFT JOIN org_points ocp ON ocp.workos_organization_id = o.workos_organization_id
             LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -141,7 +147,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
+                      COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -179,17 +185,13 @@ export function setupAccountRoutes(
 
           // Hot prospects (engagement >= 50 OR high interest)
           pool.query(`
+            ${orgPointsCTE}
             SELECT COUNT(*) as count
             FROM organizations o
-            LEFT JOIN LATERAL (
-              SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
-              FROM organization_memberships om
-              JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
-              WHERE om.workos_organization_id = o.workos_organization_id
-            ) ocp ON true
+            LEFT JOIN org_points ocp ON ocp.workos_organization_id = o.workos_organization_id
             WHERE (${NOT_MEMBER_ALIASED})
               AND (
-                ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
+                COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
                 OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
               )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -950,26 +952,31 @@ export function setupAccountRoutes(
       const limit = Math.min(Math.max(parseInt(limitParam as string) || 100, 1), 500);
       const offset = Math.max(parseInt(offsetParam as string) || 0, 0);
 
-      // Lateral subquery to aggregate community points per org
+      // Pre-aggregated community points join (avoids per-row LATERAL nested loops)
       const communityPointsJoin = `
-        LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+        LEFT JOIN (
+          SELECT om.workos_organization_id, COALESCE(SUM(cp.points), 0)::int AS org_points
           FROM organization_memberships om
           JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
-          WHERE om.workos_organization_id = o.workos_organization_id
-        ) ocp ON true`;
+          GROUP BY om.workos_organization_id
+        ) ocp ON ocp.workos_organization_id = o.workos_organization_id`;
 
       // Brand registry hierarchy join (house_domain → parent org)
-      // Uses LATERAL + LIMIT 1 to avoid duplicate rows when multiple orgs share an email_domain
-      // Matches on domain first, falls back to brand_domain_aliases for aliases (e.g. omc.com → omnicomgroup.com)
+      // Uses UNION ALL with existence guard to prefer direct domain match over alias
+      // Falls back to brand_domain_aliases only when no direct match exists
       const hierarchyJoin = `
         LEFT JOIN LATERAL (
           SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
                  db.keller_type as brand_keller_type, db.source_type as brand_source
           FROM discovered_brands db
           WHERE db.domain = o.email_domain
-             OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
-          ORDER BY (db.domain = o.email_domain) DESC
+          UNION ALL
+          SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
+                 db.keller_type as brand_keller_type, db.source_type as brand_source
+          FROM brand_domain_aliases bda
+          JOIN discovered_brands db ON db.domain = bda.brand_domain
+          WHERE bda.alias_domain = o.email_domain
+            AND NOT EXISTS (SELECT 1 FROM discovered_brands d2 WHERE d2.domain = o.email_domain)
           LIMIT 1
         ) db_hier ON true
         LEFT JOIN LATERAL (
@@ -1009,10 +1016,6 @@ export function setupAccountRoutes(
           db_hier.house_domain as house_domain,
           p_hier.parent_name,
           p_hier.parent_org_id,
-          (SELECT COUNT(*) FROM organizations child
-           JOIN discovered_brands db_child ON child.email_domain = db_child.domain
-           WHERE db_child.house_domain = o.email_domain
-             AND child.workos_organization_id != o.workos_organization_id) as subsidiary_count,
           (db_hier.domain IS NOT NULL) as brand_mapped,
           db_hier.brand_registry_name,
           db_hier.brand_keller_type,
@@ -1389,8 +1392,13 @@ export function setupAccountRoutes(
 
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
+      // Collect email_domains for subsidiary count lookup
+      const emailDomains = result.rows
+        .map((r) => r.email_domain)
+        .filter((d): d is string => d != null);
+
       // Fetch related data in parallel
-      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts, addieActivityResult] =
+      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts, addieActivityResult, subsidiaryCounts] =
         await Promise.all([
           pool.query(
             `
@@ -1464,6 +1472,21 @@ export function setupAccountRoutes(
           `,
             [orgIds]
           ),
+
+          // Subsidiary counts - batch lookup instead of per-row correlated subquery
+          emailDomains.length > 0
+            ? pool.query(
+                `
+            SELECT db.house_domain, COUNT(*) as count
+            FROM organizations child
+            JOIN discovered_brands db ON child.email_domain = db.domain
+            WHERE db.house_domain = ANY($1)
+              AND child.email_domain != db.house_domain
+            GROUP BY db.house_domain
+          `,
+                [emailDomains]
+              )
+            : Promise.resolve({ rows: [] }),
         ]);
 
       // Build maps
@@ -1506,6 +1529,13 @@ export function setupAccountRoutes(
 
       const addieActivitySet = new Set(
         addieActivityResult.rows.map((r) => r.workos_organization_id)
+      );
+
+      const subsidiaryCountMap = new Map(
+        subsidiaryCounts.rows.map((r) => [
+          r.house_domain,
+          parseInt(r.count),
+        ])
       );
 
       // Transform results
@@ -1587,7 +1617,7 @@ export function setupAccountRoutes(
           house_domain: row.house_domain || null,
           parent_name: row.parent_name || null,
           parent_org_id: row.parent_org_id || null,
-          subsidiary_count: parseInt(row.subsidiary_count) || 0,
+          subsidiary_count: subsidiaryCountMap.get(row.email_domain) || 0,
 
           // Legacy (for transition)
           workos_organization_id: row.workos_organization_id,
