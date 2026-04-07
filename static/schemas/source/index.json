@@ -584,6 +584,10 @@
           "$ref": "/schemas/enums/adcp-domain.json",
           "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
         },
+        "brand-agent-type": {
+          "$ref": "/schemas/enums/brand-agent-type.json",
+          "description": "Agent types declarable in brand.json (brand, rights, measurement, governance, creative, buying, signals)"
+        },
         "right-use": {
           "$ref": "/schemas/enums/right-use.json",
           "description": "Types of rights usage (likeness, voice, endorsement, sync, etc.)"

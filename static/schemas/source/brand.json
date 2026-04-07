@@ -414,13 +414,19 @@
           "$ref": "#/definitions/visual_guidelines",
           "description": "Structured visual rules for generative creative systems"
         },
+        "agents": {
+          "$ref": "#/definitions/agents",
+          "description": "Agents authorized to act on behalf of this brand. Overrides house-level agents of the same type."
+        },
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
-          "description": "Brand agent that provides dynamic brand data via MCP"
+          "description": "Deprecated: use agents array with type 'brand' instead. Brand agent that provides dynamic brand data via MCP.",
+          "deprecated": true
         },
         "rights_agent": {
           "$ref": "#/definitions/rights_agent",
-          "description": "Rights licensing agent for this brand"
+          "description": "Deprecated: use agents array with type 'rights' instead. Rights licensing agent for this brand.",
+          "deprecated": true
         },
         "contact": {
           "type": "object",
@@ -484,6 +490,10 @@
           "type": "string",
           "enum": ["branded_house", "house_of_brands", "hybrid"],
           "description": "Brand architecture model: branded_house (Google), house_of_brands (P&G), hybrid (Nike)"
+        },
+        "agents": {
+          "$ref": "#/definitions/agents",
+          "description": "House-level agents that apply to all brands unless overridden at the brand level"
         }
       },
       "required": ["domain", "name"],
@@ -546,6 +556,61 @@
       },
       "required": ["url", "id", "available_uses"],
       "additionalProperties": true
+    },
+    "brand_agent_entry": {
+      "type": "object",
+      "description": "An agent declared by a brand or house. Each entry identifies one agent endpoint and its functional role in the advertising ecosystem.",
+      "properties": {
+        "type": {
+          "$ref": "/schemas/enums/brand-agent-type.json",
+          "description": "Functional role of this agent"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Agent endpoint URL (MCP or A2A)"
+        },
+        "id": {
+          "type": "string",
+          "description": "Agent identifier (useful for logging, multi-tenant platforms)",
+          "pattern": "^[a-z0-9_]+$",
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this agent's capabilities or scope",
+          "maxLength": 500
+        },
+        "available_uses": {
+          "type": "array",
+          "description": "For rights agents: rights uses available for licensing",
+          "items": { "$ref": "/schemas/enums/right-use.json" },
+          "minItems": 1
+        },
+        "right_types": {
+          "type": "array",
+          "description": "For rights agents: types of rights available",
+          "items": { "$ref": "/schemas/enums/right-type.json" },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global scope.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "required": ["type", "url", "id"],
+      "additionalProperties": true
+    },
+    "agents": {
+      "type": "array",
+      "description": "Agents declared by this brand or house. One agent per type.",
+      "items": { "$ref": "#/definitions/brand_agent_entry" },
+      "maxItems": 20
     },
     "authorized_operator": {
       "type": "object",
@@ -1213,15 +1278,22 @@
     {
       "type": "object",
       "title": "Brand Agent",
-      "description": "Brand with an agent that provides brand info via MCP",
+      "description": "Brand represented by agents that provide brand info via MCP",
       "properties": {
         "$schema": { "type": "string" },
         "version": { "type": "string" },
-        "brand_agent": { "$ref": "#/definitions/brand_agent" },
+        "agents": { "$ref": "#/definitions/agents" },
+        "brand_agent": {
+          "$ref": "#/definitions/brand_agent",
+          "deprecated": true
+        },
         "contact": { "$ref": "#/definitions/contact" },
         "last_updated": { "type": "string", "format": "date-time" }
       },
-      "required": ["brand_agent"],
+      "anyOf": [
+        { "required": ["agents"] },
+        { "required": ["brand_agent"] }
+      ],
       "additionalProperties": false
     },
     {
@@ -1276,10 +1348,13 @@
     {
       "$schema": "/schemas/brand.json",
       "version": "1.0",
-      "brand_agent": {
-        "url": "https://agent.acme.com/mcp",
-        "id": "acme_brand_agent"
-      }
+      "agents": [
+        {
+          "type": "brand",
+          "url": "https://agent.acme.com/mcp",
+          "id": "acme_brand"
+        }
+      ]
     },
     {
       "$schema": "/schemas/brand.json",
@@ -1287,7 +1362,15 @@
       "house": {
         "domain": "pg.com",
         "name": "Procter & Gamble",
-        "architecture": "house_of_brands"
+        "architecture": "house_of_brands",
+        "agents": [
+          {
+            "type": "governance",
+            "url": "https://agents.pg.com/governance",
+            "id": "pg_governance",
+            "description": "Brand safety and compliance for all P&G brands"
+          }
+        ]
       },
       "brands": [
         {
