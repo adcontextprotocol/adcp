@@ -476,6 +476,7 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
+        dry_run: { type: 'boolean' },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -915,7 +916,7 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
 }
 
 function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
+  const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { dry_run?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Enforce account status gates set by comply_test_controller
@@ -1137,6 +1138,32 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
+  // Dry-run: validation passed, return projected response without persisting
+  if (req.dry_run === true) {
+    return {
+      dry_run: true,
+      media_buy_id: mediaBuyId,
+      status: 'active',
+      revision: 1,
+      confirmed_at: now,
+      valid_actions: ['update', 'cancel'],
+      packages: createdPackages.map(pkg => ({
+        package_id: pkg.packageId,
+        product_id: pkg.productId,
+        budget: pkg.budget,
+        pricing_option_id: pkg.pricingOptionId,
+        ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
+        ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+        paused: pkg.paused,
+        start_time: pkg.startTime,
+        end_time: pkg.endTime,
+        ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+        creative_assignments: [],
+      })),
+      sandbox: true,
+    };
+  }
+
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
@@ -1316,7 +1343,17 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
           media_buy_id: mediaBuyId,
           status: 'active',
           totals: { impressions: 0, spend: 0, clicks: 0 },
-          by_package: [],
+          by_package: [{
+            package_id: 'dry_run_pkg',
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            pricing_model: 'cpm',
+            rate: 0,
+            currency: 'USD',
+            paused: false,
+            delivery_status: 'delivering',
+          }],
         }],
         sandbox: true,
       };
