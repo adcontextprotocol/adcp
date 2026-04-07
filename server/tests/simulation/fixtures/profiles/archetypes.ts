@@ -24,7 +24,7 @@ export const coldEmailProspect: SimPersonProfile = {
     workos_organization_id: 'org_sim_meridian',
     domain: 'meridianmedia.example',
     company_type: 'agency',
-    persona: 'media_buyer',
+    persona: 'pragmatic_builder',
     prospect_contact_email: 'alex@meridianmedia.example',
     prospect_contact_name: 'Alex Chen',
     prospect_owner: 'addie',

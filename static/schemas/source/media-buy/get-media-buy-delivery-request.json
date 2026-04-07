@@ -5,6 +5,12 @@
   "description": "Request parameters for retrieving comprehensive delivery metrics",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Filter delivery data to a specific account. When omitted, returns data across all accessible accounts."
@@ -52,11 +58,19 @@
       "description": "Attribution window to apply for conversion metrics. When provided, the seller returns conversion data using the requested lookback windows instead of their platform default. The seller echoes the applied window in the response. Sellers that do not support configurable windows ignore this field and return their default. Check get_adcp_capabilities conversion_tracking.attribution_windows for available options.",
       "properties": {
         "post_click": {
-          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/core/duration.json"
+            }
+          ],
           "description": "Post-click attribution window to apply."
         },
         "post_view": {
-          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/core/duration.json"
+            }
+          ],
           "description": "Post-view attribution window to apply."
         },
         "model": {
@@ -80,8 +94,12 @@
             },
             "system": {
               "oneOf": [
-                { "$ref": "/schemas/enums/metro-system.json" },
-                { "$ref": "/schemas/enums/postal-system.json" }
+                {
+                  "$ref": "/schemas/enums/metro-system.json"
+                },
+                {
+                  "$ref": "/schemas/enums/postal-system.json"
+                }
               ],
               "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Required when geo_level is 'metro' or 'postal_area'."
             },
@@ -97,7 +115,9 @@
               "default": "spend"
             }
           },
-          "required": ["geo_level"],
+          "required": [
+            "geo_level"
+          ],
           "additionalProperties": true
         },
         "device_type": {

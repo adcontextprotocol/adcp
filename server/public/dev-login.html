@@ -264,6 +264,21 @@
         <div class="user-card__description">Committee leader who manages working groups (not a site admin)</div>
       </button>
 
+      <button class="user-card" onclick="loginAs('builder')">
+        <div class="user-card__header">
+          <div class="user-card__avatar" style="background: var(--color-primary-100); color: var(--color-primary-700);">🏗️</div>
+          <div class="user-card__info">
+            <div class="user-card__name">Builder Member</div>
+            <div class="user-card__email">builder@test.local</div>
+          </div>
+        </div>
+        <div class="user-card__badges">
+          <span class="user-card__badge user-card__badge--member">Member</span>
+          <span class="user-card__badge" style="background: var(--color-success-100); color: var(--color-success-700);">Builder</span>
+        </div>
+        <div class="user-card__description">Builder-tier member ($2,500/yr) with team, agents, and directory listing</div>
+      </button>
+
       <button class="user-card" onclick="loginAs('nonmember')">
         <div class="user-card__header">
           <div class="user-card__avatar user-card__avatar--nonmember">👻</div>

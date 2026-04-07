@@ -339,6 +339,8 @@ AgenticAdvertising.org is the membership organization. AdCP (Ad Context Protocol
 
 Be helpful, cite sources, and say "I don't know" rather than guess. Use "AgenticAdvertising.org" not "AAO" or "Alliance for Agentic Advertising".
 
+**Protocol accuracy:** When answering questions about how AdCP or any protocol works, you MUST verify your answer using search_docs or search_repos. Never construct protocol answers from general knowledge — protocol definitions are precise and come only from indexed specs. If you cannot verify a claim, say "I'm not certain — let me check" and search first.
+
 Note: Running in fallback mode - some behavioral guidelines may not be loaded. Core functionality is available.`;
 
 /**
@@ -537,6 +539,8 @@ export interface BuildMessageTurnsResult {
   messagesRemoved: number;
   /** Whether messages were trimmed to fit limits */
   wasTrimmed: boolean;
+  /** Messages that were dropped during trimming (for summarization) */
+  droppedMessages?: MessageTurn[];
 }
 
 /**
@@ -570,7 +574,7 @@ export function buildMessageTurnsWithMetadata(
   threadContext?: ThreadContextEntry[],
   options?: BuildMessageTurnsOptions
 ): BuildMessageTurnsResult {
-  const maxMessages = options?.maxMessages ?? 20;
+  const maxMessages = options?.maxMessages ?? 50;
   // Pass toolCount for more accurate token budget when available
   const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model, options?.toolCount);
 
@@ -646,10 +650,16 @@ export function buildMessageTurnsWithMetadata(
   // This removes oldest messages until we fit within the token budget
   const trimResult = trimConversationHistory(messages, tokenLimit);
 
+  // Capture dropped messages for summarization
+  const droppedMessages = trimResult.wasTrimmed
+    ? messages.slice(0, messages.length - trimResult.messages.length)
+    : undefined;
+
   return {
     messages: trimResult.messages,
     estimatedTokens: trimResult.estimatedTokens,
     messagesRemoved: trimResult.messagesRemoved,
     wasTrimmed: trimResult.wasTrimmed,
+    droppedMessages,
   };
 }

@@ -35,9 +35,9 @@ import {
   type EmailContactResult,
 } from '../db/contacts-db.js';
 import {
-  handleEmailInvocation,
-  type InboundEmailContext,
-} from '../addie/email-handler.js';
+  handleEmailConversation,
+  type EmailConversationInput,
+} from '../addie/email-conversation-handler.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import {
   parseForwardedEmailHeaders,
@@ -124,9 +124,11 @@ interface ResendTrackingPayload {
  * Parsed from subaddressing like addie+prospect@agenticadvertising.org
  * or feed-<slug>@updates.agenticadvertising.org for newsletter subscriptions
  */
+type AddiePosition = 'to' | 'cc';
+
 type AddieContext =
-  | { type: 'prospect' }
-  | { type: 'working-group'; groupId: string }
+  | { type: 'prospect'; addiePosition: AddiePosition; addieAddress: string }
+  | { type: 'working-group'; groupId: string; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'feed'; slug: string }
   | { type: 'unrouted' };
 
@@ -142,47 +144,53 @@ type AddieContext =
  *   addie@agenticadvertising.org → { type: 'unrouted' }
  */
 function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): AddieContext {
-  const allAddresses = [...toAddresses, ...ccAddresses];
+  // Check TO first, then CC — track which list Addie was found in
+  const addressLists: Array<{ addresses: string[]; position: AddiePosition }> = [
+    { addresses: toAddresses, position: 'to' },
+    { addresses: ccAddresses, position: 'cc' },
+  ];
 
-  for (const addr of allAddresses) {
-    const { email } = parseEmailAddress(addr);
+  for (const { addresses, position } of addressLists) {
+    for (const addr of addresses) {
+      const { email } = parseEmailAddress(addr);
 
-    // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
-    if (email.endsWith('@updates.agenticadvertising.org')) {
+      // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
+      if (email.endsWith('@updates.agenticadvertising.org')) {
+        const localPart = email.split('@')[0];
+        if (localPart.startsWith('feed-')) {
+          return { type: 'feed', slug: localPart };
+        }
+        // Replies to newsletter/marketing emails (addie@, sage@, hello@) — treat as prospect replies
+        if (localPart === 'addie' || localPart === 'sage' || localPart === 'hello') {
+          return { type: 'prospect', addiePosition: position, addieAddress: email };
+        }
+      }
+
+      // Check if this is an addie address (either domain)
+      if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
       const localPart = email.split('@')[0];
-      if (localPart.startsWith('feed-')) {
-        return { type: 'feed', slug: localPart };
+      if (!localPart.startsWith('addie')) continue;
+
+      // Check for subaddressing (addie+context)
+      const plusIndex = localPart.indexOf('+');
+      if (plusIndex === -1) {
+        // Plain addie@ address — route as prospect (someone is replying to Addie)
+        return { type: 'prospect', addiePosition: position, addieAddress: email };
       }
-      // Replies to newsletter/marketing emails (addie@, sage@, hello@) — treat as prospect replies
-      if (localPart === 'addie' || localPart === 'sage' || localPart === 'hello') {
-        return { type: 'prospect' };
+
+      const context = localPart.substring(plusIndex + 1);
+
+      if (context === 'prospect') {
+        return { type: 'prospect', addiePosition: position, addieAddress: email };
       }
+
+      if (context.startsWith('wg-')) {
+        return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
+      }
+
+      // Unknown context, log and treat as unrouted
+      logger.warn({ context, email }, 'Unknown Addie context in email address');
     }
-
-    // Check if this is an addie address (either domain)
-    if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
-    const localPart = email.split('@')[0];
-    if (!localPart.startsWith('addie')) continue;
-
-    // Check for subaddressing (addie+context)
-    const plusIndex = localPart.indexOf('+');
-    if (plusIndex === -1) {
-      // Plain addie@ address — route as prospect (someone is replying to Addie)
-      return { type: 'prospect' };
-    }
-
-    const context = localPart.substring(plusIndex + 1);
-
-    if (context === 'prospect') {
-      return { type: 'prospect' };
-    }
-
-    if (context.startsWith('wg-')) {
-      return { type: 'working-group', groupId: context.substring(3) };
-    }
-
-    // Unknown context, log and treat as unrouted
-    logger.warn({ context, email }, 'Unknown Addie context in email address');
   }
 
   return { type: 'unrouted' };
@@ -337,6 +345,8 @@ interface FetchEmailResult {
   textLength?: number;
   originalTo?: string[];
   originalCc?: string[];
+  inReplyTo?: string;
+  references?: string[];
 }
 
 /**
@@ -382,6 +392,11 @@ async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null>
     const originalTo = parseEmailHeaderList(data.headers?.to);
     const originalCc = parseEmailHeaderList(data.headers?.cc);
 
+    // Extract threading headers for email conversation support
+    const inReplyTo = data.headers?.['in-reply-to'] || data.headers?.['In-Reply-To'];
+    const referencesRaw = data.headers?.['references'] || data.headers?.['References'];
+    const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
+
     logger.info({
       emailId,
       durationMs,
@@ -393,6 +408,8 @@ async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null>
       hasOriginalCc: originalCc.length > 0,
       originalTo,
       originalCc,
+      hasInReplyTo: !!inReplyTo,
+      hasReferences: !!references?.length,
     }, 'Fetched email body from Resend');
 
     return {
@@ -401,6 +418,8 @@ async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null>
       textLength,
       originalTo,
       originalCc,
+      inReplyTo,
+      references,
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -598,13 +617,15 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   insights: string;
   method: string;
   tokensUsed?: number;
-  // Email content for potential Addie invocation
+  // Email content for Addie conversation handling
   emailContent?: {
     text?: string;
     html?: string;
     messageId: string;
     to: string[];
     cc?: string[];
+    inReplyTo?: string;
+    references?: string[];
   };
 }> {
   const pool = getPool();
@@ -769,13 +790,15 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     insights,
     method,
     tokensUsed,
-    // Include email content for potential Addie invocation
+    // Include email content for Addie conversation handling
     emailContent: {
       text: emailBody?.text,
       html: emailBody?.html,
       messageId: data.message_id,
       to: toAddresses,
       cc: ccAddresses,
+      inReplyTo: emailBody?.inReplyTo,
+      references: emailBody?.references,
     },
   };
 }
@@ -1210,17 +1233,13 @@ export function createWebhooksRouter(): Router {
                 });
             }
 
-            // Check for Addie invocation and respond if needed
-            // This runs async - don't block the webhook response
+            // Handle email conversation (fire and forget — don't block webhook response)
+            // For TO: always respond. For CC: handler checks invocation patterns.
             if (result.emailContent?.text) {
-              // Find which addie address was used
-              const allAddresses = [...data.to, ...(data.cc || [])];
-              const addieAddress = allAddresses.find(addr =>
-                addr.toLowerCase().includes('addie') &&
-                (addr.includes('@agenticadvertising.org') || addr.includes('@updates.agenticadvertising.org'))
-              ) || 'addie+prospect@agenticadvertising.org';
+              const senderContact = result.contacts.find(c => c.email.toLowerCase() === parseEmailAddress(data.from).email.toLowerCase());
+              const senderParsed = parseEmailAddress(data.from);
 
-              const emailContext: InboundEmailContext = {
+              const conversationInput: EmailConversationInput = {
                 emailId: data.email_id,
                 messageId: data.message_id,
                 from: data.from,
@@ -1229,21 +1248,27 @@ export function createWebhooksRouter(): Router {
                 subject: data.subject,
                 textContent: result.emailContent.text,
                 htmlContent: result.emailContent.html,
-                addieAddress,
+                addieAddress: context.addieAddress,
+                addiePosition: context.addiePosition,
+                inReplyTo: result.emailContent.inReplyTo,
+                references: result.emailContent.references,
+                senderWorkosUserId: senderContact?.workosUserId ?? undefined,
+                senderEmail: senderParsed.email,
+                senderDisplayName: senderParsed.displayName || undefined,
               };
 
-              // Find the sender's WorkOS user ID if they're a known member
-              const senderContact = result.contacts.find(c => c.email.toLowerCase() === parseEmailAddress(data.from).email.toLowerCase());
-
-              // Fire and forget - don't await (pass workosUserId for authorization, not contactId)
-              handleEmailInvocation(emailContext, senderContact?.workosUserId ?? undefined)
-                .then(invocationResult => {
-                  if (invocationResult.responded) {
-                    logger.info({ emailId: data.email_id }, 'Addie responded to email invocation');
+              handleEmailConversation(conversationInput)
+                .then(conversationResult => {
+                  if (conversationResult.responded) {
+                    logger.info({
+                      emailId: data.email_id,
+                      threadId: conversationResult.threadId,
+                    }, 'Addie responded to email conversation');
                   }
                 })
                 .catch(err => {
-                  logger.error({ err, emailId: data.email_id }, 'Error checking email invocation');
+                  logger.error({ err, emailId: data.email_id }, 'Error handling email conversation');
+                  notifySystemError({ source: 'email-conversation', errorMessage: `Failed to handle email conversation: ${err instanceof Error ? err.message : String(err)}` });
                 });
             }
 

@@ -26,7 +26,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, inferMembershipTier, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, inferMembershipTier, tierFromLookupKey, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -1697,10 +1697,8 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/organization${query}`);
     });
-    this.app.get('/dashboard/team', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#team`);
-    });
+    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
+    this.app.get('/dashboard/agents', (req, res) => serveDashboardPage(req, res, 'dashboard-agents.html'));
     this.app.get('/dashboard/settings', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
@@ -2148,6 +2146,11 @@ export class HTTPServer {
     // Governance page - redirect to about page leadership section
     this.app.get("/governance", (req, res) => {
       res.redirect(301, '/about#leadership');
+    });
+
+    // Roadmap page - redirect to docs
+    this.app.get("/roadmap", (req, res) => {
+      res.redirect(301, 'https://docs.adcontextprotocol.org/docs/reference/roadmap');
     });
 
     // Perspectives index redirects to perspectives section
@@ -3506,7 +3509,7 @@ export class HTTPServer {
                         if (adminEmails.length > 0) {
                           // Compute seat limits for the welcome message
                           const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeTier = inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
+                          const welcomeTier = tierFromLookupKey(firstItem?.price?.lookup_key) ?? inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
                           const seatLimits = getSeatLimits(welcomeTier);
 
                           await notifySubscriptionThankYou({
@@ -3588,9 +3591,9 @@ export class HTTPServer {
                 const currency = priceData?.currency ?? null;
                 const interval = priceData?.recurring?.interval ?? null;
 
-                // Infer membership tier from amount for seat entitlements
+                // Resolve membership tier: lookup key is authoritative, amount is fallback
                 const membershipTier = subscription.status === 'active'
-                  ? inferMembershipTier(amount, interval, org.is_personal)
+                  ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(amount, interval, org.is_personal))
                   : null;
 
                 // Capture current tier before update for change detection
@@ -3608,7 +3611,8 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       membership_tier = COALESCE($8, membership_tier),
+                       subscription_canceled_at = $8,
+                       membership_tier = $9,
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
@@ -3619,6 +3623,9 @@ export class HTTPServer {
                     currency,
                     interval,
                     org.workos_organization_id,
+                    subscription.canceled_at
+                      ? new Date(subscription.canceled_at * 1000)
+                      : null,
                     membershipTier,
                   ]
                 );

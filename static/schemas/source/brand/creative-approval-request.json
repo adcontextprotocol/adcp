@@ -5,6 +5,12 @@
   "description": "Payload submitted by the buyer to the approval_webhook URL from acquire_rights. Contains the creative for rights holder review before distribution.",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "rights_id": {
       "type": "string",
       "description": "Rights grant this creative was produced under"

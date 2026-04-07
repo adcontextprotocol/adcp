@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agents - AgenticAdvertising.org</title>
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+    }
+
+    .hub-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Loading */
+    .hub-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      gap: var(--space-3);
+      color: var(--color-text-secondary);
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-gray-200);
+      border-top-color: var(--color-brand);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Header */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-6);
+      margin-bottom: var(--space-8);
+      flex-wrap: wrap;
+    }
+
+    .page-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: 0;
+    }
+
+    .page-header-actions {
+      display: flex;
+      gap: var(--space-3);
+      align-items: center;
+    }
+
+    /* =========================================================================
+       Agent Compliance
+       ========================================================================= */
+    .agent-compliance-card {
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      margin-bottom: var(--space-3);
+    }
+    .agent-compliance-card:last-child { margin-bottom: 0; }
+
+    .agent-compliance-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+
+    .agent-hostname {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+
+    .agent-status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .agent-status-dot--passing { background: var(--color-success-500); }
+    .agent-status-dot--degraded { background: var(--color-warning-500); }
+    .agent-status-dot--failing { background: var(--color-error-500); }
+    .agent-status-dot--unknown { background: var(--color-gray-400); }
+
+    .agent-status-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .agent-streak {
+      padding: 1px var(--space-2);
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+    }
+
+    .agent-headline {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+    }
+
+    .agent-tracks {
+      display: flex;
+      gap: 3px;
+      flex-wrap: wrap;
+      margin-top: var(--space-2);
+    }
+
+    .agent-track {
+      padding: 1px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .agent-track:hover { opacity: 0.8; }
+    .agent-track.active { outline: 2px solid var(--color-primary-500); outline-offset: 1px; }
+
+    .agent-track-detail {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .agent-track-detail h4 { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+    .track-scenario { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-gray-200); }
+    .track-scenario:last-child { border-bottom: none; }
+    .track-scenario-name { font-weight: var(--font-semibold); }
+    .track-scenario--pass .track-scenario-name::before { content: '\2713 '; color: var(--color-success-600); }
+    .track-scenario--fail .track-scenario-name::before { content: '\2717 '; color: var(--color-error-600); }
+    .track-scenario-steps { margin-top: var(--space-1); padding-left: var(--space-4); color: var(--color-text-muted); }
+    .track-step--fail { color: var(--color-error-600); }
+
+    .agent-history-btn {
+      background: none;
+      border: none;
+      color: var(--color-primary-600);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: 0;
+    }
+    .agent-history-btn:hover { text-decoration: underline; }
+
+    .agent-history-panel {
+      margin-top: var(--space-3);
+      font-size: var(--text-xs);
+    }
+    .history-run {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) 0;
+      border-bottom: 1px solid var(--color-gray-200);
+      cursor: pointer;
+    }
+    .history-run:last-child { border-bottom: none; }
+    .history-run:hover { background: var(--color-gray-50); }
+    .history-run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .history-run-detail { display: none; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
+    .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
+    .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
+    .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .agent-track--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
+
+    .agent-sparkline {
+      display: flex;
+      gap: 2px;
+      margin-top: var(--space-2);
+      height: 16px;
+      align-items: flex-end;
+    }
+
+    .agent-sparkline-bar {
+      flex: 1;
+      min-width: 4px;
+      max-width: 16px;
+      height: 100%;
+      border-radius: 2px;
+    }
+
+    .agent-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+    }
+    .agent-action-link {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-primary-600);
+      text-decoration: none;
+    }
+    .agent-action-link:hover {
+      text-decoration: underline;
+    }
+    .agent-auth-section {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .agent-auth-status {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .agent-lifecycle-select {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+
+    .agent-toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      cursor: pointer;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .agent-toggle input { cursor: pointer; }
+    .agent-toggle-label { user-select: none; }
+
+    /* =========================================================================
+       Storyboards
+       ========================================================================= */
+    .agent-storyboard-btn {
+      background: var(--color-primary-600);
+      color: white;
+      border: none;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .agent-storyboard-btn:hover { background: var(--color-primary-700); }
+
+    .agent-storyboard-panel {
+      border-top: 1px solid var(--color-border);
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+    }
+
+    .storyboard-picker {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .storyboard-picker-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .storyboard-picker-item:hover { border-color: var(--color-primary-500); }
+
+    .storyboard-picker-title { font-weight: 600; font-size: var(--text-sm); }
+    .storyboard-picker-summary { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
+
+    .storyboard-phase {
+      margin-bottom: var(--space-4);
+    }
+
+    .storyboard-phase-title {
+      font-weight: 600;
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-2);
+      color: var(--color-text-primary);
+    }
+
+    .storyboard-phase-narrative {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+      line-height: 1.5;
+    }
+
+    .storyboard-step {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+
+    .storyboard-step-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+
+    .storyboard-step-title { font-weight: 500; font-size: var(--text-sm); }
+
+    .storyboard-step-result {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: 600;
+    }
+    .storyboard-step-result--pass { background: var(--color-success-100); color: var(--color-success-700); }
+    .storyboard-step-result--fail { background: var(--color-error-100); color: var(--color-error-700); }
+    .storyboard-step-result--pending { background: var(--color-warning-100); color: var(--color-warning-700); }
+
+    .storyboard-step-narrative {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: var(--space-2);
+    }
+
+    .storyboard-step-meta {
+      display: flex;
+      gap: var(--space-3);
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+
+    .storyboard-step-meta a { color: var(--color-primary-600); text-decoration: none; }
+    .storyboard-step-meta a:hover { text-decoration: underline; }
+
+    .storyboard-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .storyboard-run-btn {
+      background: var(--color-primary-600);
+      color: white;
+      border: none;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .storyboard-run-btn:hover { background: var(--color-primary-700); }
+    .storyboard-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .storyboard-compare-btn {
+      background: transparent;
+      color: var(--color-primary-600);
+      border: 1px solid var(--color-primary-600);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .storyboard-compare-btn:hover { background: var(--color-primary-50); }
+    .storyboard-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .storyboard-progress {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      padding: var(--space-3) 0;
+    }
+
+    .storyboard-back-btn {
+      background: none;
+      border: none;
+      color: var(--color-primary-600);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: var(--space-3);
+    }
+    .storyboard-back-btn:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div class="hub-container">
+    <div id="hub-loading" class="hub-loading">
+      <div class="spinner"></div>
+      <p>Loading agents...</p>
+    </div>
+
+    <div id="hub-content" style="display: none;"></div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    const config = window.__APP_CONFIG__ || {};
+    if (!config.user) {
+      window.location.href = '/auth/login?return_to=/dashboard/agents';
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAgents);
+
+    async function loadAgents() {
+      try {
+        const meRes = await fetch('/api/me', { credentials: 'include' });
+        if (!meRes.ok) {
+          if (meRes.status === 401) {
+            window.location.href = '/auth/login?return_to=/dashboard/agents';
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+        const meData = await meRes.json();
+        const orgs = meData?.organizations || [];
+        let { org: currentOrg } = DashboardNav.resolveOrg(orgs);
+        if (!currentOrg && orgs.length > 0) {
+          currentOrg = orgs.find(o => !o.is_personal) || orgs[0];
+        }
+
+        const orgParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
+        const profileRes = await fetch(`/api/me/member-profile${orgParam}`, { credentials: 'include' });
+
+        if (!profileRes.ok) {
+          if (profileRes.status === 401) {
+            window.location.href = '/auth/login?return_to=/dashboard/agents';
+            return;
+          }
+          if (profileRes.status === 404 || profileRes.status === 403) {
+            document.getElementById('hub-loading').innerHTML =
+              '<p style="color:var(--color-text-secondary)">Your account is not yet associated with a member organization. ' +
+              '<a href="/membership">Learn about membership</a>.</p>';
+            return;
+          }
+          throw new Error('Failed to load profile data');
+        }
+
+        const profileData = await profileRes.json();
+
+        DashboardNav.init({
+          showOrgSwitcher: orgs.length > 1,
+          currentOrgName: currentOrg?.name || profileData?.profile?.organization_name || 'My organization',
+          showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
+          orgId: currentOrg?.id || null,
+          orgRole: currentOrg?.role || 'member',
+          isPersonal: currentOrg?.is_personal || false,
+        });
+
+        if (orgs.length > 1) {
+          DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            const url = new URL(window.location);
+            url.searchParams.set('org', newOrgId);
+            window.location.href = url.toString();
+          });
+        }
+
+        // Fetch compliance data for org's agents
+        const agentCompliance = new Map();
+        const agents = profileData?.profile?.agents || [];
+        if (agents.length > 0) {
+          const results = await Promise.allSettled(
+            agents.map(async (agent) => {
+              const encoded = encodeURIComponent(agent.url);
+              const [statusRes, historyRes] = await Promise.all([
+                fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
+                fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
+              ]);
+              const status = statusRes.ok ? await statusRes.json() : null;
+              const history = historyRes.ok ? await historyRes.json() : null;
+              return { url: agent.url, status, history };
+            }),
+          );
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value.status) {
+              agentCompliance.set(r.value.url, r.value);
+            }
+          }
+        }
+
+        const currentOrgId = currentOrg?.id || null;
+        renderPage(agents, agentCompliance, currentOrgId);
+      } catch (err) {
+        console.error('Agents page load error:', err);
+        document.getElementById('hub-loading').innerHTML =
+          '<p>Failed to load. <a href="/dashboard/agents">Try again</a></p>';
+      }
+    }
+
+    function renderPage(agents, complianceMap, orgId) {
+      document.getElementById('hub-loading').style.display = 'none';
+      const content = document.getElementById('hub-content');
+      content.style.display = 'block';
+
+      const addPrompt = encodeURIComponent('I want to add an agent for compliance monitoring.');
+
+      content.innerHTML = `
+        <div class="page-header">
+          <h1>Agents</h1>
+          <div class="page-header-actions">
+            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Add agent</a>
+          </div>
+        </div>
+        <div id="agents-list">
+          ${renderAgentsSection(agents, complianceMap, orgId)}
+        </div>
+      `;
+    }
+
+    function renderAgentsSection(agents, complianceMap, orgId) {
+      if (!agents || agents.length === 0) {
+        return `
+          <div style="text-align: center; padding: var(--space-8) var(--space-6);">
+            <div style="font-size: var(--text-2xl); margin-bottom: var(--space-3);">🤖</div>
+            <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Monitor your agents' protocol compliance</p>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 400px; margin: 0 auto var(--space-4);">Register your buyer or seller agents to get automated compliance checks, public trust badges, and storyboard testing — included with your membership.</p>
+            <a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}" class="btn btn-primary btn-sm">Register your first agent</a>
+          </div>
+        `;
+      }
+
+      return agents.map(agent => {
+        const data = complianceMap?.get(agent.url);
+        const cs = data?.status;
+        const history = data?.history;
+        const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+        const hasData = cs && cs.status && cs.status !== 'unknown';
+        const hasAuth = cs?.has_compliance_auth;
+
+        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+
+        if (!hasData) {
+          return `
+          <div class="agent-compliance-card" id="${cardId}">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--unknown"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
+              </div>
+            </div>
+            <div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+              ${hasAuth
+                ? 'Auth configured. Compliance check will run on the next heartbeat cycle.'
+                : 'Connect this agent through <a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '">Addie</a> to save credentials and start compliance monitoring.'}
+            </div>
+            <div class="agent-meta-row">
+              <span></span>
+              <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+            </div>
+            <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
+          </div>`;
+        }
+
+        const statusClass = cs.status;
+        const statusLabel = cs.status;
+        const tracks = cs.tracks || {};
+
+        const clickableTrackPills = Object.entries(tracks)
+          .filter(([, status]) => status !== 'skip' && status !== 'expected')
+          .map(([track, status]) => {
+          const cls = status === 'pass' ? 'agent-track--pass'
+            : status === 'fail' ? 'agent-track--fail'
+            : status === 'partial' ? 'agent-track--partial'
+            : 'agent-track--skip';
+          return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
+        }).join('');
+
+        const runs = history?.runs || [];
+        const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
+          runs.slice().reverse().map(r => {
+            const color = r.overall_status === 'passing' ? 'var(--color-success-500)'
+              : r.overall_status === 'failing' ? 'var(--color-error-500)'
+              : 'var(--color-warning-500)';
+            return '<div class="agent-sparkline-bar" style="background:' + color + ';" title="' + escapeHtml(r.overall_status) + ' — ' + new Date(r.tested_at).toLocaleDateString() + '"></div>';
+          }).join('') + '</div>' : '';
+
+        const lastChecked = cs.last_checked_at
+          ? timeAgo(new Date(cs.last_checked_at))
+          : 'never';
+
+        const isPublic = !(cs.compliance_opt_out ?? false);
+
+        return `
+          <div class="agent-compliance-card" id="${cardId}">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
+                ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
+                <label class="agent-toggle" title="Show compliance on public registry">
+                  <input type="checkbox" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
+                  <span class="agent-toggle-label">Show on registry</span>
+                </label>
+              </div>
+            </div>
+            ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
+            ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
+            <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
+            ${sparkline}
+            <div class="agent-meta-row">
+              <span>Last checked: ${escapeHtml(lastChecked)}</span>
+              <div style="display: flex; gap: var(--space-3); align-items: center;">
+                ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+                <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
+              </div>
+            </div>
+            <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
+            <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function timeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm ago';
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return hours + 'h ago';
+      const days = Math.floor(hours / 24);
+      return days + 'd ago';
+    }
+
+    // Registry visibility toggle
+    document.addEventListener('click', async function(e) {
+      const checkbox = e.target.closest('.agent-toggle input[type="checkbox"]');
+      if (checkbox) {
+        const agentUrl = checkbox.dataset.agentUrl;
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/opt-out`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ opt_out: !checkbox.checked }),
+          });
+          if (!res.ok) {
+            checkbox.checked = !checkbox.checked;
+          }
+        } catch {
+          checkbox.checked = !checkbox.checked;
+        }
+      }
+    });
+
+    // Track pill click — fetch history and show scenario details for that track
+    document.addEventListener('click', async function(e) {
+      const trackBtn = e.target.closest('.agent-track[data-track]');
+      if (trackBtn) {
+        const track = trackBtn.dataset.track;
+        const agentUrl = trackBtn.dataset.agentUrl;
+        const card = trackBtn.closest('.agent-compliance-card');
+        const detailEl = card?.querySelector('.agent-track-detail');
+        if (!detailEl) return;
+
+        if (trackBtn.classList.contains('active')) {
+          trackBtn.classList.remove('active');
+          detailEl.style.display = 'none';
+          return;
+        }
+
+        card.querySelectorAll('.agent-track').forEach(b => b.classList.remove('active'));
+        trackBtn.classList.add('active');
+        detailEl.style.display = 'block';
+        detailEl.innerHTML = '<em>Loading...</em>';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=1', { credentials: 'include' });
+          const data = await res.json();
+          const run = data.runs?.[0];
+          if (!run || !run.tracks_json) {
+            detailEl.innerHTML = '<em>No detailed data available for this run.</em>';
+            return;
+          }
+          const trackData = run.tracks_json.find(t => t.track === track);
+          if (!trackData) {
+            detailEl.innerHTML = '<em>Track "' + escapeHtml(track) + '" not found in latest run.</em>';
+            return;
+          }
+
+          const statusLabel = trackData.status === 'pass' ? 'Passing'
+            : trackData.status === 'fail' ? 'Failing'
+            : trackData.status === 'partial' ? 'Partial' : trackData.status;
+
+          let html = '<h4>' + escapeHtml(track) + ' — ' + escapeHtml(statusLabel) + '</h4>';
+          html += '<div>' + parseInt(trackData.passed_count, 10) + ' of ' + parseInt(trackData.scenario_count, 10) + ' scenarios passing';
+          if (trackData.duration_ms) html += ' (' + (trackData.duration_ms / 1000).toFixed(1) + 's)';
+          html += '</div>';
+
+          if (trackData.scenarios) {
+            for (const s of trackData.scenarios) {
+              const cls = s.overall_passed ? 'track-scenario--pass' : 'track-scenario--fail';
+              html += '<div class="track-scenario ' + cls + '">';
+              html += '<div class="track-scenario-name">' + escapeHtml(s.name) + '</div>';
+              if (!s.overall_passed && s.steps) {
+                html += '<div class="track-scenario-steps">';
+                for (const st of s.steps) {
+                  if (!st.passed) {
+                    html += '<div class="track-step--fail">' + escapeHtml(st.name);
+                    if (st.error) html += ': ' + escapeHtml(String(st.error).substring(0, 200));
+                    html += '</div>';
+                  }
+                }
+                html += '</div>';
+              }
+              html += '</div>';
+            }
+          }
+
+          detailEl.innerHTML = html;
+        } catch {
+          detailEl.innerHTML = '<em>Failed to load track details.</em>';
+        }
+        return;
+      }
+
+      // History button click
+      const historyBtn = e.target.closest('.agent-history-btn');
+      if (historyBtn) {
+        const agentUrl = historyBtn.dataset.agentUrl;
+        const cardId = historyBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-history');
+        if (!panel) return;
+
+        if (panel.style.display !== 'none') {
+          panel.style.display = 'none';
+          return;
+        }
+        panel.style.display = 'block';
+        panel.innerHTML = '<em>Loading history...</em>';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=10', { credentials: 'include' });
+          const data = await res.json();
+
+          if (!data.runs || data.runs.length === 0) {
+            panel.innerHTML = '<em>No compliance history yet.</em>';
+            return;
+          }
+
+          let html = '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Compliance History</div>';
+          for (const run of data.runs) {
+            const dotColor = run.overall_status === 'passing' ? 'var(--color-success-500)'
+              : run.overall_status === 'failing' ? 'var(--color-error-500)'
+              : 'var(--color-warning-500)';
+            const date = new Date(run.tested_at).toLocaleString();
+
+            let runTracks = '';
+            if (run.tracks_json) {
+              for (const t of run.tracks_json) {
+                const cls = t.status === 'pass' ? 'agent-track--pass'
+                  : t.status === 'fail' ? 'agent-track--fail'
+                  : t.status === 'partial' ? 'agent-track--partial'
+                  : 'agent-track--skip';
+                runTracks += '<span class="agent-track ' + cls + '" style="cursor:default;">' + escapeHtml(t.track) + '</span>';
+              }
+            }
+
+            html += '<div class="history-run">';
+            html += '<span class="history-run-dot" style="background:' + dotColor + ';"></span>';
+            html += '<span>' + escapeHtml(date) + '</span>';
+            html += '<span>' + escapeHtml(run.overall_status) + '</span>';
+            html += '<span>' + parseInt(run.tracks_passed, 10) + '/' + (parseInt(run.tracks_passed, 10) + parseInt(run.tracks_failed, 10) + parseInt(run.tracks_partial, 10)) + ' tracks</span>';
+            html += '</div>';
+            if (runTracks) {
+              html += '<div style="padding:var(--space-1) 0 var(--space-2) var(--space-5);display:flex;gap:3px;flex-wrap:wrap;">' + runTracks + '</div>';
+            }
+          }
+          panel.innerHTML = html;
+        } catch {
+          panel.innerHTML = '<em>Failed to load history.</em>';
+        }
+      }
+
+      // Shared: render the storyboard picker into a panel
+      async function renderStoryboardPicker(panel, agentUrl, cardId) {
+        panel.style.display = 'block';
+        panel.innerHTML = '<em>Loading storyboards...</em>';
+        try {
+          const res = await fetch('/api/storyboards', { credentials: 'include' });
+          const data = await res.json();
+          if (!data.storyboards || data.storyboards.length === 0) {
+            panel.innerHTML = '<em>No storyboards available yet.</em>';
+            return;
+          }
+          let html = '<div class="storyboard-picker">';
+          for (const sb of data.storyboards) {
+            html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
+            html += '<div>';
+            html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
+            html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+            html += '</div>';
+            html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
+            html += '</div>';
+          }
+          html += '</div>';
+          panel.innerHTML = html;
+        } catch {
+          panel.innerHTML = '<em>Failed to load storyboards.</em>';
+        }
+      }
+
+      // Storyboard "Test your agent" button
+      const storyboardBtn = e.target.closest('.agent-storyboard-btn');
+      if (storyboardBtn) {
+        const agentUrl = storyboardBtn.dataset.agentUrl;
+        const cardId = storyboardBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        if (panel.style.display !== 'none') {
+          panel.style.display = 'none';
+          return;
+        }
+        await renderStoryboardPicker(panel, agentUrl, cardId);
+        return;
+      }
+
+      // Storyboard picker item click — show storyboard detail
+      const pickerItem = e.target.closest('.storyboard-picker-item');
+      if (pickerItem) {
+        const storyboardId = pickerItem.dataset.storyboardId;
+        const agentUrl = pickerItem.dataset.agentUrl;
+        const cardId = pickerItem.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        panel.innerHTML = '<em>Loading storyboard...</em>';
+
+        try {
+          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId), { credentials: 'include' });
+          const data = await res.json();
+          const sb = data.storyboard;
+          if (!sb) {
+            panel.innerHTML = '<em>Storyboard not found.</em>';
+            return;
+          }
+
+          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
+          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(sb.title) + '</strong></div>';
+          html += '<div class="storyboard-phase-narrative" style="margin-bottom:var(--space-4);">' + escapeHtml(sb.narrative).replace(/\n/g, '<br>') + '</div>';
+
+          for (const phase of sb.phases) {
+            html += '<div class="storyboard-phase">';
+            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
+            html += '<div class="storyboard-phase-narrative">' + escapeHtml(phase.narrative).replace(/\n/g, '<br>') + '</div>';
+
+            for (const step of phase.steps) {
+              html += '<div class="storyboard-step">';
+              html += '<div class="storyboard-step-header">';
+              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
+              html += '<code style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + escapeHtml(step.task) + '</code>';
+              html += '</div>';
+              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
+              html += '<div class="storyboard-step-meta">';
+              if (step.doc_ref) {
+                html += '<a href="/docs' + escapeHtml(step.doc_ref) + '" target="_blank">Docs</a>';
+              }
+              if (step.schema_ref) {
+                html += '<span>Schema: ' + escapeHtml(step.schema_ref) + '</span>';
+              }
+              html += '</div>';
+              html += '</div>';
+            }
+
+            html += '</div>';
+          }
+
+          html += '<div class="storyboard-actions">';
+          html += '<button class="storyboard-run-btn" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Run storyboard</button>';
+          html += '<button class="storyboard-compare-btn" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Compare with reference</button>';
+          html += '</div>';
+
+          panel.innerHTML = html;
+        } catch {
+          panel.innerHTML = '<em>Failed to load storyboard.</em>';
+        }
+        return;
+      }
+
+      // Back button in storyboard view
+      const backBtn = e.target.closest('.storyboard-back-btn');
+      if (backBtn) {
+        const agentUrl = backBtn.dataset.agentUrl;
+        const cardId = backBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (panel) await renderStoryboardPicker(panel, agentUrl, cardId);
+        return;
+      }
+
+      // Run storyboard button
+      const runBtn = e.target.closest('.storyboard-run-btn');
+      if (runBtn) {
+        const storyboardId = runBtn.dataset.storyboardId;
+        const agentUrl = runBtn.dataset.agentUrl;
+        const cardId = runBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        runBtn.disabled = true;
+        runBtn.textContent = 'Running...';
+
+        const progressEl = document.createElement('div');
+        progressEl.className = 'storyboard-progress';
+        progressEl.textContent = 'Running storyboard evaluation against your agent. This may take up to 90 seconds...';
+        runBtn.parentElement.after(progressEl);
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/run', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (res.status === 429) {
+            progressEl.textContent = 'Rate limit exceeded. You can run 5 evaluations per hour. Please try again later.';
+            runBtn.disabled = false;
+            runBtn.textContent = 'Run storyboard';
+            return;
+          }
+
+          const data = await res.json();
+          progressEl.remove();
+
+          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
+          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
+          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(data.summary.headline) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
+
+          for (const phase of data.phases) {
+            html += '<div class="storyboard-phase">';
+            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
+
+            for (const step of phase.steps) {
+              const resultClass = step.result.passed === true ? 'pass'
+                : step.result.passed === false ? 'fail' : 'pending';
+              const resultLabel = step.result.passed === true ? 'Pass'
+                : step.result.passed === false ? 'Fail' : 'N/A';
+
+              html += '<div class="storyboard-step">';
+              html += '<div class="storyboard-step-header">';
+              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
+              html += '<span class="storyboard-step-result storyboard-step-result--' + resultClass + '">' + resultLabel + '</span>';
+              html += '</div>';
+              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
+
+              if (step.result.scenarios) {
+                for (const s of step.result.scenarios) {
+                  if (!s.overall_passed && s.steps) {
+                    html += '<div style="margin-top:var(--space-2);padding:var(--space-2);background:var(--color-error-50);border-radius:var(--radius-sm);font-size:var(--text-xs);">';
+                    for (const st of s.steps) {
+                      if (!st.passed) {
+                        html += '<div style="color:var(--color-error-700);">' + escapeHtml(st.step || st.name || 'Step');
+                        if (st.error) html += ': ' + escapeHtml(String(st.error).substring(0, 300));
+                        html += '</div>';
+                      }
+                    }
+                    html += '</div>';
+                  }
+                }
+              }
+
+              html += '</div>';
+            }
+            html += '</div>';
+          }
+
+          if (data.observations && data.observations.length > 0) {
+            html += '<div style="margin-top:var(--space-3);">';
+            html += '<div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Observations</div>';
+            for (const obs of data.observations) {
+              const color = obs.severity === 'error' ? 'var(--color-error-600)'
+                : obs.severity === 'warning' ? 'var(--color-warning-600)'
+                : 'var(--color-text-secondary)';
+              html += '<div style="font-size:var(--text-xs);color:' + color + ';margin-bottom:var(--space-1);">';
+              html += '<strong>' + escapeHtml(obs.severity) + '</strong>: ' + escapeHtml(obs.message);
+              html += '</div>';
+            }
+            html += '</div>';
+          }
+
+          panel.innerHTML = html;
+        } catch {
+          progressEl.textContent = 'Failed to run storyboard evaluation.';
+          runBtn.disabled = false;
+          runBtn.textContent = 'Run storyboard';
+        }
+        return;
+      }
+
+      // Compare with reference button
+      const compareBtn = e.target.closest('.storyboard-compare-btn');
+      if (compareBtn) {
+        const storyboardId = compareBtn.dataset.storyboardId;
+        const agentUrl = compareBtn.dataset.agentUrl;
+        const cardId = compareBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        compareBtn.disabled = true;
+        compareBtn.textContent = 'Comparing...';
+
+        const progressEl = document.createElement('div');
+        progressEl.className = 'storyboard-progress';
+        progressEl.textContent = 'Running comparison against your agent and the reference test agent...';
+        compareBtn.parentElement.after(progressEl);
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/compare', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (res.status === 429) {
+            progressEl.textContent = 'Rate limit exceeded. Please try again later.';
+            compareBtn.disabled = false;
+            compareBtn.textContent = 'Compare with reference';
+            return;
+          }
+
+          const data = await res.json();
+          progressEl.remove();
+
+          let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
+          html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Comparison</div>';
+
+          html += '<div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-4);font-size:var(--text-sm);">';
+          html += '<div><strong>Your agent:</strong> ' + escapeHtml(data.user_agent.summary.headline) + '</div>';
+          html += '<div><strong>Reference:</strong> ' + escapeHtml(data.reference_agent.summary.headline) + '</div>';
+          html += '</div>';
+
+          for (const phase of data.phases) {
+            html += '<div class="storyboard-phase">';
+            html += '<div class="storyboard-phase-title">' + escapeHtml(phase.title) + '</div>';
+
+            for (const step of phase.steps) {
+              const userClass = step.user_result.passed === true ? 'pass' : step.user_result.passed === false ? 'fail' : 'pending';
+              const refClass = step.reference_result.passed === true ? 'pass' : step.reference_result.passed === false ? 'fail' : 'pending';
+
+              html += '<div class="storyboard-step">';
+              html += '<div class="storyboard-step-header">';
+              html += '<span class="storyboard-step-title">' + escapeHtml(step.title) + '</span>';
+              html += '<div style="display:flex;gap:var(--space-2);">';
+              html += '<span class="storyboard-step-result storyboard-step-result--' + userClass + '">You: ' + (step.user_result.passed === true ? 'Pass' : step.user_result.passed === false ? 'Fail' : 'N/A') + '</span>';
+              html += '<span class="storyboard-step-result storyboard-step-result--' + refClass + '">Ref: ' + (step.reference_result.passed === true ? 'Pass' : step.reference_result.passed === false ? 'Fail' : 'N/A') + '</span>';
+              html += '</div></div>';
+              html += '<div class="storyboard-step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
+              html += '</div>';
+            }
+            html += '</div>';
+          }
+
+          panel.innerHTML = html;
+        } catch {
+          progressEl.textContent = 'Failed to run comparison.';
+          compareBtn.disabled = false;
+          compareBtn.textContent = 'Compare with reference';
+        }
+        return;
+      }
+    });
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

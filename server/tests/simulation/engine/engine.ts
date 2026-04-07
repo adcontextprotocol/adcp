@@ -22,7 +22,7 @@ export class SimulationEngine {
   private pool: Pool;
   private interceptors: Interceptors;
   private timeline: TimelineEvent[] = [];
-  private seededProfiles: Map<string, { archetypeId: string; personId: string; description: string; startStage: RelationshipStage }> = new Map();
+  private seededProfiles: Map<string, { archetypeId: string; personId: string; description: string; startStage: RelationshipStage; orgId?: string }> = new Map();
   private outreachCycleCount = 0;
   private startTime: Date;
 
@@ -52,7 +52,7 @@ export class SimulationEngine {
     if (profile.organization) {
       const org = profile.organization;
       await this.pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, domain, company_type, persona, prospect_contact_email, prospect_contact_name, prospect_owner)
+        `INSERT INTO organizations (workos_organization_id, name, email_domain, company_type, persona, prospect_contact_email, prospect_contact_name, prospect_owner)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (workos_organization_id) DO NOTHING`,
         [
@@ -147,6 +147,7 @@ export class SimulationEngine {
       personId,
       description: profile.description,
       startStage: r.stage,
+      orgId: profile.organization?.workos_organization_id,
     });
 
     return personId;
@@ -434,7 +435,12 @@ export class SimulationEngine {
 
     const placeholders = personIds.map((_, i) => `$${i + 1}`).join(', ');
 
-    // Delete in dependency order
+    // Collect org IDs from seeded profiles for cleanup
+    const orgIds = Array.from(this.seededProfiles.values())
+      .map(p => p.orgId)
+      .filter((id): id is string => !!id);
+
+    // Delete in dependency order (children before parents)
     await this.pool.query(
       `DELETE FROM person_events WHERE person_id IN (${placeholders})`,
       personIds
@@ -453,6 +459,15 @@ export class SimulationEngine {
       `DELETE FROM person_relationships WHERE id IN (${placeholders})`,
       personIds
     );
+
+    // Delete seeded organizations (after person_relationships which reference them)
+    if (orgIds.length > 0) {
+      const orgPlaceholders = orgIds.map((_, i) => `$${i + 1}`).join(', ');
+      await this.pool.query(
+        `DELETE FROM organizations WHERE workos_organization_id IN (${orgPlaceholders})`,
+        orgIds
+      );
+    }
 
     this.timeline = [];
     this.seededProfiles.clear();

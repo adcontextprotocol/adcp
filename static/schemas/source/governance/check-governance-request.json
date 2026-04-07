@@ -5,6 +5,12 @@
   "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload (intent check, orchestrator) or media_buy_id+planned_delivery (execution check, seller).",
   "type": "object",
   "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "plan_id": {
       "type": "string",
       "description": "Campaign governance plan identifier."
@@ -119,7 +125,11 @@
           "properties": {
             "baseline": {
               "type": "string",
-              "enum": ["census", "platform", "custom"],
+              "enum": [
+                "census",
+                "platform",
+                "custom"
+              ],
               "description": "Population baseline used for index calculation. 'census': national census or equivalent population data. 'platform': the seller's active user base. 'custom': a custom baseline defined by the seller (describe in baseline_description)."
             },
             "baseline_description": {
@@ -149,7 +159,10 @@
               }
             }
           },
-          "required": ["baseline", "indices"],
+          "required": [
+            "baseline",
+            "indices"
+          ],
           "additionalProperties": false
         }
       },

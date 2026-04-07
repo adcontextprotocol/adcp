@@ -10,6 +10,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
+import { findSuccessorForPromotion, setMembershipRole } from "../../db/membership-db.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-organizations");
@@ -1240,6 +1241,7 @@ export function setupOrganizationRoutes(
           memberCount: number;
           members: Array<{ userId: string; membershipId: string; email: string }>;
           fixed: boolean;
+          promotedEmail: string | null;
         }> = [];
 
         for (const org of orgsResult.rows) {
@@ -1289,40 +1291,72 @@ export function setupOrganizationRoutes(
               }
 
               let fixed = false;
+              let memberToPromote: (typeof members)[0] | undefined;
 
-              // Only auto-fix single-member orgs
-              if (fix && members.length === 1) {
-                const member = members[0];
-                try {
-                  await workos.userManagement.updateOrganizationMembership(
-                    member.membershipId,
-                    { roleSlug: "admin" }
-                  );
+              if (fix) {
+                // Pick who to promote:
+                // - Single-member: the only member
+                // - Multi-member: longest-tenured member (same logic as webhook successor promotion)
 
-                  // Update local cache
-                  await pool.query(
-                    `UPDATE organization_memberships
-                     SET role = 'admin', updated_at = NOW()
-                     WHERE workos_organization_id = $1 AND workos_user_id = $2`,
-                    [org.workos_organization_id, member.userId]
+                if (members.length === 1) {
+                  memberToPromote = members[0];
+                } else {
+                  const successor = await findSuccessorForPromotion(
+                    org.workos_organization_id
                   );
+                  if (successor) {
+                    memberToPromote = members.find(
+                      (m) => m.userId === successor.workos_user_id
+                    );
+                  }
+                  if (!memberToPromote) {
+                    logger.warn(
+                      { orgId: org.workos_organization_id, orgName: org.name },
+                      "Admin audit: local DB missing tenure data, skipping org"
+                    );
+                  }
+                }
 
-                  fixed = true;
+                if (memberToPromote) {
+                  try {
+                    // Promote to admin (not owner — lower privilege for bulk operations)
+                    await workos.userManagement.updateOrganizationMembership(
+                      memberToPromote.membershipId,
+                      { roleSlug: "admin" }
+                    );
 
-                  logger.info(
-                    {
-                      orgId: org.workos_organization_id,
-                      orgName: org.name,
-                      userId: member.userId,
-                      adminEmail: req.user!.email,
-                    },
-                    "Admin audit: promoted single-member org user to admin"
-                  );
-                } catch (err) {
-                  logger.error(
-                    { err, orgId: org.workos_organization_id },
-                    "Admin audit: failed to promote user"
-                  );
+                    fixed = true;
+
+                    try {
+                      await setMembershipRole(
+                        memberToPromote.userId,
+                        org.workos_organization_id,
+                        "admin"
+                      );
+                    } catch (localErr) {
+                      logger.error(
+                        { err: localErr, orgId: org.workos_organization_id },
+                        "Admin audit: promoted in WorkOS but failed to update local cache"
+                      );
+                    }
+
+                    logger.info(
+                      {
+                        orgId: org.workos_organization_id,
+                        orgName: org.name,
+                        userId: memberToPromote.userId,
+                        email: memberToPromote.email,
+                        memberCount: members.length,
+                        adminEmail: req.user!.email,
+                      },
+                      "Admin audit: promoted member to admin"
+                    );
+                  } catch (err) {
+                    logger.error(
+                      { err, orgId: org.workos_organization_id },
+                      "Admin audit: failed to promote user in WorkOS"
+                    );
+                  }
                 }
               }
 
@@ -1332,6 +1366,7 @@ export function setupOrganizationRoutes(
                 memberCount: members.length,
                 members,
                 fixed,
+                promotedEmail: fixed ? (memberToPromote?.email ?? null) : null,
               });
             }
           } catch (err) {
@@ -1342,28 +1377,21 @@ export function setupOrganizationRoutes(
           }
         }
 
-        const singleMemberOrgs = orgsWithoutAdmin.filter(
-          (o) => o.memberCount === 1
-        );
-        const multiMemberOrgs = orgsWithoutAdmin.filter(
-          (o) => o.memberCount > 1
-        );
+        const unfixed = orgsWithoutAdmin.filter((o) => !o.fixed);
 
         res.json({
           total_orgs: orgsResult.rows.length,
           orgs_without_admin: orgsWithoutAdmin.length,
           fix_mode: fix,
-          auto_fixed: singleMemberOrgs.filter((o) => o.fixed).length,
-          single_member_orgs: singleMemberOrgs.length,
-          needs_review: multiMemberOrgs.length,
+          auto_fixed: orgsWithoutAdmin.filter((o) => o.fixed).length,
+          remaining: unfixed.length,
           details: orgsWithoutAdmin.map((o) => ({
             org_id: o.orgId,
             org_name: o.orgName,
             has_admin: false,
             member_count: o.memberCount,
             members: o.members.map((m) => ({ email: m.email, user_id: m.userId })),
-            promoted_user: o.fixed ? o.members[0]?.email : null,
-            needs_manual_review: o.memberCount > 1,
+            promoted_user: o.fixed ? o.promotedEmail : null,
           })),
         });
       } catch (error) {

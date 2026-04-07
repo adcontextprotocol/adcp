@@ -108,7 +108,6 @@ import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
 import { CERTIFICATION_TOOLS, createCertificationToolHandlers, buildCertificationContext } from './mcp/certification-tools.js';
 import * as certDb from '../db/certification-db.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
-import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
   extractArticleUrls,
@@ -699,9 +698,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
 
-  // Initialize email handler (for responding to emails)
-  initializeEmailHandler();
-
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
 
@@ -906,7 +902,9 @@ async function createUserScopedTools(
     for (const [name, handler] of adminHandlers) {
       allHandlers.set(name, handler);
     }
-    logger.debug('Addie Bolt: Admin tools enabled for this user');
+    logger.debug({ slackUserId }, 'Addie Bolt: Admin tools enabled for this user');
+  } else if (slackUserId) {
+    logger.debug({ slackUserId }, 'Addie Bolt: User is NOT an admin — admin tools withheld');
   }
 
   // Add event tools if user can create events (admin or committee lead)
@@ -1139,10 +1137,11 @@ async function selectRoutedToolsForSlackResponse(
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
 
-  // Certification sessions use ONLY certification tools — replace whatever the router selected
+  // Certification sessions use certification + knowledge tools so Addie can verify protocol claims
   if (options?.hasCertificationContext) {
     selectedSets.length = 0;
     selectedSets.push('certification');
+    selectedSets.push('knowledge');
   }
 
   // Admin DMs and admin channels: always include admin tools.
@@ -1479,7 +1478,7 @@ async function handleUserMessage({
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit; certification sessions get more iterations and conversation history
+  // Admin users get higher iteration limit; certification sessions get more iterations
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
@@ -1488,7 +1487,6 @@ async function handleUserMessage({
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
-    ...(hasCertificationContext && { maxMessages: 50 }),
     slackUserId: userId,
     threadId: thread.thread_id,
   };
