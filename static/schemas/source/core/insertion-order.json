@@ -56,10 +56,6 @@
           "description": "Payment terms",
           "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
         },
-        "measurement_terms": {
-          "$ref": "/schemas/core/measurement-terms.json",
-          "description": "Measurement terms applied across all packages in this IO. Package-level measurement_terms override IO-level terms where both are present."
-        }
       },
       "additionalProperties": true
     },
