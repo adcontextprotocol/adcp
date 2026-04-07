@@ -284,7 +284,7 @@
         },
         "signal-pricing": {
           "$ref": "/schemas/core/signal-pricing.json",
-          "description": "Signal pricing model — discriminated union of cpm (fixed CPM), percent_of_media (percentage of spend, with optional CPM cap), or flat_fee (fixed charge per reporting period)"
+          "description": "Vendor pricing model — discriminated union of cpm (fixed CPM), percent_of_media (percentage of spend, with optional CPM cap), flat_fee (fixed charge per reporting period), or per_unit (fixed price per unit of work)"
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",

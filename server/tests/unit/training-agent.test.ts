@@ -1866,6 +1866,7 @@ describe('build_creative pricing', () => {
     expect(result.pricing_option_id).toBe('po_display_300x250_cpm');
     expect(result.vendor_cost).toBe(0); // CPM: cost accrues at serve time
     expect(result.currency).toBe('USD');
+    expect(result.consumption).toBeDefined();
   });
 
   it('omits pricing fields when account is not provided', async () => {
@@ -2114,6 +2115,41 @@ describe('report_usage handler', () => {
     expect(isError).toBe(true);
     expect(result.code).toBe('NOT_FOUND');
     expect(result.message).toContain('nonexistent_segment');
+  });
+
+  it('rejects negative vendor_cost', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        vendor_cost: -100,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.message).toContain('non-negative');
+  });
+
+  it('rejects negative impressions', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        vendor_cost: 100,
+        currency: 'USD',
+        impressions: -500,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.message).toContain('non-negative');
   });
 });
 
