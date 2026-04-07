@@ -164,7 +164,7 @@ Cancellation policy is not a negotiation surface. The seller declares it on the 
 
 The insertion order is a signing wrapper around a committed proposal. It does not introduce new deal terms. All negotiated terms live on products and packages. The IO's `terms` object provides summary fields (advertiser, publisher, budget, dates, payment terms) so buyer agents can verify the IO matches the proposal before a human signs via DocuSign or similar.
 
-## Vendor Identity
+## Vendor Identity and Measurement Agents
 
 All measurement and verification vendors are identified by domain using the standard [brand reference](/docs/brand-protocol/brand-json) — the same system used for brands, operators, and accounts. Examples:
 
@@ -173,3 +173,16 @@ All measurement and verification vendors are identified by domain using the stan
 - `{ "domain": "oracle.com", "brand_id": "moat" }` — MOAT
 - `{ "domain": "campaignmanager.google.com" }` — Google Campaign Manager
 - `{ "domain": "admanager.google.com" }` — Google Ad Manager
+
+The vendor's `brand.json` at their domain is the discovery point for their agent capabilities. This follows the same pattern as `brand_agent` (brand data via MCP) and `rights_agent` (rights licensing via MCP) — measurement vendors can advertise a measurement agent that provides live delivery rates for active media buys.
+
+This enables the same data flow pattern used by [content standards](/docs/governance/content-standards): the buyer or seller queries the measurement agent for current rates against agreed performance standards, rather than waiting for post-campaign reporting. The measurement vendor participates as an agent, not a black box.
+
+### Relationship to Content Standards
+
+[Content standards agents](/docs/governance/content-standards) validate WHAT was delivered (brand safety, content categorization). Performance standards measure HOW WELL it was delivered (viewability rates, IVT rates, completion rates). The vendor may be the same company — DoubleVerify provides both brand safety scoring and viewability measurement — but the concerns are distinct:
+
+- **Content standards**: `validate_content_delivery` — "was this ad placed next to safe content?"
+- **Performance standards**: measurement agent — "what percentage of impressions were viewable?"
+
+Both use agent-to-agent workflows. Content standards are already fully specified. Measurement agent interfaces are a follow-up to this specification.
