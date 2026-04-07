@@ -176,15 +176,6 @@ describe('Admin Prompt Routing', () => {
           expect(testCase.prompts.length).toBeGreaterThan(0);
         });
 
-        test.each(testCase.prompts)('"%s" → %s', (prompt) => {
-          // Document the expected mapping
-          console.log(`  Prompt: "${prompt}"`);
-          console.log(`  Expected tools: ${testCase.expectedTools.join(', ')}`);
-          if (testCase.notExpectedTools) {
-            console.log(`  NOT expected: ${testCase.notExpectedTools.join(', ')}`);
-          }
-          expect(true).toBe(true);
-        });
       });
     }
   });
