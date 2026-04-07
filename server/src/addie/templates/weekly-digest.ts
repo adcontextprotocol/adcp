@@ -165,7 +165,13 @@ export function renderDigestEmail(
             <a href="${t(`edition_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
           </h3>
           <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+          ${item.takeaways && item.takeaways.length > 0 ? `
+          <ul style="margin: 8px 0 4px 0; padding-left: 20px;">
+            ${item.takeaways.map((tw) => `<li style="font-size: 14px; color: #333; margin-bottom: 6px; line-height: 1.5;">${escapeHtml(tw)}</li>`).join('')}
+          </ul>
+          ` : `
           <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">${escapeHtml(item.whyItMatters)}</p>
+          `}
         </div>
         `).join('');
         html += '<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">';
@@ -232,12 +238,27 @@ export function renderDigestEmail(
     </p>
     ` : ''}
 
-    <!-- Sign-off + CTA -->
+    <!-- Take Action -->
+    ${content.takeActions && content.takeActions.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Take action</h2>
+    ${content.takeActions.map((action, i) => `
+    <div style="margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px;">
+      <p style="font-size: 14px; color: #333; margin: 0; flex: 1; line-height: 1.5;">
+        ${escapeHtml(action.text)}
+        <a href="${t(`action_${i}`, action.ctaUrl)}" style="color: #2563eb; font-weight: 600; text-decoration: none; white-space: nowrap;">${escapeHtml(action.ctaLabel)} &rarr;</a>
+      </p>
+    </div>
+    `).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
+    <!-- Sign-off -->
     <p style="font-size: 15px; color: #333; line-height: 1.6; margin-bottom: 4px;">
-      That's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.
+      We're building this together. If something here resonated, pass it along — every share brings in someone new.
     </p>
     <p style="font-size: 15px; color: #333; margin-top: 8px;">
-      — Addie<br>
+      Let's keep building,<br>
+      Addie<br>
       <span style="font-size: 13px; color: #666;">AgenticAdvertising.org</span>
     </p>
 
@@ -387,13 +408,30 @@ function renderDigestText(
   }
 
   if (content.whatToWatch.length > 0) {
-    lines.push('--- WHAT TO WATCH ---', '');
-    for (const item of content.whatToWatch) {
+    const officialText = content.whatToWatch.filter((item) => item.tags?.includes('official'));
+    const externalText = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+
+    for (const item of officialText) {
       lines.push(`* ${item.title}`);
       lines.push(`  ${item.summary}`);
-      lines.push(`  ${item.whyItMatters}`);
+      if (item.takeaways && item.takeaways.length > 0) {
+        for (const tw of item.takeaways) {
+          lines.push(`  - ${tw}`);
+        }
+      }
       lines.push(`  ${item.url}`);
       lines.push('');
+    }
+
+    if (externalText.length > 0) {
+      lines.push('--- INDUSTRY INTEL ---', '');
+      for (const item of externalText) {
+        lines.push(`* ${item.title}`);
+        lines.push(`  ${item.summary}`);
+        lines.push(`  ${item.whyItMatters}`);
+        lines.push(`  ${item.url}`);
+        lines.push('');
+      }
     }
   }
 
@@ -428,9 +466,19 @@ function renderDigestText(
     }
   }
 
+  if (content.takeActions && content.takeActions.length > 0) {
+    lines.push('--- TAKE ACTION ---', '');
+    for (const action of content.takeActions) {
+      lines.push(`* ${action.text}`);
+      lines.push(`  ${action.ctaLabel}: ${action.ctaUrl}`);
+      lines.push('');
+    }
+  }
+
   lines.push('---', '');
-  lines.push("That's the week. If one thing stuck, share it.", '');
-  lines.push('— Addie');
+  lines.push("We're building this together. If something here resonated, pass it along.", '');
+  lines.push("Let's keep building,");
+  lines.push('Addie');
   lines.push('AgenticAdvertising.org', '');
   lines.push(`Read online: ${BASE_URL}/perspectives/the-prompt-${editionDate}`);
 
@@ -465,9 +513,32 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     });
   }
 
+  // Official content (with takeaways)
+  const officialSlack = content.whatToWatch.filter((item) => item.tags?.includes('official'));
+  const externalSlack = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+
+  if (officialSlack.length > 0) {
+    const officialText = officialSlack
+      .map((item) => {
+        let text = `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*`;
+        if (item.takeaways && item.takeaways.length > 0) {
+          text += '\n' + item.takeaways.map((tw) => `> • ${escapeSlackMrkdwn(tw)}`).join('\n');
+        } else {
+          text += `\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`;
+        }
+        return text;
+      })
+      .join('\n\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: officialText },
+    });
+  }
+
   // Industry intel
-  if (content.whatToWatch.length > 0) {
-    const watchText = content.whatToWatch
+  if (externalSlack.length > 0) {
+    const watchText = externalSlack
       .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
       .join('\n\n');
     blocks.push({ type: 'divider' });
@@ -501,6 +572,18 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Voices*\n\n${voicesText}` },
+    });
+  }
+
+  // Take action
+  if (content.takeActions && content.takeActions.length > 0) {
+    const actionText = content.takeActions
+      .map((a) => `• ${escapeSlackMrkdwn(a.text)} <${a.ctaUrl}|${escapeSlackMrkdwn(a.ctaLabel)}>`)
+      .join('\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Take action*\n\n${actionText}` },
     });
   }
 
