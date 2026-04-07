@@ -838,6 +838,11 @@ export class HTTPServer {
   // Redirect through AAO session bridge if on AdCP without a session cookie.
   // Returns true if a redirect was issued (caller should return early).
   private bridgeIfNeeded(req: express.Request, res: express.Response): boolean {
+    // Skip the bridge for clients that don't send cookies (agents, curl, bots).
+    // They will never have a session to bridge, so the redirect is pointless
+    // and creates an infinite loop for clients without a cookie jar.
+    if (!req.headers.cookie) return false;
+
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
       const currentUrl = `https://${req.hostname}${req.originalUrl}`;
       res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
