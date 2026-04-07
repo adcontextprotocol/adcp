@@ -11,7 +11,7 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(9);
+    expect(results.length).toBeGreaterThanOrEqual(11);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('creative_template');
@@ -23,6 +23,8 @@ describe('listStoryboards', () => {
     expect(ids).toContain('media_buy_proposal_mode');
     expect(ids).toContain('media_buy_governance_escalation');
     expect(ids).toContain('media_buy_catalog_creative');
+    expect(ids).toContain('signal_marketplace');
+    expect(ids).toContain('signal_owned');
   });
 
   it('each summary has required fields', () => {
@@ -47,6 +49,14 @@ describe('listStoryboards', () => {
     const adServers = listStoryboards('creative_ad_server');
     expect(adServers.length).toBe(1);
     expect(adServers[0].id).toBe('creative_ad_server');
+
+    const signalMarketplace = listStoryboards('signal_marketplace');
+    expect(signalMarketplace.length).toBe(1);
+    expect(signalMarketplace[0].id).toBe('signal_marketplace');
+
+    const signalOwned = listStoryboards('signal_owned');
+    expect(signalOwned.length).toBe(1);
+    expect(signalOwned[0].id).toBe('signal_owned');
   });
 
   it('returns empty array for unknown category', () => {
@@ -100,6 +110,17 @@ describe('getStoryboard', () => {
     expect(sb.agent.interaction_model).toBe('stateful_push');
   });
 
+  it('signal_marketplace has marketplace_catalog interaction model', () => {
+    const sb = getStoryboard('signal_marketplace')!;
+    expect(sb.agent.interaction_model).toBe('marketplace_catalog');
+    expect(sb.agent.capabilities).toContain('catalog_signals');
+  });
+
+  it('signal_owned has owned_signals interaction model', () => {
+    const sb = getStoryboard('signal_owned')!;
+    expect(sb.agent.interaction_model).toBe('owned_signals');
+  });
+
   it('every step has required fields', () => {
     const storyboards = listStoryboards();
     for (const summary of storyboards) {
@@ -125,7 +146,7 @@ describe('getStoryboard', () => {
 
   it('schema_ref paths point to known schema directories', () => {
     const storyboards = listStoryboards();
-    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/'];
+    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/', 'signals/'];
     for (const summary of storyboards) {
       const sb = getStoryboard(summary.id)!;
       for (const phase of sb.phases) {
@@ -143,6 +164,19 @@ describe('getTestKit', () => {
     const kit = getTestKit('acme_outdoor');
     expect(kit).toBeDefined();
     expect(kit!.name).toBe('Acme Outdoor');
+  });
+
+  it('returns nova_motors test kit', () => {
+    const kit = getTestKit('nova_motors');
+    expect(kit).toBeDefined();
+    expect(kit!.name).toBe('Nova Motors');
+  });
+
+  it('nova_motors test kit has signal definitions', () => {
+    const kit = getTestKit('nova_motors')!;
+    const signals = kit as unknown as { signals: { marketplace: unknown[]; owned: unknown[] } };
+    expect(signals.signals.marketplace.length).toBeGreaterThanOrEqual(3);
+    expect(signals.signals.owned.length).toBeGreaterThanOrEqual(3);
   });
 
   it('test kit has brand data', () => {
@@ -178,6 +212,18 @@ describe('getTestKitForStoryboard', () => {
     const kit = getTestKitForStoryboard('creative_sales_agent');
     expect(kit).toBeDefined();
     expect(kit!.id).toBe('acme_outdoor');
+  });
+
+  it('resolves test kit for signal_marketplace storyboard', () => {
+    const kit = getTestKitForStoryboard('signal_marketplace');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('nova_motors');
+  });
+
+  it('resolves test kit for signal_owned storyboard', () => {
+    const kit = getTestKitForStoryboard('signal_owned');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('nova_motors');
   });
 
   it('returns undefined for storyboard without test kit', () => {
@@ -336,5 +382,38 @@ describe('storyboard interaction models', () => {
     expect(tasks).toContain('sync_creatives');
     expect(tasks).toContain('preview_creative');
     expect(tasks).not.toContain('build_creative');
+  });
+
+  it('signal_marketplace uses get_signals and activate_signal with a verification phase', () => {
+    const sb = getStoryboard('signal_marketplace')!;
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('get_signals');
+    expect(tasks).toContain('activate_signal');
+
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('verification');
+    expect(phaseIds).toContain('platform_activation');
+    expect(phaseIds).toContain('agent_activation');
+  });
+
+  it('signal_owned uses get_signals and activate_signal without a verification phase', () => {
+    const sb = getStoryboard('signal_owned')!;
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('get_signals');
+    expect(tasks).toContain('activate_signal');
+
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).not.toContain('verification');
+    expect(phaseIds).toContain('platform_activation');
+    expect(phaseIds).toContain('agent_activation');
+  });
+
+  it('both signal storyboards cover platform and agent destination types', () => {
+    for (const id of ['signal_marketplace', 'signal_owned']) {
+      const sb = getStoryboard(id)!;
+      const phaseIds = sb.phases.map((p) => p.id);
+      expect(phaseIds).toContain('platform_activation');
+      expect(phaseIds).toContain('agent_activation');
+    }
   });
 });
