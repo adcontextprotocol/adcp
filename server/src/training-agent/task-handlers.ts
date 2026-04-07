@@ -2525,9 +2525,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return toolResult;
     }
 
-    // Clamp TTL to prevent unbounded task lifetime / memory exhaustion
-    const MAX_TASK_TTL = 24 * 60 * 60 * 1000; // 24 hours
-    const DEFAULT_TASK_TTL = 60 * 60 * 1000;  // 1 hour
+    // Training agent tasks resolve immediately, so moderate TTLs suffice.
+    // 15 minutes gives developers time to inspect tasks while debugging.
+    // With the rate limiter (60 req/min) this caps live tasks at ~900.
+    const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
+    const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
 
     // Task-augmented: use the raw module-level task store directly.
