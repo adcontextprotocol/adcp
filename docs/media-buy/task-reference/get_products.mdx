@@ -261,7 +261,8 @@ Returns an array of `products` and optionally `proposals`.
 | `collection_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 | `measurement_readiness` | [MeasurementReadiness](/docs/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
-| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms) | (Optional) Seller's default measurement and verification terms — billing measurement vendor, IVT threshold, viewability floor. Buyers may propose different terms at `create_media_buy`. See [Measurement Terms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms). |
+| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-guarantees) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at `create_media_buy`. |
+| `performance_guarantees` | [PerformanceGuarantee[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-guarantees) | (Optional) Seller's default performance guarantees (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different guarantees at `create_media_buy`. |
 | `cancellation_policy` | [CancellationPolicy](/docs/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
 
 ### Proposals Array (Optional)

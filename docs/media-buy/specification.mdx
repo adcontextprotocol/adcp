@@ -158,7 +158,7 @@ Rejection is not terminal — the buyer fixes the creative and resubmits via `sy
 
 ### Verification Tag Enforcement
 
-When a confirmed package's `measurement_terms` specifies a `vendor` on `ivt_threshold` or any entry in `performance_guarantees`, creatives assigned to that package MUST include at least one URL asset with `url_type: "tracker_script"` or `url_type: "tracker_pixel"` corresponding to each specified vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED` and a `details` message identifying the missing vendor tag. Buyer agents SHOULD proactively include vendor tags based on the agreed `measurement_terms` before submitting creatives.
+When a confirmed package's `performance_guarantees` includes any entry with a `vendor`, creatives assigned to that package MUST include at least one URL asset with `url_type: "tracker_script"` or `url_type: "tracker_pixel"` corresponding to each specified vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED` and a `details` message identifying the missing vendor tag. Buyer agents SHOULD proactively include vendor tags based on the agreed `measurement_terms` before submitting creatives.
 
 ## Tasks
 

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/measurement-terms.json",
   "title": "Measurement Terms",
-  "description": "Measurement and verification terms for media buys. Appears on products (seller defaults), package requests (buyer proposals), and confirmed packages (agreed terms). All fields are optional — presence indicates the term is declared or proposed.",
+  "description": "Billing measurement and makegood terms for media buys. Declares who counts the billing metric and what remedies apply when thresholds are breached. Appears on products (seller defaults), package requests (buyer proposals), and confirmed packages (agreed terms). All fields are optional — presence indicates the term is declared or proposed.",
   "type": "object",
   "properties": {
     "billing_measurement": {
@@ -23,39 +23,13 @@
       "required": ["vendor"],
       "additionalProperties": true
     },
-    "ivt_threshold": {
-      "type": "object",
-      "description": "Invalid Traffic threshold and the vendor responsible for measuring it.",
-      "properties": {
-        "max_percent": {
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMaximum": 100,
-          "description": "Maximum acceptable IVT percentage (e.g., 5 means less than 5% invalid traffic). Measured by the specified vendor."
-        },
-        "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
-          "description": "Vendor responsible for IVT detection and measurement (e.g., { domain: 'doubleverify.com' }). When specified on a confirmed package, creatives assigned to this package MUST include tracker_script or tracker_pixel assets from this vendor."
-        }
-      },
-      "required": ["max_percent", "vendor"],
-      "additionalProperties": true
-    },
-    "performance_guarantees": {
-      "type": "array",
-      "description": "Guaranteed minimum rates for performance metrics. Each entry specifies a metric, threshold, and measurement vendor. When agreed on a confirmed package, creatives MUST include tracker assets from vendors specified in the guarantees.",
-      "items": {
-        "$ref": "/schemas/core/performance-guarantee.json"
-      },
-      "minItems": 1
-    },
     "makegood_policy": {
       "type": "object",
-      "description": "Remedies available when a performance guarantee, IVT threshold, or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
+      "description": "Remedies available when a performance guarantee or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
       "properties": {
         "available_remedies": {
           "type": "array",
-          "description": "Remedy types the seller supports for this product. Ordered by seller preference (first = preferred). Seller proposes from this list when a breach occurs; buyer accepts or disputes.",
+          "description": "Remedy types the seller supports. Ordered by seller preference (first = preferred). Seller proposes from this list when a breach occurs; buyer accepts or disputes.",
           "items": {
             "$ref": "/schemas/enums/makegood-remedy.json"
           },

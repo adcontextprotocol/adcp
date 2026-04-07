@@ -50,9 +50,12 @@ Publishers specify their measurement provider in the product:
 
 By accepting the product, buyers agree to use the declared measurement provider as the authoritative source for delivery metrics.
 
-### Measurement Terms
+### Measurement Terms and Performance Guarantees
 
-Beyond declaring a provider, sellers can publish structured `measurement_terms` on products — and buyers can negotiate them at buy creation:
+Beyond declaring a provider, sellers can publish structured terms on products — and buyers can negotiate them at buy creation. These are two separate concerns:
+
+- **`measurement_terms`** — Who counts the billing metric and what happens when thresholds are breached
+- **`performance_guarantees`** — What rates are guaranteed (viewability, IVT, completion, brand safety, attention)
 
 ```json
 {
@@ -66,45 +69,53 @@ Beyond declaring a provider, sellers can publish structured `measurement_terms` 
       "vendor": { "domain": "admanager.google.com" },
       "max_variance_percent": 10
     },
-    "ivt_threshold": {
-      "max_percent": 5,
-      "vendor": { "domain": "doubleverify.com" }
-    },
-    "performance_guarantees": [
-      {
-        "metric": "viewability",
-        "min_rate": 0.70,
-        "standard": "mrc",
-        "vendor": { "domain": "doubleverify.com" }
-      },
-      {
-        "metric": "completion_rate",
-        "min_rate": 0.80,
-        "vendor": { "domain": "doubleverify.com" }
-      }
-    ],
     "makegood_policy": {
       "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
     }
-  }
+  },
+  "performance_guarantees": [
+    {
+      "metric": "viewability",
+      "threshold": 0.70,
+      "standard": "mrc",
+      "vendor": { "domain": "doubleverify.com" }
+    },
+    {
+      "metric": "ivt",
+      "threshold": 0.05,
+      "vendor": { "domain": "doubleverify.com" }
+    },
+    {
+      "metric": "completion_rate",
+      "threshold": 0.80,
+      "vendor": { "domain": "doubleverify.com" }
+    }
+  ]
 }
 ```
 
-**Fields:**
+**Measurement terms fields:**
 
 - **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution.
-- **`ivt_threshold`** — Maximum acceptable Invalid Traffic rate. The `vendor` is identified by domain using the standard brand reference (e.g., `{ "domain": "doubleverify.com" }`). When agreed on a confirmed package, creatives MUST include `tracker_script` or `tracker_pixel` assets from the specified vendor.
-- **`performance_guarantees`** — Array of guaranteed minimum rates for performance metrics. Each entry specifies a `metric` (`viewability`, `completion_rate`, `brand_safety`, `attention_score`), a `min_rate` (decimal, e.g., 0.70 for 70%), an optional `standard` (required for viewability: `"mrc"` or `"groupm"`), and a `vendor`. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
-- **`makegood_policy`** — Closed menu of remedies available when any threshold is breached. Three remedy types: `additional_delivery` (extend/add impressions, like-for-like), `credit` (toward future buys), `invoice_adjustment` (reduce current invoice). Seller proposes from this menu; buyer accepts or disputes.
+- **`makegood_policy`** — Closed menu of remedies available when any performance guarantee or billing variance is breached. Three remedy types: `additional_delivery` (extend/add impressions, like-for-like), `credit` (toward future buys), `invoice_adjustment` (reduce current invoice). Seller proposes from this menu; buyer accepts or disputes.
+
+**Performance guarantees fields:**
+
+Each entry in the `performance_guarantees` array specifies:
+
+- **`metric`** — What is guaranteed: `viewability`, `ivt`, `completion_rate`, `brand_safety`, `attention_score`
+- **`threshold`** — Rate as a decimal (0-1). Whether this is a floor or ceiling depends on the metric: viewability, completion_rate, brand_safety, attention_score are floors (must exceed); ivt is a ceiling (must not exceed).
+- **`standard`** — Required for viewability (`"mrc"` or `"groupm"`). Omit for other metrics.
+- **`vendor`** — Who measures it, identified by domain. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
 
 **Negotiation flow:**
 
-1. Seller publishes `measurement_terms` on the product (defaults)
-2. Buyer proposes terms on the package request at `create_media_buy` (overrides)
+1. Seller publishes `measurement_terms` and `performance_guarantees` on the product (defaults)
+2. Buyer proposes overrides on the package request at `create_media_buy`
 3. Seller accepts (echoes on confirmed package), rejects (`TERMS_REJECTED`), or adjusts (returns modified terms)
 4. If a threshold is breached, seller proposes a remedy from the agreed `makegood_policy`; buyer accepts or disputes
 
-When the buyer omits `measurement_terms`, the product's defaults apply.
+When the buyer omits these fields, the product's defaults apply.
 
 ### Cancellation Policy
 

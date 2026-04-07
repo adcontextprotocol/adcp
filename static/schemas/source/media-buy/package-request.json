@@ -75,7 +75,15 @@
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
-      "description": "Buyer's proposed measurement and verification terms for this package. Overrides the product's defaults. The seller validates against its policy and either accepts (echoed on the confirmed package), rejects with TERMS_REJECTED, or adjusts and returns the actual terms. When absent, the product's measurement_terms apply."
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_guarantees": {
+      "type": "array",
+      "description": "Buyer's proposed performance guarantees for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_guarantees apply.",
+      "items": {
+        "$ref": "/schemas/core/performance-guarantee.json"
+      },
+      "minItems": 1
     },
     "creative_assignments": {
       "type": "array",
