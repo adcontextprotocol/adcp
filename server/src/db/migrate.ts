@@ -115,6 +115,7 @@ async function applyMigration(migration: Migration): Promise<void> {
 
   try {
     await client.query("BEGIN");
+    await client.query("SET LOCAL statement_timeout = 0");
 
     // Execute migration SQL
     await client.query(migration.sql);
