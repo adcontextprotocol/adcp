@@ -36,7 +36,7 @@ function cleanSlackMarkup(text: string): string {
 }
 
 /** Truncate text at the nearest word boundary before maxLen, adding ellipsis. */
-function truncateAtWord(text: string, maxLen: number): string {
+export function truncateAtWord(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   const truncated = text.slice(0, maxLen);
   const lastSpace = truncated.lastIndexOf(' ');
@@ -86,6 +86,7 @@ export async function getDigestEligibleGroups(): Promise<Array<{ id: string; nam
   const result = await query<{ id: string; name: string; slug: string }>(
     `SELECT id, name, slug FROM working_groups
      WHERE status = 'active'
+       AND is_private = false
        AND committee_type IN ('working_group', 'steering_committee')
      ORDER BY display_order`,
   );
