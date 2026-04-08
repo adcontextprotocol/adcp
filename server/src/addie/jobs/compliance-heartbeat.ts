@@ -5,7 +5,7 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { comply, type ComplyOptions } from '../services/compliance-testing.js';
+import { comply, type ComplyOptions, type PlatformType } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type TrackSummaryEntry, type OverallRunStatus, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
@@ -56,12 +56,17 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // These are credentials the owner saved when connecting through Addie.
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
 
+      // Pass platform_type for coherence reporting
+      const metadata = await complianceDb.getRegistryMetadata(agent.agent_url);
+      const platformType = metadata?.platform_type as PlatformType | undefined;
+
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
         dry_run: true,
         timeout_ms: 60_000,
         auth,
         userAgent: AAO_UA_COMPLIANCE,
+        ...(platformType && { platform_type: platformType }),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
