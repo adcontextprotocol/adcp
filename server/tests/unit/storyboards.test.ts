@@ -146,7 +146,7 @@ describe('getStoryboard', () => {
 
   it('schema_ref paths point to known schema directories', () => {
     const storyboards = listStoryboards();
-    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/', 'signals/', 'core/', 'brand/'];
+    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/', 'signals/'];
     for (const summary of storyboards) {
       const sb = getStoryboard(summary.id)!;
       for (const phase of sb.phases) {
