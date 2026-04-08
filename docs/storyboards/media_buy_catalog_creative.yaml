@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Catalog-driven creative and conversion tracking"
 category: media_buy_catalog_creative
 summary: "Seller that renders dynamic ads from product catalogs, tracks conversions, and optimizes delivery based on performance feedback."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,

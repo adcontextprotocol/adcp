@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Creative template and transformation agent"
 category: creative_template
 summary: "Stateless creative agent that takes assets in, applies templates, and produces tags or rendered output."
+track: creative
+required_tools:
+  - build_creative
 
 narrative: |
   You build a creative management or rich media platform — think Celtra, a format

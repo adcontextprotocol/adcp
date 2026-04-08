@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Media buy state machine lifecycle"
 category: media_buy_state_machine
 summary: "Validates media buy state transitions: create, pause, resume, cancel, and terminal state enforcement."
+track: media_buy
+required_tools:
+  - create_media_buy
+  - update_media_buy
 
 narrative: |
   A media buy has a well-defined state machine: draft, pending_approval, confirmed, active,

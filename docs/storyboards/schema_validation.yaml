@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Schema compliance and temporal validation"
 category: schema_validation
 summary: "Validates that agent responses conform to AdCP schemas and that temporal constraints are enforced."
+track: core
+required_tools:
+  - get_products
 
 narrative: |
   Every AdCP agent must return responses that match the published JSON schemas. Fields defined

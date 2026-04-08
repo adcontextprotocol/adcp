@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Marketplace signal agent"
 category: signal_marketplace
 summary: "Signal agent that resells third-party data provider signals with verifiable catalog provenance."
+track: signals
+required_tools:
+  - get_signals
 
 narrative: |
   You operate a signal marketplace — an intermediary that aggregates audience data from

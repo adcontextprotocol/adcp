@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Governance denial and human escalation"
 category: media_buy_governance_escalation
 summary: "Buyer's governance agent denies a media buy that exceeds spending authority, escalates to a human who approves with conditions."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
 
 narrative: |
   The buyer's governance agent denies a media buy because it exceeds the agent's spending

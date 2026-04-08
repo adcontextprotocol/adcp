@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Sponsored intelligence session"
 category: si_session
 summary: "Conversational ad session on an AI platform — discover offerings, initiate a session, exchange messages, and terminate."
+track: si
+required_tools:
+  - si_initiate_session
 
 narrative: |
   You run an AI platform that supports sponsored intelligence — conversational ad experiences

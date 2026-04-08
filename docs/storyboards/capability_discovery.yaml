@@ -3,6 +3,7 @@ version: "1.0.0"
 title: "Capability discovery"
 category: capability_discovery
 summary: "Buyer calls get_adcp_capabilities to discover what an agent supports before making any buying or creative decisions."
+track: core
 
 narrative: |
   Before doing anything else, a buyer agent calls get_adcp_capabilities to learn what your

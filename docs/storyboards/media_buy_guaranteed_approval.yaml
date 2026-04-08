@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Guaranteed media buy with human IO approval"
 category: media_buy_guaranteed_approval
 summary: "Seller agent that requires human-in-the-loop IO signing before guaranteed media buys go live."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   You run a sell-side platform that requires human approval before guaranteed media buys go

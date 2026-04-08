@@ -3,6 +3,21 @@ version: "1.0.0"
 title: "Behavioral analysis"
 category: behavioral_analysis
 summary: "Validates product discovery behavior: brief filtering, response consistency, and pricing edge cases."
+track: products
+required_tools:
+  - get_products
+platform_types:
+  - display_ad_server
+  - video_ad_server
+  - social_platform
+  - retail_media
+  - search_platform
+  - audio_platform
+  - dsp
+  - pmax_platform
+  - ai_ad_network
+  - ai_platform
+  - generative_dsp
 
 narrative: |
   You expose a get_products task that accepts natural-language briefs and returns structured

@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Property governance"
 category: property_governance
 summary: "Manage brand safety property lists — create inclusion/exclusion lists, query and update them, validate delivery compliance."
+track: governance
+required_tools:
+  - create_property_list
 
 narrative: |
   You run a governance agent that manages property lists for brand safety. Buyers create

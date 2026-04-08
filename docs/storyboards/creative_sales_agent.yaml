@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Sales agent with creative capabilities"
 category: creative_sales_agent
 summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."
+track: creative
+required_tools:
+  - sync_creatives
 
 narrative: |
   You run a publisher platform, retail media network, or other sell-side system that
