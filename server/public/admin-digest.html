@@ -536,29 +536,7 @@
 
       function onPaste(e) {
         e.preventDefault();
-        const html = e.clipboardData.getData('text/html');
-        let text;
-        if (html) {
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          // Convert block elements to newlines, preserve link text
-          doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-          doc.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6').forEach(el => {
-            el.prepend('\n');
-            el.append('\n');
-          });
-          doc.querySelectorAll('a').forEach(a => {
-            const href = a.getAttribute('href');
-            const label = a.textContent;
-            if (href && label && href !== label) {
-              a.replaceWith(`<${href}|${label}>`);
-            } else if (href) {
-              a.replaceWith(`<${href}>`);
-            }
-          });
-          text = doc.body.textContent.replace(/\n{3,}/g, '\n\n').trim();
-        } else {
-          text = e.clipboardData.getData('text/plain');
-        }
+        const text = e.clipboardData.getData('text/plain') || '';
         document.execCommand('insertText', false, text);
       }
 
