@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that

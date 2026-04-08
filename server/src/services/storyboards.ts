@@ -66,6 +66,9 @@ export interface Storyboard {
   title: string;
   category: string;
   summary: string;
+  track?: string;
+  required_tools?: string[];
+  platform_types?: string[];
   narrative: string;
   agent: StoryboardAgent;
   caller: StoryboardCaller;

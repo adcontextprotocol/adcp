@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Campaign governance — delivery monitoring with drift detection"
 category: campaign_governance_delivery
 summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
+track: campaign_governance
+required_tools:
+  - check_governance
 
 narrative: |
   After a media buy is confirmed with governance approval, the governance agent monitors

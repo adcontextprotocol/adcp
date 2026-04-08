@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Non-guaranteed auction-based media buy"
 category: media_buy_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   You run a sell-side platform with auction-based inventory. Non-guaranteed buys don't

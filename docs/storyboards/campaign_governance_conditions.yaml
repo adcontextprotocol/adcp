@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Campaign governance — conditional approval"
 category: campaign_governance_conditions
 summary: "Governance agent approves a media buy with conditions. Buyer re-checks after meeting the conditions."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
 
 narrative: |
   The buyer's governance agent evaluates a media buy that falls within spending authority but

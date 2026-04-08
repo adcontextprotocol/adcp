@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Owned signal agent"
 category: signal_owned
 summary: "Signal agent serving first-party or proprietary audience data without external catalog verification."
+track: signals
+required_tools:
+  - get_signals
 
 narrative: |
   You operate a first-party data platform — a retailer CDP, publisher contextual data

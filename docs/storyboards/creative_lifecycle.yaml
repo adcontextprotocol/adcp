@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Creative lifecycle"
 category: creative_lifecycle
 summary: "Full creative lifecycle on a stateful platform: sync multiple creatives, list with filtering, build and preview across formats, observe status transitions."
+track: creative
+required_tools:
+  - list_creative_formats
 
 narrative: |
   You run a creative platform with a persistent library — an ad server, creative management

@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Content standards"
 category: content_standards
 summary: "Define creative quality rules, calibrate content against them, and validate that delivered ads met the standards."
+track: governance
+required_tools:
+  - list_content_standards
 
 narrative: |
   You run a governance agent that manages content standards — rules that define what

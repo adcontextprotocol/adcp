@@ -3,6 +3,9 @@ version: "1.1.0"
 title: "Creative ad server"
 category: creative_ad_server
 summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy with pricing and billing."
+track: creative
+required_tools:
+  - build_creative
 
 narrative: |
   You run a creative ad server — think Innovid, Flashtalking, or CM360. Your clients

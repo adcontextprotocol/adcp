@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Media buy via proposal acceptance"
 category: media_buy_proposal_mode
 summary: "Seller agent that generates curated media plan proposals the buyer can review, refine, and accept."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform

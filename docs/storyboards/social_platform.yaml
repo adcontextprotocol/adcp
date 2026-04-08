@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Social platform"
 category: social_platform
 summary: "Social media platform that accepts audience segments, native creatives, and conversion events from buyer agents."
+track: audiences
+required_tools:
+  - sync_audiences
 
 narrative: |
   You run a social media platform — Snap, Meta, TikTok, Pinterest, or any walled garden that

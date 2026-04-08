@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Brand identity and rights licensing"
 category: brand_rights
 summary: "Brand agent that serves identity assets and licenses rights for AI-generated content."
+track: core
+required_tools:
+  - get_brand_identity
 
 narrative: |
   You run a brand agent — a system that holds brand identity data (logos, colors, fonts,

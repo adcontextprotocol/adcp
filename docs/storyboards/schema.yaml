@@ -13,7 +13,7 @@
 # id: string (unique identifier, e.g., "creative_template")
 # version: string (semver, e.g., "1.0.0")
 # title: string (human-readable title)
-# category: enum (capability_discovery | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | content_standards)
+# category: enum (capability_discovery | schema_validation | behavioral_analysis | error_compliance | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | media_buy_state_machine | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | content_standards)
 # summary: string (one-line description for listings)
 # narrative: string (paragraph explaining the overall flow)
 #

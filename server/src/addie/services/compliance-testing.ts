@@ -271,25 +271,28 @@ const PLATFORM_PROFILES: Record<PlatformType, PlatformProfile> = {
 
 /**
  * Maps each platform type to the storyboards that define its expected behavior.
- * This is the primary routing mechanism: a platform type selects storyboards,
- * storyboards extract to scenarios, scenarios run via testAllScenarios().
+ *
+ * @deprecated This mapping will move to @adcp/client once adcp-client#445
+ * ships storyboard-based comply(). At that point, callers should pass
+ * platform_type to comply() and let the client resolve storyboards internally.
+ * The canonical mapping will live next to comply() in the client package.
  */
 export const PLATFORM_STORYBOARDS: Record<PlatformType, string[]> = {
-  display_ad_server: ['capability_discovery', 'media_buy_seller'],
-  video_ad_server: ['capability_discovery', 'media_buy_seller'],
-  social_platform: ['capability_discovery', 'social_platform'],
-  pmax_platform: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
-  dsp: ['capability_discovery', 'media_buy_seller'],
-  retail_media: ['capability_discovery', 'media_buy_seller', 'media_buy_catalog_creative'],
-  search_platform: ['capability_discovery', 'media_buy_seller'],
-  audio_platform: ['capability_discovery', 'media_buy_seller'],
+  display_ad_server: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
+  video_ad_server: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
+  social_platform: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'social_platform', 'media_buy_state_machine', 'error_compliance'],
+  pmax_platform: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'creative_lifecycle', 'error_compliance'],
+  dsp: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
+  retail_media: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_catalog_creative', 'media_buy_state_machine', 'error_compliance'],
+  search_platform: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
+  audio_platform: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
   creative_transformer: ['capability_discovery', 'creative_template'],
   creative_library: ['capability_discovery', 'creative_lifecycle'],
   creative_ad_server: ['capability_discovery', 'creative_ad_server'],
   si_platform: ['capability_discovery', 'si_session'],
-  ai_ad_network: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
-  ai_platform: ['capability_discovery', 'creative_template'],
-  generative_dsp: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+  ai_ad_network: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'creative_lifecycle', 'error_compliance'],
+  ai_platform: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'creative_template', 'error_compliance'],
+  generative_dsp: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'creative_lifecycle', 'error_compliance'],
 };
 
 export function getPlatformStoryboards(platformType: PlatformType): string[] | undefined {
