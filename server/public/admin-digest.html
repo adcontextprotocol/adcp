@@ -536,24 +536,7 @@
 
       function onPaste(e) {
         e.preventDefault();
-        let text = e.clipboardData.getData('text/plain') || '';
-        const html = e.clipboardData.getData('text/html');
-        if (html) {
-          // Extract links from pasted HTML and convert to Slack format.
-          // Only reads from the parsed DOM — no modifications — so no XSS surface.
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const links = doc.querySelectorAll('a[href]');
-          for (const a of links) {
-            const href = a.getAttribute('href');
-            const label = a.textContent.trim();
-            if (!href || !/^https?:\/\//i.test(href)) continue;
-            if (label && label !== href) {
-              text = text.replace(label, `<${href}|${label}>`);
-            } else if (label) {
-              text = text.replace(label, `<${href}>`);
-            }
-          }
-        }
+        const text = e.clipboardData.getData('text/plain') || '';
         document.execCommand('insertText', false, text);
       }
 
