@@ -1,7 +1,6 @@
 import {
   testAllScenarios,
   DEFAULT_SCENARIOS,
-  SCENARIO_REQUIREMENTS,
   setAgentTesterLogger,
   type TestOptions,
   type TestResult,
@@ -421,18 +420,6 @@ function buildPlatformCoherence(
   };
 }
 
-/**
- * Check whether every scenario in a track requires get_products.
- * If so, the track cannot produce any results when products are unavailable.
- */
-function isTrackProductDependent(track: ComplianceTrack): boolean {
-  const scenarios = TRACK_SCENARIOS[track];
-  return scenarios.every((scenario) => {
-    const reqs = SCENARIO_REQUIREMENTS[scenario];
-    return reqs && reqs.includes('get_products');
-  });
-}
-
 const ALL_KNOWN_SCENARIOS = new Set<string>(
   (Object.values(TRACK_SCENARIOS) as TestScenario[][]).flat(),
 );
@@ -467,62 +454,12 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
       ? options.tracks
       : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
 
-  // Phase 1: Run core + products tracks to check product availability
-  const foundationTracks: ComplianceTrack[] = ['core', 'products'].filter(
-    (t) => requestedTracks.includes(t as ComplianceTrack),
-  ) as ComplianceTrack[];
-  const remainingTracks = requestedTracks.filter((t) => !foundationTracks.includes(t));
-
-  const foundationScenarios = scenarioList.filter((s) => {
-    const foundationScenarioSet = new Set(foundationTracks.flatMap((t) => TRACK_SCENARIOS[t]));
-    return foundationScenarioSet.has(s);
-  });
-
-  const foundationSuite = await testAllScenarios(agentUrl, {
+  const suite = await testAllScenarios(agentUrl, {
     ...options,
-    scenarios: foundationScenarios.length > 0 ? foundationScenarios : buildScenarioList(foundationTracks),
+    scenarios: scenarioList,
   });
 
-  // Check if product discovery produced any passing results
-  const productsTrackResults = buildTrackResults(
-    foundationTracks.filter((t) => t === 'products'),
-    foundationSuite.results,
-  );
-  const productsAvailable = productsTrackResults.some(
-    (t) => t.status === 'pass' || t.status === 'partial',
-  );
-
-  // Phase 2: Run remaining tracks, skipping product-dependent ones if products failed
-  let phase2Tracks: ComplianceTrack[];
-  let skippedTracks: ComplianceTrack[];
-  if (productsAvailable || remainingTracks.length === 0) {
-    phase2Tracks = remainingTracks;
-    skippedTracks = [];
-  } else {
-    phase2Tracks = remainingTracks.filter((t) => !isTrackProductDependent(t));
-    skippedTracks = remainingTracks.filter((t) => isTrackProductDependent(t));
-  }
-
-  let allResults = [...foundationSuite.results];
-  let totalDurationMs = foundationSuite.total_duration_ms;
-
-  if (phase2Tracks.length > 0) {
-    const phase2ScenarioSet = new Set(phase2Tracks.flatMap((t) => TRACK_SCENARIOS[t]));
-    const phase2Scenarios = options.scenarios?.length
-      ? scenarioList.filter((s) => phase2ScenarioSet.has(s))
-      : buildScenarioList(phase2Tracks);
-
-    const phase2Suite = await testAllScenarios(agentUrl, {
-      ...options,
-      scenarios: phase2Scenarios,
-    });
-    allResults = [...allResults, ...phase2Suite.results];
-    totalDurationMs += phase2Suite.total_duration_ms;
-  }
-
-  // Build track results — skipped product-dependent tracks get 'skip' status automatically
-  // since they have no scenario results in allResults
-  const trackResults = buildTrackResults(requestedTracks, allResults);
+  const trackResults = buildTrackResults(requestedTracks, suite.results);
 
   const tracks_passed = trackResults.filter((track) => track.status === 'pass').length;
   const tracks_failed = trackResults.filter((track) => track.status === 'fail').length;
@@ -531,19 +468,10 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
 
   const observations = buildObservations(trackResults);
 
-  if (skippedTracks.length > 0) {
-    const skippedLabels = skippedTracks.map((t) => TRACK_LABELS[t]).join(', ');
-    observations.push({
-      severity: 'warning',
-      category: 'products',
-      message: `Product discovery failed — skipped dependent tracks: ${skippedLabels}. Fix product schema issues first.`,
-    });
-  }
-
   const headline = `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`;
 
   // Hard-fail agents that do not support v3
-  const agentVersion = foundationSuite.agent_profile.adcp_version;
+  const agentVersion = suite.agent_profile.adcp_version;
   const v3GateFailed = !agentVersion || agentVersion === 'v2';
   if (v3GateFailed) {
     observations.push({
@@ -556,7 +484,7 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   }
 
   return {
-    agent_profile: foundationSuite.agent_profile,
+    agent_profile: suite.agent_profile,
     tracks: trackResults,
     summary: {
       headline: v3GateFailed ? `v3 required — ${headline}` : headline,
@@ -566,8 +494,8 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
       tracks_skipped,
     },
     observations,
-    total_duration_ms: totalDurationMs,
-    dry_run: foundationSuite.dry_run,
+    total_duration_ms: suite.total_duration_ms,
+    dry_run: suite.dry_run,
     platform_coherence: buildPlatformCoherence(options.platform_type, trackResults),
     v3_gate_failed: v3GateFailed || undefined,
   };
