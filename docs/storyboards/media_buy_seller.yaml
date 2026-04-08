@@ -69,7 +69,7 @@ phases:
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
-        comply_scenario: account_setup
+        # No TestScenario exists for account setup
         stateful: true
         expected: |
           Return the account with:
@@ -125,7 +125,7 @@ phases:
         schema_ref: "account/sync-governance-request.json"
         response_schema_ref: "account/sync-governance-response.json"
         doc_ref: "/accounts/tasks/sync_governance"
-        comply_scenario: governance_setup
+        # No TestScenario exists for governance registration
         stateful: true
         expected: |
           Acknowledge the governance agents. Your platform should:
@@ -177,7 +177,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
-        comply_scenario: media_buy_flow
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return products matching the brief. Each product should include:
@@ -239,7 +239,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
-        comply_scenario: media_buy_flow
+        comply_scenario: full_sales_flow
         stateful: true
         expected: |
           Return updated products reflecting the refinements. The response should:
@@ -307,7 +307,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
-        comply_scenario: media_buy_flow
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Process the media buy request and return one of:
@@ -374,7 +374,7 @@ phases:
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
-        comply_scenario: media_buy_flow
+        comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
           Return the current state of the media buy:
@@ -424,7 +424,7 @@ phases:
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_sync
+        comply_scenario: creative_lifecycle
         stateful: false
         expected: |
           Return creative formats your platform accepts. Each format should define:
@@ -518,7 +518,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
-        comply_scenario: media_buy_flow
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return delivery metrics for the media buy:

@@ -217,6 +217,22 @@ export function getTestKitForStoryboard(storyboardId: string): TestKit | undefin
 }
 
 /**
+ * Extract unique comply_scenario values from a storyboard.
+ * Used to limit comply() to only the scenarios a storyboard references.
+ */
+export function extractScenariosFromStoryboard(storyboard: Storyboard): string[] {
+  const scenarios = new Set<string>();
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      if (step.comply_scenario) {
+        scenarios.add(step.comply_scenario);
+      }
+    }
+  }
+  return [...scenarios];
+}
+
+/**
  * Reload storyboards from disk. Useful for development.
  */
 export function reloadStoryboards(): void {

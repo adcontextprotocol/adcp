@@ -1799,7 +1799,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
