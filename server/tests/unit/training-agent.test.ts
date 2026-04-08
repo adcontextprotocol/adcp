@@ -3880,7 +3880,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -4198,8 +4198,8 @@ describe('MCP Tasks protocol', () => {
     expect(task.status).toBe('completed');
     expect(task.createdAt).toBeDefined();
     expect(task.lastUpdatedAt).toBeDefined();
-    // Defaults to 1 hour when no TTL requested (clamped by server)
-    expect(task.ttl).toBe(3_600_000);
+    // Defaults to 15 minutes when no TTL requested (clamped by server)
+    expect(task.ttl).toBe(900_000);
   });
 
   it('respects requested TTL', async () => {

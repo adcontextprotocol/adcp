@@ -17,6 +17,7 @@ export type ComplianceTrack =
   | 'creative'
   | 'reporting'
   | 'governance'
+  | 'campaign_governance'
   | 'signals'
   | 'si'
   | 'audiences';
@@ -40,8 +41,12 @@ export type PlatformType =
 
 export interface ComplyOptions extends TestOptions {
   tracks?: ComplianceTrack[];
+  /** Run the scenarios defined by these storyboard IDs. Takes priority over tracks. */
+  storyboards?: string[];
   platform_type?: PlatformType;
   timeout_ms?: number;
+  /** Limit to specific scenarios directly. Bypasses both storyboard and track selection. */
+  scenarios?: TestScenario[];
 }
 
 export interface PlatformProfile {
@@ -111,6 +116,7 @@ const TRACK_LABELS: Record<ComplianceTrack, string> = {
   creative: 'Creative workflows',
   reporting: 'Reporting',
   governance: 'Governance',
+  campaign_governance: 'Campaign governance',
   signals: 'Signals',
   si: 'Sponsored intelligence',
   audiences: 'Audience sync',
@@ -127,9 +133,16 @@ export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
     'validation',
     'temporal_validation',
   ],
-  creative: ['creative_sync', 'creative_inline', 'creative_flow'],
+  creative: ['creative_sync', 'creative_inline', 'creative_flow', 'creative_lifecycle'],
   reporting: ['deterministic_delivery'],
   governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
+  campaign_governance: [
+    'campaign_governance',
+    'campaign_governance_denied',
+    'campaign_governance_conditions',
+    'campaign_governance_delivery',
+    'seller_governance_context',
+  ],
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
   audiences: ['sync_audiences'],
@@ -255,6 +268,33 @@ const PLATFORM_PROFILES: Record<PlatformType, PlatformProfile> = {
     expected_channels: ['display', 'native', 'olv', 'social'],
   },
 };
+
+/**
+ * Maps each platform type to the storyboards that define its expected behavior.
+ * This is the primary routing mechanism: a platform type selects storyboards,
+ * storyboards extract to scenarios, scenarios run via testAllScenarios().
+ */
+export const PLATFORM_STORYBOARDS: Record<PlatformType, string[]> = {
+  display_ad_server: ['capability_discovery', 'media_buy_seller'],
+  video_ad_server: ['capability_discovery', 'media_buy_seller'],
+  social_platform: ['capability_discovery', 'social_platform'],
+  pmax_platform: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+  dsp: ['capability_discovery', 'media_buy_seller'],
+  retail_media: ['capability_discovery', 'media_buy_seller', 'media_buy_catalog_creative'],
+  search_platform: ['capability_discovery', 'media_buy_seller'],
+  audio_platform: ['capability_discovery', 'media_buy_seller'],
+  creative_transformer: ['capability_discovery', 'creative_template'],
+  creative_library: ['capability_discovery', 'creative_lifecycle'],
+  creative_ad_server: ['capability_discovery', 'creative_ad_server'],
+  si_platform: ['capability_discovery', 'si_session'],
+  ai_ad_network: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+  ai_platform: ['capability_discovery', 'creative_template'],
+  generative_dsp: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+};
+
+export function getPlatformStoryboards(platformType: PlatformType): string[] | undefined {
+  return PLATFORM_STORYBOARDS[platformType];
+}
 
 export function getBriefsByVertical(vertical: string): SampleBrief[] {
   const normalized = vertical.trim().toLowerCase();
@@ -409,14 +449,70 @@ function buildPlatformCoherence(
   };
 }
 
+const ALL_KNOWN_SCENARIOS = new Set<string>(
+  (Object.values(TRACK_SCENARIOS) as TestScenario[][]).flat(),
+);
+
+/**
+ * Filter an array of scenario name strings to only those that exist in TRACK_SCENARIOS.
+ * Logs a warning for any unknown scenario names.
+ */
+export function filterToKnownScenarios(candidates: string[]): TestScenario[] {
+  return candidates.filter((s) => ALL_KNOWN_SCENARIOS.has(s)) as TestScenario[];
+}
+
+/**
+ * Reverse-map a set of scenarios to the tracks that contain them.
+ */
+function tracksForScenarios(scenarios: TestScenario[]): ComplianceTrack[] {
+  const scenarioSet = new Set(scenarios);
+  const tracks: ComplianceTrack[] = [];
+  for (const [track, trackScenarios] of Object.entries(TRACK_SCENARIOS)) {
+    if (trackScenarios.some((s) => scenarioSet.has(s))) {
+      tracks.push(track as ComplianceTrack);
+    }
+  }
+  return tracks;
+}
+
+/**
+ * Resolve storyboard IDs to a merged, deduped list of known scenarios.
+ * Uses dynamic import to avoid circular dependency with storyboards.ts.
+ */
+async function resolveStoryboardScenarios(storyboardIds: string[]): Promise<TestScenario[]> {
+  const { getStoryboard, extractScenariosFromStoryboard } = await import('../../services/storyboards.js');
+  const allScenarios = new Set<string>();
+  for (const id of storyboardIds) {
+    const sb = getStoryboard(id);
+    if (sb) {
+      for (const s of extractScenariosFromStoryboard(sb)) {
+        allScenarios.add(s);
+      }
+    }
+  }
+  return filterToKnownScenarios([...allScenarios]);
+}
+
 export async function comply(agentUrl: string, options: ComplyOptions = {}): Promise<ComplyResult> {
-  const requestedTracks = options.tracks?.length
-    ? options.tracks
-    : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
+  // Priority: scenarios > storyboards > tracks > default (all tracks)
+  let scenarioList: TestScenario[];
+  if (options.scenarios?.length) {
+    scenarioList = options.scenarios;
+  } else if (options.storyboards?.length) {
+    scenarioList = await resolveStoryboardScenarios(options.storyboards);
+  } else {
+    scenarioList = buildScenarioList(options.tracks);
+  }
+
+  const requestedTracks = (options.scenarios?.length || options.storyboards?.length)
+    ? tracksForScenarios(scenarioList)
+    : options.tracks?.length
+      ? options.tracks
+      : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
 
   const suite = await testAllScenarios(agentUrl, {
     ...options,
-    scenarios: buildScenarioList(requestedTracks),
+    scenarios: scenarioList,
   });
 
   const trackResults = buildTrackResults(requestedTracks, suite.results);

@@ -128,6 +128,16 @@ The activation key represents how to use the signal on a deployment target. It c
 }
 ```
 
+### Using Activation Keys
+
+The activation key tells the buyer how to reference the signal on the destination. The execution path depends on the destination type:
+
+**Platform destinations** — The `activation_key` contains a `segment_id`, a platform-native identifier. The signal agent pushed segment data to the DSP; the buyer references this key when configuring campaign targeting on that platform. The buyer is responsible for ensuring the activation platform matches where it will run campaigns.
+
+**Agent destinations** — The `activation_key` confirms the signal is live on the sales agent. The SA records the activation internally and applies signal-based targeting when fulfilling media buys through `create_media_buy`. The buyer does not need to know which DSP the SA uses — downstream platform coordination is the SA's responsibility.
+
+**Choosing a destination type**: Use `type: "platform"` when buying directly on a DSP. Use `type: "agent"` when buying through a Sales Agent — the SA coordinates its own DSP targeting as an implementation detail.
+
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.

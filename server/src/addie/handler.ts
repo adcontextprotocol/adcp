@@ -536,7 +536,10 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
+    // Pass undefined as threadId — this legacy path doesn't create unified threads,
+    // and event.thread_ts is a Slack timestamp that would violate the FK constraint
+    // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };

@@ -838,6 +838,11 @@ export class HTTPServer {
   // Redirect through AAO session bridge if on AdCP without a session cookie.
   // Returns true if a redirect was issued (caller should return early).
   private bridgeIfNeeded(req: express.Request, res: express.Response): boolean {
+    // Skip the bridge for clients that don't send cookies (agents, curl, bots).
+    // They will never have a session to bridge, so the redirect is pointless
+    // and creates an infinite loop for clients without a cookie jar.
+    if (!req.headers.cookie) return false;
+
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
       const currentUrl = `https://${req.hostname}${req.originalUrl}`;
       res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
@@ -1940,14 +1945,13 @@ export class HTTPServer {
     // Auth via WorkOS AuthKit
     configureMCPRoutes(this.app);
 
-    // Health check - verifies critical services are operational
+    // Health check - verifies critical services are operational.
+    // Returns 503 when the database is unreachable so Fly's load balancer
+    // stops routing DB-dependent traffic to this machine.
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
       let dbError: string | null = null;
 
-      // Database check is informational only. The app serves static pages,
-      // docs, and cached content without DB. A DB blip must not take the
-      // machine out of Fly's load-balancer rotation.
       try {
         const pool = getPool();
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -1976,15 +1980,16 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
 
+      const status = checks.database ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
-        status: checks.database ? "ok" : "degraded",
+        status,
         checks,
         registry: {
           mode: "database",
           using_database: true,
         },
       };
-      res.status(200).json(body);
+      res.status(checks.database ? 200 : 503).json(body);
     });
 
     // Homepage route - serve different homepage based on host
@@ -4409,7 +4414,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          'SELECT * FROM agreements ORDER BY agreement_type, effective_date DESC'
+          'SELECT id, agreement_type, version, effective_date, created_at FROM agreements ORDER BY agreement_type, effective_date DESC'
         );
 
         res.json(result.rows);
@@ -4417,6 +4422,33 @@ export class HTTPServer {
         logger.error({ err: error }, 'Get all agreements error:');
         res.status(500).json({
           error: 'Failed to get agreements',
+        });
+      }
+    });
+
+    // GET /api/admin/agreements/:id - Get single agreement with full text
+    this.app.get('/api/admin/agreements/:id', requireAuth, requireAdmin, async (req, res) => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid agreement ID format' });
+      }
+
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          'SELECT id, agreement_type, version, text, effective_date, created_at FROM agreements WHERE id = $1',
+          [req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Agreement not found' });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get agreement error:');
+        res.status(500).json({
+          error: 'Failed to get agreement',
         });
       }
     });
@@ -6152,6 +6184,12 @@ Disallow: /api/admin/
           res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
+        // Expired or already-used authorization codes: redirect back to login
+        // instead of showing a raw error page.
+        if (error instanceof Error && error.name === 'OauthException' && 'error' in error && (error as Record<string, unknown>).error === 'invalid_grant') {
+          logger.warn({ err: error }, 'Auth code expired or already used, redirecting to login');
+          return res.redirect('/auth/login');
+        }
         logger.error({ err: error }, 'Auth callback error:');
         res.status(500).json({
           error: 'Authentication failed',
@@ -7934,7 +7972,15 @@ Disallow: /api/admin/
     });
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
-    this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    this.app.use((err: Error & { status?: number; statusCode?: number }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+
+      // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
+      if (status === 416) {
+        logger.debug({ path: req.path }, 'Range not satisfiable');
+        return res.status(416).end();
+      }
+
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
       res.status(500).json({ error: 'Internal server error' });
     });

@@ -851,13 +851,21 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Check if user is already a member
+      // Check if user is already a member (include pending invitations)
       const existingMembership = await workos!.userManagement.listOrganizationMemberships({
         userId: slackUser.workos_user_id,
         organizationId: orgId,
+        statuses: ['active', 'inactive', 'pending'],
       });
 
       if (existingMembership.data.length > 0) {
+        const pending = existingMembership.data.some(m => m.status === 'pending');
+        if (pending) {
+          return res.status(409).json({
+            error: 'Pending invitation exists',
+            message: 'This user has a pending invitation that must be accepted or cancelled before they can be added directly.',
+          });
+        }
         return res.status(400).json({
           error: 'Already a member',
           message: 'This user is already a member of the organization.',
@@ -963,6 +971,13 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      if (error?.code === 'cannot_reactivate_pending_organization_membership') {
+        return res.status(409).json({
+          error: 'Pending invitation exists',
+          message: 'This user has a pending invitation that must be accepted or cancelled before they can be added directly.',
+        });
+      }
+
       res.status(500).json({
         error: 'Failed to add domain user',
         message: 'An internal error occurred while adding the domain user.',
@@ -1037,6 +1052,23 @@ export function createOrganizationsRouter(): Router {
           error: 'Organization limit reached',
           message: 'You have reached the maximum number of organizations. Please contact support if you need more.',
         });
+      }
+
+      // Enforce one personal workspace per user
+      if (is_personal) {
+        const existingPersonal = await pool.query(
+          `SELECT 1 FROM organization_memberships om
+           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+           WHERE om.workos_user_id = $1 AND o.is_personal = true
+           LIMIT 1`,
+          [user.id],
+        );
+        if (existingPersonal.rows.length > 0) {
+          return res.status(409).json({
+            error: 'Personal workspace exists',
+            message: 'You already have a personal workspace.',
+          });
+        }
       }
 
       // Validate required fields
@@ -2304,22 +2336,23 @@ export function createOrganizationsRouter(): Router {
         },
       });
     } catch (error: any) {
-      logger.error({ err: error }, 'Send invitation error');
-
-      // Check for specific WorkOS errors
+      // Check for specific WorkOS errors — these are expected race conditions, not server errors
       if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: user already a member');
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
       if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: invitation already exists');
         return res.status(400).json({
           error: 'Invitation already exists',
           message: 'An invitation has already been sent to this email address',
         });
       }
 
+      logger.error({ err: error }, 'Send invitation error');
       res.status(500).json({
         error: 'Failed to send invitation',
         message: 'An internal error occurred while sending the invitation.',
@@ -2476,7 +2509,22 @@ export function createOrganizationsRouter(): Router {
           expires_at: newInvitation.expiresAt,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: user already a member');
+        return res.status(400).json({
+          error: 'User already a member',
+          message: 'This user is already a member of the organization',
+        });
+      }
+      if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: invitation already exists');
+        return res.status(400).json({
+          error: 'Invitation already exists',
+          message: 'An invitation has already been sent to this email address',
+        });
+      }
+
       logger.error({ err: error }, 'Resend invitation error');
       res.status(500).json({
         error: 'Failed to resend invitation',

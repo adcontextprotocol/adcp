@@ -586,21 +586,22 @@ export async function findStaleSeatRequests(): Promise<{
 }> {
   const pool = getPool();
 
-  const adminResult = await pool.query<SeatUpgradeRequest>(
-    `SELECT * FROM seat_upgrade_requests
-     WHERE status = 'pending'
-       AND admin_reminder_sent_at IS NULL
-       AND created_at < NOW() - INTERVAL '48 hours'
-     LIMIT 100`
-  );
-
-  const memberResult = await pool.query<SeatUpgradeRequest>(
-    `SELECT * FROM seat_upgrade_requests
-     WHERE status = 'pending'
-       AND member_timeout_notified_at IS NULL
-       AND created_at < NOW() - INTERVAL '7 days'
-     LIMIT 100`
-  );
+  const [adminResult, memberResult] = await Promise.all([
+    pool.query<SeatUpgradeRequest>(
+      `SELECT * FROM seat_upgrade_requests
+       WHERE status = 'pending'
+         AND admin_reminder_sent_at IS NULL
+         AND created_at < NOW() - INTERVAL '48 hours'
+       LIMIT 100`
+    ),
+    pool.query<SeatUpgradeRequest>(
+      `SELECT * FROM seat_upgrade_requests
+       WHERE status = 'pending'
+         AND member_timeout_notified_at IS NULL
+         AND created_at < NOW() - INTERVAL '7 days'
+       LIMIT 100`
+    ),
+  ]);
 
   return {
     needsAdminReminder: adminResult.rows,

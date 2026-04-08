@@ -683,7 +683,11 @@ export async function checkAndAssignOrganizationByDomain(
       previousOrgId: currentOrgId,
       previousOrgName: currentOrgName,
     };
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'cannot_reactivate_pending_organization_membership') {
+      logger.info({ workosUserId }, 'Skipping org assignment — user has a pending invitation');
+      return null;
+    }
     logger.error({ err: error, workosUserId }, 'Error checking/assigning organization by domain');
     return {
       assigned: false,

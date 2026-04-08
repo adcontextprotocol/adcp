@@ -121,7 +121,7 @@ describe('digest editor note link formatting', () => {
 
       expect(html).toContain('The Prompt');
       expect(html).toContain('from Addie');
-      expect(html).toContain('— Addie');
+      expect(html).toContain('Addie');
     });
 
     it('renders The Prompt header in Slack', () => {

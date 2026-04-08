@@ -141,9 +141,20 @@ function buildPromptMarkdown(content: unknown): string {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
   }
   if (c.whatToWatch.length > 0) {
-    sections.push('## Industry intel');
-    for (const item of c.whatToWatch) {
-      sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
+    const official = c.whatToWatch.filter((item) => item.tags?.includes('official'));
+    const external = c.whatToWatch.filter((item) => !item.tags?.includes('official'));
+    for (const item of official) {
+      let block = `### [${item.title}](${item.url})\n\n${item.summary}`;
+      if (item.takeaways && item.takeaways.length > 0) {
+        block += '\n\n' + item.takeaways.map((tw) => `- ${tw}`).join('\n');
+      }
+      sections.push(block);
+    }
+    if (external.length > 0) {
+      sections.push('## Industry intel');
+      for (const item of external) {
+        sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
+      }
     }
   }
   if (c.whatShipped && c.whatShipped.length > 0) {
@@ -174,7 +185,13 @@ function buildPromptMarkdown(content: unknown): string {
   if (c.shareableTake) {
     sections.push(`> *"${c.shareableTake}"*\n>\n> — Share this take`);
   }
-  sections.push("---\n\nThat's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.\n\n— Addie\\\nAgenticAdvertising.org");
+  if (c.takeActions && c.takeActions.length > 0) {
+    sections.push('## Take action');
+    for (const action of c.takeActions) {
+      sections.push(`- **[${action.ctaLabel}](${action.ctaUrl})** — ${action.text}`);
+    }
+  }
+  sections.push("---\n\nWe're building this together. If something here resonated, pass it along — every share brings in someone new.\n\nLet's keep building,\nAddie\\\nAgenticAdvertising.org");
   return sections.join('\n\n');
 }
 
@@ -217,7 +234,7 @@ export const thePromptConfig: NewsletterConfig = {
   illustrationStylePrompt: PROMPT_ILLUSTRATION_STYLE,
   illustrationCast: PROMPT_CAST,
   signOff: {
-    text: "That's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.",
+    text: "We're building this together. If something here resonated, pass it along — every share brings in someone new.",
     attribution: 'Addie',
     domain: 'AgenticAdvertising.org',
   },

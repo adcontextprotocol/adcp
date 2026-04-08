@@ -849,8 +849,10 @@
 
         const data = await engRes.json();
         const profileData = profileRes.ok ? await profileRes.json() : null;
+        const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+        const showSwitcher = orgs.length > 1 || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: orgs.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || data.organization_name || 'My organization',
           showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
           orgId: currentOrg?.id || null,
@@ -858,8 +860,8 @@
           isPersonal: currentOrg?.is_personal || false,
         });
 
-        // Set up org switcher callback for multi-org users
-        if (orgs.length > 1) {
+        // Set up org switcher
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             const url = new URL(window.location);

@@ -13,13 +13,13 @@
 # id: string (unique identifier, e.g., "creative_template")
 # version: string (semver, e.g., "1.0.0")
 # title: string (human-readable title)
-# category: enum (creative_template | creative_ad_server | creative_sales_agent | creative_generative | media_buy_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative)
+# category: enum (capability_discovery | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | content_standards)
 # summary: string (one-line description for listings)
 # narrative: string (paragraph explaining the overall flow)
 #
 # agent:
-#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller)
-#   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed)
+#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
+#   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
 #   examples: string[] (real-world examples: "Celtra", "Innovid")
 #
 # caller:

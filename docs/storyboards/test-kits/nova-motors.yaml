@@ -1,0 +1,134 @@
+id: nova_motors
+name: "Nova Motors"
+description: |
+  Signal-focused test kit for the Nova Motors Volta EV launch campaign.
+  Provides sample signal definitions, pricing options, and destination
+  configurations for testing signal agent storyboards.
+
+campaign:
+  brand: "Nova Motors"
+  product: "Volta EV"
+  brief: "Reach in-market EV buyers with high purchase propensity, near dealerships, who haven't bought a Nova vehicle before."
+  budget: 250000
+  currency: "USD"
+  markets: ["US"]
+
+signals:
+  marketplace:
+    - signal_agent_segment_id: "trident_likely_ev_buyers"
+      name: "Likely EV Buyers"
+      data_provider_domain: "tridentauto.example"
+      signal_id: "likely_ev_buyers"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 8
+      pricing:
+        - pricing_option_id: "po_trident_ev_cpm"
+          model: "cpm"
+          cpm: 3.50
+          currency: "USD"
+
+    - signal_agent_segment_id: "trident_purchase_propensity"
+      name: "Purchase Propensity"
+      data_provider_domain: "tridentauto.example"
+      signal_id: "purchase_propensity"
+      value_type: "numeric"
+      signal_type: "marketplace"
+      range:
+        min: 0
+        max: 1
+      coverage_percentage: 55
+      pricing:
+        - pricing_option_id: "po_trident_propensity_cpm"
+          model: "cpm"
+          cpm: 4.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "meridian_competitor_visitors"
+      name: "Competitor Visitors"
+      data_provider_domain: "meridiangeo.example"
+      signal_id: "competitor_visitors"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 6
+      pricing:
+        - pricing_option_id: "po_meridian_visitors_cpm"
+          model: "cpm"
+          cpm: 5.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "shopgrid_new_to_brand"
+      name: "New to Brand"
+      data_provider_domain: "shopgrid.example"
+      signal_id: "new_to_brand"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 25
+      pricing:
+        - pricing_option_id: "po_shopgrid_retail_cpm"
+          model: "cpm"
+          cpm: 3.50
+          currency: "USD"
+
+  owned:
+    - signal_agent_segment_id: "prism_high_ltv"
+      name: "High LTV Customers"
+      value_type: "binary"
+      signal_type: "owned"
+      coverage_percentage: 12
+      pricing:
+        - pricing_option_id: "po_prism_flat_monthly"
+          model: "flat_fee"
+          amount: 5000
+          period: "monthly"
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_cart_abandoner"
+      name: "Cart Abandoners"
+      value_type: "binary"
+      signal_type: "owned"
+      coverage_percentage: 18
+      pricing:
+        - pricing_option_id: "po_prism_abandoner_cpm"
+          model: "cpm"
+          cpm: 8.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_engagement_score"
+      name: "Engagement Score"
+      value_type: "numeric"
+      signal_type: "owned"
+      range:
+        min: 0
+        max: 100
+      coverage_percentage: 65
+      pricing:
+        - pricing_option_id: "po_prism_engagement_cpm"
+          model: "cpm"
+          cpm: 2.50
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_churn_risk"
+      name: "Churn Risk"
+      value_type: "categorical"
+      signal_type: "owned"
+      categories: ["low_risk", "medium_risk", "high_risk", "churned"]
+      coverage_percentage: 70
+      pricing:
+        - pricing_option_id: "po_prism_churn_pom"
+          model: "percent_of_media"
+          percent: 12
+          max_cpm: 3.00
+          currency: "USD"
+
+destinations:
+  platforms:
+    - type: "platform"
+      platform: "the-trade-desk"
+      account: "agency-123-ttd"
+    - type: "platform"
+      platform: "streamhaus"
+      account: "agency-ctv-seat-456"
+  agents:
+    - type: "agent"
+      agent_url: "https://wonderstruck.salesagents.example"

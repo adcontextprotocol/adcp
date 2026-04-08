@@ -144,6 +144,26 @@ Each activation call specifies the destination platform and account:
 
 The signal agent pushes segment membership to each platform. Sam gets back deployment IDs he can reference when building media buys.
 
+### Buying through a sales agent
+
+Sam also wants to run a sponsored article campaign through Wonderstruck, a premium publisher with its own sales agent. Instead of activating the signal on a specific DSP, Sam activates it on the sales agent directly — Wonderstruck handles its own DSP coordination:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "signal_agent_segment_id": "shopgrid_new_to_brand",
+  "pricing_option_id": "po_shopgrid_retail_cpm",
+  "destinations": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.example"
+    }
+  ]
+}
+```
+
+The sales agent records the activation internally. When Sam later calls `create_media_buy` through Wonderstruck, the signal-based targeting is already in place — Sam doesn't need to know which DSP Wonderstruck uses behind the scenes.
+
 ## Step 5: Build the campaign
 
 <img src="/images/walkthrough/signals-05-campaign-targeting.png" alt="Sam views three targeting layers stacking on a large screen — location, audience, and purchase data overlap and glow where they intersect" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />

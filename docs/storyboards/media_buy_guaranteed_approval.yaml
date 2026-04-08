@@ -106,6 +106,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return guaranteed products matching the brief. Each product should include:
@@ -164,6 +165,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Return the media buy in submitted status:
@@ -221,6 +223,7 @@ phases:
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
           Return the media buy in pending_approval status:
@@ -271,6 +274,7 @@ phases:
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
           Return the media buy in confirmed or active status:
@@ -315,6 +319,7 @@ phases:
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
         stateful: true
         expected: |
           Accept and validate creatives:
@@ -363,6 +368,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return delivery metrics for the guaranteed media buy:
