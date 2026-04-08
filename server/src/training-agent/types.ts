@@ -153,6 +153,7 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
+  usageRecords: UsageRecord[];
   lastGetProductsContext?: {
     products: Product[];
     proposals?: Proposal[];
@@ -256,6 +257,19 @@ export interface CreativeState {
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
+  pricingOptionId?: string;
+}
+
+export interface UsageRecord {
+  account: AccountRef;
+  creativeId?: string;
+  signalAgentSegmentId?: string;
+  pricingOptionId?: string;
+  impressions?: number;
+  mediaSpend?: number;
+  vendorCost: number;
+  currency: string;
+  reportedAt: string;
 }
 
 // ── Governance types ────────────────────────────────────────────

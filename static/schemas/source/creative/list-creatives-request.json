@@ -54,6 +54,15 @@
       "default": false,
       "description": "Include dynamic content variable definitions (DCO slots) for each creative"
     },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include pricing_options on each creative. Requires account to be provided. When false or omitted, pricing is not computed."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account reference for pricing and access. When provided with include_pricing, the agent returns pricing_options from this account's rate card on each creative."
+    },
     "fields": {
       "type": "array",
       "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
@@ -72,7 +81,8 @@
           "snapshot",
           "items",
           "variables",
-          "concept"
+          "concept",
+          "pricing_options"
         ]
       }
     },
@@ -135,6 +145,18 @@
           "status"
         ],
         "include_assignments": false
+      }
+    },
+    {
+      "description": "List creatives with account-specific pricing",
+      "data": {
+        "account": {
+          "account_id": "acct_acme_creative"
+        },
+        "include_pricing": true,
+        "filters": {
+          "statuses": ["approved"]
+        }
       }
     }
   ]
