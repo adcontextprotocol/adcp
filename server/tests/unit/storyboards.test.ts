@@ -12,7 +12,7 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(25);
+    expect(results.length).toBeGreaterThanOrEqual(26);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('capability_discovery');
@@ -40,6 +40,7 @@ describe('listStoryboards', () => {
     expect(ids).toContain('brand_rights');
     expect(ids).toContain('property_governance');
     expect(ids).toContain('content_standards');
+    expect(ids).toContain('audience_sync');
   });
 
   it('each summary has required fields', () => {
@@ -715,6 +716,25 @@ describe('media_buy_state_machine storyboard', () => {
 
   it('resolves acme_outdoor test kit', () => {
     const kit = getTestKitForStoryboard('media_buy_state_machine');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
+
+describe('audience_sync storyboard', () => {
+  it('covers account discovery, audience creation, and deletion', () => {
+    const sb = getStoryboard('audience_sync')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('account_setup');
+    expect(phaseIds).toContain('audience_sync');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('list_accounts');
+    expect(tasks).toContain('sync_audiences');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('audience_sync');
     expect(kit).toBeDefined();
     expect(kit!.id).toBe('acme_outdoor');
   });
