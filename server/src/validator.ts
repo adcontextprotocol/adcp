@@ -12,6 +12,7 @@ import type {
   PublisherPropertySelector,
 } from "./types.js";
 import { Cache } from "./cache.js";
+import { AAO_UA_VALIDATOR } from "./config/user-agents.js";
 
 interface FetchResult {
   data?: AdAgentsJson;
@@ -164,7 +165,7 @@ export class AgentValidator {
 
     // lgtm[js/request-forgery] -- fetch target is restricted to HTTPS and public internet hosts only.
     const response = await fetch(url, {
-      headers: { "User-Agent": "AdCP-Registry/1.0" },
+      headers: { "User-Agent": AAO_UA_VALIDATOR },
       signal: AbortSignal.timeout(5000),
     });
 

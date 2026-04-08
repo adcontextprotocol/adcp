@@ -3,6 +3,9 @@ version: "1.0.0"
 title: "Owned signal agent"
 category: signal_owned
 summary: "Signal agent serving first-party or proprietary audience data without external catalog verification."
+track: signals
+required_tools:
+  - get_signals
 
 narrative: |
   You operate a first-party data platform — a retailer CDP, publisher contextual data
@@ -62,6 +65,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return matching signals from your proprietary data. Each signal must include:
@@ -98,6 +102,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return only signals matching the filter criteria. If no signals match,
@@ -134,6 +139,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:
@@ -177,6 +183,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:

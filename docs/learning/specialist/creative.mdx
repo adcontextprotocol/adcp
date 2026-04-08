@@ -22,6 +22,7 @@ Passing earns the **AdCP specialist — Creative** credential.
 - Work with stateful ad servers: browse a creative library, generate tags per media buy, track delivery
 - Work with stateful sales agents: push creatives, preview in the publisher's environment
 - Adapt a single creative concept across multiple channels and formats
+- Understand creative agent pricing: how rates are established via accounts, how `list_creatives` shows your rate, how `build_creative` returns cost, and how `report_usage` closes the loop
 - Reason about format edge cases, accessibility, and provenance
 
 ## Prerequisite reading
@@ -95,6 +96,17 @@ Passing earns the **AdCP specialist — Creative** credential.
   </Card>
 </CardGroup>
 
+## Connecting to the test agent
+
+Lab exercises run against the public test agent. Use the shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
+
 ## Lab exercises
 
 ### Interaction models
@@ -103,20 +115,46 @@ Passing earns the **AdCP specialist — Creative** credential.
 2. **Ad server workflow** — Connect to a pre-loaded ad server, browse the creative library with `list_creatives`, generate tags for multiple media buys using `build_creative`, and check delivery metrics.
 3. **Push-and-preview** — Connect to a sales agent, discover its accepted formats, push catalog assets with `sync_creatives`, and preview how they render in the publisher's environment.
 
+### Creative pricing
+
+4. **Pricing lifecycle** — Using the same sandbox ad server from exercise 2:
+   - Establish an account with the ad server
+   - `list_creatives` with `account` and `include_pricing: true` — observe `pricing_options` on each creative reflecting your rate card
+   - Switch to a second sandbox account, `list_creatives` again — observe that `pricing_options` reflects a different rate (different CPM, model, or currency)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` in the response
+   - `build_creative` without `account` — observe the rejection error
+   - Call `report_usage` with `creative_id` + `pricing_option_id`, verify the values match what `build_creative` returned
+   - Explain: why is `vendor_cost` zero on a CPM-priced creative at build time?
+
+5. **Transformation agent pricing** — Using the sandbox transformation agent from exercise 1, with pricing enabled:
+   - Establish an account with the transformation agent
+   - `list_creative_formats` with `account` and `include_pricing: true` — observe `pricing_options` on each format (per-unit pricing)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` (expect non-zero `vendor_cost` at build time, unlike the CPM ad server)
+   - Compare: ad server discovers pricing on `list_creatives`, transformation agent discovers pricing on `list_creative_formats`. Ad server has zero build cost (CPM accrues at serve time), transformation agent has non-zero build cost (per-unit pricing)
+
+<Note>
+**Vendor pricing is consistent across protocols**
+
+All vendor services use the same pattern: `pricing_options[]` on discovery responses, `pricing_option_id` in `report_usage`. Signals, content standards, creative agents, and property list agents all follow this.
+
+Vendors often offer multiple pricing options per creative — volume/commitment tiers (lower CPM at higher spend), context-specific rates (premium vs. standard placements), or different pricing models for different product lines (CPM for rich media, per-unit for social variants). The buyer selects the appropriate `pricing_option_id` and passes it in `report_usage`.
+</Note>
+
 ### Cross-platform skills
 
-4. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
-5. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
-6. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
+6. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
+7. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+8. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Interaction models | 30% | Correctly identifies and works with all three creative agent types |
+| Interaction models | 20% | Correctly identifies and works with all three creative agent types |
 | Cross-platform | 25% | Adapts creatives across channels and formats |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
-| Analytical skill | 20% | Interprets creative feature evaluation and delivery results |
+| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
+| Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
 
 Passing threshold: 70%.
 

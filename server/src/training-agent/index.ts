@@ -18,12 +18,13 @@ import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
+import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
-const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN;
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
 const STARTUP_TIME = new Date().toISOString();
 
 // WorkOS client for API key validation (reuses main app's credentials)
@@ -174,10 +175,12 @@ export function createTrainingAgentRouter(): Router {
     res.status(204).end();
   });
 
-  // Rate limiting: 60 requests/minute per IP (in-memory, no DB dependency)
+  // Rate limiting: 300 requests/minute per IP (in-memory, no DB dependency).
+  // The training agent is a sandbox — bulk storyboard evaluation runs ~10 MCP
+  // calls per storyboard, so 21 storyboards need ~210 calls within a short window.
   const mcpRateLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 60,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },

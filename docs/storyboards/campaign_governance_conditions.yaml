@@ -1,0 +1,187 @@
+id: campaign_governance_conditions
+version: "1.0.0"
+title: "Campaign governance — conditional approval"
+category: campaign_governance_conditions
+summary: "Governance agent approves a media buy with conditions. Buyer re-checks after meeting the conditions."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
+
+narrative: |
+  The buyer's governance agent evaluates a media buy that falls within spending authority but
+  triggers policy conditions — for example, the buy targets a channel that requires weekly
+  reporting, or the creative format requires brand safety review.
+
+  The governance agent returns approved_with_conditions, attaching conditions the buyer must
+  honor during the campaign. The buyer can proceed with the media buy by passing the
+  governance context, but the conditions are binding.
+
+  This storyboard tests the middle path between outright approval and denial: the buy is
+  allowed, but with strings attached.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform with governance support"
+    - "SSP that respects governance checks"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, and a governance agent URL.
+    The governance plan defines policy conditions that trigger on specific buy parameters.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: plan_registration
+    title: "Register governance plan with policy conditions"
+    narrative: |
+      The buyer registers a governance plan that allows the agent full spending authority
+      but attaches policy conditions for specific channels or formats. Buys that trigger
+      these policies are approved with conditions rather than denied.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with policy conditions"
+        narrative: |
+          The buyer's governance agent registers a plan with full spending authority but
+          custom policies that require weekly reporting for CTV buys and brand safety
+          review for user-generated content placements.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: campaign_governance_conditions
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - authority_level: agent_full
+          - custom_policies: policy conditions registered
+
+        sample_request:
+          plans:
+            - plan_name: "Acme Outdoor conditional governance"
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              authority_level: "agent_full"
+              custom_policies:
+                - "CTV buys require weekly delivery reporting"
+                - "UGC placements require brand safety review before go-live"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: governance_check_conditions
+    title: "Governance check — approved with conditions"
+    narrative: |
+      The buyer proposes a media buy that includes CTV inventory. The governance agent
+      approves the buy but attaches the weekly reporting condition from the plan. The
+      buyer receives a governance context that encodes these conditions.
+
+    steps:
+      - id: check_governance_conditions
+        title: "Pre-buy governance check (approved with conditions)"
+        narrative: |
+          The buyer calls check_governance with a media buy that includes CTV products.
+          The governance agent approves the buy but attaches conditions: weekly delivery
+          reporting is required for the CTV line items.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_conditions
+        stateful: true
+        expected: |
+          Return an approved governance decision with conditions:
+          - decision: approved
+          - conditions: array of requirements the buyer must honor
+            - e.g., "Weekly delivery reporting required for CTV line items"
+          - governance_context: token the buyer passes to create_media_buy
+          - findings: may include should-severity findings noting the conditions
+
+        sample_request:
+          plan_id: "gov_acme_conditional"
+          binding:
+            type: "media_buy"
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            total_budget: 40000
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 25000
+              - product_id: "lifestyle_display_q2"
+                budget: 15000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "decision"
+            description: "Response contains a governance decision"
+          - check: field_present
+            path: "conditions"
+            description: "Approval includes conditions"
+          - check: field_present
+            path: "governance_context"
+            description: "Response includes governance context for the media buy"
+
+  - id: create_buy_with_conditions
+    title: "Create media buy with governance conditions"
+    narrative: |
+      The buyer creates the media buy, passing the governance context from the conditional
+      approval. The seller validates the governance approval and confirms the buy. The
+      conditions from the governance check are now binding for the campaign duration.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy with conditional governance approval"
+        narrative: |
+          The buyer creates the media buy with the governance_context token from the
+          conditional approval. The seller confirms the buy. The buyer is now bound by
+          the conditions (weekly reporting for CTV line items).
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: campaign_governance_conditions
+        stateful: true
+        expected: |
+          Confirm the media buy with governance approval:
+          - media_buy_id: your platform's identifier
+          - status: confirmed or active
+          - governance_context: echoed back confirming governance was validated
+          - packages: confirmed line items
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "acmeoutdoor.com"
+          governance_context: "gov_ctx_acme_conditional_approved"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_ctv_q2"
+              budget: 25000
+              pricing_option_id: "cpm_guaranteed"
+            - product_id: "lifestyle_display_q2"
+              budget: 15000
+              pricing_option_id: "cpm_standard"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"

@@ -6,6 +6,7 @@
  */
 
 import type { NewsletterConfig } from '../config.js';
+import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview } from '../../addie/templates/weekly-digest.js';
@@ -131,19 +132,62 @@ const promptDB: NewsletterEditionDB = {
 
 // ─── Markdown builder ──────────────────────────────────────────────────
 
+function htmlToMarkdown(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToMarkdown(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToMarkdown(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToMarkdown).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'strong': return `**${inner}**`;
+    case 'em': return `_${inner}_`;
+    case 'a': { const href = el.getAttribute('href'); return href ? `[${inner}](${href})` : inner; }
+    case 'li': return `- ${inner}\n`;
+    default: return inner;
+  }
+}
+
 function buildPromptMarkdown(content: unknown): string {
   const c = content as DigestContent;
   const sections: string[] = [];
 
   sections.push(c.openingTake);
-  if (c.editorsNote) sections.push(`> ${c.editorsNote.split('\n').join('\n> ')}`);
+  if (c.editorsNote) {
+    const noteText = /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(c.editorsNote)
+      ? htmlToMarkdown(c.editorsNote)
+      : c.editorsNote;
+    sections.push(`> ${noteText.split('\n').join('\n> ')}`);
+  }
   if (c.newMembers.length > 0) {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
   }
   if (c.whatToWatch.length > 0) {
-    sections.push('## Industry intel');
-    for (const item of c.whatToWatch) {
-      sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
+    const official = c.whatToWatch.filter((item) => item.tags?.includes('official'));
+    const external = c.whatToWatch.filter((item) => !item.tags?.includes('official'));
+    for (const item of official) {
+      let block = `### [${item.title}](${item.url})\n\n${item.summary}`;
+      if (item.takeaways && item.takeaways.length > 0) {
+        block += '\n\n' + item.takeaways.map((tw) => `- ${tw}`).join('\n');
+      }
+      sections.push(block);
+    }
+    if (external.length > 0) {
+      sections.push('## Industry intel');
+      for (const item of external) {
+        sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
+      }
     }
   }
   if (c.whatShipped && c.whatShipped.length > 0) {
@@ -174,7 +218,13 @@ function buildPromptMarkdown(content: unknown): string {
   if (c.shareableTake) {
     sections.push(`> *"${c.shareableTake}"*\n>\n> — Share this take`);
   }
-  sections.push("---\n\nThat's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.\n\n— Addie\\\nAgenticAdvertising.org");
+  if (c.takeActions && c.takeActions.length > 0) {
+    sections.push('## Take action');
+    for (const action of c.takeActions) {
+      sections.push(`- **[${action.ctaLabel}](${action.ctaUrl})** — ${action.text}`);
+    }
+  }
+  sections.push("---\n\nWe're building this together. If something here resonated, pass it along — every share brings in someone new.\n\nLet's keep building,\nAddie\\\nAgenticAdvertising.org");
   return sections.join('\n\n');
 }
 
@@ -217,7 +267,7 @@ export const thePromptConfig: NewsletterConfig = {
   illustrationStylePrompt: PROMPT_ILLUSTRATION_STYLE,
   illustrationCast: PROMPT_CAST,
   signOff: {
-    text: "That's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.",
+    text: "We're building this together. If something here resonated, pass it along — every share brings in someone new.",
     attribution: 'Addie',
     domain: 'AgenticAdvertising.org',
   },

@@ -8,6 +8,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createLogger } from '../logger.js';
+import { withGeminiRetry } from '../utils/gemini-retry.js';
 import { getAllNewsletters } from '../newsletters/registry.js';
 import type { NewsletterConfig } from '../newsletters/config.js';
 
@@ -121,7 +122,11 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
 
   logger.info({ title, hasAuthorDirection: !!authorDescription }, 'Generating illustration');
 
-  const result = await model.generateContent([{ text: prompt }]);
+  const result = await withGeminiRetry(
+    () => model.generateContent([{ text: prompt }]),
+    undefined,
+    'generateIllustration',
+  );
   const response = result.response;
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {

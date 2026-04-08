@@ -405,7 +405,8 @@ export async function prepareRequestWithMemberTools(
   sanitizedInput: string,
   userId: string | undefined,
   threadExternalId: string,
-  isAuthenticated: boolean
+  isAuthenticated: boolean,
+  threadId?: string
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -510,7 +511,7 @@ export async function prepareRequestWithMemberTools(
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext),
-    ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadExternalId),
+    ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
@@ -766,7 +767,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         inputValidation.sanitized,
         req.user?.id,
         externalId,
-        isAuth
+        isAuth,
+        thread.thread_id
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
@@ -1015,7 +1017,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         inputValidation.sanitized,
         req.user?.id,
         externalId,
-        isAuth
+        isAuth,
+        thread.thread_id
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 

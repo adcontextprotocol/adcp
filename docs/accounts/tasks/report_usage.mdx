@@ -31,10 +31,12 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
-| `pricing_option_id` | string | Signals: Yes | Pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. The vendor uses this to verify the correct rate was applied. |
+| `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response (`get_signals`, `list_creatives`, `list_content_standards`, `list_property_lists`) or execution response (`build_creative`). The vendor uses this to verify the correct rate was applied. |
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
 | `signal_agent_segment_id` | string | Signals: Yes | Signal identifier from `get_signals` |
+| `creative_id` | string | Creative: Yes | Creative identifier from `build_creative` or `list_creatives`. Links usage to a specific creative for billing verification. |
+| `property_list_id` | string | Property lists: Yes | Property list identifier from `list_property_lists`. Links usage to a specific property list for billing verification. |
 
 ## Response
 
@@ -64,6 +66,38 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
       "impressions": 4200000,
       "media_spend": 21000.00,
       "vendor_cost": 2100.00,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+```json Response
+{
+  "accepted": 1
+}
+```
+
+</CodeGroup>
+
+### Creative usage — ad server with CPM pricing
+
+<CodeGroup>
+
+```json Request
+{
+  "idempotency_key": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "reporting_period": {
+    "start": "2026-03-01T00:00:00Z",
+    "end": "2026-03-31T23:59:59Z"
+  },
+  "usage": [
+    {
+      "account": { "account_id": "acct_acme_creative" },
+      "creative_id": "cr_88201",
+      "pricing_option_id": "po_video_cpm",
+      "impressions": 2400000,
+      "vendor_cost": 1200.00,
       "currency": "USD"
     }
   ]

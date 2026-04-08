@@ -1,0 +1,274 @@
+id: social_platform
+version: "1.0.0"
+title: "Social platform"
+category: social_platform
+summary: "Social media platform that accepts audience segments, native creatives, and conversion events from buyer agents."
+track: audiences
+required_tools:
+  - sync_audiences
+
+narrative: |
+  You run a social media platform — Snap, Meta, TikTok, Pinterest, or any walled garden that
+  sells advertising through audience-based targeting and native creative formats. A buyer agent
+  connects to set up an account, push audience segments, sync native creatives, track conversion
+  events, and monitor spend.
+
+  Unlike open-web media buys, social platforms require the buyer to push assets into the
+  platform's environment. Audiences are activated via sync_audiences, creatives are pushed via
+  sync_creatives in platform-native formats, and conversion events flow back via log_event.
+
+  This storyboard covers the social platform integration from the buyer's perspective:
+  account setup, audience activation, native creative push, event tracking, and financial
+  monitoring.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_non_guaranteed
+  examples:
+    - "Snap"
+    - "Meta"
+    - "TikTok"
+    - "Pinterest"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, audience segment definitions,
+    and native creative assets. The test kit provides a sample brand with creative assets
+    suitable for social formats.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      The buyer establishes an account with the social platform and verifies its status.
+      Social platforms often require advertiser verification before accepting ad spend.
+
+    steps:
+      - id: sync_accounts
+        title: "Register advertiser account"
+        narrative: |
+          The buyer registers their brand and operator with the social platform. The platform
+          provisions an advertiser account and returns its status. Social platforms may require
+          identity verification before the account goes active.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the advertiser account with:
+          - account_id: platform's identifier
+          - status: active or pending_approval (if verification required)
+          - account_scope: how the platform scopes this relationship
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              billing: "operator"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: list_accounts
+        title: "Verify account status"
+        narrative: |
+          The buyer checks which accounts exist on the platform and their current status.
+          This confirms the account is active and shows any pending setup requirements.
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: true
+        expected: |
+          Return accounts matching the query:
+          - accounts array with status, account_id, brand, operator
+          - Active accounts ready for ad operations
+          - Pending accounts with setup URLs if verification needed
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_present
+            path: "accounts"
+            description: "Response contains accounts array"
+
+  - id: audience_sync
+    title: "Audience activation"
+    narrative: |
+      The buyer pushes audience segments to the platform. Social platforms use these segments
+      for targeting — the buyer defines who to reach, and the platform matches against its
+      user base.
+
+    steps:
+      - id: sync_audiences
+        title: "Push audience segments"
+        narrative: |
+          The buyer syncs audience segment definitions to the platform. Each segment includes
+          targeting criteria that the platform evaluates against its user graph. The platform
+          returns match rates and segment status.
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        comply_scenario: sync_audiences
+        stateful: true
+        expected: |
+          Accept and process audience segments:
+          - Per-segment status: active, processing, or rejected
+          - Match rate estimates where available
+          - Platform-assigned segment IDs
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          audiences:
+            - audience_id: "outdoor_enthusiasts_25_54"
+              name: "Outdoor enthusiasts 25-54"
+              description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json schema"
+
+  - id: creative_push
+    title: "Native creative sync"
+    narrative: |
+      The buyer pushes native creative assets to the platform. Social platforms render ads
+      in their native format — the buyer provides assets (images, headlines, descriptions)
+      and the platform assembles them into the native ad unit.
+
+    steps:
+      - id: sync_creatives
+        title: "Push native creative assets"
+        narrative: |
+          The buyer syncs creative assets for native ad formats. The platform validates
+          each creative against its format requirements and returns per-creative status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept and validate native creatives:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation errors for rejected creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "native_trail_pro"
+              name: "Trail Pro 3000 - Native"
+              format_id:
+                agent_url: "https://social-platform.example.com"
+                id: "native_feed"
+              assets:
+                - asset_id: "image"
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-native.png"
+                  mime_type: "image/png"
+                - asset_id: "headline"
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+
+  - id: event_logging
+    title: "Conversion event tracking"
+    narrative: |
+      The buyer sends conversion events back to the platform for measurement and optimization.
+      Events include purchases, signups, and other post-click actions that the platform uses
+      to optimize delivery and report on campaign performance.
+
+    steps:
+      - id: log_event
+        title: "Send conversion events"
+        narrative: |
+          The buyer logs conversion events that occurred after ad exposure. The platform
+          records these events for attribution, reporting, and delivery optimization.
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the events:
+          - Per-event status: accepted or rejected
+          - Event IDs for deduplication
+          - Attribution window validation
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_trail_pro_001"
+              timestamp: "2026-04-05T14:30:00Z"
+              value: 149.99
+              currency: "USD"
+
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+
+  - id: financials
+    title: "Account financials"
+    narrative: |
+      The buyer checks account financials — spending, balance, and payment status. This is
+      essential for budget monitoring across multiple social platforms.
+
+    steps:
+      - id: get_account_financials
+        title: "Check account spending and balance"
+        narrative: |
+          The buyer retrieves financial information for the advertiser account. The platform
+          returns current spend, remaining balance, and payment status.
+        task: get_account_financials
+        schema_ref: "account/get-account-financials-request.json"
+        response_schema_ref: "account/get-account-financials-response.json"
+        doc_ref: "/accounts/tasks/get_account_financials"
+        stateful: true
+        expected: |
+          Return account financial data:
+          - Current spend to date
+          - Remaining balance or credit
+          - Payment status and terms
+          - Budget utilization metrics
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-account-financials-response.json schema"

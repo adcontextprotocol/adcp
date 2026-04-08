@@ -18,6 +18,7 @@ export type ComplianceTrack =
   | 'creative'
   | 'reporting'
   | 'governance'
+  | 'campaign_governance'
   | 'signals'
   | 'si'
   | 'audiences';
@@ -43,6 +44,8 @@ export interface ComplyOptions extends TestOptions {
   tracks?: ComplianceTrack[];
   platform_type?: PlatformType;
   timeout_ms?: number;
+  /** Limit to specific scenarios (e.g. from a storyboard). Bypasses track-based selection. */
+  scenarios?: TestScenario[];
 }
 
 export interface PlatformProfile {
@@ -112,6 +115,7 @@ const TRACK_LABELS: Record<ComplianceTrack, string> = {
   creative: 'Creative workflows',
   reporting: 'Reporting',
   governance: 'Governance',
+  campaign_governance: 'Campaign governance',
   signals: 'Signals',
   si: 'Sponsored intelligence',
   audiences: 'Audience sync',
@@ -128,9 +132,16 @@ export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
     'validation',
     'temporal_validation',
   ],
-  creative: ['creative_sync', 'creative_inline', 'creative_flow'],
+  creative: ['creative_sync', 'creative_inline', 'creative_flow', 'creative_lifecycle'],
   reporting: ['deterministic_delivery'],
   governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
+  campaign_governance: [
+    'campaign_governance',
+    'campaign_governance_denied',
+    'campaign_governance_conditions',
+    'campaign_governance_delivery',
+    'seller_governance_context',
+  ],
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
   audiences: ['sync_audiences'],
@@ -422,10 +433,39 @@ function isTrackProductDependent(track: ComplianceTrack): boolean {
   });
 }
 
+const ALL_KNOWN_SCENARIOS = new Set<string>(
+  (Object.values(TRACK_SCENARIOS) as TestScenario[][]).flat(),
+);
+
+/**
+ * Filter an array of scenario name strings to only those that exist in TRACK_SCENARIOS.
+ * Logs a warning for any unknown scenario names.
+ */
+export function filterToKnownScenarios(candidates: string[]): TestScenario[] {
+  return candidates.filter((s) => ALL_KNOWN_SCENARIOS.has(s)) as TestScenario[];
+}
+
+/**
+ * Reverse-map a set of scenarios to the tracks that contain them.
+ */
+function tracksForScenarios(scenarios: TestScenario[]): ComplianceTrack[] {
+  const scenarioSet = new Set(scenarios);
+  const tracks: ComplianceTrack[] = [];
+  for (const [track, trackScenarios] of Object.entries(TRACK_SCENARIOS)) {
+    if (trackScenarios.some((s) => scenarioSet.has(s))) {
+      tracks.push(track as ComplianceTrack);
+    }
+  }
+  return tracks;
+}
+
 export async function comply(agentUrl: string, options: ComplyOptions = {}): Promise<ComplyResult> {
-  const requestedTracks = options.tracks?.length
-    ? options.tracks
-    : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
+  const scenarioList = options.scenarios ?? buildScenarioList(options.tracks);
+  const requestedTracks = options.scenarios?.length
+    ? tracksForScenarios(scenarioList)
+    : options.tracks?.length
+      ? options.tracks
+      : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
 
   // Phase 1: Run core + products tracks to check product availability
   const foundationTracks: ComplianceTrack[] = ['core', 'products'].filter(
@@ -433,9 +473,14 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   ) as ComplianceTrack[];
   const remainingTracks = requestedTracks.filter((t) => !foundationTracks.includes(t));
 
+  const foundationScenarios = scenarioList.filter((s) => {
+    const foundationScenarioSet = new Set(foundationTracks.flatMap((t) => TRACK_SCENARIOS[t]));
+    return foundationScenarioSet.has(s);
+  });
+
   const foundationSuite = await testAllScenarios(agentUrl, {
     ...options,
-    scenarios: buildScenarioList(foundationTracks),
+    scenarios: foundationScenarios.length > 0 ? foundationScenarios : buildScenarioList(foundationTracks),
   });
 
   // Check if product discovery produced any passing results
@@ -462,9 +507,14 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   let totalDurationMs = foundationSuite.total_duration_ms;
 
   if (phase2Tracks.length > 0) {
+    const phase2ScenarioSet = new Set(phase2Tracks.flatMap((t) => TRACK_SCENARIOS[t]));
+    const phase2Scenarios = options.scenarios?.length
+      ? scenarioList.filter((s) => phase2ScenarioSet.has(s))
+      : buildScenarioList(phase2Tracks);
+
     const phase2Suite = await testAllScenarios(agentUrl, {
       ...options,
-      scenarios: buildScenarioList(phase2Tracks),
+      scenarios: phase2Scenarios,
     });
     allResults = [...allResults, ...phase2Suite.results];
     totalDurationMs += phase2Suite.total_duration_ms;

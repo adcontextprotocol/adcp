@@ -1,0 +1,251 @@
+id: content_standards
+version: "1.0.0"
+title: "Content standards"
+category: content_standards
+summary: "Define creative quality rules, calibrate content against them, and validate that delivered ads met the standards."
+track: governance
+required_tools:
+  - list_content_standards
+
+narrative: |
+  You run a governance agent that manages content standards — rules that define what
+  creative content is acceptable for a brand or campaign. Buyers create standards that
+  specify quality requirements, safety constraints, and brand compliance rules. Your
+  agent stores these standards, calibrates sample content against them, and validates
+  that delivered creatives met the requirements.
+
+  Content standards complement property governance. Property lists control where ads appear;
+  content standards control what the ads look like. Together they form a complete brand
+  safety framework.
+
+  This storyboard covers the full content standards lifecycle: defining standards, querying
+  them, calibrating content before launch, and validating delivery after the fact.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - content_standards
+    - creative_quality
+  examples:
+    - "Creative quality platforms"
+    - "Brand safety services"
+    - "Ad verification platforms"
+    - "GARM-aligned quality tools"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and creative quality requirements. The test kit
+    provides a sample brand with visual assets for calibration.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: create_standards
+    title: "Define content standards"
+    narrative: |
+      The buyer creates content standards that define what creative content is acceptable.
+      Standards include quality requirements, safety constraints, and brand-specific rules.
+
+    steps:
+      - id: create_content_standards
+        title: "Create content standards"
+        narrative: |
+          The buyer defines a set of content standards. These rules will be used to
+          evaluate creatives before and after delivery.
+        task: create_content_standards
+        schema_ref: "content-standards/create-content-standards-request.json"
+        response_schema_ref: "content-standards/create-content-standards-response.json"
+        doc_ref: "/governance/content-standards/tasks/create_content_standards"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return the created content standards:
+          - standards_id: platform-assigned identifier
+          - Rules registered with severity levels
+          - Status: active
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+          name: "Acme Outdoor creative standards"
+          rules:
+            - category: "brand_safety"
+              description: "No violent or controversial imagery"
+              severity: "must"
+            - category: "quality"
+              description: "Minimum 72 DPI for display assets"
+              severity: "should"
+            - category: "brand_compliance"
+              description: "Brand colors must match palette within 5% tolerance"
+              severity: "must"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-content-standards-response.json schema"
+
+  - id: list_and_get
+    title: "Query content standards"
+    narrative: |
+      The buyer lists all content standards for the account and retrieves a specific
+      standard to inspect its rules.
+
+    steps:
+      - id: list_content_standards
+        title: "List all content standards"
+        narrative: |
+          The buyer lists all content standards for the brand. The response includes
+          standard metadata without full rule details.
+        task: list_content_standards
+        schema_ref: "content-standards/list-content-standards-request.json"
+        response_schema_ref: "content-standards/list-content-standards-response.json"
+        doc_ref: "/governance/content-standards/tasks/list_content_standards"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return content standard summaries:
+          - Array of standards with standards_id, name, rule_count
+          - Status of each standard set
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-content-standards-response.json schema"
+
+      - id: get_content_standards
+        title: "Get a specific content standard"
+        narrative: |
+          The buyer retrieves the full details of a specific content standard, including
+          all rules and their severity levels.
+        task: get_content_standards
+        schema_ref: "content-standards/get-content-standards-request.json"
+        response_schema_ref: "content-standards/get-content-standards-response.json"
+        doc_ref: "/governance/content-standards/tasks/get_content_standards"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return the full content standard:
+          - standards_id, name
+          - All rules with categories, descriptions, and severity
+
+        sample_request:
+          standards_id: "cs_acme_creative_001"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-content-standards-response.json schema"
+
+  - id: update_standards
+    title: "Update content standards"
+    narrative: |
+      The buyer modifies existing content standards — adding rules, adjusting severity,
+      or removing obsolete constraints.
+
+    steps:
+      - id: update_content_standards
+        title: "Update content standards"
+        narrative: |
+          The buyer updates an existing content standard with new or modified rules.
+        task: update_content_standards
+        schema_ref: "content-standards/update-content-standards-request.json"
+        response_schema_ref: "content-standards/update-content-standards-response.json"
+        doc_ref: "/governance/content-standards/tasks/update_content_standards"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return the updated content standard:
+          - Updated rule set
+          - Confirmation of changes applied
+
+        sample_request:
+          standards_id: "cs_acme_creative_001"
+          add_rules:
+            - category: "accessibility"
+              description: "All images must have alt text"
+              severity: "should"
+
+        validations:
+          - check: response_schema
+            description: "Response matches update-content-standards-response.json schema"
+
+  - id: calibration
+    title: "Calibrate content"
+    narrative: |
+      Before launching a campaign, the buyer calibrates sample creatives against the
+      content standards. This is a pre-flight check — does the creative meet the rules
+      before it goes live?
+
+    steps:
+      - id: calibrate_content
+        title: "Calibrate content against standards"
+        narrative: |
+          The buyer submits sample creative content for evaluation against the content
+          standards. The governance agent checks each rule and returns a calibration
+          report indicating pass/fail per rule.
+        task: calibrate_content
+        schema_ref: "content-standards/calibrate-content-request.json"
+        response_schema_ref: "content-standards/calibrate-content-response.json"
+        doc_ref: "/governance/content-standards/tasks/calibrate_content"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return a calibration report:
+          - overall_pass: boolean
+          - Per-rule results with pass/fail and evidence
+          - Remediation guidance for failed rules
+
+        sample_request:
+          standards_id: "cs_acme_creative_001"
+          content:
+            creative_id: "display_trail_pro_300x250"
+            format: "display_300x250"
+            assets:
+              - asset_type: "image"
+                url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+
+        validations:
+          - check: response_schema
+            description: "Response matches calibrate-content-response.json schema"
+
+  - id: delivery_validation
+    title: "Validate delivered content"
+    narrative: |
+      After the campaign runs, the buyer validates that the delivered creatives met the
+      content standards. The governance agent checks actual delivered content against
+      the rules and flags any violations.
+
+    steps:
+      - id: validate_content_delivery
+        title: "Validate content delivery compliance"
+        narrative: |
+          The buyer submits delivery data with creative references. The governance agent
+          evaluates the delivered content against the content standards and returns
+          a compliance report.
+        task: validate_content_delivery
+        schema_ref: "content-standards/validate-content-delivery-request.json"
+        response_schema_ref: "content-standards/validate-content-delivery-response.json"
+        doc_ref: "/governance/content-standards/tasks/validate_content_delivery"
+        comply_scenario: governance_content_standards
+        stateful: true
+        expected: |
+          Return validation results:
+          - compliant: boolean overall status
+          - Per-creative compliance status
+          - Violations with rule references and evidence
+
+        sample_request:
+          standards_id: "cs_acme_creative_001"
+          delivery:
+            - creative_id: "display_trail_pro_300x250"
+              impressions: 150000
+            - creative_id: "video_30s_trail_pro"
+              impressions: 75000
+
+        validations:
+          - check: response_schema
+            description: "Response matches validate-content-delivery-response.json schema"

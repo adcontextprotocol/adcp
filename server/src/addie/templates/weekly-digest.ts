@@ -2,10 +2,85 @@ import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailReci
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
 import { pickNudge } from '../services/digest-nudge.js';
+import DOMPurify from 'isomorphic-dompurify';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+
+function isHtml(text: string): boolean {
+  return /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s/]/i.test(text);
+}
+
+/** Add inline styles to TipTap HTML for email client rendering. */
+function htmlToEmailHtml(html: string): string {
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+  });
+  return clean
+    .replace(/<a /g, '<a style="color: #2563eb; text-decoration: underline;" ')
+    .replace(/<ul>/g, '<ul style="margin: 8px 0; padding-left: 20px;">')
+    .replace(/<ol>/g, '<ol style="margin: 8px 0; padding-left: 20px;">')
+    .replace(/<li>/g, '<li style="margin-bottom: 4px;">')
+    .replace(/<p>/g, '<p style="margin: 0 0 8px 0;">');
+}
+
+/** Convert TipTap HTML to Slack mrkdwn using DOM traversal. */
+function htmlToSlackMrkdwn(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToSlackMrkdwn(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToSlackMrkdwn(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToSlackMrkdwn).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'strong': case 'b': return `*${inner}*`;
+    case 'em': case 'i': return `_${inner}_`;
+    case 'a': { const href = el.getAttribute('href'); return href ? `<${href}|${inner}>` : inner; }
+    case 'li': return `• ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
+}
+
+/** Convert TipTap HTML to plain text using DOM traversal. */
+function htmlToPlainText(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToPlainText(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToPlainText(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToPlainText).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'a': { const href = el.getAttribute('href'); return href && href !== inner ? `${inner} (${href})` : inner; }
+    case 'li': return `- ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
+}
 
 /**
  * Wrap a URL for email click tracking. Returns raw URL for web/preview renders.
@@ -147,7 +222,11 @@ export function renderDigestEmail(
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
-      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${slackLinksToHtml(content.editorsNote)}</p>
+      <div style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${
+        isHtml(content.editorsNote)
+          ? htmlToEmailHtml(content.editorsNote)
+          : slackLinksToHtml(content.editorsNote).replace(/\n/g, '<br>')
+      }</div>
     </div>
     ` : ''}
 
@@ -165,7 +244,13 @@ export function renderDigestEmail(
             <a href="${t(`edition_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
           </h3>
           <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+          ${item.takeaways && item.takeaways.length > 0 ? `
+          <ul style="margin: 8px 0 4px 0; padding-left: 20px;">
+            ${item.takeaways.map((tw) => `<li style="font-size: 14px; color: #333; margin-bottom: 6px; line-height: 1.5;">${escapeHtml(tw)}</li>`).join('')}
+          </ul>
+          ` : `
           <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">${escapeHtml(item.whyItMatters)}</p>
+          `}
         </div>
         `).join('');
         html += '<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">';
@@ -232,12 +317,27 @@ export function renderDigestEmail(
     </p>
     ` : ''}
 
-    <!-- Sign-off + CTA -->
+    <!-- Take Action -->
+    ${content.takeActions && content.takeActions.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Take action</h2>
+    ${content.takeActions.map((action, i) => `
+    <div style="margin-bottom: 12px;">
+      <p style="font-size: 14px; color: #333; margin: 0; line-height: 1.5;">
+        ${escapeHtml(action.text)}
+        <a href="${t(`action_${i}`, action.ctaUrl)}" style="color: #2563eb; font-weight: 600; text-decoration: none; white-space: nowrap;">${escapeHtml(action.ctaLabel)} &rarr;</a>
+      </p>
+    </div>
+    `).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
+    <!-- Sign-off -->
     <p style="font-size: 15px; color: #333; line-height: 1.6; margin-bottom: 4px;">
-      That's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.
+      We're building this together. If something here resonated, pass it along — every share brings in someone new.
     </p>
     <p style="font-size: 15px; color: #333; margin-top: 8px;">
-      — Addie<br>
+      Let's keep building,<br>
+      Addie<br>
       <span style="font-size: 13px; color: #666;">AgenticAdvertising.org</span>
     </p>
 
@@ -379,7 +479,12 @@ function renderDigestText(
   lines.push(content.openingTake, '');
 
   if (content.editorsNote) {
-    lines.push(slackLinksToPlainText(content.editorsNote), '');
+    lines.push(
+      isHtml(content.editorsNote)
+        ? htmlToPlainText(content.editorsNote)
+        : slackLinksToPlainText(content.editorsNote),
+      '',
+    );
   }
 
   if (content.newMembers.length > 0) {
@@ -387,13 +492,30 @@ function renderDigestText(
   }
 
   if (content.whatToWatch.length > 0) {
-    lines.push('--- WHAT TO WATCH ---', '');
-    for (const item of content.whatToWatch) {
+    const officialText = content.whatToWatch.filter((item) => item.tags?.includes('official'));
+    const externalText = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+
+    for (const item of officialText) {
       lines.push(`* ${item.title}`);
       lines.push(`  ${item.summary}`);
-      lines.push(`  ${item.whyItMatters}`);
+      if (item.takeaways && item.takeaways.length > 0) {
+        for (const tw of item.takeaways) {
+          lines.push(`  - ${tw}`);
+        }
+      }
       lines.push(`  ${item.url}`);
       lines.push('');
+    }
+
+    if (externalText.length > 0) {
+      lines.push('--- INDUSTRY INTEL ---', '');
+      for (const item of externalText) {
+        lines.push(`* ${item.title}`);
+        lines.push(`  ${item.summary}`);
+        lines.push(`  ${item.whyItMatters}`);
+        lines.push(`  ${item.url}`);
+        lines.push('');
+      }
     }
   }
 
@@ -428,9 +550,19 @@ function renderDigestText(
     }
   }
 
+  if (content.takeActions && content.takeActions.length > 0) {
+    lines.push('--- TAKE ACTION ---', '');
+    for (const action of content.takeActions) {
+      lines.push(`* ${action.text}`);
+      lines.push(`  ${action.ctaLabel}: ${action.ctaUrl}`);
+      lines.push('');
+    }
+  }
+
   lines.push('---', '');
-  lines.push("That's the week. If one thing stuck, share it.", '');
-  lines.push('— Addie');
+  lines.push("We're building this together. If something here resonated, pass it along.", '');
+  lines.push("Let's keep building,");
+  lines.push('Addie');
   lines.push('AgenticAdvertising.org', '');
   lines.push(`Read online: ${BASE_URL}/perspectives/the-prompt-${editionDate}`);
 
@@ -459,15 +591,41 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
 
   // Editor's note
   if (content.editorsNote) {
+    const mrkdwn = isHtml(content.editorsNote)
+      ? htmlToSlackMrkdwn(content.editorsNote)
+      : escapeSlackMrkdwnPreserveLinks(content.editorsNote);
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: escapeSlackMrkdwnPreserveLinks(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+      text: { type: 'mrkdwn', text: mrkdwn.split('\n').map((line) => `> ${line}`).join('\n') },
+    });
+  }
+
+  // Official content (with takeaways)
+  const officialSlack = content.whatToWatch.filter((item) => item.tags?.includes('official'));
+  const externalSlack = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+
+  if (officialSlack.length > 0) {
+    const officialText = officialSlack
+      .map((item) => {
+        let text = `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*`;
+        if (item.takeaways && item.takeaways.length > 0) {
+          text += '\n' + item.takeaways.map((tw) => `> • ${escapeSlackMrkdwn(tw)}`).join('\n');
+        } else {
+          text += `\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`;
+        }
+        return text;
+      })
+      .join('\n\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: officialText },
     });
   }
 
   // Industry intel
-  if (content.whatToWatch.length > 0) {
-    const watchText = content.whatToWatch
+  if (externalSlack.length > 0) {
+    const watchText = externalSlack
       .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
       .join('\n\n');
     blocks.push({ type: 'divider' });
@@ -501,6 +659,18 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Voices*\n\n${voicesText}` },
+    });
+  }
+
+  // Take action
+  if (content.takeActions && content.takeActions.length > 0) {
+    const actionText = content.takeActions
+      .map((a) => `• ${escapeSlackMrkdwn(a.text)} <${a.ctaUrl}|${escapeSlackMrkdwn(a.ctaLabel)}>`)
+      .join('\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Take action*\n\n${actionText}` },
     });
   }
 

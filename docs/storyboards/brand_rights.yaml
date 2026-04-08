@@ -1,0 +1,228 @@
+id: brand_rights
+version: "1.0.0"
+title: "Brand identity and rights licensing"
+category: brand_rights
+summary: "Brand agent that serves identity assets and licenses rights for AI-generated content."
+track: core
+required_tools:
+  - get_brand_identity
+
+narrative: |
+  You run a brand agent — a system that holds brand identity data (logos, colors, fonts,
+  tone of voice) and licenses rights for AI-generated content. A buyer agent connects to
+  discover your brand identity, browse available rights, acquire licenses, manage them over
+  time, and submit generated creatives for brand approval.
+
+  Brand agents are the bridge between brand owners and generative AI. When a DSP or
+  creative platform wants to generate an ad for your brand, they call your brand agent
+  to get the identity guidelines, license the right to generate content, and then submit
+  the result for approval before it goes live.
+
+  This storyboard covers the full brand rights lifecycle: discovering the brand, browsing
+  rights, acquiring a license, managing it, and approving generated content.
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities:
+    - brand_identity
+    - rights_licensing
+  examples:
+    - "Rights management platforms"
+    - "Talent agencies"
+    - "Brand licensing services"
+    - "Enterprise brand portals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (creative buyer)"
+
+prerequisites:
+  description: |
+    The caller needs brand context for identity discovery and campaign parameters for
+    rights acquisition. The test kit provides a sample brand with visual identity assets.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: identity_discovery
+    title: "Brand identity discovery"
+    narrative: |
+      The buyer retrieves the brand's public identity — logos, colors, fonts, tone of
+      voice, and visual guidelines. This is the foundation for any generative content:
+      the buyer needs to know what the brand looks like and sounds like before generating
+      anything.
+
+    steps:
+      - id: get_brand_identity
+        title: "Retrieve brand identity"
+        narrative: |
+          The buyer calls get_brand_identity to retrieve the brand's visual and verbal
+          identity. Public-tier access returns basic assets. Authorized access (after
+          account linking) provides high-resolution assets, voice configs, and detailed
+          tone guidelines.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expected: |
+          Return brand identity data:
+          - Logos at multiple resolutions
+          - Brand colors (primary, secondary, accent)
+          - Typography (fonts, weights, sizes)
+          - Tone of voice guidelines
+          - Visual style guidelines
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-brand-identity-response.json schema"
+
+  - id: rights_search
+    title: "Browse available rights"
+    narrative: |
+      The buyer discovers what rights are available for licensing. Rights define what
+      generative content can be created — image generation, video synthesis, voice
+      cloning, copy writing — and at what terms.
+
+    steps:
+      - id: get_rights
+        title: "Discover available rights"
+        narrative: |
+          The buyer calls get_rights to see what content generation rights the brand
+          offers. Each right specifies the type of content, pricing, duration, and
+          any constraints (impression caps, geo restrictions, etc.).
+        task: get_rights
+        schema_ref: "brand/get-rights-request.json"
+        response_schema_ref: "brand/get-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/get_rights"
+        stateful: false
+        expected: |
+          Return available rights with pricing:
+          - Right types (image_generation, video_synthesis, copy_writing, etc.)
+          - Pricing options per right
+          - Duration and renewal terms
+          - Usage constraints (impression caps, geo restrictions)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-rights-response.json schema"
+
+  - id: rights_acquisition
+    title: "Acquire a rights license"
+    narrative: |
+      The buyer selects a right and acquires a license. This is the contractual commitment —
+      the buyer pays for the right to generate content of a specific type for a defined
+      period. The brand agent issues generation credentials.
+
+    steps:
+      - id: acquire_rights
+        title: "Purchase a rights license"
+        narrative: |
+          The buyer acquires a specific right by selecting a pricing option and providing
+          campaign context. The brand agent validates the request, processes payment,
+          and returns a rights grant with generation credentials.
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        stateful: true
+        expected: |
+          Return the acquired rights grant:
+          - rights_grant_id: unique identifier
+          - status: active
+          - Generation credentials
+          - Expiration date and usage limits
+          - Terms and constraints
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+          right_type: "image_generation"
+          pricing_option_id: "standard_monthly"
+          campaign:
+            name: "Acme Outdoor Summer 2026"
+            start_date: "2026-04-01"
+            end_date: "2026-06-30"
+
+        validations:
+          - check: response_schema
+            description: "Response matches acquire-rights-response.json schema"
+
+  - id: rights_management
+    title: "Manage rights"
+    narrative: |
+      The buyer modifies an existing rights grant — extending the end date, adjusting
+      impression caps, or pausing generation while keeping the license active.
+
+    steps:
+      - id: update_rights
+        title: "Modify an existing rights grant"
+        narrative: |
+          The buyer updates an active rights grant. Changes may include extending the
+          duration, increasing impression caps, or pausing/resuming generation. The
+          brand agent re-issues credentials if necessary.
+        task: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        stateful: true
+        expected: |
+          Return the updated rights grant:
+          - Updated expiration or caps
+          - New generation credentials if changed
+          - Status confirmation
+
+        sample_request:
+          rights_grant_id: "rg_acme_summer_2026"
+          updates:
+            end_date: "2026-09-30"
+            impression_cap: 5000000
+
+        validations:
+          - check: response_schema
+            description: "Response matches update-rights-response.json schema"
+
+  - id: creative_approval
+    title: "Creative approval"
+    narrative: |
+      After generating content using the licensed rights, the buyer submits the creative
+      for brand approval. The brand agent reviews the generated content against brand
+      guidelines and either approves, requests changes, or rejects it.
+
+    steps:
+      - id: creative_approval
+        title: "Submit generated creative for brand approval"
+        narrative: |
+          The buyer submits a generated creative for the brand's review. The brand agent
+          evaluates it against identity guidelines, tone of voice, and any contractual
+          constraints from the rights grant.
+        task: creative_approval
+        schema_ref: "brand/creative-approval-request.json"
+        response_schema_ref: "brand/creative-approval-response.json"
+        doc_ref: "/brand-protocol/walkthrough-rights-licensing"
+        stateful: true
+        expected: |
+          Return an approval decision:
+          - decision: approved, changes_requested, or rejected
+          - Feedback on brand compliance
+          - Specific issues if changes requested or rejected
+
+        sample_request:
+          rights_grant_id: "rg_acme_summer_2026"
+          creative:
+            creative_id: "gen_trail_pro_display"
+            format: "display_300x250"
+            assets:
+              - asset_type: "image"
+                url: "https://cdn.pinnacle-agency.example/gen-trail-pro-300x250.png"
+
+        validations:
+          - check: response_schema
+            description: "Response matches creative-approval-response.json schema"

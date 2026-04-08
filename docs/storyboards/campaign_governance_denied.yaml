@@ -1,0 +1,135 @@
+id: campaign_governance_denied
+version: "1.0.0"
+title: "Campaign governance — denied"
+category: campaign_governance_denied
+summary: "Governance agent denies a media buy that exceeds the agent's spending authority. No human escalation — the buy is blocked."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
+
+narrative: |
+  The buyer's governance agent registers a plan with strict spending authority. The buyer
+  then proposes a media buy that exceeds the agent's per-transaction threshold. The
+  governance agent denies the buy outright with a must-severity finding.
+
+  Unlike the escalation storyboard, there is no human override here. The denial is final.
+  The buyer must reduce the buy amount or restructure into smaller transactions that fall
+  within the agent's authority. This tests the hard-stop governance path.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform with governance support"
+    - "Retail media network"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, and a governance agent URL.
+    The governance plan must define a per-transaction threshold below the intended buy amount.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: plan_registration
+    title: "Register governance plan"
+    narrative: |
+      The buyer registers a governance plan with strict spending authority. The plan sets
+      an agent_limited authority level with a $10K per-transaction threshold. Any buy above
+      this amount is denied without escalation.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with strict authority"
+        narrative: |
+          The buyer's governance agent registers a plan with a $10K per-transaction limit
+          and no escalation path. Buys that exceed this threshold are denied outright.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: campaign_governance_denied
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - authority_level: agent_limited
+          - per_transaction_threshold: $10K spending limit
+
+        sample_request:
+          plans:
+            - plan_name: "Acme Outdoor strict governance"
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              authority_level: "agent_limited"
+              per_transaction_threshold: 10000
+              escalation_path: "none"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: governance_check
+    title: "Governance check — denied"
+    narrative: |
+      The buyer proposes a $50K media buy against the $10K threshold. The governance agent
+      evaluates the binding and returns a denied decision with a must-severity finding
+      explaining the spending authority violation. No escalation instructions are provided
+      because the plan has no escalation path.
+
+    steps:
+      - id: check_governance_denied
+        title: "Pre-buy governance check (denied, no escalation)"
+        narrative: |
+          The buyer calls check_governance with a $50K media buy binding. The governance
+          agent denies the buy because the total exceeds the $10K per-transaction authority.
+          The response includes a must-severity finding with the violation details.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_denied
+        stateful: true
+        expected: |
+          Return a denied governance decision:
+          - decision: denied
+          - findings: array with at least one must-severity finding
+            - severity: must
+            - code: SPENDING_AUTHORITY_EXCEEDED
+            - message: explains the threshold and how much the buy exceeds it
+          - No escalation instructions (plan has no escalation path)
+
+        sample_request:
+          plan_id: "gov_acme_strict"
+          binding:
+            type: "media_buy"
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            total_budget: 50000
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 30000
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "decision"
+            description: "Response contains a governance decision"
+          - check: field_value
+            path: "decision"
+            description: "Decision is denied"
+          - check: field_present
+            path: "findings"
+            description: "Response contains findings explaining the denial"

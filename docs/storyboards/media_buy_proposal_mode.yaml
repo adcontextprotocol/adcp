@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Media buy via proposal acceptance"
 category: media_buy_proposal_mode
 summary: "Seller agent that generates curated media plan proposals the buyer can review, refine, and accept."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
@@ -101,6 +105,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return products and proposals matching the brief:
@@ -155,6 +160,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: true
         expected: |
           Return the refined proposal:
@@ -208,6 +214,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Convert the proposal into a confirmed media buy:
@@ -251,6 +258,7 @@ phases:
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
         stateful: false
         expected: |
           Return creative formats your platform accepts. Each format should define:
@@ -277,6 +285,7 @@ phases:
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
         stateful: true
         expected: |
           Accept and validate creatives:
@@ -335,6 +344,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return delivery metrics for the media buy:

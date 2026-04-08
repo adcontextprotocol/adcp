@@ -66,6 +66,9 @@ export interface Storyboard {
   title: string;
   category: string;
   summary: string;
+  track?: string;
+  required_tools?: string[];
+  platform_types?: string[];
   narrative: string;
   agent: StoryboardAgent;
   caller: StoryboardCaller;
@@ -214,6 +217,22 @@ export function getTestKitForStoryboard(storyboardId: string): TestKit | undefin
   // Convert filename to id format (acme-outdoor → acme_outdoor)
   const kitId = filename.replace(/-/g, '_');
   return testKits.get(kitId);
+}
+
+/**
+ * Extract unique comply_scenario values from a storyboard.
+ * Used to limit comply() to only the scenarios a storyboard references.
+ */
+export function extractScenariosFromStoryboard(storyboard: Storyboard): string[] {
+  const scenarios = new Set<string>();
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      if (step.comply_scenario) {
+        scenarios.add(step.comply_scenario);
+      }
+    }
+  }
+  return [...scenarios];
 }
 
 /**

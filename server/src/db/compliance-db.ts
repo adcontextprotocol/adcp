@@ -19,6 +19,9 @@ export interface AgentRegistryMetadata {
   lifecycle_stage: LifecycleStage;
   platform_type: string | null;
   compliance_opt_out: boolean;
+  monitoring_paused: boolean;
+  check_interval_hours: number;
+  monitoring_paused_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -326,6 +329,7 @@ export class ComplianceDatabase {
   /**
    * Find agents that are due for a compliance check based on their lifecycle stage.
    * Joins federated agents (from discovered_agents + member profiles) with metadata and status.
+   * Respects owner-configured check_interval_hours and monitoring_paused.
    */
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
     agent_url: string;
@@ -348,22 +352,59 @@ export class ComplianceDatabase {
       WHERE
         COALESCE(m.lifecycle_stage, 'production') IN ('production', 'testing')
         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+        AND COALESCE(m.monitoring_paused, FALSE) = FALSE
         AND (
           s.last_checked_at IS NULL
-          OR (
-            COALESCE(m.lifecycle_stage, 'production') = 'production'
-            AND s.last_checked_at < NOW() - INTERVAL '12 hours'
-          )
-          OR (
-            COALESCE(m.lifecycle_stage, 'production') = 'testing'
-            AND s.last_checked_at < NOW() - INTERVAL '24 hours'
-          )
+          OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
+            CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
+          ))
         )
       ORDER BY s.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
       [limit],
     );
     return result.rows;
+  }
+
+  // ----- Monitoring Settings -----
+
+  async getMonitoringSettings(agentUrl: string): Promise<{
+    monitoring_paused: boolean;
+    check_interval_hours: number;
+    monitoring_paused_at: Date | null;
+  }> {
+    const result = await query(
+      `SELECT monitoring_paused, check_interval_hours, monitoring_paused_at
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    if (result.rows.length === 0) {
+      return { monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null };
+    }
+    return result.rows[0];
+  }
+
+  async updateMonitoringPaused(agentUrl: string, paused: boolean): Promise<void> {
+    await query(
+      `INSERT INTO agent_registry_metadata (agent_url, monitoring_paused, monitoring_paused_at)
+       VALUES ($1, $2, CASE WHEN $2 THEN NOW() ELSE NULL END)
+       ON CONFLICT (agent_url) DO UPDATE SET
+         monitoring_paused = $2,
+         monitoring_paused_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+         updated_at = NOW()`,
+      [agentUrl, paused],
+    );
+  }
+
+  async updateCheckInterval(agentUrl: string, intervalHours: number): Promise<void> {
+    await query(
+      `INSERT INTO agent_registry_metadata (agent_url, check_interval_hours)
+       VALUES ($1, $2)
+       ON CONFLICT (agent_url) DO UPDATE SET
+         check_interval_hours = $2,
+         updated_at = NOW()`,
+      [agentUrl, intervalHours],
+    );
   }
 
   // ----- Helpers -----

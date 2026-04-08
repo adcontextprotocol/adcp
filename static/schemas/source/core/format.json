@@ -595,6 +595,14 @@
       },
       "minItems": 1,
       "uniqueItems": true
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Pricing options for this format. Used by transformation and generation agents that charge per format adapted, per image generated, or per unit of work. Present when the request included include_pricing=true and account. Ad servers and library-based agents expose pricing on list_creatives instead.",
+      "items": {
+        "$ref": "/schemas/core/vendor-pricing-option.json"
+      },
+      "minItems": 1
     }
   },
   "required": [

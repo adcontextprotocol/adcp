@@ -1,0 +1,239 @@
+id: property_governance
+version: "1.0.0"
+title: "Property governance"
+category: property_governance
+summary: "Manage brand safety property lists — create inclusion/exclusion lists, query and update them, validate delivery compliance."
+track: governance
+required_tools:
+  - create_property_list
+
+narrative: |
+  You run a governance agent that manages property lists for brand safety. Buyers create
+  inclusion and exclusion lists that define where their ads can and cannot appear. Your
+  agent stores these lists, lets buyers query and update them, and validates that actual
+  ad delivery complied with the property constraints.
+
+  Property governance is how brands control their environment. An inclusion list says
+  "only show my ads on these properties." An exclusion list says "never show my ads here."
+  The validation step checks after the fact: did the seller actually respect the lists?
+
+  This storyboard covers the full property list lifecycle: creating lists, querying them,
+  updating and deleting, and validating that delivery matched the constraints.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - property_governance
+    - brand_safety
+  examples:
+    - "IAS"
+    - "DoubleVerify"
+    - "GARM-aligned platforms"
+    - "Brand safety services"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and property domain knowledge. The test kit
+    provides a sample brand with campaign context.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: create_list
+    title: "Create property lists"
+    narrative: |
+      The buyer creates inclusion and exclusion property lists for the campaign. These
+      define the safe and unsafe environments for the brand's ads.
+
+    steps:
+      - id: create_inclusion_list
+        title: "Create an inclusion list"
+        narrative: |
+          The buyer creates an inclusion list specifying which properties (domains,
+          apps, channels) are approved for ad placement.
+        task: create_property_list
+        schema_ref: "property/create-property-list-request.json"
+        response_schema_ref: "property/create-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        comply_scenario: governance_property_lists
+        stateful: true
+        expected: |
+          Return the created property list:
+          - list_id: platform-assigned identifier
+          - list_type: inclusion
+          - Properties registered
+          - Status: active
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+          list_type: "inclusion"
+          name: "Acme Outdoor approved properties"
+          properties:
+            - domain: "outdoormagazine.example.com"
+            - domain: "hikingtrails.example.com"
+            - domain: "campinggear.example.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-property-list-response.json schema"
+
+  - id: list_and_get
+    title: "Query property lists"
+    narrative: |
+      The buyer lists all property lists for the account and retrieves a specific list
+      to inspect its contents.
+
+    steps:
+      - id: list_property_lists
+        title: "List all property lists"
+        narrative: |
+          The buyer lists all property lists for the brand. The response includes list
+          metadata (name, type, property count) without full property details.
+        task: list_property_lists
+        schema_ref: "property/list-property-lists-request.json"
+        response_schema_ref: "property/list-property-lists-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        comply_scenario: property_list_filters
+        stateful: true
+        expected: |
+          Return property list summaries:
+          - Array of lists with list_id, name, list_type, property_count
+          - Includes both inclusion and exclusion lists
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-property-lists-response.json schema"
+
+      - id: get_property_list
+        title: "Get a specific property list"
+        narrative: |
+          The buyer retrieves the full details of a specific property list, including
+          all properties in the list.
+        task: get_property_list
+        schema_ref: "property/get-property-list-request.json"
+        response_schema_ref: "property/get-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        comply_scenario: governance_property_lists
+        stateful: true
+        expected: |
+          Return the full property list:
+          - list_id, name, list_type
+          - All properties in the list with their details
+
+        sample_request:
+          list_id: "pl_acme_inclusion_001"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-property-list-response.json schema"
+
+  - id: update_list
+    title: "Update property lists"
+    narrative: |
+      The buyer modifies an existing property list — adding or removing properties
+      as brand safety requirements evolve.
+
+    steps:
+      - id: update_property_list
+        title: "Update a property list"
+        narrative: |
+          The buyer adds new properties to or removes properties from an existing list.
+        task: update_property_list
+        schema_ref: "property/update-property-list-request.json"
+        response_schema_ref: "property/update-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        comply_scenario: governance_property_lists
+        stateful: true
+        expected: |
+          Return the updated property list:
+          - Updated property count
+          - Confirmation of additions and removals
+
+        sample_request:
+          list_id: "pl_acme_inclusion_001"
+          add:
+            - domain: "mountaineering.example.com"
+          remove:
+            - domain: "campinggear.example.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches update-property-list-response.json schema"
+
+  - id: delete_list
+    title: "Delete a property list"
+    narrative: |
+      The buyer removes a property list that is no longer needed. Active media buys
+      referencing the list should be notified.
+
+    steps:
+      - id: delete_property_list
+        title: "Delete a property list"
+        narrative: |
+          The buyer deletes a property list. The governance agent removes the list and
+          returns confirmation.
+        task: delete_property_list
+        schema_ref: "property/delete-property-list-request.json"
+        response_schema_ref: "property/delete-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        comply_scenario: governance_property_lists
+        stateful: true
+        expected: |
+          Confirm deletion:
+          - list_id: the deleted list
+          - status: deleted
+
+        sample_request:
+          list_id: "pl_acme_inclusion_001"
+
+        validations:
+          - check: response_schema
+            description: "Response matches delete-property-list-response.json schema"
+
+  - id: delivery_validation
+    title: "Validate delivery compliance"
+    narrative: |
+      After ads have been delivered, the buyer validates that the seller respected the
+      property lists. The governance agent checks actual delivery data against the
+      inclusion/exclusion constraints.
+
+    steps:
+      - id: validate_property_delivery
+        title: "Validate property compliance"
+        narrative: |
+          The buyer submits delivery data and the governance agent checks whether all
+          placements complied with the property lists. Non-compliant placements are
+          flagged with details.
+        task: validate_property_delivery
+        schema_ref: "property/validate-property-delivery-request.json"
+        response_schema_ref: "property/validate-property-delivery-response.json"
+        doc_ref: "/governance/property/tasks/validate_property_delivery"
+        comply_scenario: governance_property_lists
+        stateful: true
+        expected: |
+          Return validation results:
+          - compliant: boolean overall status
+          - Per-placement compliance status
+          - Violations with details (property, list, severity)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+          list_id: "pl_acme_inclusion_001"
+          delivery:
+            - property: "outdoormagazine.example.com"
+              impressions: 50000
+            - property: "randomsite.example.com"
+              impressions: 200
+
+        validations:
+          - check: response_schema
+            description: "Response matches validate-property-delivery-response.json schema"

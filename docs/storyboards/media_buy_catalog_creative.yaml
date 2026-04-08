@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Catalog-driven creative and conversion tracking"
 category: media_buy_catalog_creative
 summary: "Seller that renders dynamic ads from product catalogs, tracks conversions, and optimizes delivery based on performance feedback."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
 
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,
@@ -106,6 +110,7 @@ phases:
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
         stateful: false
         expected: |
           Return creative formats that accept catalog assets. Look for formats with
@@ -213,6 +218,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return products that support catalog-driven creative. Products should indicate
@@ -249,6 +255,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Create the media buy with catalog-driven packages. Return:
@@ -432,6 +439,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return delivery metrics including impressions, clicks, spend, and

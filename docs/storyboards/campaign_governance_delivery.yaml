@@ -1,0 +1,231 @@
+id: campaign_governance_delivery
+version: "1.0.0"
+title: "Campaign governance — delivery monitoring with drift detection"
+category: campaign_governance_delivery
+summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
+track: campaign_governance
+required_tools:
+  - check_governance
+
+narrative: |
+  After a media buy is confirmed with governance approval, the governance agent monitors
+  delivery. When spend drifts past a reallocation threshold — for example, one line item
+  is overspending while another is underspending — the governance agent triggers a delivery
+  phase re-evaluation.
+
+  This storyboard covers the delivery monitoring governance flow: initial approval,
+  delivery metrics showing drift, governance re-check triggered by drift, and either
+  re-approval with adjusted conditions or a pause recommendation.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform with governance and delivery reporting"
+    - "Retail media network with pacing data"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, a governance agent URL,
+    and an active media buy with delivery data. The governance plan defines a
+    reallocation threshold that triggers re-evaluation.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: plan_registration
+    title: "Register governance plan with delivery monitoring"
+    narrative: |
+      The buyer registers a governance plan that includes delivery monitoring thresholds.
+      When spend drift exceeds the reallocation threshold, the governance agent triggers
+      a delivery-phase re-evaluation.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with reallocation threshold"
+        narrative: |
+          The buyer's governance agent registers a plan with full spending authority and
+          a 20% reallocation threshold. If any line item's spend drifts more than 20%
+          from the planned budget allocation, the governance agent re-evaluates.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: campaign_governance_delivery
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - authority_level: agent_full
+          - reallocation_threshold: 0.20 (20% drift triggers re-evaluation)
+
+        sample_request:
+          plans:
+            - plan_name: "Acme Outdoor delivery governance"
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              authority_level: "agent_full"
+              reallocation_threshold: 0.20
+              conditions:
+                - "Re-evaluate governance if any line item drifts >20% from plan"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: initial_approval
+    title: "Initial governance check — approved"
+    narrative: |
+      The buyer proposes a media buy within authority. The governance agent approves
+      the buy with the delivery monitoring conditions active.
+
+    steps:
+      - id: check_governance_approved
+        title: "Pre-buy governance check (approved)"
+        narrative: |
+          The buyer calls check_governance with a media buy within authority. The governance
+          agent approves and notes that delivery monitoring is active with the 20% drift
+          threshold.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_delivery
+        stateful: true
+        expected: |
+          Return an approved governance decision:
+          - decision: approved
+          - governance_context: token for the media buy
+          - monitoring: delivery phase governance is active
+
+        sample_request:
+          plan_id: "gov_acme_delivery"
+          binding:
+            type: "media_buy"
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            total_budget: 40000
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 20000
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "decision"
+            description: "Response contains a governance decision"
+
+  - id: delivery_monitoring
+    title: "Delivery metrics show budget drift"
+    narrative: |
+      The campaign is running. The buyer checks delivery and finds that one line item
+      is overspending while the other is underspending. The CTV line item has consumed
+      70% of its budget at the halfway point while the video line item is at 30%.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data and finds budget drift. One line item is
+          significantly overpacing while the other is underpacing.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: campaign_governance_delivery
+        stateful: true
+        expected: |
+          Return delivery metrics showing drift:
+          - Per-package delivery with impressions, spend, and pacing
+          - One package overpacing (>60% spend at 50% flight)
+          - One package underpacing (<40% spend at 50% flight)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026"
+          include_package_daily_breakdown: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "Response contains media buy delivery data"
+
+  - id: drift_recheck
+    title: "Governance re-check — drift detected"
+    narrative: |
+      The buyer's governance agent detects that budget drift has exceeded the 20%
+      reallocation threshold. It triggers a delivery-phase governance check with the
+      current delivery data as evidence. The governance agent re-evaluates and returns
+      a decision — either re-approved with updated conditions or a recommendation to
+      pause and rebalance.
+
+    steps:
+      - id: check_governance_drift
+        title: "Delivery-phase governance re-check (drift exceeded)"
+        narrative: |
+          The buyer calls check_governance with governance_phase: delivery and attaches
+          the current delivery metrics as evidence. The governance agent evaluates the
+          drift against the reallocation threshold and returns a decision.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_delivery
+        stateful: true
+        expected: |
+          Return a governance decision about the delivery drift:
+          - decision: approved (with rebalancing conditions) or denied (pause recommended)
+          - findings: should-severity findings noting the drift amounts
+            - severity: should
+            - code: BUDGET_DRIFT_EXCEEDED
+            - message: explains which line items drifted and by how much
+          - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
+
+        sample_request:
+          plan_id: "gov_acme_delivery"
+          governance_phase: "delivery"
+          governance_context: "gov_ctx_acme_delivery_approved"
+          binding:
+            type: "media_buy"
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            media_buy_id: "mb_acme_q2_2026"
+            delivery_evidence:
+              packages:
+                - product_id: "sports_ctv_q2"
+                  budget: 20000
+                  spend_to_date: 14000
+                  flight_progress: 0.50
+                - product_id: "outdoor_video_q2"
+                  budget: 20000
+                  spend_to_date: 6000
+                  flight_progress: 0.50
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "decision"
+            description: "Response contains a governance decision"
+          - check: field_present
+            path: "findings"
+            description: "Response contains findings about the drift"

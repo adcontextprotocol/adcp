@@ -156,6 +156,10 @@ Rejection is not terminal — the buyer fixes the creative and resubmits via `sy
 
 **Interaction with `creative_deadline`:** If a creative is rejected after the package's `creative_deadline`, the buyer MAY still resubmit — sellers SHOULD accept resubmissions for rejected creatives even past the deadline, since the buyer is correcting a seller-identified issue. Sellers that cannot accept late resubmissions MUST return `CREATIVE_DEADLINE_EXCEEDED`.
 
+### Verification Tag Enforcement
+
+When a confirmed package's `performance_standards` includes any entry with a `vendor`, creatives assigned to that package MUST include at least one URL asset with `url_type: "tracker_script"` or `url_type: "tracker_pixel"` corresponding to each specified vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED` and a `details` message identifying the missing vendor tag. Buyer agents SHOULD proactively include vendor tags based on the agreed `measurement_terms` before submitting creatives.
+
 ## Tasks
 
 The Media Buy Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
@@ -404,6 +408,7 @@ Common error codes:
 - `CREATIVE_DEADLINE_EXCEEDED`: Creative change submitted after the package's `creative_deadline`
 - `INVALID_STATE`: Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy)
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
+- `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_REQUIRED`: Authentication is required to access this resource
 

@@ -60,6 +60,14 @@
     "property_count": {
       "type": "integer",
       "description": "Number of properties in the resolved list (at time of last resolution)"
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Pricing options for this property list. Present when the requesting account has a billing relationship with the list provider. The buyer passes the selected pricing_option_id in report_usage.",
+      "items": {
+        "$ref": "/schemas/core/vendor-pricing-option.json"
+      },
+      "minItems": 1
     }
   },
   "required": ["list_id", "name"],

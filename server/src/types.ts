@@ -962,6 +962,8 @@ export interface AgentCompliance {
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;
+  monitoring_paused: boolean;
+  check_interval_hours: number;
 }
 
 // Federated Discovery Types

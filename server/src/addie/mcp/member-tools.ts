@@ -157,7 +157,8 @@ interface ResolvedAgentAuth {
 
 /**
  * Resolve auth credentials for an agent URL.
- * Checks: explicit token > saved token > OAuth token > public test agent.
+ * Public test agent always uses its known token. For other URLs:
+ * explicit token > saved token > OAuth token > none.
  * Also handles legacy URL redirect.
  */
 async function resolveAgentAuth(
@@ -170,6 +171,13 @@ async function resolveAgentAuth(
   // Redirect internal path URL to canonical hostname
   if (resolvedUrl.toLowerCase() === INTERNAL_PATH_AGENT_URL.toLowerCase()) {
     resolvedUrl = PUBLIC_TEST_AGENT.url;
+  }
+
+  // Public test agent always uses the known public token — saved or explicit tokens
+  // for this URL are ignored because they're likely incorrect (the public token is
+  // intentionally published and doesn't need per-user credentials).
+  if (resolvedUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+    return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
   }
 
   if (explicitToken) {
@@ -200,11 +208,6 @@ async function resolveAgentAuth(
     } catch (error) {
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup OAuth token');
     }
-  }
-
-  // Public test agent auto-detection
-  if (resolvedUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
-    return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
   }
 
   return { authType: 'bearer', source: 'none', resolvedUrl };

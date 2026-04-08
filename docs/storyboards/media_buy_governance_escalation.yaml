@@ -3,6 +3,10 @@ version: "1.0.0"
 title: "Governance denial and human escalation"
 category: media_buy_governance_escalation
 summary: "Buyer's governance agent denies a media buy that exceeds spending authority, escalates to a human who approves with conditions."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
 
 narrative: |
   The buyer's governance agent denies a media buy because it exceeds the agent's spending
@@ -130,6 +134,7 @@ phases:
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
         doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: campaign_governance
         stateful: true
         expected: |
           Acknowledge the governance plan:
@@ -172,6 +177,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return products matching the brief with pricing that totals above $20K:
@@ -217,6 +223,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_denied
         stateful: true
         expected: |
           Return a denied governance decision:
@@ -275,6 +282,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: campaign_governance_conditions
         stateful: true
         expected: |
           Return an approved governance decision with conditions:
@@ -337,6 +345,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Confirm the media buy with governance approval:
@@ -391,6 +400,7 @@ phases:
         schema_ref: "governance/report-plan-outcome-request.json"
         response_schema_ref: "governance/report-plan-outcome-response.json"
         doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: campaign_governance
         stateful: true
         expected: |
           Acknowledge the outcome report:
@@ -436,6 +446,7 @@ phases:
         schema_ref: "governance/get-plan-audit-logs-request.json"
         response_schema_ref: "governance/get-plan-audit-logs-response.json"
         doc_ref: "/governance/campaign/tasks/get_plan_audit_logs"
+        comply_scenario: campaign_governance
         stateful: false
         expected: |
           Return the complete audit trail for the governance plan:

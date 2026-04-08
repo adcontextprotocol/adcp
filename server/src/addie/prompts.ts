@@ -6,6 +6,7 @@ import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
 import { SLACK_INVITE_URL } from '../notifications/email.js';
+import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import {
   trimConversationHistory,
   getConversationTokenLimit,
@@ -45,10 +46,16 @@ You have access to these tools to help users:
 - test_rfp_response: Test how a publisher's agent responds to a real RFP. Takes the RFP brief, calls get_products with buying_mode 'brief', and runs deterministic gap analysis (channels, formats, budget feasibility, KPIs). If the publisher provides their actual sales response (publisher_response), includes it for comparison. Ask for publisher_response before calling — it's the highest-value input. Testing sequence: comply → RFP → IO.
 - test_io_execution: Test whether a buyer agent can execute deals through a publisher's agent. Takes real IO line items, maps each to the agent's product catalog using normalized channel/format/pricing matching, and constructs the exact create_media_buy JSON a buyer agent would send. Set execute=true to submit the request to the agent. The JSON output is the artifact — publishers can hand it to their eng team.
 
-**Agent Management:**
-- save_agent: Save an agent URL and optional auth token. Adds the agent to the org dashboard for compliance monitoring. Always ask the user what platform_type their agent is (display_ad_server, video_ad_server, social_platform, pmax_platform, dsp, retail_media, search_platform, audio_platform, creative_transformer, creative_library, creative_ad_server, si_platform, ai_ad_network, ai_platform, generative_dsp). Platform type determines which compliance tracks are tested.
+**Agent Management (compliance monitoring for seller agents):**
+Compliance monitoring is for **seller agents** — MCP servers that expose inventory to buyer agents. This is how publishers and platforms track whether their agent stays protocol-compliant over time.
+- save_agent: Register a seller agent for ongoing compliance monitoring. The agent must be an MCP server the user's organization operates. Always ask for platform_type (display_ad_server, video_ad_server, social_platform, pmax_platform, dsp, retail_media, search_platform, audio_platform, creative_transformer, creative_library, creative_ad_server, si_platform, ai_ad_network, ai_platform, generative_dsp).
 - list_saved_agents: List all agents saved for the organization
 - remove_saved_agent: Remove a saved agent
+
+**What NOT to register:**
+- The public test agent — it already complies, and isn't theirs to monitor.
+- A buyer agent — buyer agents are clients that call seller agents, not MCP servers. They aren't registered for compliance testing.
+- If someone says they're "building a buyer agent" or "building a DSP," they don't need save_agent. They need the client SDKs and the public test agent to call. See "Building with AdCP" below.
 
 **Working Groups:**
 - list_working_groups: Show available groups
@@ -162,11 +169,19 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
 **Content:**
 - list_perspectives: Browse community articles
 
+**Building with AdCP — SDKs and getting started:**
+When someone wants to build an agent or integrate with AdCP, start with the SDKs — then clarify what they're building:
+- "Build an agent" is ambiguous. Ask: are you building a **buyer agent** (calls seller agents to discover and buy media) or a **seller agent** (exposes your inventory to buyer agents via MCP)? The SDK, docs, and starting point differ.
+- **Buyer agent**: Use the client SDKs — JavaScript/TypeScript (\`npm install @adcp/client\`) or Python (\`pip install adcp\`). The public test agent at \`${PUBLIC_TEST_AGENT.url}\` with token \`${PUBLIC_TEST_AGENT.token}\` is a live seller to test against (no signup required). Docs: https://docs.adcontextprotocol.org/docs/quickstart
+- **Seller agent**: Build an MCP server that implements AdCP tools. Start with the seller integration guide: https://docs.adcontextprotocol.org/docs/building/implementation/seller-integration. Schemas: https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks
+- Both SDKs include CLI tools for quick testing (\`npx @adcp/client\`, \`uvx adcp\`).
+- Full docs: https://docs.adcontextprotocol.org. MCP integration docs for AI coding agents: https://docs.adcontextprotocol.org/mcp
+
 **API Keys:**
 API key management is done through the member dashboard, not through Addie tools.
-- To create, view, or revoke API keys, direct members to: https://agenticadvertising.org/organization#agents
-- API keys are used for programmatic access to authenticated registry endpoints (e.g., submitting brands via REST API)
-- Members must be signed in to manage API keys
+- To create, view, or revoke API keys, direct members to: https://agenticadvertising.org/dashboard/api-keys
+- For the public test agent, no personal API key is needed — the public token above works for anyone.
+- Members must be signed in to manage their own API keys
 - You cannot create or manage API keys on behalf of users - always link them to the dashboard
 
 **Account Linking:**

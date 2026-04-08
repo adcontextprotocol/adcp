@@ -239,7 +239,14 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 
 ## Testing Authentication
 
-Use the public test agent to validate your authentication setup. Set your AAO API key as the `ADCP_AUTH_TOKEN` environment variable, then configure your client:
+The public test agent accepts a shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+Configure your client with this token:
 
 ```json
 {
@@ -247,11 +254,11 @@ Use the public test agent to validate your authentication setup. Set your AAO AP
   "protocol": "mcp",
   "auth": {
     "type": "bearer",
-    "token": "sk_your_aao_api_key_here"
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
   }
 }
 ```
 
-Obtain an AAO API key from your account settings at [aao.adcontextprotocol.org](https://aao.adcontextprotocol.org). Each AAO organization has its own API key; use the key for the organization you want to bill.
+For org-scoped usage tracking, replace the public token with your own API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
 
 See [Sandbox Mode](/docs/media-buy/advanced-topics/sandbox) for testing capabilities including sandbox mode for risk-free development.

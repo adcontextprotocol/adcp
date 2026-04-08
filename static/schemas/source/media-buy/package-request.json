@@ -81,6 +81,18 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "measurement_terms": {
+      "$ref": "/schemas/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "/schemas/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",
