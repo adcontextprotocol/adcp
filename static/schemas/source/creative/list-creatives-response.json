@@ -216,7 +216,7 @@
           },
           "pricing_options": {
             "type": "array",
-            "description": "Pricing options for this creative. Present when the request included include_pricing=true and account. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). The buyer passes the selected pricing_option_id in report_usage.",
+            "description": "Pricing options for using this creative (serving, delivery). Used by ad servers and library agents. Transformation agents expose format-level pricing on list_creative_formats instead. Present when include_pricing=true and account provided. The buyer passes the applied pricing_option_id in report_usage.",
             "items": {
               "$ref": "/schemas/core/vendor-pricing-option.json"
             },
