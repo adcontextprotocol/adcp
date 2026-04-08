@@ -33,11 +33,15 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     max: config.maxPoolSize || 10,
     idleTimeoutMillis: config.idleTimeoutMillis || 10000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
-    // Kill queries that run longer than 30s to prevent connection hoarding
-    options: '-c statement_timeout=30000',
     // Detect dead connections killed by managed Postgres providers (Neon, Supabase)
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
+  });
+
+  // Kill queries that run longer than 30s to prevent connection hoarding.
+  // Set per-connection (not via startup `options`) for PgBouncer compatibility.
+  pool.on("connect", (client) => {
+    client.query("SET statement_timeout = 30000").catch(() => {});
   });
 
   pool.on("error", (err) => {
