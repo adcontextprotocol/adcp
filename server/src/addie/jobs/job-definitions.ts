@@ -378,6 +378,20 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.checked > 0,
   });
 
+  // Outbound request log cleanup - retain 30 days
+  jobScheduler.register({
+    name: 'outbound-log-cleanup',
+    description: 'Clean up old outbound request logs',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 60, unit: 'minutes' },
+    runner: async () => {
+      const { cleanupOldRequests } = await import('../../db/outbound-log-db.js');
+      const deleted = await cleanupOldRequests(30);
+      return { deleted };
+    },
+    shouldLogResult: (r: { deleted: number }) => r.deleted > 0,
+  });
+
   // Shadow evaluator - generates what Addie would have said and compares with human answers
   jobScheduler.register({
     name: 'shadow-evaluator',
@@ -536,4 +550,5 @@ export const JOB_NAMES = {
   SHADOW_EVALUATOR: 'shadow-evaluator',
   KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
+  OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
 } as const;

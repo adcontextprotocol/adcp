@@ -3464,7 +3464,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {

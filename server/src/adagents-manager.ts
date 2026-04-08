@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { PropertyDefinition, PlacementDefinition } from './types.js';
+import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 
 export interface ValidationError {
   field: string;
@@ -175,7 +176,7 @@ export class AdAgentsManager {
         timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'AdCP-Testing-Framework/1.0'
+          'User-Agent': AAO_UA_VALIDATOR
         },
         validateStatus: () => true, // Don't throw on non-2xx status codes
         responseType: 'arraybuffer',
@@ -314,7 +315,7 @@ export class AdAgentsManager {
         timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'AdCP-Testing-Framework/1.0'
+          'User-Agent': AAO_UA_VALIDATOR
         },
         validateStatus: () => true,
         responseType: 'arraybuffer',
@@ -1229,7 +1230,7 @@ export class AdAgentsManager {
           timeout: 3000, // Keep short for responsive UX
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'AdCP-Testing-Framework/1.0'
+            'User-Agent': AAO_UA_VALIDATOR
           },
           validateStatus: () => true
         });

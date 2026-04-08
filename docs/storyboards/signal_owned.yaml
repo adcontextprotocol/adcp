@@ -62,6 +62,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return matching signals from your proprietary data. Each signal must include:
@@ -98,6 +99,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return only signals matching the filter criteria. If no signals match,
@@ -134,6 +136,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:
@@ -177,6 +180,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:

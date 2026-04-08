@@ -15,8 +15,8 @@ import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
-import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
-import { comply } from "../addie/services/compliance-testing.js";
+import { listStoryboards, getStoryboard, getTestKitForStoryboard, extractScenariosFromStoryboard } from "../services/storyboards.js";
+import { comply, filterToKnownScenarios } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -54,6 +54,7 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -2222,6 +2223,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
                 headline: cs.headline,
+                monitoring_paused: meta?.monitoring_paused ?? false,
+                check_interval_hours: meta?.check_interval_hours ?? 12,
               };
             }
           }
@@ -2427,7 +2430,114 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // ── Agent Monitoring Controls ──────────────────────────────────
 
+  router.get("/registry/agents/:encodedUrl/monitoring/settings", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to view this agent" });
+      }
+
+      const settings = await complianceDb.getMonitoringSettings(agentUrl);
+      res.json(settings);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get monitoring settings");
+      res.status(500).json({ error: "Failed to get monitoring settings" });
+    }
+  });
+
+  router.put("/registry/agents/:encodedUrl/monitoring/pause", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const { paused } = req.body;
+      if (typeof paused !== "boolean") {
+        return res.status(400).json({ error: "paused must be a boolean" });
+      }
+
+      await complianceDb.updateMonitoringPaused(agentUrl, paused);
+      const settings = await complianceDb.getMonitoringSettings(agentUrl);
+      res.json(settings);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to update monitoring pause");
+      res.status(500).json({ error: "Failed to update monitoring pause" });
+    }
+  });
+
+  router.put("/registry/agents/:encodedUrl/monitoring/interval", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const { interval_hours } = req.body;
+      if (typeof interval_hours !== "number" || !Number.isInteger(interval_hours) || interval_hours < 6 || interval_hours > 168) {
+        return res.status(400).json({ error: "interval_hours must be an integer between 6 and 168" });
+      }
+
+      await complianceDb.updateCheckInterval(agentUrl, interval_hours);
+      const settings = await complianceDb.getMonitoringSettings(agentUrl);
+      res.json(settings);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to update check interval");
+      res.status(500).json({ error: "Failed to update check interval" });
+    }
+  });
+
+  router.get("/registry/agents/:encodedUrl/monitoring/requests", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to view this agent" });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const since = typeof req.query.since === "string" ? req.query.since : undefined;
+
+      const [requests, total] = await Promise.all([
+        getRequestLog(agentUrl, { limit, since }),
+        getRequestCount(agentUrl),
+      ]);
+
+      res.json({ agent_url: agentUrl, requests, count: requests.length, total });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get monitoring requests");
+      res.status(500).json({ error: "Failed to get monitoring requests" });
+    }
+  });
 
   // ── Storyboards ────────────────────────────────────────────────
 
@@ -2485,10 +2595,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Resolve agent auth
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
 
-        // Run comply with the storyboard's referenced scenarios
+        // Only run scenarios this storyboard references, not the full suite
+        const storyboardScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
         const complyResult = await comply(agentUrl, {
           dry_run: true,
           timeout_ms: 90_000,
+          ...(storyboardScenarios.length > 0 && { scenarios: storyboardScenarios }),
           ...(auth && { auth }),
         });
 
@@ -2603,18 +2715,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Run comply against both the user's agent and the reference test agent
+        // Only run scenarios this storyboard references, not the full suite
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const compareScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             dry_run: true,
             timeout_ms: 90_000,
+            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
             ...(auth && { auth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             dry_run: true,
             timeout_ms: 90_000,
+            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);

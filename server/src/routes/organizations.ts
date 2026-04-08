@@ -2336,22 +2336,23 @@ export function createOrganizationsRouter(): Router {
         },
       });
     } catch (error: any) {
-      logger.error({ err: error }, 'Send invitation error');
-
-      // Check for specific WorkOS errors
+      // Check for specific WorkOS errors — these are expected race conditions, not server errors
       if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: user already a member');
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
       if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: invitation already exists');
         return res.status(400).json({
           error: 'Invitation already exists',
           message: 'An invitation has already been sent to this email address',
         });
       }
 
+      logger.error({ err: error }, 'Send invitation error');
       res.status(500).json({
         error: 'Failed to send invitation',
         message: 'An internal error occurred while sending the invitation.',
@@ -2508,7 +2509,22 @@ export function createOrganizationsRouter(): Router {
           expires_at: newInvitation.expiresAt,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: user already a member');
+        return res.status(400).json({
+          error: 'User already a member',
+          message: 'This user is already a member of the organization',
+        });
+      }
+      if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: invitation already exists');
+        return res.status(400).json({
+          error: 'Invitation already exists',
+          message: 'An invitation has already been sent to this email address',
+        });
+      }
+
       logger.error({ err: error }, 'Resend invitation error');
       res.status(500).json({
         error: 'Failed to resend invitation',
