@@ -1491,14 +1491,13 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
  * Uses CONCURRENTLY to avoid locking reads during refresh.
  */
 export async function refreshEngagementTime(): Promise<void> {
+  // REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction,
+  // so use a dedicated client with a non-LOCAL SET for the timeout override.
   const client = await getClient();
   try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL statement_timeout = 120000');
+    await client.query('SET statement_timeout = 120000');
     await client.query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
-    await client.query('COMMIT');
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
     // Non-critical — view will be stale until next refresh
     logger.warn({ error }, 'Failed to refresh engagement time view');
   } finally {

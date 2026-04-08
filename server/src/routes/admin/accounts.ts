@@ -344,7 +344,7 @@ export function setupAccountRoutes(
             p.name as parent_name,
             p.email_domain as parent_domain,
             p.workos_organization_id as parent_org_id,
-            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count,
+            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain AND child.email_domain != db_child.house_domain) as subsidiary_count,
             (db_parent.domain IS NOT NULL) as brand_mapped,
             db_parent.brand_name as brand_registry_name,
             db_parent.keller_type as brand_keller_type,
