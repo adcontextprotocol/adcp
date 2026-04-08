@@ -25,7 +25,6 @@ import {
   SAMPLE_BRIEFS,
   getAllPlatformTypes,
   getPlatformProfile,
-  getPlatformStoryboards,
   type ComplyOptions,
   type ComplianceTrack,
   type PlatformType,
@@ -2990,14 +2989,6 @@ export function createMemberToolHandlers(
       return `I need to know what type of agent this is to run a meaningful compliance check. What platform type is this agent?\n\n${types.map(t => `- \`${t}\``).join('\n')}\n\nOnce you tell me, I'll save it and run the check.`;
     }
     complyOptions.platform_type = effectivePlatformType;
-
-    // When no explicit tracks are provided, use storyboard-based routing
-    if (!tracks) {
-      const recommendedStoryboards = getPlatformStoryboards(effectivePlatformType);
-      if (recommendedStoryboards) {
-        complyOptions.storyboards = recommendedStoryboards;
-      }
-    }
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
