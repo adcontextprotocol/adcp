@@ -278,6 +278,10 @@
       return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    function safeHref(url) {
+      return /^https?:\/\//i.test(url) ? esc(url) : '#';
+    }
+
     // ─── Load ───────────────────────────────────────────────────
     /**
      * Render Slack-format links (<url|label>) as clickable HTML.
@@ -427,6 +431,27 @@
         <div class="wg-card">
           <h3>${esc(g.name)}</h3>
           <p>${esc(g.summary)}</p>
+          ${g.meetingRecaps && g.meetingRecaps.length > 0 ? `
+            <div style="margin-top:8px;">
+              ${g.meetingRecaps.map(r => `
+                <div style="font-size:13px;margin-bottom:4px;">
+                  ${r.meetingUrl ? `<a href="${safeHref(r.meetingUrl)}" target="_blank" style="color:#2563eb;text-decoration:none;">${esc(r.title)}</a>` : esc(r.title)}
+                  <span style="color:#888;"> — ${esc(r.date)}</span>
+                  ${r.summary ? `<div style="color:#555;font-size:12px;margin-top:2px;">${esc(r.summary)}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+          ${g.activeThreads && g.activeThreads.length > 0 ? `
+            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #eee;">
+              ${g.activeThreads.map(t => `
+                <div style="font-size:13px;margin-bottom:4px;">
+                  ${t.threadUrl ? `<a href="${safeHref(t.threadUrl)}" target="_blank" style="color:#2563eb;text-decoration:none;">${esc(t.summary)}</a>` : esc(t.summary)}
+                  <span style="color:#888;font-size:12px;"> ${t.replyCount} replies${t.participantCount ? `, ${t.participantCount} participants` : ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
           ${g.nextMeeting ? `<p style="font-size:12px;color:#888;margin-top:4px;">Next: ${esc(g.nextMeeting)}</p>` : ''}
         </div>
       `).join('') || '<p style="color:#aaa;font-size:13px;">No group activity this week.</p>';
@@ -487,13 +512,16 @@
       el.textContent = currentValue;
       el.style.color = '#333';
       el.contentEditable = 'true';
+      el.style.whiteSpace = 'pre-wrap';
       el.focus();
 
       function save() {
         el.contentEditable = 'false';
         el.removeEventListener('blur', save);
         el.removeEventListener('keydown', onKey);
-        const newValue = el.textContent.trim();
+        el.removeEventListener('paste', onPaste);
+        el.style.whiteSpace = '';
+        const newValue = el.innerText.trim();
         if (newValue !== currentValue) {
           saveField(field, newValue);
         } else {
@@ -506,8 +534,37 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       }
 
+      function onPaste(e) {
+        e.preventDefault();
+        const html = e.clipboardData.getData('text/html');
+        let text;
+        if (html) {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          // Convert block elements to newlines, preserve link text
+          doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+          doc.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6').forEach(el => {
+            el.prepend('\n');
+            el.append('\n');
+          });
+          doc.querySelectorAll('a').forEach(a => {
+            const href = a.getAttribute('href');
+            const label = a.textContent;
+            if (href && label && href !== label) {
+              a.replaceWith(`<${href}|${label}>`);
+            } else if (href) {
+              a.replaceWith(`<${href}>`);
+            }
+          });
+          text = doc.body.textContent.replace(/\n{3,}/g, '\n\n').trim();
+        } else {
+          text = e.clipboardData.getData('text/plain');
+        }
+        document.execCommand('insertText', false, text);
+      }
+
       el.addEventListener('blur', save);
       el.addEventListener('keydown', onKey);
+      el.addEventListener('paste', onPaste);
     }
 
     async function saveField(field, value) {

@@ -147,7 +147,7 @@ export function renderDigestEmail(
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
-      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${slackLinksToHtml(content.editorsNote)}</p>
+      <div style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${slackLinksToHtml(content.editorsNote).replace(/\n/g, '<br>')}</div>
     </div>
     ` : ''}
 

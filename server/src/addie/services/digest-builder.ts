@@ -231,21 +231,23 @@ async function buildInsiderSection(): Promise<DigestInsiderGroup[]> {
   const groups = await getDigestEligibleGroups();
   const results: DigestInsiderGroup[] = [];
 
+  const NO_ACTIVITY = /^no recent activity\.?$/i;
+
   for (const group of groups) {
     try {
       const wgContent = await buildWgDigestContent(group.id);
       if (!wgContent) continue;
 
-      // Only show groups with meetings, active threads, or a substantive summary
+      // Only show groups with actual recent activity (meetings or threads)
       const hasActivity = wgContent.meetingRecaps.length > 0 || wgContent.activeThreads.length > 0;
-      const NO_ACTIVITY = /^no recent activity\.?$/i;
+      if (!hasActivity) continue;
+
+      // Use the AI-generated activity summary if available,
+      // fall back to meeting recap or thread text
       const hasSubstantiveSummary = wgContent.summary
         && !NO_ACTIVITY.test(wgContent.summary.trim())
         && wgContent.summary.replace(/[*_~`#>\-\s]/g, '').length >= 20;
-      if (!hasActivity && !hasSubstantiveSummary) continue;
 
-      // Prefer the AI-generated activity summary (includes Slack context),
-      // fall back to meeting recap or thread text
       let summary: string;
       if (hasSubstantiveSummary) {
         summary = truncateAtWord(wgContent.summary!, 200);
