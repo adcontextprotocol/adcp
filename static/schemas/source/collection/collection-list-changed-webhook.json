@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/collection/collection-list-changed-webhook.json",
+  "title": "Collection List Changed Webhook",
+  "description": "Webhook notification sent when a collection list's resolved collections change. Contains a summary only — recipients must call get_collection_list to retrieve the updated collections.",
+  "type": "object",
+  "properties": {
+    "event": {
+      "type": "string",
+      "const": "collection_list_changed",
+      "description": "The event type"
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the collection list that changed"
+    },
+    "list_name": {
+      "type": "string",
+      "description": "Name of the collection list"
+    },
+    "change_summary": {
+      "type": "object",
+      "description": "Summary of changes to the resolved list",
+      "properties": {
+        "collections_added": {
+          "type": "integer",
+          "description": "Number of collections added since last resolution"
+        },
+        "collections_removed": {
+          "type": "integer",
+          "description": "Number of collections removed since last resolution"
+        },
+        "total_collections": {
+          "type": "integer",
+          "description": "Total collections in the resolved list"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was re-resolved"
+    },
+    "cache_valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consumer should refresh from the governance agent"
+    },
+    "signature": {
+      "type": "string",
+      "description": "Cryptographic signature of the webhook payload, signed with the agent's private key. Recipients MUST verify this signature."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["event", "list_id", "resolved_at", "signature"],
+  "additionalProperties": false
+}

@@ -306,6 +306,13 @@
                         ]
                       },
                       {
+                        "group": "Collection Governance",
+                        "pages": [
+                          "docs/governance/collection/index",
+                          "docs/governance/collection/tasks/collection_lists"
+                        ]
+                      },
+                      {
                         "group": "Content Standards",
                         "pages": [
                           "docs/governance/content-standards/index",

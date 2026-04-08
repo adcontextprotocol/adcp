@@ -302,6 +302,10 @@
           "$ref": "/schemas/core/property-list-ref.json",
           "description": "Reference to an externally managed property list for passing large property sets"
         },
+        "collection-list-ref": {
+          "$ref": "/schemas/core/collection-list-ref.json",
+          "description": "Reference to an externally managed collection list for passing large collection exclusion/inclusion sets"
+        },
         "identifier": {
           "$ref": "/schemas/core/identifier.json",
           "description": "A property identifier with type and value"
@@ -776,6 +780,10 @@
           "$ref": "/schemas/enums/governance-domain.json",
           "description": "Governance sub-domains a registry policy applies to (campaign, property, creative, content_standards)"
         },
+        "genre-taxonomy": {
+          "$ref": "/schemas/enums/genre-taxonomy.json",
+          "description": "Taxonomy systems for genre classification (iab_content_3.0, gracenote, eidr, etc.)"
+        },
         "governance-mode": {
           "$ref": "/schemas/enums/governance-mode.json",
           "description": "Operating mode for a governance agent (audit, advisory, enforce)"
@@ -1140,6 +1148,22 @@
           "$ref": "/schemas/property/base-property-source.json",
           "description": "A source of properties for a property list - supports publisher+tags, publisher+property_ids, or direct identifiers"
         },
+        "collection-list": {
+          "$ref": "/schemas/collection/collection-list.json",
+          "description": "A managed collection list with optional filters for dynamic evaluation — collections represent programs/shows independent of properties"
+        },
+        "collection-list-filters": {
+          "$ref": "/schemas/collection/collection-list-filters.json",
+          "description": "Filters that dynamically modify a collection list when resolved — content ratings, genres, kinds, production quality"
+        },
+        "collection-list-changed-webhook": {
+          "$ref": "/schemas/collection/collection-list-changed-webhook.json",
+          "description": "Webhook payload when a collection list changes"
+        },
+        "base-collection-source": {
+          "$ref": "/schemas/collection/base-collection-source.json",
+          "description": "A source of collections for a collection list - supports distribution_ids, publisher_collections, or publisher_genres"
+        },
         "content-standards": {
           "$ref": "/schemas/content-standards/content-standards.json",
           "description": "Reusable content standards configuration - defines brand safety/suitability policies with scope, policy, calibration exemplars, and lifecycle dates"
@@ -1210,6 +1234,56 @@
           "response": {
             "$ref": "/schemas/property/delete-property-list-response.json",
             "description": "Response payload for delete_property_list task"
+          }
+        },
+        "create-collection-list": {
+          "request": {
+            "$ref": "/schemas/collection/create-collection-list-request.json",
+            "description": "Request parameters for creating a new collection list"
+          },
+          "response": {
+            "$ref": "/schemas/collection/create-collection-list-response.json",
+            "description": "Response payload for create_collection_list task"
+          }
+        },
+        "update-collection-list": {
+          "request": {
+            "$ref": "/schemas/collection/update-collection-list-request.json",
+            "description": "Request parameters for updating an existing collection list"
+          },
+          "response": {
+            "$ref": "/schemas/collection/update-collection-list-response.json",
+            "description": "Response payload for update_collection_list task"
+          }
+        },
+        "get-collection-list": {
+          "request": {
+            "$ref": "/schemas/collection/get-collection-list-request.json",
+            "description": "Request parameters for retrieving a collection list with resolved collections"
+          },
+          "response": {
+            "$ref": "/schemas/collection/get-collection-list-response.json",
+            "description": "Response payload for get_collection_list task"
+          }
+        },
+        "list-collection-lists": {
+          "request": {
+            "$ref": "/schemas/collection/list-collection-lists-request.json",
+            "description": "Request parameters for listing collection lists"
+          },
+          "response": {
+            "$ref": "/schemas/collection/list-collection-lists-response.json",
+            "description": "Response payload for list_collection_lists task"
+          }
+        },
+        "delete-collection-list": {
+          "request": {
+            "$ref": "/schemas/collection/delete-collection-list-request.json",
+            "description": "Request parameters for deleting a collection list"
+          },
+          "response": {
+            "$ref": "/schemas/collection/delete-collection-list-response.json",
+            "description": "Response payload for delete_collection_list task"
           }
         },
         "list-content-standards": {
