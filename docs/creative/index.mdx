@@ -157,7 +157,7 @@ The platform renders exactly what was served — the generated headline, the com
 
 ## Step 9: Pricing and billing
 
-Creative agents can charge for their services. Pinnacle's account with each creative agent includes a rate card — the agreed pricing. When Maya's platform calls `list_creatives`, each creative includes `pricing_options` showing the applicable rates. When `build_creative` runs, the response includes `vendor_cost` so the platform knows what each build cost.
+Creative agents can charge for their services. Pinnacle's account with each creative agent includes a rate card — the agreed pricing. For the ad server, Maya's platform calls `list_creatives` and each creative includes `pricing_options`. For the transformation agent, pricing appears on `list_creative_formats` instead — the format is the product. When `build_creative` runs, the response includes `vendor_cost` so the platform knows what each build cost.
 
 After the campaign, Maya's platform calls `report_usage` on each creative agent with the `creative_id` and `pricing_option_id` from the build response. This closes the billing loop — the creative agent can verify the reported cost matches its rate card.
 

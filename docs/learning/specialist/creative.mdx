@@ -114,7 +114,12 @@ Passing earns the **AdCP specialist — Creative** credential.
    - `build_creative` without `account` — observe the rejection error
    - Call `report_usage` with `creative_id` + `pricing_option_id`, verify the values match what `build_creative` returned
    - Explain: why is `vendor_cost` zero on a CPM-priced creative at build time?
-   - Compare the entire flow with the Lab 1 stateless transformation agent (no account, no pricing, no persistence)
+
+5. **Transformation agent pricing** — Using the sandbox transformation agent from exercise 1, with pricing enabled:
+   - Establish an account with the transformation agent
+   - `list_creative_formats` with `account` and `include_pricing: true` — observe `pricing_options` on each format (per-unit pricing)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` (expect non-zero `vendor_cost` at build time, unlike the CPM ad server)
+   - Compare: ad server discovers pricing on `list_creatives`, transformation agent discovers pricing on `list_creative_formats`. Ad server has zero build cost (CPM accrues at serve time), transformation agent has non-zero build cost (per-unit pricing)
 
 <Note>
 **Vendor pricing is consistent across protocols**
@@ -126,9 +131,9 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 
 ### Cross-platform skills
 
-5. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
-6. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
-7. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
+6. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
+7. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+8. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 
 ## Assessment
 
@@ -137,7 +142,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 | Interaction models | 20% | Correctly identifies and works with all three creative agent types |
 | Cross-platform | 25% | Adapts creatives across channels and formats |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
-| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives`, interprets build costs, closes the `report_usage` loop |
+| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
 | Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
 
 Passing threshold: 70%.

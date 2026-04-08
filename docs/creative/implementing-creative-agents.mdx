@@ -100,7 +100,7 @@ Free transformation agents remain stateless and unchanged. No account, no pricin
 | **Transformation** (Celtra) | `list_creative_formats` | Buyers see pricing per format before any creative exists |
 | **Generation** (AI platforms) | `list_creative_formats` | Same — pricing is on the capability, not a pre-existing creative |
 | **Ad server** (Innovid, CM360) | `list_creatives` | Buyers see pricing on specific creatives in the library |
-| **Both** (creative management platforms) | Both surfaces | Library pricing on `list_creatives`, format pricing on `list_creative_formats` |
+| **Both** (Celtra, creative management platforms) | Both surfaces | Library pricing on `list_creatives`, format pricing on `list_creative_formats` |
 
 Transformation and generation agents do not need to implement `list_creatives` for pricing — `list_creative_formats` is the natural surface since the format is the product.
 

@@ -300,8 +300,8 @@ so this field is always available for usage reporting.
 | Interaction model | Pricing surface | Likely models |
 |---|---|---|
 | Transformation (free) | None | N/A — stateless, no pricing |
-| Transformation (paid) | `list_creatives` + `build_creative` response | per_unit, cpm, flat_fee |
-| Generation (AI) | `list_creatives` + `build_creative` response | per_unit, flat_fee, cpm |
+| Transformation (paid) | `list_creative_formats` + `build_creative` response | per_unit, cpm, flat_fee |
+| Generation (AI) | `list_creative_formats` + `build_creative` response | per_unit, flat_fee, cpm |
 | Ad server (pre-loaded) | `list_creatives` + `build_creative` response | cpm, flat_fee |
 | Sales agent with creative | `list_creatives` + `build_creative` response | cpm, percent_of_media |
 
