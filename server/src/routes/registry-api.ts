@@ -2432,7 +2432,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
 
 
-  router.put("/registry/agents/:encodedUrl/connect", ...complianceWriteMiddleware, async (req, res) => {
+  router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
