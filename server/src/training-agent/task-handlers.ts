@@ -538,6 +538,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
+        include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
       },
     },
   },
@@ -1568,7 +1569,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[] };
+  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_snapshot?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
@@ -1592,6 +1593,11 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       name: c.name,
       status: c.status,
       synced_at: c.syncedAt,
+      created_date: c.syncedAt,
+      updated_date: c.syncedAt,
+      ...(req.include_snapshot && {
+        snapshot_unavailable_reason: 'SNAPSHOT_UNSUPPORTED',
+      }),
     })),
     sandbox: true,
   };
@@ -2215,6 +2221,10 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
   return { w: dims?.width || 300, h: dims?.height || 250 };
 }
 
+function buildHtmlAssets(html: string): Record<string, { content: string }> {
+  return { serving_tag: { content: html } };
+}
+
 function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
@@ -2246,13 +2256,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
       creative_manifest: {
         creative_id: req.creative_id,
         format_id: { agent_url: agentUrl, id: formatId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`,
-          },
-        ],
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
       sandbox: true,
     };
@@ -2278,13 +2282,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
         return {
           creative_manifest: {
             format_id: { agent_url: agentUrl, id: fmtId.id },
-            assets: [
-              {
-                asset_id: 'serving_tag',
-                asset_type: 'html',
-                html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
-              },
-            ],
+            assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
           },
         };
       });
@@ -2300,20 +2298,43 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     return {
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssets.length}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssets.length}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
+      },
+      sandbox: true,
+    };
+  }
+
+  // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
+  if (targetIds.length > 0) {
+    if (targetIds.length > 1) {
+      const results = targetIds.map(fmtId => {
+        const format = validFormatIds.get(fmtId.id);
+        const { w, h } = getDimensions(format);
+        return {
+          creative_manifest: {
+            format_id: { agent_url: agentUrl, id: fmtId.id },
+            assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
           },
-        ],
+        };
+      });
+      return { results, sandbox: true };
+    }
+
+    const fmtId = targetIds[0];
+    const format = validFormatIds.get(fmtId.id);
+    const { w, h } = getDimensions(format);
+
+    return {
+      creative_manifest: {
+        format_id: { agent_url: agentUrl, id: fmtId.id },
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       sandbox: true,
     };
   }
 
   return {
-    errors: [{ code: 'INVALID_REQUEST', message: 'Provide either creative_id (library mode) or creative_manifest (transformation mode).' }],
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
   };
 }
 
@@ -2359,15 +2380,17 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
+      render_id: `preview_${fmtId}`,
+      output_format: outputFormat,
+      role: 'primary',
       dimensions: { width: w, height: h },
     };
 
     if (outputFormat === 'url' || outputFormat === 'both') {
-      // Generate a data URI as the preview URL (the training agent doesn't host files)
-      render.url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
+      render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
     if (outputFormat === 'html' || outputFormat === 'both') {
-      render.html = previewHtml;
+      render.preview_html = previewHtml;
     }
 
     return {
