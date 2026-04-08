@@ -10,6 +10,7 @@ platform_types:
   - display_ad_server
   - social_platform
   - retail_media
+  - audio_platform
   - dsp
   - pmax_platform
 
