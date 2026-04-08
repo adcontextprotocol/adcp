@@ -12,7 +12,7 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(16);
+    expect(results.length).toBeGreaterThanOrEqual(21);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('capability_discovery');
@@ -31,6 +31,11 @@ describe('listStoryboards', () => {
     expect(ids).toContain('campaign_governance_delivery');
     expect(ids).toContain('signal_marketplace');
     expect(ids).toContain('signal_owned');
+    expect(ids).toContain('social_platform');
+    expect(ids).toContain('si_session');
+    expect(ids).toContain('brand_rights');
+    expect(ids).toContain('property_governance');
+    expect(ids).toContain('content_standards');
   });
 
   it('each summary has required fields', () => {
@@ -152,7 +157,7 @@ describe('getStoryboard', () => {
 
   it('schema_ref paths point to known schema directories', () => {
     const storyboards = listStoryboards();
-    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/', 'signals/', 'protocol/'];
+    const validPrefixes = ['creative/', 'media-buy/', 'account/', 'governance/', 'signals/', 'protocol/', 'sponsored-intelligence/', 'brand/', 'property/', 'content-standards/'];
     for (const summary of storyboards) {
       const sb = getStoryboard(summary.id)!;
       for (const phase of sb.phases) {
@@ -428,11 +433,13 @@ describe('extractScenariosFromStoryboard', () => {
   it('extracts deduped scenarios from media_buy_seller', () => {
     const sb = getStoryboard('media_buy_seller')!;
     const scenarios = extractScenariosFromStoryboard(sb);
-    expect(scenarios).toContain('account_setup');
-    expect(scenarios).toContain('governance_setup');
-    expect(scenarios).toContain('media_buy_flow');
+    expect(scenarios).toContain('full_sales_flow');
+    expect(scenarios).toContain('create_media_buy');
+    expect(scenarios).toContain('media_buy_lifecycle');
+    expect(scenarios).toContain('reporting_flow');
+    expect(scenarios).toContain('creative_lifecycle');
     expect(scenarios).toContain('creative_sync');
-    // Should be deduped — media_buy_flow appears in multiple steps
+    // Should be deduped
     const duplicates = scenarios.filter((s, i) => scenarios.indexOf(s) !== i);
     expect(duplicates).toEqual([]);
   });
@@ -539,5 +546,107 @@ describe('creative_lifecycle storyboard', () => {
     expect(phaseIds).toContain('sync_multiple');
     expect(phaseIds).toContain('list_and_filter');
     expect(phaseIds).toContain('build_and_preview');
+  });
+});
+
+describe('social_platform storyboard', () => {
+  it('covers account setup, audiences, creatives, events, and financials', () => {
+    const sb = getStoryboard('social_platform')!;
+    expect(sb).toBeDefined();
+    expect(sb.agent.interaction_model).toBe('media_buy_seller');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('sync_accounts');
+    expect(tasks).toContain('list_accounts');
+    expect(tasks).toContain('sync_audiences');
+    expect(tasks).toContain('sync_creatives');
+    expect(tasks).toContain('log_event');
+    expect(tasks).toContain('get_account_financials');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('social_platform');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
+
+describe('si_session storyboard', () => {
+  it('covers the full SI session lifecycle', () => {
+    const sb = getStoryboard('si_session')!;
+    expect(sb).toBeDefined();
+    expect(sb.agent.interaction_model).toBe('si_platform');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('si_get_offering');
+    expect(tasks).toContain('si_initiate_session');
+    expect(tasks).toContain('si_send_message');
+    expect(tasks).toContain('si_terminate_session');
+  });
+
+  it('resolves nova_motors test kit', () => {
+    const kit = getTestKitForStoryboard('si_session');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('nova_motors');
+  });
+});
+
+describe('brand_rights storyboard', () => {
+  it('covers brand identity discovery and rights lifecycle', () => {
+    const sb = getStoryboard('brand_rights')!;
+    expect(sb).toBeDefined();
+    expect(sb.agent.interaction_model).toBe('brand_rights_holder');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('get_brand_identity');
+    expect(tasks).toContain('get_rights');
+    expect(tasks).toContain('acquire_rights');
+    expect(tasks).toContain('update_rights');
+    expect(tasks).toContain('creative_approval');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('brand_rights');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
+
+describe('property_governance storyboard', () => {
+  it('covers property list CRUD and delivery validation', () => {
+    const sb = getStoryboard('property_governance')!;
+    expect(sb).toBeDefined();
+    expect(sb.agent.interaction_model).toBe('governance_agent');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('create_property_list');
+    expect(tasks).toContain('list_property_lists');
+    expect(tasks).toContain('get_property_list');
+    expect(tasks).toContain('update_property_list');
+    expect(tasks).toContain('delete_property_list');
+    expect(tasks).toContain('validate_property_delivery');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('property_governance');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
+
+describe('content_standards storyboard', () => {
+  it('covers content standards CRUD, calibration, and delivery validation', () => {
+    const sb = getStoryboard('content_standards')!;
+    expect(sb).toBeDefined();
+    expect(sb.agent.interaction_model).toBe('governance_agent');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('create_content_standards');
+    expect(tasks).toContain('list_content_standards');
+    expect(tasks).toContain('get_content_standards');
+    expect(tasks).toContain('update_content_standards');
+    expect(tasks).toContain('calibrate_content');
+    expect(tasks).toContain('validate_content_delivery');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('content_standards');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
   });
 });

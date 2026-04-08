@@ -2605,18 +2605,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Run comply against both the user's agent and the reference test agent
+        // Only run scenarios this storyboard references, not the full suite
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const compareScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             dry_run: true,
             timeout_ms: 90_000,
+            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
             ...(auth && { auth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             dry_run: true,
             timeout_ms: 90_000,
+            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);

@@ -41,9 +41,11 @@ export type PlatformType =
 
 export interface ComplyOptions extends TestOptions {
   tracks?: ComplianceTrack[];
+  /** Run the scenarios defined by these storyboard IDs. Takes priority over tracks. */
+  storyboards?: string[];
   platform_type?: PlatformType;
   timeout_ms?: number;
-  /** Limit to specific scenarios (e.g. from a storyboard). Bypasses track-based selection. */
+  /** Limit to specific scenarios directly. Bypasses both storyboard and track selection. */
   scenarios?: TestScenario[];
 }
 
@@ -267,6 +269,33 @@ const PLATFORM_PROFILES: Record<PlatformType, PlatformProfile> = {
   },
 };
 
+/**
+ * Maps each platform type to the storyboards that define its expected behavior.
+ * This is the primary routing mechanism: a platform type selects storyboards,
+ * storyboards extract to scenarios, scenarios run via testAllScenarios().
+ */
+export const PLATFORM_STORYBOARDS: Record<PlatformType, string[]> = {
+  display_ad_server: ['capability_discovery', 'media_buy_seller'],
+  video_ad_server: ['capability_discovery', 'media_buy_seller'],
+  social_platform: ['capability_discovery', 'social_platform'],
+  pmax_platform: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+  dsp: ['capability_discovery', 'media_buy_seller'],
+  retail_media: ['capability_discovery', 'media_buy_seller', 'media_buy_catalog_creative'],
+  search_platform: ['capability_discovery', 'media_buy_seller'],
+  audio_platform: ['capability_discovery', 'media_buy_seller'],
+  creative_transformer: ['capability_discovery', 'creative_template'],
+  creative_library: ['capability_discovery', 'creative_lifecycle'],
+  creative_ad_server: ['capability_discovery', 'creative_ad_server'],
+  si_platform: ['capability_discovery', 'si_session'],
+  ai_ad_network: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+  ai_platform: ['capability_discovery', 'creative_template'],
+  generative_dsp: ['capability_discovery', 'media_buy_seller', 'creative_lifecycle'],
+};
+
+export function getPlatformStoryboards(platformType: PlatformType): string[] | undefined {
+  return PLATFORM_STORYBOARDS[platformType];
+}
+
 export function getBriefsByVertical(vertical: string): SampleBrief[] {
   const normalized = vertical.trim().toLowerCase();
   return SAMPLE_BRIEFS.filter((brief) => brief.vertical === normalized);
@@ -446,12 +475,37 @@ function tracksForScenarios(scenarios: TestScenario[]): ComplianceTrack[] {
   return tracks;
 }
 
+/**
+ * Resolve storyboard IDs to a merged, deduped list of known scenarios.
+ * Uses dynamic import to avoid circular dependency with storyboards.ts.
+ */
+async function resolveStoryboardScenarios(storyboardIds: string[]): Promise<TestScenario[]> {
+  const { getStoryboard, extractScenariosFromStoryboard } = await import('../../services/storyboards.js');
+  const allScenarios = new Set<string>();
+  for (const id of storyboardIds) {
+    const sb = getStoryboard(id);
+    if (sb) {
+      for (const s of extractScenariosFromStoryboard(sb)) {
+        allScenarios.add(s);
+      }
+    }
+  }
+  return filterToKnownScenarios([...allScenarios]);
+}
+
 export async function comply(agentUrl: string, options: ComplyOptions = {}): Promise<ComplyResult> {
-  // When explicit scenarios are provided (e.g. from a storyboard), use them
-  // directly and derive tracks by reverse-mapping.
-  const scenarioList = options.scenarios ?? buildScenarioList(options.tracks);
-  const requestedTracks = options.scenarios
-    ? tracksForScenarios(options.scenarios)
+  // Priority: scenarios > storyboards > tracks > default (all tracks)
+  let scenarioList: TestScenario[];
+  if (options.scenarios?.length) {
+    scenarioList = options.scenarios;
+  } else if (options.storyboards?.length) {
+    scenarioList = await resolveStoryboardScenarios(options.storyboards);
+  } else {
+    scenarioList = buildScenarioList(options.tracks);
+  }
+
+  const requestedTracks = (options.scenarios?.length || options.storyboards?.length)
+    ? tracksForScenarios(scenarioList)
     : options.tracks?.length
       ? options.tracks
       : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);

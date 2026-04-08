@@ -65,6 +65,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return matching signals from multiple data providers. Each signal must include:
@@ -104,6 +105,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return the exact signals requested, with full metadata and pricing.
@@ -150,6 +152,7 @@ phases:
         schema_ref: "signals/get-signals-request.json"
         response_schema_ref: "signals/get-signals-response.json"
         doc_ref: "/signals/data-providers"
+        comply_scenario: signals_flow
         stateful: false
         expected: |
           Return the requested signal with verifiable provenance metadata:
@@ -194,6 +197,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:
@@ -245,6 +249,7 @@ phases:
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
         doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
         stateful: true
         expected: |
           Return a deployment with:
