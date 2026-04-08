@@ -7,6 +7,7 @@ import { BrandDatabase } from "./db/brand-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { AAO_HOST } from "./config/aao.js";
+import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
@@ -30,7 +31,7 @@ export class CrawlerService {
   private profilesDb?: AgentInventoryProfilesDatabase;
 
   constructor(options?: { eventsDb?: CatalogEventsDatabase; profilesDb?: AgentInventoryProfilesDatabase }) {
-    this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error' });
+    this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error', userAgent: AAO_UA_DISCOVERY });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
     this.brandManager = new BrandManager();
@@ -48,10 +49,17 @@ export class CrawlerService {
     }
 
     this.crawling = true;
-    log.info({ agentCount: agents.length }, 'Starting crawl');
+
+    // Filter out agents whose owners have paused monitoring
+    const pausedUrls = await this.getPausedAgentUrls();
+    const activeAgents = agents.filter(a => !pausedUrls.has(a.url));
+    if (activeAgents.length < agents.length) {
+      log.info({ paused: agents.length - activeAgents.length, active: activeAgents.length }, 'Skipping paused agents');
+    }
+    log.info({ agentCount: activeAgents.length }, 'Starting crawl');
 
     // Convert our Agent type to AgentInfo for the crawler
-    const agentInfos: AgentInfo[] = agents.map((agent) => ({
+    const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
       agent_url: agent.url,
       protocol: agent.protocol || "mcp", // Use agent's protocol, default to MCP
       publisher_domain: this.extractDomain(agent.url),
@@ -141,6 +149,18 @@ export class CrawlerService {
       lastResult: this.lastResult,
       indexStats: stats,
     };
+  }
+
+  private async getPausedAgentUrls(): Promise<Set<string>> {
+    try {
+      const result = await query(
+        `SELECT agent_url FROM agent_registry_metadata WHERE monitoring_paused = TRUE`,
+      );
+      return new Set(result.rows.map((r: { agent_url: string }) => r.agent_url));
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch paused agents, treating all as active');
+      return new Set();
+    }
   }
 
   private extractDomain(url: string): string {
@@ -400,8 +420,9 @@ export class CrawlerService {
       ...allAgents.map(a => a.url),
     ]);
 
-    // Filter out agents that already have a type
-    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url));
+    // Filter out agents that already have a type or are paused
+    const pausedUrls = await this.getPausedAgentUrls();
+    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url) && !pausedUrls.has(url));
 
     if (urlsToProbe.length === 0) {
       log.debug('All agents already typed, skipping probe');
