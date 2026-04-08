@@ -12,10 +12,14 @@ import {
 describe('listStoryboards', () => {
   it('returns all storyboards when no category filter', () => {
     const results = listStoryboards();
-    expect(results.length).toBeGreaterThanOrEqual(21);
+    expect(results.length).toBeGreaterThanOrEqual(25);
 
     const ids = results.map((s) => s.id);
     expect(ids).toContain('capability_discovery');
+    expect(ids).toContain('schema_validation');
+    expect(ids).toContain('behavioral_analysis');
+    expect(ids).toContain('error_compliance');
+    expect(ids).toContain('media_buy_state_machine');
     expect(ids).toContain('creative_template');
     expect(ids).toContain('creative_ad_server');
     expect(ids).toContain('creative_sales_agent');

@@ -1,0 +1,251 @@
+id: media_buy_state_machine
+version: "1.0.0"
+title: "Media buy state machine lifecycle"
+category: media_buy_state_machine
+summary: "Validates media buy state transitions: create, pause, resume, cancel, and terminal state enforcement."
+
+narrative: |
+  A media buy has a well-defined state machine: draft, pending_approval, confirmed, active,
+  paused, completed, canceled. Transitions between states must follow the spec — you cannot
+  resume a canceled buy or pause a completed one.
+
+  This storyboard creates a media buy, walks it through pause/resume/cancel transitions, then
+  verifies that the agent rejects updates to a buy in a terminal state (canceled or completed).
+  It also tests package-level pause/resume independent of the media buy status.
+
+  The state machine is the backbone of media buy reliability. If an agent allows invalid
+  transitions, buyers cannot trust the status field and automation breaks down.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+  examples:
+    - "Any AdCP seller with media buy support"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for account setup. The test creates a media buy
+    using discovered products, then exercises state transitions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Create a media buy"
+    narrative: |
+      Discover products and create a media buy to use for state transition testing.
+      The media buy ID is captured and passed to subsequent phases.
+
+    steps:
+      - id: discover_products
+        title: "Discover products for media buy"
+        narrative: |
+          Send a brief to get available products with pricing options. The first product
+          with a pricing option will be used to create the test media buy.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products with:
+          - product_id
+          - pricing_options with pricing_option_id
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display advertising products for state machine testing"
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product with a product_id"
+
+      - id: create_buy
+        title: "Create the test media buy"
+        narrative: |
+          Create a media buy using the discovered product. This buy will be used for
+          all subsequent state transition tests.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return a confirmed media buy with:
+          - media_buy_id
+          - status: confirmed or active
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response includes a media_buy_id"
+
+  - id: state_transitions
+    title: "Valid state transitions"
+    narrative: |
+      Exercise the valid state transitions: pause, resume, and cancel. Each transition
+      must update the status field correctly.
+
+    steps:
+      - id: pause_buy
+        title: "Pause the media buy"
+        narrative: |
+          Pause the active media buy. The status should transition to paused.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions to paused.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          paused: true
+
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes updated status"
+
+      - id: resume_buy
+        title: "Resume the media buy"
+        narrative: |
+          Resume the paused media buy. The status should transition back to active.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions back to active.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          paused: false
+
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes updated status"
+
+      - id: cancel_buy
+        title: "Cancel the media buy"
+        narrative: |
+          Cancel the media buy. This is a terminal transition — the buy cannot be
+          resumed or modified after cancellation.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions to canceled. This is terminal.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          canceled: true
+
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes canceled status"
+
+  - id: terminal_enforcement
+    title: "Terminal state enforcement"
+    narrative: |
+      Verify that the agent rejects state transitions on a canceled media buy. Pausing,
+      resuming, or re-canceling a terminal buy must return an error.
+
+    steps:
+      - id: pause_canceled_buy
+        title: "Reject pause on canceled buy"
+        narrative: |
+          Attempt to pause a canceled media buy. The agent must reject this with
+          INVALID_STATE_TRANSITION.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        stateful: true
+        expected: |
+          Reject with INVALID_STATE_TRANSITION — cannot pause a canceled buy.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          paused: true
+
+        validations:
+          - check: field_present
+            path: "errors"
+            description: "Response contains an error for invalid transition"
+
+      - id: resume_canceled_buy
+        title: "Reject resume on canceled buy"
+        narrative: |
+          Attempt to resume a canceled media buy. The agent must reject this with
+          INVALID_STATE_TRANSITION.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        stateful: true
+        expected: |
+          Reject with INVALID_STATE_TRANSITION — cannot resume a canceled buy.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          paused: false
+
+        validations:
+          - check: field_present
+            path: "errors"
+            description: "Response contains an error for invalid transition"
+
+      - id: recancel_buy
+        title: "Handle re-cancel of canceled buy"
+        narrative: |
+          Attempt to cancel an already-canceled media buy. The agent should either
+          return an error or accept it idempotently.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        stateful: true
+        expected: |
+          Either reject with INVALID_STATE_TRANSITION or accept idempotently.
+          Both behaviors are valid.
+
+        sample_request:
+          media_buy_id: "test-media-buy"
+          canceled: true

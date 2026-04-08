@@ -1,0 +1,170 @@
+id: schema_validation
+version: "1.0.0"
+title: "Schema compliance and temporal validation"
+category: schema_validation
+summary: "Validates that agent responses conform to AdCP schemas and that temporal constraints are enforced."
+
+narrative: |
+  Every AdCP agent must return responses that match the published JSON schemas. Fields defined
+  in the spec — product_id, delivery_type, pricing_options — must be present and correctly typed.
+  Agents must also enforce temporal constraints: flight dates must be logically consistent
+  (end after start) and start dates should not be in the past.
+
+  This storyboard checks schema compliance on get_products responses and validates that
+  create_media_buy rejects temporally invalid requests. These are foundational requirements
+  that every agent must satisfy regardless of platform type.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for product discovery requests.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: schema_compliance
+    title: "Response schema compliance"
+    narrative: |
+      The buyer sends a standard get_products request and validates that the response
+      matches the published schema. Each product must have the required fields defined
+      in the AdCP spec.
+
+    steps:
+      - id: get_products_schema
+        title: "Validate get_products response schema"
+        narrative: |
+          Send a brief and validate the response structure. Every product in the response
+          must conform to the get-products-response.json schema, with required v3 fields
+          present.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product must have:
+          - product_id: unique identifier
+          - name: human-readable name
+          - delivery_type: guaranteed or non_guaranteed
+          - pricing_options: at least one pricing option
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show all available advertising products"
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed or non_guaranteed delivery"
+
+      - id: pricing_options_present
+        title: "Validate pricing options structure"
+        narrative: |
+          Verify that products include pricing_options with the required fields:
+          pricing_option_id and pricing_model. These are required for buyers to
+          construct valid create_media_buy requests.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Products include pricing_options with:
+          - pricing_option_id: unique identifier for the pricing option
+          - pricing_model: CPM, CPC, flat_rate, etc.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium display inventory with pricing details"
+          brand:
+            domain: "acmeoutdoor.com"
+
+        validations:
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options have a pricing_option_id"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_model"
+            description: "Pricing options declare a pricing_model"
+
+  - id: temporal_validation
+    title: "Temporal constraint enforcement"
+    narrative: |
+      The buyer sends media buy requests with invalid temporal constraints. The agent
+      must reject reversed dates (end before start) and handle past start dates
+      appropriately.
+
+    steps:
+      - id: reversed_dates
+        title: "Reject reversed flight dates"
+        narrative: |
+          Send a create_media_buy request where end_time is before start_time. The agent
+          must reject this with an INVALID_REQUEST error.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        stateful: false
+        expected: |
+          Reject the request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating the date constraint violation
+
+        sample_request:
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+        validations:
+          - check: field_present
+            path: "errors"
+            description: "Response contains an error for reversed dates"
+
+      - id: past_start_date
+        title: "Handle past start date"
+        narrative: |
+          Send a create_media_buy request with a start_time in the past. The agent
+          should either reject the request or auto-adjust the start date forward.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        stateful: false
+        expected: |
+          Either reject with INVALID_REQUEST or accept with adjusted dates.
+          Both behaviors are valid — the key is that the agent does not silently
+          accept a past start date without acknowledgment.
+
+        sample_request:
+          start_time: "2020-01-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
