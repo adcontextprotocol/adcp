@@ -4010,6 +4010,113 @@ describe('check_governance seller compliance', () => {
   });
 });
 
+// ── Governance: sync_plans validation ────────────────────────────────
+
+describe('sync_plans input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns validation error when plan is missing flight', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-no-flight',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+  });
+
+  it('returns validation error when plan is missing budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-no-budget',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+  });
+
+  it('returns validation error when flight is empty object', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-empty-flight',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        flight: {},
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('flight requires start and end');
+  });
+
+  it('returns validation error when budget is missing required sub-fields', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-bad-budget',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('budget requires total, currency, and authority_level');
+  });
+
+  it('does not persist any plans when a later plan in the batch is invalid', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const validPlan = {
+      plan_id: 'plan-valid',
+      brand: { name: 'Test' },
+      objectives: 'test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    const invalidPlan = {
+      plan_id: 'plan-invalid',
+      brand: { name: 'Test' },
+      objectives: 'test',
+    };
+
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [validPlan, invalidPlan],
+    });
+    expect(isError).toBe(true);
+
+    // The valid plan should NOT have been persisted
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-valid',
+      binding: 'proposed',
+      caller: 'https://test.example',
+    });
+    expect(result.status).toBe('denied');
+    expect(result.explanation).toContain('Plan not found');
+  });
+});
+
 // ── Governance: delegation budget and market enforcement ────────────
 
 describe('check_governance delegation enforcement', () => {
