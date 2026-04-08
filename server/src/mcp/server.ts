@@ -48,8 +48,6 @@ import {
   AGENT_CONTEXT_TOOL_DEFINITIONS,
   createMemberToolHandler,
   createStatelessToolHandlers,
-  SCHEMA_TOOL_DEFINITIONS,
-  PROPERTY_TOOL_DEFINITIONS,
 } from './exposed-tools.js';
 
 const logger = createLogger('mcp-server');
