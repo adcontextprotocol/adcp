@@ -62,12 +62,17 @@ vi.mock('../../src/db/member-db.js', () => {
 });
 
 // Mock rate limiter to disable validation in tests
-vi.mock('../../src/middleware/rate-limit.js', () => ({
-  apiRateLimiter: (req: any, res: any, next: any) => next(),
-  authRateLimiter: (req: any, res: any, next: any) => next(),
-  webhookRateLimiter: (req: any, res: any, next: any) => next(),
-  invitationRateLimiter: (req: any, res: any, next: any) => next(),
-}));
+vi.mock('../../src/middleware/rate-limit.js', async (importOriginal) => {
+  const passthrough = (req: any, res: any, next: any) => next();
+  return {
+    ...(await importOriginal() as Record<string, unknown>),
+    apiRateLimiter: passthrough,
+    authRateLimiter: passthrough,
+    webhookRateLimiter: passthrough,
+    invitationRateLimiter: passthrough,
+    orgCreationRateLimiter: passthrough,
+  };
+});
 
 describe('MCP Protocol Compliance', () => {
   let server: HTTPServer;
@@ -119,7 +124,7 @@ describe('MCP Protocol Compliance', () => {
         });
 
       expect(response.body.result.tools).toBeInstanceOf(Array);
-      expect(response.body.result.tools).toHaveLength(22);
+      expect(response.body.result.tools).toHaveLength(32);
     });
 
     it('each tool has name, description, inputSchema', async () => {
@@ -156,6 +161,97 @@ describe('MCP Protocol Compliance', () => {
         expect(tool.inputSchema).toHaveProperty('type', 'object');
         expect(tool.inputSchema).toHaveProperty('properties');
       });
+    });
+  });
+
+  describe('POST /mcp - evaluation tools in tools/list', () => {
+    const EVAL_TOOLS = [
+      'probe_adcp_agent',
+      'evaluate_agent_quality',
+      'test_rfp_response',
+      'test_io_execution',
+    ];
+
+    it('includes all evaluation tools', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list'
+        });
+
+      const toolNames = response.body.result.tools.map((t: any) => t.name);
+      for (const name of EVAL_TOOLS) {
+        expect(toolNames).toContain(name);
+      }
+    });
+
+    it('evaluate_agent_quality requires agent_url', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list'
+        });
+
+      const tool = response.body.result.tools.find((t: any) => t.name === 'evaluate_agent_quality');
+      expect(tool.inputSchema.required).toContain('agent_url');
+    });
+
+    it('test_rfp_response requires agent_url and rfp', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list'
+        });
+
+      const tool = response.body.result.tools.find((t: any) => t.name === 'test_rfp_response');
+      expect(tool.inputSchema.required).toContain('agent_url');
+      expect(tool.inputSchema.required).toContain('rfp');
+    });
+
+    it('test_io_execution requires agent_url and line_items', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list'
+        });
+
+      const tool = response.body.result.tools.find((t: any) => t.name === 'test_io_execution');
+      expect(tool.inputSchema.required).toContain('agent_url');
+      expect(tool.inputSchema.required).toContain('line_items');
+    });
+  });
+
+  describe('POST /mcp - agent context tools in tools/list', () => {
+    it('includes save_agent, list_saved_agents, remove_saved_agent', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+
+      const toolNames = response.body.result.tools.map((t: any) => t.name);
+      expect(toolNames).toContain('save_agent');
+      expect(toolNames).toContain('list_saved_agents');
+      expect(toolNames).toContain('remove_saved_agent');
+    });
+  });
+
+  describe('POST /mcp - validation tools in tools/list', () => {
+    it('includes validate_json, get_schema, validate_adagents', async () => {
+      const response = await request(app)
+        .post('/mcp')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+
+      const toolNames = response.body.result.tools.map((t: any) => t.name);
+      expect(toolNames).toContain('validate_json');
+      expect(toolNames).toContain('get_schema');
+      expect(toolNames).toContain('validate_adagents');
     });
   });
 
