@@ -97,10 +97,6 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
-    "@tiptap/core": "^3.22.2",
-    "@tiptap/extension-link": "^3.22.2",
-    "@tiptap/pm": "^3.22.2",
-    "@tiptap/starter-kit": "^3.22.2",
     "@types/cookie-parser": "^1.4.10",
     "@types/dompurify": "^3.2.0",
     "@types/escape-html": "^1.0.4",
