@@ -1790,7 +1790,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -2539,7 +2539,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
     // 15 minutes gives developers time to inspect tasks while debugging.
-    // With the rate limiter (60 req/min) this caps live tasks at ~900.
+    // With the rate limiter (300 req/min) this caps live tasks at ~4,500.
     const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
     const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
