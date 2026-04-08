@@ -815,7 +815,6 @@
         }
 
         // Replace the form with a success message and reload after a moment
-        const card = form.closest('.agent-compliance-card');
         form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected. Compliance check will run on the next heartbeat cycle.</div>';
         setTimeout(() => location.reload(), 1500);
       } catch (err) {
