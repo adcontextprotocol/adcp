@@ -49,10 +49,17 @@ export class CrawlerService {
     }
 
     this.crawling = true;
-    log.info({ agentCount: agents.length }, 'Starting crawl');
+
+    // Filter out agents whose owners have paused monitoring
+    const pausedUrls = await this.getPausedAgentUrls();
+    const activeAgents = agents.filter(a => !pausedUrls.has(a.url));
+    if (activeAgents.length < agents.length) {
+      log.info({ paused: agents.length - activeAgents.length, active: activeAgents.length }, 'Skipping paused agents');
+    }
+    log.info({ agentCount: activeAgents.length }, 'Starting crawl');
 
     // Convert our Agent type to AgentInfo for the crawler
-    const agentInfos: AgentInfo[] = agents.map((agent) => ({
+    const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
       agent_url: agent.url,
       protocol: agent.protocol || "mcp", // Use agent's protocol, default to MCP
       publisher_domain: this.extractDomain(agent.url),
@@ -142,6 +149,17 @@ export class CrawlerService {
       lastResult: this.lastResult,
       indexStats: stats,
     };
+  }
+
+  private async getPausedAgentUrls(): Promise<Set<string>> {
+    try {
+      const result = await query(
+        `SELECT agent_url FROM agent_registry_metadata WHERE monitoring_paused = TRUE`,
+      );
+      return new Set(result.rows.map((r: { agent_url: string }) => r.agent_url));
+    } catch {
+      return new Set();
+    }
   }
 
   private extractDomain(url: string): string {
@@ -401,8 +419,9 @@ export class CrawlerService {
       ...allAgents.map(a => a.url),
     ]);
 
-    // Filter out agents that already have a type
-    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url));
+    // Filter out agents that already have a type or are paused
+    const pausedUrls = await this.getPausedAgentUrls();
+    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url) && !pausedUrls.has(url));
 
     if (urlsToProbe.length === 0) {
       log.debug('All agents already typed, skipping probe');
