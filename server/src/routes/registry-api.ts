@@ -15,8 +15,8 @@ import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
-import { listStoryboards, getStoryboard, getTestKitForStoryboard, extractScenariosFromStoryboard } from "../services/storyboards.js";
-import { comply, filterToKnownScenarios } from "../addie/services/compliance-testing.js";
+import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
+import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -2683,49 +2683,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Resolve agent auth
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
 
-        // Only run scenarios this storyboard references, not the full suite
-        const storyboardScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
         const complyResult = await comply(agentUrl, {
           dry_run: true,
           timeout_ms: 90_000,
-          ...(storyboardScenarios.length > 0 && { scenarios: storyboardScenarios }),
+          storyboards: [req.params.storyboardId],
           ...(auth && { auth }),
         });
 
         // Record the run
-        const tracksSummary = complyResult.tracks.map((t) => ({
-          track: t.track,
-          status: t.status,
-          scenario_count: t.scenarios.length,
-          passed_count: t.scenarios.filter((s) => s.overall_passed).length,
-          duration_ms: t.duration_ms,
-        }));
-
-        // Look up lifecycle stage for this agent
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-
-        await complianceDb.recordComplianceRun({
-          agent_url: agentUrl,
-          lifecycle_stage: metadata?.lifecycle_stage || "development",
-          overall_status: complyResult.v3_gate_failed
-            ? "failing"
-            : complyResult.summary.tracks_failed > 0
-              ? "failing"
-              : complyResult.summary.tracks_partial > 0
-                ? "partial"
-                : "passing",
-          headline: complyResult.summary.headline,
-          total_duration_ms: complyResult.total_duration_ms,
-          tracks_json: tracksSummary,
-          tracks_passed: complyResult.summary.tracks_passed,
-          tracks_failed: complyResult.summary.tracks_failed,
-          tracks_skipped: complyResult.summary.tracks_skipped,
-          tracks_partial: complyResult.summary.tracks_partial,
-          agent_profile_json: complyResult.agent_profile,
-          observations_json: complyResult.observations,
-          triggered_by: "manual",
-          dry_run: complyResult.dry_run,
-        });
+        await complianceDb.recordComplianceRun(
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual"),
+        );
 
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
@@ -2803,21 +2772,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Only run scenarios this storyboard references, not the full suite
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
-        const compareScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
+        const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             dry_run: true,
             timeout_ms: 90_000,
-            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
+            storyboards: storyboardIds,
             ...(auth && { auth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             dry_run: true,
             timeout_ms: 90_000,
-            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
+            storyboards: storyboardIds,
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);
