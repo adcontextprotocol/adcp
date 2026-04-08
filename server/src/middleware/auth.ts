@@ -723,9 +723,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       // Remove any stale positive cache entry and mark session as dead
       // so subsequent requests skip the expensive WorkOS refresh + DB fallback
       sessionCache.delete(cacheKey);
-      if (deadSessionCache.size < DEAD_SESSION_MAX_SIZE) {
-        deadSessionCache.set(cacheKey, Date.now());
+      // LRU eviction: delete oldest entry when at capacity
+      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+        const oldest = deadSessionCache.keys().next().value;
+        if (oldest) deadSessionCache.delete(oldest);
       }
+      deadSessionCache.set(cacheKey, Date.now());
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -1432,9 +1435,12 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     if (!result.authenticated || !('user' in result) || !result.user) {
       // All refresh attempts failed — mark session as dead to avoid
       // expensive retries on every subsequent request
-      if (deadSessionCache.size < DEAD_SESSION_MAX_SIZE) {
-        deadSessionCache.set(cacheKey, Date.now());
+      // LRU eviction: delete oldest entry when at capacity
+      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+        const oldest = deadSessionCache.keys().next().value;
+        if (oldest) deadSessionCache.delete(oldest);
       }
+      deadSessionCache.set(cacheKey, Date.now());
     }
 
     if (result.authenticated && 'user' in result && result.user) {
