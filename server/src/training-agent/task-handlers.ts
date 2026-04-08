@@ -1783,7 +1783,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
+function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Record<string, unknown> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -1800,6 +1800,18 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { ad
       portfolio: {
         channels,
       },
+    },
+    creative: {
+      supports_generation: true,
+      supports_transformation: true,
+      supports_compliance: false,
+      has_creative_library: true,
+    },
+    account: {
+      require_operator_auth: false,
+      required_for_products: false,
+      sandbox: true,
+      supported_billing: [],
     },
     agent: {
       name: 'AdCP Training Agent',

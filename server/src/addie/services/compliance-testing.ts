@@ -19,7 +19,8 @@ export type ComplianceTrack =
   | 'governance'
   | 'signals'
   | 'si'
-  | 'audiences';
+  | 'audiences'
+  | 'brand';
 
 export type PlatformType =
   | 'display_ad_server'
@@ -114,6 +115,7 @@ const TRACK_LABELS: Record<ComplianceTrack, string> = {
   signals: 'Signals',
   si: 'Sponsored intelligence',
   audiences: 'Audience sync',
+  brand: 'Brand protocol',
 };
 
 export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
@@ -133,6 +135,10 @@ export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
   audiences: ['sync_audiences'],
+  // Brand scenarios (brand_identity, brand_rights_flow, creative_approval) are
+  // pending addition to @adcp/client — see adcontextprotocol/adcp#1993.
+  // Until then the brand track will always show as 'skip'.
+  brand: [] as TestScenario[],
 };
 
 export const SAMPLE_BRIEFS: SampleBrief[] = [

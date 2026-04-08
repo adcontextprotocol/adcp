@@ -1,0 +1,60 @@
+id: capability_discovery
+version: "1.0.0"
+title: "Capability discovery"
+category: core
+summary: "Buyer discovers seller capabilities, protocols, and creative features before interacting."
+
+narrative: |
+  Before a buyer agent can do anything useful, it needs to understand what you support.
+  Capability discovery is the first thing a buyer does when connecting to a new seller —
+  which protocols do you implement? What creative features? Do you require accounts?
+
+  This storyboard walks through the v3 capability discovery flow. The buyer calls
+  get_adcp_capabilities and uses the response to decide which workflows to attempt.
+
+agent:
+  interaction_model: any
+  capabilities: []
+  examples:
+    - "Any AdCP v3 agent"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+phases:
+  - id: discover
+    title: "Discover agent capabilities"
+    narrative: |
+      The buyer connects and calls get_adcp_capabilities to learn what the agent supports.
+      The response declares protocol support, creative features, account requirements,
+      and version information. This determines which subsequent workflows are available.
+
+    steps:
+      - id: get_capabilities
+        title: "Get agent capabilities"
+        narrative: |
+          The buyer calls get_adcp_capabilities. The response tells the buyer which
+          protocols are supported (media_buy, creative, governance, signals), what
+          creative capabilities exist (generation, transformation, library), and whether
+          accounts are required before product discovery.
+        task: get_adcp_capabilities
+        schema_ref: "core/get-adcp-capabilities-request.json"
+        response_schema_ref: "core/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/task-reference/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return a capabilities object with:
+          - adcp.major_versions including 3
+          - supported_protocols listing implemented protocols
+          - creative block if creative protocol is supported
+          - account block describing auth and sandbox status
+
+        validations:
+          - check: field_present
+            path: "adcp.major_versions"
+            description: "Response declares supported AdCP versions"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Response lists supported protocols"
