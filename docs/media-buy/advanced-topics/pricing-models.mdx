@@ -50,6 +50,97 @@ Publishers specify their measurement provider in the product:
 
 By accepting the product, buyers agree to use the declared measurement provider as the authoritative source for delivery metrics.
 
+### Measurement Terms and Performance Standards
+
+Beyond declaring a provider, sellers can publish structured terms on products — and buyers can negotiate them at buy creation. These are two separate concerns:
+
+- **`measurement_terms`** — Who counts the billing metric and what happens when thresholds are breached (makegoods)
+- **`performance_standards`** — What rate thresholds apply (viewability, IVT, completion, brand safety, attention)
+
+```json
+{
+  "product_id": "premium_guaranteed_video",
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with DoubleVerify verification",
+    "notes": "MRC-accredited viewability. DV IVT filtering enabled."
+  },
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "admanager.google.com" },
+      "max_variance_percent": 10
+    },
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
+    }
+  },
+  "performance_standards": [
+    {
+      "metric": "viewability",
+      "threshold": 0.70,
+      "standard": "mrc",
+      "vendor": { "domain": "doubleverify.com" }
+    },
+    {
+      "metric": "ivt",
+      "threshold": 0.05,
+      "vendor": { "domain": "doubleverify.com" }
+    },
+    {
+      "metric": "completion_rate",
+      "threshold": 0.80,
+      "vendor": { "domain": "doubleverify.com" }
+    }
+  ]
+}
+```
+
+**Measurement terms fields:**
+
+- **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution.
+- **`makegood_policy`** — Closed menu of remedies available when any performance standard or billing variance is breached. Three remedy types: `additional_delivery` (extend/add impressions, like-for-like), `credit` (toward future buys), `invoice_adjustment` (reduce current invoice). Seller proposes from this menu; buyer accepts or disputes.
+
+**Performance standards fields:**
+
+Each entry in the `performance_standards` array specifies:
+
+- **`metric`** — What is measured: `viewability`, `ivt`, `completion_rate`, `brand_safety`, `attention_score`
+- **`threshold`** — Rate as a decimal (0-1). Whether this is a floor or ceiling depends on the metric: viewability, completion_rate, brand_safety, attention_score are floors (must exceed); ivt is a ceiling (must not exceed).
+- **`standard`** — Required for viewability (`"mrc"` or `"groupm"`). Omit for other metrics.
+- **`vendor`** — Who measures it, identified by domain. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
+
+**Negotiation flow:**
+
+1. Seller publishes `measurement_terms` and `performance_standards` on the product (defaults)
+2. Buyer proposes overrides on the package request at `create_media_buy`
+3. Seller accepts (echoes on confirmed package), rejects (`TERMS_REJECTED`), or adjusts (returns modified terms)
+4. If a threshold is breached, seller proposes a remedy from the agreed `makegood_policy`; buyer accepts or disputes
+
+When the buyer omits these fields, the product's defaults apply.
+
+### Cancellation Policy
+
+Guaranteed products can declare a `cancellation_policy` with the minimum notice period required before cancellation takes effect:
+
+```json
+{
+  "product_id": "premium_guaranteed_video",
+  "delivery_type": "guaranteed",
+  "cancellation_policy": {
+    "notice_period": { "interval": 30, "unit": "days" },
+    "cancellation_fee": { "type": "percent_remaining", "rate": 0.5 }
+  }
+}
+```
+
+**Cancellation fee types:**
+
+- **`percent_remaining`** — Percentage of remaining committed spend (requires `rate`, e.g., `0.5` for 50%)
+- **`full_commitment`** — Buyer owes the full committed budget regardless of delivery
+- **`fixed_fee`** — Flat monetary amount (requires `amount` in the buy's currency)
+- **`none`** — No cancellation fee (cancellation with notice is free)
+
+Unlike `measurement_terms`, cancellation policy is not a negotiation surface — the seller declares it and the buyer accepts it by creating a media buy against the product. A guaranteed buy canceled without sufficient notice incurs the declared cancellation fee.
+
 ### Best Practices
 
 **For Publishers:**

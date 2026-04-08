@@ -82,6 +82,137 @@ The key question is: **where do the assets come from?**
 
 Some agents combine models. A creative management platform might be both a template engine (stateless transformation) and a library host (stateful). Declare the appropriate capability flags in `get_adcp_capabilities` so buyers can determine the right interaction model.
 
+### Pricing and statefulness
+
+A creative agent that charges for its services needs an account relationship. Adding pricing requires:
+
+1. **Implement the [Accounts Protocol](/docs/accounts/overview)** — buyers establish accounts with rate cards
+2. **Expose `pricing_options` on discovery** — on `list_creative_formats` (transformation/generation agents) or `list_creatives` (ad servers/library agents)
+3. **Return pricing in `build_creative` responses** — `pricing_option_id`, `vendor_cost`, `currency`, and `consumption`
+4. **Accept `report_usage`** — orchestrators report what was served so you can track revenue
+
+Free transformation agents remain stateless and unchanged. No account, no pricing required.
+
+#### Pricing discovery by agent type
+
+| Agent type | Discovery surface | Why |
+|---|---|---|
+| **Transformation** (Celtra) | `list_creative_formats` | Buyers see pricing per format before any creative exists |
+| **Generation** (AI platforms) | `list_creative_formats` | Same — pricing is on the capability, not a pre-existing creative |
+| **Ad server** (Innovid, CM360) | `list_creatives` | Buyers see pricing on specific creatives in the library |
+| **Both** (Celtra, creative management platforms) | Both surfaces | Library pricing on `list_creatives`, format pricing on `list_creative_formats` |
+
+Transformation and generation agents do not need to implement `list_creatives` for pricing — `list_creative_formats` is the natural surface since the format is the product.
+
+#### Pricing walkthrough
+
+Here is the full round-trip for a transformation agent charging per format adapted.
+
+**Step 1: Buyer discovers pricing via `list_creative_formats`**
+
+The buyer calls `list_creative_formats` with `include_pricing: true` and their `account`. Your agent looks up the account's rate card and returns `pricing_options` on each format:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" },
+      "name": "Display 300x250",
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_standard_per_format",
+          "model": "per_unit",
+          "unit": "format",
+          "unit_price": 2.00,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_volume_per_format",
+          "model": "per_unit",
+          "unit": "format",
+          "unit_price": 1.25,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Multiple options are common — here the buyer sees a standard rate and a volume rate. For ad servers, the same `pricing_options` pattern appears on `list_creatives` instead.
+
+**Step 2: Buyer builds a creative**
+
+The buyer calls `build_creative` with their `account`. Your agent performs the work, selects the applicable pricing option server-side (based on the account's commitment level, the work performed, etc.), and returns the cost:
+
+```json
+{
+  "creative_manifest": {
+    "creative_id": "cr_hero_banner",
+    "format_id": { "agent_url": "https://creative.example.com", "id": "display_728x90" },
+    "assets": { "..." : "..." }
+  },
+  "pricing_option_id": "po_standard_per_format",
+  "vendor_cost": 2.00,
+  "currency": "USD",
+  "consumption": {
+    "renders": 1
+  }
+}
+```
+
+The `pricing_option_id` tells the buyer which rate was applied. The `consumption` object lets the buyer verify: 1 render × $2.00/format = $2.00 `vendor_cost`.
+
+For **CPM-priced creatives** (ad servers), `vendor_cost` is 0 at build time — cost accrues when impressions are served:
+
+```json
+{
+  "creative_manifest": { "..." : "..." },
+  "pricing_option_id": "po_video_cpm",
+  "vendor_cost": 0,
+  "currency": "USD"
+}
+```
+
+**Step 3: Buyer reports usage**
+
+After the campaign delivers, the buyer reports usage via [`report_usage`](/docs/accounts/tasks/report_usage). This example shows CPM reporting, where cost accrued during delivery rather than at build time. The `pricing_option_id` and `creative_id` flow through for reconciliation:
+
+```json
+{
+  "reporting_period": { "start": "2026-03-01T00:00:00Z", "end": "2026-03-31T23:59:59Z" },
+  "usage": [
+    {
+      "account": { "account_id": "acct_acme_creative" },
+      "creative_id": "cr_hero_banner",
+      "pricing_option_id": "po_video_cpm",
+      "impressions": 2400000,
+      "vendor_cost": 1200.00,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+Your agent validates that `pricing_option_id` matches the account's rate card and accepts the record.
+
+#### Who selects the pricing option?
+
+The **vendor agent** selects the pricing option, not the buyer. The buyer passes `account` on `build_creative` — the agent determines which pricing option applies based on the account's rate card, the work performed, and any commitment tiers. The response tells the buyer what was applied.
+
+The buyer does not pass `pricing_option_id` on the `build_creative` request. They see the options on `list_creatives`, and they receive the applied option on the `build_creative` response.
+
+#### Consumption fields by agent type
+
+| Agent type | Typical `consumption` fields | Notes |
+|---|---|---|
+| Transformation | `renders` | Number of format adaptations performed |
+| AI generation | `tokens`, `images_generated` | LLM tokens consumed, images produced |
+| Ad server (CPM) | Omitted | Cost accrues at serve time, not build time |
+| Multi-variant | `renders` | Number of variants rendered |
+
+The `consumption` object is informational — it lets the buyer verify that `vendor_cost` is consistent with the rate card. `vendor_cost` is the billing source of truth.
+
 ## Core requirements
 
 ### 1. Format ID namespacing

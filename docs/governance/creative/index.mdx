@@ -199,6 +199,14 @@ flowchart TB
     O2 --> O3
 ```
 
+## Pricing
+
+Creative governance agents that charge for evaluations use the same vendor pricing pattern as other AdCP vendor services. When the buyer provides `account` on the `get_creative_features` request, the response includes `pricing_option_id`, `vendor_cost`, `currency`, and optionally `consumption` details (e.g., `tokens` for LLM-based scanning).
+
+The buyer reports usage via [`report_usage`](/docs/accounts/tasks/report_usage) with `standards_id` and `pricing_option_id` for billing reconciliation. This is the same discover-execute-report loop used by [creative agents](/docs/creative/specification#pricing), [signals agents](/docs/signals/specification), and [content standards](/docs/governance/content-standards/index).
+
+Governance agents that charge MUST implement the [Accounts Protocol](/docs/accounts/overview).
+
 ## Async evaluation
 
 If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/docs/building/implementation/async-operations) handles this.
