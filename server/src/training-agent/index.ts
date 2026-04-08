@@ -175,10 +175,12 @@ export function createTrainingAgentRouter(): Router {
     res.status(204).end();
   });
 
-  // Rate limiting: 60 requests/minute per IP (in-memory, no DB dependency)
+  // Rate limiting: 300 requests/minute per IP (in-memory, no DB dependency).
+  // The training agent is a sandbox — bulk storyboard evaluation runs ~10 MCP
+  // calls per storyboard, so 21 storyboards need ~210 calls within a short window.
   const mcpRateLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 60,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },

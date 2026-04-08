@@ -32,6 +32,10 @@ import type {
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
+  BuildCreativeResponse,
+  ListCreativesResponse,
+  PreviewCreativeResponse,
+  CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/client';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -538,6 +542,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
+        include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
       },
     },
   },
@@ -1568,7 +1573,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[] };
+  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_snapshot?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
@@ -1591,7 +1596,11 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       format_id: c.formatId,
       name: c.name,
       status: c.status,
-      synced_at: c.syncedAt,
+      created_date: c.syncedAt,
+      updated_date: c.syncedAt,
+      ...(req.include_snapshot && {
+        snapshot_unavailable_reason: 'SNAPSHOT_UNSUPPORTED',
+      }),
     })),
     sandbox: true,
   };
@@ -1783,14 +1792,14 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
+function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Record<string, unknown> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -1800,6 +1809,18 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { ad
       portfolio: {
         channels,
       },
+    },
+    creative: {
+      supports_generation: true,
+      supports_transformation: true,
+      supports_compliance: false,
+      has_creative_library: true,
+    },
+    account: {
+      require_operator_auth: false,
+      required_for_products: false,
+      sandbox: true,
+      supported_billing: [],
     },
     agent: {
       name: 'AdCP Training Agent',
@@ -2188,7 +2209,7 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
 interface BuildCreativeArgs {
   account?: unknown;
   creative_id?: string;
-  creative_manifest?: { format_id?: FormatID; assets?: Array<Record<string, unknown>> };
+  creative_manifest?: { format_id?: FormatID; assets?: Record<string, unknown> | Array<Record<string, unknown>> };
   target_format_id?: FormatID;
   target_format_ids?: FormatID[];
   brand?: { domain?: string };
@@ -2203,16 +2224,21 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
   return { w: dims?.width || 300, h: dims?.height || 250 };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
+function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
+  return { serving_tag: { content: html } };
+}
+
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
 
-  // Determine target formats
+  // Determine target formats (cap at 50 to prevent response amplification)
+  const MAX_TARGET_FORMATS = 50;
   const targetIds: FormatID[] = req.target_format_ids?.length
-    ? req.target_format_ids
+    ? req.target_format_ids.slice(0, MAX_TARGET_FORMATS)
     : req.target_format_id
       ? [req.target_format_id]
       : [];
@@ -2232,15 +2258,8 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
 
     return {
       creative_manifest: {
-        creative_id: req.creative_id,
         format_id: { agent_url: agentUrl, id: formatId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`,
-          },
-        ],
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
       sandbox: true,
     };
@@ -2248,7 +2267,8 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
   if (req.creative_manifest) {
-    const inputAssets = req.creative_manifest.assets || [];
+    const rawAssets = req.creative_manifest.assets;
+    const inputAssetCount = Array.isArray(rawAssets) ? rawAssets.length : Object.keys(rawAssets || {}).length;
 
     if (targetIds.length === 0) {
       // Use the manifest's own format_id if no target specified
@@ -2259,25 +2279,16 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     // Generate output for each target format
     if (targetIds.length > 1) {
       // Multi-format response
-      const results = targetIds.map(fmtId => {
+      const creative_manifests = targetIds.map(fmtId => {
         const format = validFormatIds.get(fmtId.id);
         const { w, h } = getDimensions(format);
-
         return {
-          creative_manifest: {
-            format_id: { agent_url: agentUrl, id: fmtId.id },
-            assets: [
-              {
-                asset_id: 'serving_tag',
-                asset_type: 'html',
-                html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
-              },
-            ],
-          },
+          format_id: { agent_url: agentUrl, id: fmtId.id },
+          assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
 
-      return { results, sandbox: true };
+      return { creative_manifests, sandbox: true };
     }
 
     // Single format response
@@ -2288,20 +2299,41 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     return {
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssets.length}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
-          },
-        ],
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
+      },
+      sandbox: true,
+    };
+  }
+
+  // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
+  if (targetIds.length > 0) {
+    if (targetIds.length > 1) {
+      const creative_manifests = targetIds.map(fmtId => {
+        const format = validFormatIds.get(fmtId.id);
+        const { w, h } = getDimensions(format);
+        return {
+          format_id: { agent_url: agentUrl, id: fmtId.id },
+          assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
+        };
+      });
+      return { creative_manifests, sandbox: true };
+    }
+
+    const fmtId = targetIds[0];
+    const format = validFormatIds.get(fmtId.id);
+    const { w, h } = getDimensions(format);
+
+    return {
+      creative_manifest: {
+        format_id: { agent_url: agentUrl, id: fmtId.id },
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       sandbox: true,
     };
   }
 
   return {
-    errors: [{ code: 'INVALID_REQUEST', message: 'Provide either creative_id (library mode) or creative_manifest (transformation mode).' }],
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
   };
 }
 
@@ -2310,9 +2342,9 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
 interface PreviewCreativeArgs {
   account?: unknown;
   request_type?: 'single' | 'batch';
-  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> };
+  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
   creative_id?: string;
-  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }>;
+  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
 }
@@ -2326,7 +2358,7 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }) {
+  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }) {
     // Resolve format
     let formatId = manifest.format_id;
     let creativeName = 'Preview';
@@ -2342,33 +2374,46 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
 
     const fmtId = formatId?.id || 'display_300x250';
     const format = validFormatIds.get(fmtId);
+    if (!format && formatId?.id) {
+      return null; // Signal invalid format to caller
+    }
     const { w, h } = getDimensions(format);
 
     const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
+      render_id: `preview_${fmtId}`,
+      output_format: outputFormat,
+      role: 'primary',
       dimensions: { width: w, height: h },
     };
 
     if (outputFormat === 'url' || outputFormat === 'both') {
-      // Generate a data URI as the preview URL (the training agent doesn't host files)
-      render.url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
+      render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
     if (outputFormat === 'html' || outputFormat === 'both') {
-      render.html = previewHtml;
+      render.preview_html = previewHtml;
     }
 
     return {
-      format_id: { agent_url: agentUrl, id: fmtId },
+      preview_id: `preview_${fmtId}`,
       renders: [render],
-      expires_at: expiresAt,
+      input: { name: creativeName },
     };
   }
 
   // Batch mode
   if (req.request_type === 'batch' && req.creatives?.length) {
     return {
-      previews: req.creatives.map(buildPreview),
+      response_type: 'batch',
+      results: req.creatives.map(c => ({
+        success: true,
+        creative_id: c.creative_id || 'unknown',
+        response: {
+          previews: [buildPreview(c)],
+          expires_at: expiresAt,
+        },
+      })),
       sandbox: true,
     };
   }
@@ -2381,8 +2426,18 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  const preview = buildPreview(manifest);
+  if (!preview) {
+    const fmtId = manifest.format_id?.id || 'unknown';
+    return {
+      errors: [{ code: 'INVALID_FORMAT', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+    };
+  }
+
   return {
-    previews: [buildPreview(manifest)],
+    response_type: 'single',
+    previews: [preview],
+    expires_at: expiresAt,
     sandbox: true,
   };
 }
@@ -2527,7 +2582,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
     // 15 minutes gives developers time to inspect tasks while debugging.
-    // With the rate limiter (60 req/min) this caps live tasks at ~900.
+    // With the rate limiter (300 req/min) this caps live tasks at ~4,500.
     const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
     const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
