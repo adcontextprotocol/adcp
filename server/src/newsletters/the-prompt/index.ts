@@ -136,7 +136,21 @@ function buildPromptMarkdown(content: unknown): string {
   const sections: string[] = [];
 
   sections.push(c.openingTake);
-  if (c.editorsNote) sections.push(`> ${c.editorsNote.split('\n').join('\n> ')}`);
+  if (c.editorsNote) {
+    const noteText = /<[a-z][\s\S]*>/i.test(c.editorsNote)
+      ? c.editorsNote
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+          .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '[$2]($1)')
+          .replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
+          .replace(/<em>(.*?)<\/em>/gi, '_$1_')
+          .replace(/<li>(.*?)<\/li>/gi, '- $1\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .trim()
+      : c.editorsNote;
+    sections.push(`> ${noteText.split('\n').join('\n> ')}`);
+  }
   if (c.newMembers.length > 0) {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
   }

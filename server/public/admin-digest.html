@@ -6,6 +6,7 @@
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <title>Admin - The Prompt</title>
   <script src="/admin-sidebar.js"></script>
+  <script src="/vendor/tiptap.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     .digest-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
@@ -88,6 +89,21 @@
     @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
 
     .saving { opacity: 0.6; pointer-events: none; }
+
+    /* TipTap editor */
+    .tiptap-wrapper { border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
+    .tiptap-toolbar { display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; flex-wrap: wrap; }
+    .tiptap-toolbar button { padding: 4px 8px; border: none; background: transparent; border-radius: 4px; cursor: pointer; font-size: 13px; color: #555; line-height: 1; }
+    .tiptap-toolbar button:hover { background: #e5e7eb; }
+    .tiptap-toolbar button.is-active { background: #2563eb; color: #fff; }
+    .tiptap-toolbar .sep { width: 1px; background: #d1d5db; margin: 0 4px; }
+    .tiptap-wrapper .tiptap { padding: 12px 16px; min-height: 80px; outline: none; font-size: 14px; line-height: 1.6; }
+    .tiptap-wrapper .tiptap p { margin: 0 0 8px 0; }
+    .tiptap-wrapper .tiptap p:last-child { margin-bottom: 0; }
+    .tiptap-wrapper .tiptap a { color: #2563eb; text-decoration: underline; }
+    .tiptap-wrapper .tiptap ul, .tiptap-wrapper .tiptap ol { margin: 4px 0; padding-left: 20px; }
+    .tiptap-wrapper .tiptap li { margin-bottom: 2px; }
+    .tiptap-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -141,7 +157,27 @@
         <!-- Editor's Note -->
         <div class="section" id="sectionNote">
           <h2>Editor's Note <span style="font-size:12px;color:#888;font-weight:normal;">(optional)</span></h2>
-          <div class="editable" id="editNote" contenteditable="false" onclick="startEdit(this, 'editorsNote')"></div>
+          <div class="editable" id="editNoteDisplay" onclick="activateNoteEditor()" style="cursor:pointer;"></div>
+          <div id="editNoteEditor" style="display:none;">
+            <div class="tiptap-wrapper">
+              <div class="tiptap-toolbar" id="noteToolbar">
+                <button onclick="noteCmd('toggleBold')" title="Bold"><b>B</b></button>
+                <button onclick="noteCmd('toggleItalic')" title="Italic"><i>I</i></button>
+                <div class="sep"></div>
+                <button onclick="noteCmd('toggleBulletList')" title="Bullet list">&#8226; List</button>
+                <button onclick="noteCmd('toggleOrderedList')" title="Ordered list">1. List</button>
+                <div class="sep"></div>
+                <button onclick="insertNoteLink()" title="Add link">Link</button>
+                <button onclick="noteCmd('unsetLink')" title="Remove link">Unlink</button>
+              </div>
+              <div id="noteEditorMount"></div>
+            </div>
+            <div class="tiptap-actions">
+              <button class="btn btn-sm btn-secondary" onclick="cancelNoteEdit()">Cancel</button>
+              <button class="btn btn-sm btn-danger" onclick="clearNote()">Clear</button>
+              <button class="btn btn-sm btn-primary" onclick="saveNoteEdit()">Save</button>
+            </div>
+          </div>
         </div>
 
         <!-- This Edition (official AAO content) -->
@@ -355,14 +391,16 @@
       openEl.textContent = c.openingTake || '';
       if (!c.openingTake) { openEl.textContent = 'Click to write the opening take...'; openEl.style.color = '#aaa'; } else { openEl.style.color = '#333'; }
 
-      // Editor's note (render Slack links as clickable HTML)
-      const noteEl = document.getElementById('editNote');
+      // Editor's note
+      document.getElementById('editNoteEditor').style.display = 'none';
+      const noteDisplay = document.getElementById('editNoteDisplay');
+      noteDisplay.style.display = 'block';
       if (c.editorsNote) {
-        noteEl.innerHTML = renderSlackLinks(c.editorsNote);
-        noteEl.style.color = '#333';
+        noteDisplay.innerHTML = isHtmlContent(c.editorsNote) ? c.editorsNote : renderSlackLinks(c.editorsNote);
+        noteDisplay.style.color = '#333';
       } else {
-        noteEl.textContent = 'Click to add an editor\'s note...';
-        noteEl.style.color = '#aaa';
+        noteDisplay.textContent = 'Click to add an editor\'s note...';
+        noteDisplay.style.color = '#aaa';
       }
 
       // Shareable take
@@ -543,6 +581,94 @@
       el.addEventListener('blur', save);
       el.addEventListener('keydown', onKey);
       el.addEventListener('paste', onPaste);
+    }
+
+    // ─── TipTap Editor for Editor's Note ──────────────────────
+    function isHtmlContent(text) { return /<[a-z][\s\S]*>/i.test(text); }
+
+    let noteEditor = null;
+    let noteOriginalValue = '';
+
+    function activateNoteEditor() {
+      if (currentDigest.status !== 'draft') return;
+      noteOriginalValue = currentDigest.content.editorsNote || '';
+
+      document.getElementById('editNoteDisplay').style.display = 'none';
+      document.getElementById('editNoteEditor').style.display = 'block';
+
+      // Convert legacy plain text to HTML for the editor
+      let content = noteOriginalValue;
+      if (content && !isHtmlContent(content)) {
+        content = '<p>' + esc(content).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+      }
+
+      if (!noteEditor) {
+        const { Editor, StarterKit, Link } = window.TipTap;
+        noteEditor = new Editor({
+          element: document.getElementById('noteEditorMount'),
+          extensions: [
+            StarterKit.configure({
+              heading: false,
+              codeBlock: false,
+              blockquote: false,
+              horizontalRule: false,
+              code: false,
+            }),
+            Link.configure({
+              openOnClick: false,
+              HTMLAttributes: { target: '_blank' },
+            }),
+          ],
+          content,
+        });
+      } else {
+        noteEditor.commands.setContent(content);
+      }
+      noteEditor.commands.focus();
+    }
+
+    function noteCmd(cmd) {
+      if (!noteEditor) return;
+      noteEditor.chain().focus()[cmd]().run();
+    }
+
+    function insertNoteLink() {
+      if (!noteEditor) return;
+      const existing = noteEditor.getAttributes('link').href || '';
+      const url = prompt('URL:', existing);
+      if (url === null) return;
+      if (url === '') { noteEditor.chain().focus().unsetLink().run(); return; }
+      noteEditor.chain().focus().setLink({ href: url }).run();
+    }
+
+    function cancelNoteEdit() {
+      document.getElementById('editNoteEditor').style.display = 'none';
+      document.getElementById('editNoteDisplay').style.display = 'block';
+    }
+
+    function saveNoteEdit() {
+      const html = noteEditor.getHTML();
+      const isEmpty = !html || html === '<p></p>' || html.replace(/<[^>]*>/g, '').trim() === '';
+      const value = isEmpty ? '' : html;
+
+      document.getElementById('editNoteEditor').style.display = 'none';
+      document.getElementById('editNoteDisplay').style.display = 'block';
+
+      if (value !== noteOriginalValue) {
+        saveField('editorsNote', value);
+      } else {
+        render();
+      }
+    }
+
+    function clearNote() {
+      document.getElementById('editNoteEditor').style.display = 'none';
+      document.getElementById('editNoteDisplay').style.display = 'block';
+      if (noteOriginalValue) {
+        saveField('editorsNote', '');
+      } else {
+        render();
+      }
     }
 
     async function saveField(field, value) {
