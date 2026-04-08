@@ -814,7 +814,7 @@
             + '</tr>';
         }).join('');
 
-        panel.innerHTML = '<div style="padding: var(--space-3);"><div style="font-weight: 600; margin-bottom: var(--space-2);">Outbound Requests (' + data.total + ' total)</div>'
+        panel.innerHTML = '<div style="padding: var(--space-3);"><div style="font-weight: 600; margin-bottom: var(--space-2);">Outbound Requests (' + escapeHtml(String(data.total)) + ' total)</div>'
           + '<table style="width: 100%; font-size: var(--text-sm); border-collapse: collapse;">'
           + '<thead><tr style="text-align: left; color: var(--text-secondary);"><th style="padding: 4px 8px;">Time</th><th style="padding: 4px 8px;">Type</th><th style="padding: 4px 8px;">User-Agent</th><th style="padding: 4px 8px;">Status</th><th style="padding: 4px 8px;">Duration</th><th style="padding: 4px 8px;">Error</th></tr></thead>'
           + '<tbody>' + rows + '</tbody></table></div>';

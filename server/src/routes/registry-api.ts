@@ -2497,8 +2497,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const { interval_hours } = req.body;
-      if (typeof interval_hours !== "number" || interval_hours < 6 || interval_hours > 168) {
-        return res.status(400).json({ error: "interval_hours must be a number between 6 and 168" });
+      if (typeof interval_hours !== "number" || !Number.isInteger(interval_hours) || interval_hours < 6 || interval_hours > 168) {
+        return res.status(400).json({ error: "interval_hours must be an integer between 6 and 168" });
       }
 
       await complianceDb.updateCheckInterval(agentUrl, interval_hours);

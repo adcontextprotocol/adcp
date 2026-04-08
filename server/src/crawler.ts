@@ -157,7 +157,8 @@ export class CrawlerService {
         `SELECT agent_url FROM agent_registry_metadata WHERE monitoring_paused = TRUE`,
       );
       return new Set(result.rows.map((r: { agent_url: string }) => r.agent_url));
-    } catch {
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch paused agents, treating all as active');
       return new Set();
     }
   }
