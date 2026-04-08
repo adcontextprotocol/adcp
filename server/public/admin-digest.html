@@ -584,7 +584,7 @@
     }
 
     // ─── TipTap Editor for Editor's Note ──────────────────────
-    function isHtmlContent(text) { return /<[a-z][\s\S]*>/i.test(text); }
+    function isHtmlContent(text) { return /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(text); }
 
     let noteEditor = null;
     let noteOriginalValue = '';

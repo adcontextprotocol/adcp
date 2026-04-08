@@ -6,6 +6,7 @@
  */
 
 import type { NewsletterConfig } from '../config.js';
+import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview } from '../../addie/templates/weekly-digest.js';
@@ -137,8 +138,8 @@ function buildPromptMarkdown(content: unknown): string {
 
   sections.push(c.openingTake);
   if (c.editorsNote) {
-    const noteText = /<[a-z][\s\S]*>/i.test(c.editorsNote)
-      ? c.editorsNote
+    const noteText = /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(c.editorsNote)
+      ? DOMPurify.sanitize(c.editorsNote, { ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'li'], ALLOWED_ATTR: ['href'] })
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
           .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '[$2]($1)')

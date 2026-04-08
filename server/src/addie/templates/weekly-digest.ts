@@ -2,18 +2,23 @@ import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailReci
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
 import { pickNudge } from '../services/digest-nudge.js';
+import DOMPurify from 'isomorphic-dompurify';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 
 function isHtml(text: string): boolean {
-  return /<[a-z][\s\S]*>/i.test(text);
+  return /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s/]/i.test(text);
 }
 
 /** Add inline styles to TipTap HTML for email client rendering. */
 function htmlToEmailHtml(html: string): string {
-  return html
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+  });
+  return clean
     .replace(/<a /g, '<a style="color: #2563eb; text-decoration: underline;" ')
     .replace(/<ul>/g, '<ul style="margin: 8px 0; padding-left: 20px;">')
     .replace(/<ol>/g, '<ol style="margin: 8px 0; padding-left: 20px;">')
@@ -23,7 +28,12 @@ function htmlToEmailHtml(html: string): string {
 
 /** Convert TipTap HTML to Slack mrkdwn. */
 function htmlToSlackMrkdwn(html: string): string {
-  return html
+  // Sanitize first, then convert semantic HTML to mrkdwn
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+  });
+  return clean
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
     .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '<$1|$2>')
@@ -44,7 +54,11 @@ function htmlToSlackMrkdwn(html: string): string {
 
 /** Convert TipTap HTML to plain text. */
 function htmlToPlainText(html: string): string {
-  return html
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+  });
+  return clean
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
     .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
