@@ -1,0 +1,317 @@
+id: creative_generative
+version: "1.0.0"
+title: "Generative creative agent"
+category: creative_generative
+summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
+
+narrative: |
+  You run a generative creative platform — an AI ad network, a generative DSP, or any system
+  that creates ad creatives from a natural-language brief and brand identity. The buyer doesn't
+  push assets to you. Instead, they describe what they want, point you at a brand.json, and
+  your agent produces finished creatives ready for trafficking.
+
+  This is fundamentally different from template-based transformation (Celtra) or library-based
+  retrieval (Innovid). Your agent creates something new. The buyer sends a brief, optionally
+  with seed assets or constraints, and your platform generates creatives — potentially in
+  multiple formats at once.
+
+  This storyboard walks through the generation flow: format discovery, brief-driven generation,
+  multi-format builds, iterative refinement, and quality progression from draft to production.
+
+agent:
+  interaction_model: stateless_generate
+  capabilities:
+    - supports_generation
+  examples:
+    - "OpenAds"
+    - "AI ad networks"
+    - "Generative DSPs"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity (brand.json at the brand's domain) for the agent
+    to resolve visual identity — logos, colors, fonts, tone. The test kit provides a
+    sample brand with campaign parameters.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: format_discovery
+    title: "Discover generative formats"
+    narrative: |
+      The buyer needs to know what your agent can generate. Unlike a template platform
+      where formats are fixed dimensions, generative formats describe what the agent
+      produces — the output type, constraints, and what inputs it accepts. A generative
+      format might be "display_300x250_generative" that accepts a brief and produces
+      a finished banner, or "social_post_generative" that creates platform-native content.
+
+    steps:
+      - id: discover_formats
+        title: "Discover available generative formats"
+        narrative: |
+          The buyer asks: "What can you generate?" Your platform returns the formats
+          you support. Each format describes the output type, dimensions, and what
+          inputs it needs (brief text, brand reference, seed images, etc.).
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return your generative formats. Each format should include:
+          - format_id with your agent_url and a unique id
+          - Human-readable name and description
+          - Asset slots describing what inputs are accepted (brief text, images, etc.)
+          - Render dimensions for the output
+          - Variables for any dynamic fields the buyer can control
+
+        sample_request: {}
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains a formats array"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Each format has a format_id with agent_url"
+
+  - id: generate_from_brief
+    title: "Generate from brief"
+    narrative: |
+      The buyer describes what they want in natural language and your agent generates
+      a creative from scratch. The brief includes the campaign message, target audience
+      context, and a brand reference so your agent can resolve visual identity.
+
+      This is the core generative flow. The buyer doesn't provide finished assets —
+      they provide intent, and your agent creates.
+
+    steps:
+      - id: build_draft
+        title: "Generate a draft creative from brief"
+        narrative: |
+          The buyer sends a brief describing the campaign and a target format. Your
+          agent generates a draft creative — fast, lower-fidelity output the buyer can
+          review before committing to a production build.
+
+          The brief is passed as a message alongside the target format. The brand
+          reference lets your agent resolve brand.json for visual identity.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a generated creative manifest:
+          - creative_manifest with the generated assets (images, copy, serving code)
+          - format_id matching the target format
+          - If include_preview is true, include a preview render
+
+          The output should be a coherent creative that reflects the brief and brand
+          identity — not a template with placeholder text.
+
+        sample_request:
+          message: "Create a display banner for a summer outdoor gear sale. Bold, adventurous tone. Headline should emphasize 40% off. Target audience: active adults 25-54."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          brand:
+            domain: "acme-outdoor.example.com"
+          quality: "draft"
+          include_preview: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Output manifest includes generated assets"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Output manifest includes format_id"
+
+  - id: refine
+    title: "Refine the creative"
+    narrative: |
+      The buyer reviews the draft and wants changes. They send the generated manifest
+      back with refinement instructions. Your agent modifies the creative based on the
+      feedback — adjusting copy, swapping imagery, or changing the layout.
+
+      This is iterative: the buyer can refine multiple times until they're satisfied,
+      then request a production-quality build.
+
+    steps:
+      - id: refine_creative
+        title: "Refine with feedback"
+        narrative: |
+          The buyer passes the generated manifest back with a message describing what
+          to change. Your agent applies the refinements and returns an updated creative.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a refined creative manifest reflecting the requested changes.
+          The output should preserve what worked in the original while applying
+          the refinements.
+
+        sample_request:
+          message: "Make the headline larger. Replace the mountain imagery with a trail running scene. Add a CTA button that says 'Shop Now'."
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "display_300x250_generative"
+            assets:
+              - asset_id: "generated_image"
+                asset_type: "image"
+                url: "https://your-agent.example.com/generated/abc123.jpg"
+              - asset_id: "headline"
+                asset_type: "text"
+                text: "Summer Sale — 40% Off All Gear"
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          brand:
+            domain: "acme-outdoor.example.com"
+          quality: "draft"
+          include_preview: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Refined manifest includes assets"
+
+  - id: multi_format
+    title: "Multi-format generation"
+    narrative: |
+      The buyer needs the creative in multiple sizes. Instead of generating each
+      format separately, they pass target_format_ids (plural) and your agent produces
+      all formats in a single call. This is where generative agents shine — adapting
+      a concept across formats while maintaining visual coherence.
+
+    steps:
+      - id: build_multi_format
+        title: "Generate for multiple formats"
+        narrative: |
+          The buyer passes the refined manifest with multiple target formats. Your
+          agent generates a creative for each format, adapting layout, copy, and
+          imagery to fit each size while maintaining brand consistency.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return creative manifests for each requested format in creative_manifests
+          (plural). Each manifest should:
+          - Have a format_id matching one of the target formats
+          - Contain complete, format-appropriate assets
+          - Maintain visual coherence across formats
+
+          If a format cannot be produced, include it with an error — don't fail
+          the entire request.
+
+        sample_request:
+          message: "Generate production-ready versions for all three sizes."
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "display_300x250_generative"
+            assets:
+              - asset_id: "generated_image"
+                asset_type: "image"
+                url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+              - asset_id: "headline"
+                asset_type: "text"
+                text: "Summer Sale — 40% Off All Gear"
+              - asset_id: "cta"
+                asset_type: "text"
+                text: "Shop Now"
+          target_format_ids:
+            - agent_url: "https://your-agent.example.com"
+              id: "display_300x250_generative"
+            - agent_url: "https://your-agent.example.com"
+              id: "display_728x90_generative"
+            - agent_url: "https://your-agent.example.com"
+              id: "display_320x50_generative"
+          brand:
+            domain: "acme-outdoor.example.com"
+          quality: "production"
+
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifests"
+            description: "Response contains creative_manifests array (plural)"
+
+  - id: production_build
+    title: "Production build"
+    narrative: |
+      The buyer is satisfied with the concept and needs a final, production-quality
+      creative ready for trafficking. They switch quality from draft to production.
+      Your agent generates the finished output with full-fidelity assets.
+
+    steps:
+      - id: build_production
+        title: "Build at production quality"
+        narrative: |
+          The buyer requests a production-quality build of the approved concept. Your
+          agent generates the final creative with full-fidelity rendering, polished
+          assets, and serving code ready for trafficking.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a production-quality creative manifest:
+          - Full-fidelity generated assets
+          - Serving code (HTML, JavaScript, or VAST) ready for trafficking
+          - Provenance metadata if AI-generated (digital_source_type, ai_tool)
+
+        sample_request:
+          message: "Final production build. No changes needed."
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "display_300x250_generative"
+            assets:
+              - asset_id: "generated_image"
+                asset_type: "image"
+                url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+              - asset_id: "headline"
+                asset_type: "text"
+                text: "Summer Sale — 40% Off All Gear"
+              - asset_id: "cta"
+                asset_type: "text"
+                text: "Shop Now"
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          brand:
+            domain: "acme-outdoor.example.com"
+          quality: "production"
+          include_preview: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Production manifest includes assets"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Production manifest includes format_id"

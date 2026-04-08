@@ -214,6 +214,10 @@
       font-weight: var(--font-semibold);
       color: var(--color-primary-600);
       text-decoration: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
     }
     .agent-action-link:hover {
       text-decoration: underline;
@@ -226,6 +230,45 @@
     .agent-auth-status {
       font-size: var(--text-xs);
       color: var(--color-text-muted);
+    }
+
+    .agent-connect-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      align-items: flex-end;
+      padding: var(--space-3) 0;
+    }
+    .agent-connect-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .agent-connect-form input,
+    .agent-connect-form select {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+    }
+    .agent-connect-form input { min-width: 260px; }
+    .agent-connect-save {
+      background: var(--color-primary-600);
+      color: white;
+      border: none;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .agent-connect-save:hover { background: var(--color-primary-700); }
+    .agent-connect-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-connect-msg {
+      font-size: var(--text-xs);
+      margin-top: var(--space-1);
     }
 
     .agent-lifecycle-select {
@@ -544,6 +587,27 @@
         `;
       }
 
+      const platformTypes = [
+        ['display_ad_server', 'Display ad server'],
+        ['video_ad_server', 'Video ad server'],
+        ['social_platform', 'Social platform'],
+        ['pmax_platform', 'Performance max'],
+        ['dsp', 'DSP'],
+        ['retail_media', 'Retail media'],
+        ['search_platform', 'Search platform'],
+        ['audio_platform', 'Audio platform'],
+        ['creative_transformer', 'Creative transformer'],
+        ['creative_library', 'Creative library'],
+        ['creative_ad_server', 'Creative ad server'],
+        ['si_platform', 'SI platform'],
+        ['ai_ad_network', 'AI ad network'],
+        ['ai_platform', 'AI platform'],
+        ['generative_dsp', 'Generative DSP'],
+      ];
+      const platformTypeOptions = platformTypes.map(([val, label]) =>
+        '<option value="' + val + '">' + label + '</option>'
+      ).join('');
+
       return agents.map(agent => {
         const data = complianceMap?.get(agent.url);
         const cs = data?.status;
@@ -564,11 +628,14 @@
                 <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
               </div>
             </div>
-            <div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
-              ${hasAuth
-                ? 'Auth configured. Compliance check will run on the next heartbeat cycle.'
-                : 'Connect this agent through <a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '">Addie</a> to save credentials and start compliance monitoring.'}
-            </div>
+            ${hasAuth
+              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured. Compliance check will run on the next heartbeat cycle.</div>'
+              : '<div class="agent-connect-form" data-agent-url="' + escapeHtml(agent.url) + '">' +
+                '<label>Auth token<input type="password" name="auth_token" placeholder="Bearer token or API key" autocomplete="off"></label>' +
+                '<label>Auth type<select name="auth_type"><option value="bearer">Bearer</option><option value="basic">Basic</option></select></label>' +
+                '<label>Platform type<select name="platform_type"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+                '<button class="agent-connect-save">Save</button>' +
+                '</div>'}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -647,12 +714,19 @@
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+                ${!hasAuth ? '<button class="agent-connect-toggle agent-action-link" data-card-id="' + cardId + '" data-agent-url="' + escapeHtml(agent.url) + '">Connect agent</button>' : ''}
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
                 <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
+            ${!hasAuth ? '<div id="' + cardId + '-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">' +
+              '<div class="agent-connect-form" data-agent-url="' + escapeHtml(agent.url) + '">' +
+              '<label>Auth token<input type="password" name="auth_token" placeholder="Bearer token or API key" autocomplete="off"></label>' +
+              '<label>Auth type<select name="auth_type"><option value="bearer">Bearer</option><option value="basic">Basic</option></select></label>' +
+              '<label>Platform type<select name="platform_type"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+              '<button class="agent-connect-save">Save</button>' +
+              '</div></div>' : ''}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
             <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
@@ -690,6 +764,70 @@
         } catch {
           checkbox.checked = !checkbox.checked;
         }
+      }
+    });
+
+    // Connect agent toggle
+    document.addEventListener('click', function(e) {
+      const toggle = e.target.closest('.agent-connect-toggle');
+      if (!toggle) return;
+      const cardId = toggle.dataset.cardId;
+      const panel = document.getElementById(cardId + '-connect');
+      if (panel) {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    // Connect agent save
+    document.addEventListener('click', async function(e) {
+      const saveBtn = e.target.closest('.agent-connect-save');
+      if (!saveBtn) return;
+      const form = saveBtn.closest('.agent-connect-form');
+      if (!form) return;
+
+      const agentUrl = form.dataset.agentUrl;
+      const authToken = form.querySelector('[name="auth_token"]').value.trim();
+      const authType = form.querySelector('[name="auth_type"]').value;
+      const platformType = form.querySelector('[name="platform_type"]').value;
+
+      if (!authToken) {
+        form.querySelector('[name="auth_token"]').focus();
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const body = { auth_token: authToken, auth_type: authType };
+        if (platformType) body.platform_type = platformType;
+
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to connect');
+        }
+
+        // Replace the form with a success message and reload after a moment
+        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected. Compliance check will run on the next heartbeat cycle.</div>';
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        let msg = form.querySelector('.agent-connect-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.className = 'agent-connect-msg';
+          form.appendChild(msg);
+        }
+        msg.style.color = 'var(--color-error-600)';
+        msg.textContent = err.message;
       }
     });
 
@@ -952,10 +1090,21 @@
         }
       }
 
+      // Map storyboard category prefixes to agent tracks
+      function storyboardMatchesAgent(sb, agentTracks) {
+        if (!agentTracks) return true;
+        const cat = sb.category || '';
+        if (cat.startsWith('media_buy')) return !!agentTracks.media_buy && agentTracks.media_buy !== 'skip';
+        if (cat.startsWith('creative')) return !!agentTracks.creative && agentTracks.creative !== 'skip';
+        if (cat.startsWith('signal')) return !!agentTracks.signals && agentTracks.signals !== 'skip';
+        return true;
+      }
+
       // Shared: render the storyboard picker into a panel
-      async function renderStoryboardPicker(panel, agentUrl, cardId) {
+      async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
         panel.innerHTML = '<em>Loading storyboards...</em>';
+        if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
         try {
           const res = await fetch('/api/storyboards', { credentials: 'include' });
           const data = await res.json();
@@ -963,8 +1112,16 @@
             panel.innerHTML = '<em>No storyboards available yet.</em>';
             return;
           }
-          let html = '<div class="storyboard-picker">';
-          for (const sb of data.storyboards) {
+
+          const recommended = data.storyboards.filter(sb => storyboardMatchesAgent(sb, agentTracks));
+          const other = data.storyboards.filter(sb => !storyboardMatchesAgent(sb, agentTracks));
+
+          let html = '';
+          if (recommended.length > 0 && other.length > 0) {
+            html += '<div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Recommended for this agent</div>';
+          }
+          html += '<div class="storyboard-picker">';
+          for (const sb of recommended) {
             html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
             html += '<div>';
             html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
@@ -974,6 +1131,24 @@
             html += '</div>';
           }
           html += '</div>';
+
+          if (other.length > 0) {
+            html += '<details style="margin-top:var(--space-3);">';
+            html += '<summary style="font-size:var(--text-sm);color:var(--color-text-tertiary);cursor:pointer;">Other storyboards (' + other.length + ')</summary>';
+            html += '<div class="storyboard-picker" style="margin-top:var(--space-2);">';
+            for (const sb of other) {
+              html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
+              html += '<div>';
+              html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
+              html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+              html += '</div>';
+              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
+              html += '</div>';
+            }
+            html += '</div>';
+            html += '</details>';
+          }
+
           panel.innerHTML = html;
         } catch {
           panel.innerHTML = '<em>Failed to load storyboards.</em>';
@@ -992,7 +1167,9 @@
           panel.style.display = 'none';
           return;
         }
-        await renderStoryboardPicker(panel, agentUrl, cardId);
+        let agentTracks = null;
+        try { agentTracks = JSON.parse(storyboardBtn.dataset.agentTracks || 'null'); } catch {}
+        await renderStoryboardPicker(panel, agentUrl, cardId, agentTracks);
         return;
       }
 
@@ -1064,7 +1241,11 @@
         const agentUrl = backBtn.dataset.agentUrl;
         const cardId = backBtn.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
-        if (panel) await renderStoryboardPicker(panel, agentUrl, cardId);
+        if (panel) {
+          let tracks = null;
+          try { tracks = JSON.parse(panel.dataset.agentTracks || 'null'); } catch {}
+          await renderStoryboardPicker(panel, agentUrl, cardId, tracks);
+        }
         return;
       }
 
@@ -1159,6 +1340,7 @@
           }
 
           panel.innerHTML = html;
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch {
           progressEl.textContent = 'Failed to run storyboard evaluation.';
           runBtn.disabled = false;
@@ -1231,6 +1413,7 @@
           }
 
           panel.innerHTML = html;
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch {
           progressEl.textContent = 'Failed to run comparison.';
           compareBtn.disabled = false;

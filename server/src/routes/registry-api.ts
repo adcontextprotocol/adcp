@@ -54,6 +54,8 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { AgentContextDatabase } from "../db/agent-context-db.js";
+import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 
 const logger = createLogger("registry-api");
@@ -61,6 +63,7 @@ const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
 const complianceDb = new ComplianceDatabase();
+const agentContextDb = new AgentContextDatabase();
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
@@ -2536,6 +2539,91 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get monitoring requests");
       res.status(500).json({ error: "Failed to get monitoring requests" });
+    }
+  });
+
+  router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { auth_token, auth_type, platform_type } = req.body;
+
+      if (auth_token && typeof auth_token !== "string") {
+        return res.status(400).json({ error: "auth_token must be a string" });
+      }
+      if (auth_token && auth_token.length > 4096) {
+        return res.status(400).json({ error: "auth_token exceeds maximum length" });
+      }
+
+      const validAuthTypes = ["bearer", "basic"];
+      if (auth_token && auth_type && !validAuthTypes.includes(auth_type)) {
+        return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
+      }
+      const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
+
+      if (platform_type && typeof platform_type !== "string") {
+        return res.status(400).json({ error: "platform_type must be a string" });
+      }
+      const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
+      if (platform_type && !validPlatformTypes.has(platform_type)) {
+        return res.status(400).json({
+          error: `Invalid platform_type. Valid types: ${[...validPlatformTypes].join(", ")}`,
+        });
+      }
+
+      // Verify ownership and get org ID in a single query
+      const orgResult = await query(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
+         JOIN organization_memberships om
+           ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.agents @> $1::jsonb
+           AND om.workos_user_id = $2
+         LIMIT 1`,
+        [JSON.stringify([{ url: agentUrl }]), req.user.id],
+      );
+
+      if (orgResult.rows.length === 0) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const orgId = orgResult.rows[0].workos_organization_id;
+
+      // Get or create agent context
+      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      if (!context) {
+        context = await agentContextDb.create({
+          organization_id: orgId,
+          agent_url: agentUrl,
+          created_by: req.user.id,
+        });
+      }
+
+      // Save auth token if provided
+      if (auth_token) {
+        await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
+      }
+
+      // Set platform type if provided
+      if (platform_type) {
+        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type });
+      }
+
+      res.json({
+        connected: true,
+        has_auth: !!auth_token || context.has_auth_token,
+        platform_type: platform_type || undefined,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to connect agent");
+      res.status(500).json({ error: "Failed to connect agent" });
     }
   });
 

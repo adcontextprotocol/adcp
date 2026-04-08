@@ -419,13 +419,16 @@ export class ComplianceDatabase {
   ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
     try {
       const result = await query(
-        `SELECT ac.organization_id, ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type
+        `SELECT ac.organization_id,
+                ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
+                ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
+                ac.oauth_token_expires_at
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
          WHERE ac.agent_url = $1
            AND mp.agents @> $2::jsonb
-           AND ac.auth_token_encrypted IS NOT NULL
+           AND (ac.auth_token_encrypted IS NOT NULL OR ac.oauth_access_token_encrypted IS NOT NULL)
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
@@ -434,17 +437,39 @@ export class ComplianceDatabase {
       const row = result.rows[0];
       if (!row) return undefined;
 
-      const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, row.organization_id);
+      // Prefer static token when available
+      if (row.auth_token_encrypted) {
+        const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, row.organization_id);
 
-      if (row.auth_type === 'basic') {
-        const decoded = Buffer.from(token, 'base64').toString();
-        const colonIndex = decoded.indexOf(':');
-        if (colonIndex >= 0) {
-          return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
+        if (row.auth_type === 'basic') {
+          const decoded = Buffer.from(token, 'base64').toString();
+          const colonIndex = decoded.indexOf(':');
+          if (colonIndex >= 0) {
+            return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
+          }
         }
+
+        return { type: 'bearer', token };
       }
 
-      return { type: 'bearer', token };
+      // Fall back to OAuth access token
+      if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {
+        // Check expiration with 5-minute buffer
+        if (row.oauth_token_expires_at) {
+          const expiresAt = new Date(row.oauth_token_expires_at);
+          if (expiresAt.getTime() - Date.now() <= 5 * 60 * 1000) {
+            logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon for compliance auth');
+            return undefined;
+          }
+        } else {
+          logger.debug({ agentUrl }, 'OAuth token has no expiration recorded');
+        }
+
+        const token = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, row.organization_id);
+        return { type: 'bearer', token };
+      }
+
+      return undefined;
     } catch (error) {
       logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
       return undefined;

@@ -460,12 +460,14 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   });
 
   const trackResults = buildTrackResults(requestedTracks, suite.results);
+
   const tracks_passed = trackResults.filter((track) => track.status === 'pass').length;
   const tracks_failed = trackResults.filter((track) => track.status === 'fail').length;
   const tracks_partial = trackResults.filter((track) => track.status === 'partial').length;
   const tracks_skipped = trackResults.filter((track) => track.status === 'skip').length;
 
   const observations = buildObservations(trackResults);
+
   const headline = `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`;
 
   // Hard-fail agents that do not support v3
