@@ -460,8 +460,10 @@
 
         const profileData = await profileRes.json();
 
+        const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+        const showSwitcher = orgs.length > 1 || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: orgs.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || profileData?.profile?.organization_name || 'My organization',
           showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
           orgId: currentOrg?.id || null,
@@ -469,7 +471,7 @@
           isPersonal: currentOrg?.is_personal || false,
         });
 
-        if (orgs.length > 1) {
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             const url = new URL(window.location);
@@ -624,16 +626,36 @@
             ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
+            <div class="agent-monitoring-controls" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); margin-top: var(--space-3);">
+              <label class="agent-toggle" title="Pause automated compliance and health checks">
+                <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
+                <span class="agent-toggle-label">Pause automated checks</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary);">
+                Check every
+                <select class="monitoring-interval-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''} style="font-size: var(--text-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm, 4px); border: 1px solid var(--border-subtle);${cs.monitoring_paused ? ' opacity: 0.4;' : ''}">
+                  <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
+                  <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
+                  <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
+                  <option value="48" ${(cs.check_interval_hours || 12) === 48 ? 'selected' : ''}>48h</option>
+                  <option value="72" ${(cs.check_interval_hours || 12) === 72 ? 'selected' : ''}>72h</option>
+                  <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
+                </select>
+              </label>
+              ${cs.monitoring_paused ? '<span style="font-size: var(--text-xs); color: var(--color-warning-700, #b45309);">Compliance status will not update while paused</span>' : ''}
+            </div>
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
                 ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
+                <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
+            <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
           </div>
         `;
       }).join('');
@@ -668,6 +690,136 @@
         } catch {
           checkbox.checked = !checkbox.checked;
         }
+      }
+    });
+
+    // Monitoring pause toggle
+    document.addEventListener('change', async function(e) {
+      const toggle = e.target.closest('.monitoring-pause-toggle');
+      if (toggle) {
+        const agentUrl = toggle.dataset.agentUrl;
+        const controlsRow = toggle.closest('.agent-monitoring-controls');
+        const intervalSelect = controlsRow ? controlsRow.querySelector('.monitoring-interval-select') : null;
+
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/pause`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ paused: toggle.checked }),
+          });
+          if (!res.ok) {
+            toggle.checked = !toggle.checked;
+          } else {
+            // Update interval dropdown disabled state
+            if (intervalSelect) {
+              intervalSelect.disabled = toggle.checked;
+              intervalSelect.style.opacity = toggle.checked ? '0.4' : '1';
+            }
+            // Show/hide pause warning
+            if (controlsRow) {
+              let warning = controlsRow.querySelector('.pause-warning');
+              if (toggle.checked && !warning) {
+                warning = document.createElement('span');
+                warning.className = 'pause-warning';
+                warning.style.cssText = 'font-size: var(--text-xs); color: var(--color-warning-700, #b45309);';
+                warning.textContent = 'Compliance status will not update while paused';
+                controlsRow.appendChild(warning);
+              } else if (!toggle.checked && warning) {
+                warning.remove();
+              }
+            }
+          }
+        } catch {
+          toggle.checked = !toggle.checked;
+        }
+      }
+    });
+
+    // Capture initial value for interval selects on focus (before change fires)
+    document.addEventListener('focus', function(e) {
+      const select = e.target.closest('.monitoring-interval-select');
+      if (select) {
+        select.dataset.previousValue = select.value;
+      }
+    }, true);
+
+    // Monitoring interval change
+    document.addEventListener('change', async function(e) {
+      const select = e.target.closest('.monitoring-interval-select');
+      if (select) {
+        const agentUrl = select.dataset.agentUrl;
+        const previousValue = select.dataset.previousValue;
+        select.dataset.previousValue = select.value;
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/interval`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ interval_hours: parseInt(select.value, 10) }),
+          });
+          if (!res.ok) {
+            select.value = previousValue;
+          }
+        } catch {
+          select.value = previousValue;
+        }
+      }
+    });
+
+    // View outbound requests log
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-requests-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      const cardId = btn.dataset.cardId;
+      const panel = document.getElementById(cardId + '-requests');
+      if (!panel) return;
+
+      if (panel.style.display !== 'none') {
+        panel.style.display = 'none';
+        return;
+      }
+
+      panel.style.display = 'block';
+      panel.innerHTML = '<div style="padding: var(--space-3); color: var(--text-secondary);">Loading requests...</div>';
+
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+
+        if (data.requests.length === 0) {
+          panel.innerHTML = '<div style="padding: var(--space-3); color: var(--text-secondary);">No outbound requests recorded yet.</div>';
+          return;
+        }
+
+        const rows = data.requests.map(function(r) {
+          const time = new Date(r.created_at).toLocaleString();
+          const status = r.success
+            ? '<span style="color: var(--green-600);">OK</span>'
+            : '<span style="color: var(--red-600);">ERR</span>';
+          const duration = r.response_time_ms != null ? r.response_time_ms + 'ms' : '-';
+          const ua = r.user_agent ? r.user_agent.split(' ')[0] : '-';
+          return '<tr>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(time) + '</td>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(r.request_type) + '</td>'
+            + '<td style="padding: 4px 8px;" title="' + escapeHtml(r.user_agent || '') + '">' + escapeHtml(ua) + '</td>'
+            + '<td style="padding: 4px 8px;">' + status + '</td>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(duration) + '</td>'
+            + (r.error_message ? '<td style="padding: 4px 8px; color: var(--text-secondary); font-size: var(--text-xs);">' + escapeHtml(r.error_message) + '</td>' : '<td></td>')
+            + '</tr>';
+        }).join('');
+
+        panel.innerHTML = '<div style="padding: var(--space-3);"><div style="font-weight: 600; margin-bottom: var(--space-2);">Outbound Requests (' + escapeHtml(String(data.total)) + ' total)</div>'
+          + '<table style="width: 100%; font-size: var(--text-sm); border-collapse: collapse;">'
+          + '<thead><tr style="text-align: left; color: var(--text-secondary);"><th style="padding: 4px 8px;">Time</th><th style="padding: 4px 8px;">Type</th><th style="padding: 4px 8px;">User-Agent</th><th style="padding: 4px 8px;">Status</th><th style="padding: 4px 8px;">Duration</th><th style="padding: 4px 8px;">Error</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody></table></div>';
+      } catch {
+        panel.innerHTML = '<div style="padding: var(--space-3); color: var(--red-600);">Failed to load requests.</div>';
       }
     });
 

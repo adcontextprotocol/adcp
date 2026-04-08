@@ -9,6 +9,7 @@ import type {
   ResolvedBrand,
   KellerType,
 } from './types';
+import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 
 export interface BrandValidationError {
   field: string;
@@ -168,7 +169,7 @@ export class BrandManager {
         timeout: 10000,
         headers: {
           Accept: 'application/json',
-          'User-Agent': 'AdCP-Brand-Validator/1.0',
+          'User-Agent': AAO_UA_VALIDATOR,
         },
         validateStatus: () => true,
         responseType: 'arraybuffer',

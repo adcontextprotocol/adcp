@@ -1054,6 +1054,23 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Enforce one personal workspace per user
+      if (is_personal) {
+        const existingPersonal = await pool.query(
+          `SELECT 1 FROM organization_memberships om
+           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+           WHERE om.workos_user_id = $1 AND o.is_personal = true
+           LIMIT 1`,
+          [user.id],
+        );
+        if (existingPersonal.rows.length > 0) {
+          return res.status(409).json({
+            error: 'Personal workspace exists',
+            message: 'You already have a personal workspace.',
+          });
+        }
+      }
+
       // Validate required fields
       if (!organization_name) {
         return res.status(400).json({

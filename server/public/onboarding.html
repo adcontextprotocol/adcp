@@ -736,7 +736,7 @@
         </p>
 
         <!-- Individual account limitations notice -->
-        <div style="background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
+        <div id="individualLimitations" style="background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
           <div style="font-weight: var(--font-semibold); color: var(--color-warning-700); margin-bottom: var(--space-2);">Individual Account Limitations</div>
           <ul style="margin: 0; padding-left: var(--space-5); color: var(--color-warning-700); font-size: var(--text-sm);">
             <li>Cannot invite team members or colleagues</li>
@@ -863,11 +863,14 @@
         const data = await response.json();
         currentUser = data.user;
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const personalMode = urlParams.get('mode') === 'personal';
+
         // If user already has non-personal organizations, redirect to dashboard
+        // Unless ?mode=personal — let them create a personal workspace alongside their company org
         // Users who ONLY have personal workspaces should still see onboarding to join companies
         const hasCompanyOrgs = data.organizations && data.organizations.some(org => !org.is_personal);
-        if (hasCompanyOrgs) {
-          const urlParams = new URLSearchParams(window.location.search);
+        if (hasCompanyOrgs && !personalMode) {
           if (urlParams.get('step') === 'brand') {
             const companyOrg = data.organizations.find(org => !org.is_personal);
             if (companyOrg) {
@@ -882,20 +885,43 @@
           return;
         }
 
+        // In personal mode, check if user already has a personal workspace
+        const hasPersonalWorkspace = data.organizations && data.organizations.some(org => org.is_personal);
+        if (personalMode && hasPersonalWorkspace) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
         // Show welcome message with name if available
         if (currentUser.first_name) {
           document.getElementById('welcomeName').textContent = ', ' + currentUser.first_name;
         }
 
-        // Load pending invitations and joinable organizations
-        await Promise.all([
-          loadInvitations(),
-          loadJoinableOrganizations()
-        ]);
+        // Load pending invitations and joinable organizations (skip in personal mode)
+        if (!personalMode) {
+          await Promise.all([
+            loadInvitations(),
+            loadJoinableOrganizations()
+          ]);
+        }
 
         // Show main content
         document.getElementById('loading').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
+
+        // In personal mode, skip step 1 and go straight to individual form
+        if (personalMode) {
+          selectStep1Option('individual');
+          // Update back link and hide the "joining on behalf of a company?" hint
+          const backLink = document.querySelector('#individualForm .back-link');
+          if (backLink) {
+            backLink.href = '/dashboard';
+            backLink.onclick = null;
+            backLink.textContent = '\u2190 Back to dashboard';
+          }
+          const limitations = document.getElementById('individualLimitations');
+          if (limitations) limitations.style.display = 'none';
+        }
 
       } catch (error) {
         console.error('Init error:', error);
