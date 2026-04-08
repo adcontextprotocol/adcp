@@ -4117,9 +4117,12 @@
           }
 
           // Initialize sidebar with org switcher
+          // Show switcher if user has multiple orgs OR doesn't have a personal workspace yet
           const selectedOrg = orgsWithBilling.find(o => o.id === selectedOrgId) || orgsWithBilling[0];
+          const hasPersonalWorkspace = orgsWithBilling.some(o => o.is_personal);
+          const showSwitcher = hasMultipleOrgs || !hasPersonalWorkspace;
           DashboardNav.init({
-            showOrgSwitcher: hasMultipleOrgs,
+            showOrgSwitcher: showSwitcher,
             currentOrgName: selectedOrg?.name || 'Organization',
             isPersonal: selectedOrg?.billing?.is_personal || false,
             isSubscribed: selectedOrg?.billing?.status === 'active',
@@ -4133,8 +4136,8 @@
             document.getElementById('slackBanner').style.display = 'block';
           }
 
-          // Set up org switcher in sidebar if multiple orgs
-          if (hasMultipleOrgs) {
+          // Set up org switcher in sidebar
+          if (showSwitcher) {
             DashboardNav.setOrgOptions(orgsWithBilling, selectedOrgId, (newOrgId) => {
               selectOrg(newOrgId);
             });

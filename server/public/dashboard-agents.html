@@ -460,8 +460,10 @@
 
         const profileData = await profileRes.json();
 
+        const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+        const showSwitcher = orgs.length > 1 || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: orgs.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || profileData?.profile?.organization_name || 'My organization',
           showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
           orgId: currentOrg?.id || null,
@@ -469,7 +471,7 @@
           isPersonal: currentOrg?.is_personal || false,
         });
 
-        if (orgs.length > 1) {
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             const url = new URL(window.location);

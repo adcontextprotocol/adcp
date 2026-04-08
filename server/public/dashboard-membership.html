@@ -1228,14 +1228,16 @@
         }
 
         // Initialize sidebar
+        const hasPersonalWorkspace = data.organizations?.some(o => o.is_personal);
+        const showSwitcher = (data.organizations?.length > 1) || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: data.organizations?.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg.name,
           showAdmin: data.isAdmin,
           orgId: currentOrg.id
         });
 
-        if (data.organizations?.length > 1) {
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             window.location.href = '/dashboard-membership?org=' + newOrgId;
