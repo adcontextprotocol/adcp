@@ -654,3 +654,68 @@ describe('content_standards storyboard', () => {
     expect(kit!.id).toBe('acme_outdoor');
   });
 });
+
+describe('schema_validation storyboard', () => {
+  it('covers schema compliance and temporal validation', () => {
+    const sb = getStoryboard('schema_validation')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('schema_compliance');
+    expect(phaseIds).toContain('temporal_validation');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('get_products');
+    expect(tasks).toContain('create_media_buy');
+  });
+});
+
+describe('behavioral_analysis storyboard', () => {
+  it('covers brief filtering, consistency, and pricing edge cases', () => {
+    const sb = getStoryboard('behavioral_analysis')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('behavior_analysis');
+    expect(phaseIds).toContain('response_consistency');
+    expect(phaseIds).toContain('pricing_edge_cases');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('behavioral_analysis');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
+
+describe('error_compliance storyboard', () => {
+  it('covers error responses, structure, and transport bindings', () => {
+    const sb = getStoryboard('error_compliance')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('error_responses');
+    expect(phaseIds).toContain('error_structure');
+    expect(phaseIds).toContain('error_transport');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('create_media_buy');
+    expect(tasks).toContain('get_products');
+  });
+});
+
+describe('media_buy_state_machine storyboard', () => {
+  it('covers state transitions and terminal enforcement', () => {
+    const sb = getStoryboard('media_buy_state_machine')!;
+    expect(sb).toBeDefined();
+    const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('setup');
+    expect(phaseIds).toContain('state_transitions');
+    expect(phaseIds).toContain('terminal_enforcement');
+    const tasks = sb.phases.flatMap((p) => p.steps.map((s) => s.task));
+    expect(tasks).toContain('get_products');
+    expect(tasks).toContain('create_media_buy');
+    expect(tasks).toContain('update_media_buy');
+  });
+
+  it('resolves acme_outdoor test kit', () => {
+    const kit = getTestKitForStoryboard('media_buy_state_machine');
+    expect(kit).toBeDefined();
+    expect(kit!.id).toBe('acme_outdoor');
+  });
+});
