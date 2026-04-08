@@ -43,8 +43,24 @@ export function stopSeatRequestReminders(): void {
   }
 }
 
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 2000;
+
+async function queryWithRetry() {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await findStaleSeatRequests();
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      logger.warn({ err, attempt: attempt + 1 }, 'DB query failed, retrying');
+      await new Promise(r => setTimeout(r, RETRY_BASE_MS * (attempt + 1)));
+    }
+  }
+  throw new Error('unreachable');
+}
+
 async function runCheck(workos: WorkOS): Promise<void> {
-  const { needsAdminReminder, needsMemberTimeout } = await findStaleSeatRequests();
+  const { needsAdminReminder, needsMemberTimeout } = await queryWithRetry();
 
   // Send admin reminders for 48-hour-old requests
   for (const request of needsAdminReminder) {
