@@ -401,6 +401,31 @@
       font-weight: 500;
     }
 
+    .dashboard-org-divider {
+      height: 1px;
+      background: var(--color-border);
+      margin: 4px 0;
+    }
+
+    .dashboard-org-create {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      text-align: left;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      transition: background 0.15s;
+      text-decoration: none;
+    }
+
+    .dashboard-org-create:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+    }
+
     /* Admin link in sidebar */
     .dashboard-admin-link {
       display: flex;
@@ -780,12 +805,17 @@
     const dropdown = document.getElementById('dashboardOrgDropdown');
     if (!dropdown) return;
 
+    const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+
     dropdown.innerHTML = orgs.map(org => `
       <button class="dashboard-org-option ${org.id === selectedId ? 'selected' : ''}"
               data-org-id="${escapeHtml(org.id)}">
         ${escapeHtml(org.name)}
       </button>
-    `).join('');
+    `).join('') + (hasPersonalWorkspace ? '' : `
+      <div class="dashboard-org-divider"></div>
+      <a href="/onboarding?mode=personal" class="dashboard-org-create">+ Personal workspace</a>
+    `);
 
     dropdown.querySelectorAll('.dashboard-org-option').forEach(btn => {
       btn.addEventListener('click', () => {

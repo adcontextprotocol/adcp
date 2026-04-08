@@ -303,14 +303,16 @@
         }
 
         // Initialize sidebar
+        const hasPersonalWorkspace = userData.organizations?.some(o => o.is_personal);
+        const showSwitcher = (userData.organizations?.length > 1) || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: userData.organizations?.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || 'Dashboard',
           showAdmin: userData.isAdmin,
           orgId: currentOrg?.id
         });
 
-        if (userData.organizations?.length > 1) {
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(userData.organizations, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             window.location.href = '/dashboard/emails?org=' + newOrgId;
