@@ -271,8 +271,11 @@ const PLATFORM_PROFILES: Record<PlatformType, PlatformProfile> = {
 
 /**
  * Maps each platform type to the storyboards that define its expected behavior.
- * This is the primary routing mechanism: a platform type selects storyboards,
- * storyboards extract to scenarios, scenarios run via testAllScenarios().
+ *
+ * @deprecated This mapping will move to @adcp/client once adcp-client#445
+ * ships storyboard-based comply(). At that point, callers should pass
+ * platform_type to comply() and let the client resolve storyboards internally.
+ * The canonical mapping will live next to comply() in the client package.
  */
 export const PLATFORM_STORYBOARDS: Record<PlatformType, string[]> = {
   display_ad_server: ['capability_discovery', 'schema_validation', 'behavioral_analysis', 'media_buy_seller', 'media_buy_state_machine', 'error_compliance'],
