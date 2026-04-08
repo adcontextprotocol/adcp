@@ -26,51 +26,60 @@ function htmlToEmailHtml(html: string): string {
     .replace(/<p>/g, '<p style="margin: 0 0 8px 0;">');
 }
 
-/** Convert TipTap HTML to Slack mrkdwn. */
+/** Convert TipTap HTML to Slack mrkdwn using DOM traversal. */
 function htmlToSlackMrkdwn(html: string): string {
-  // Sanitize first, then convert semantic HTML to mrkdwn
-  const clean = DOMPurify.sanitize(html, {
+  const dom = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
-  });
-  return clean
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
-    .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '<$1|$2>')
-    .replace(/<strong>(.*?)<\/strong>/gi, '*$1*')
-    .replace(/<b>(.*?)<\/b>/gi, '*$1*')
-    .replace(/<em>(.*?)<\/em>/gi, '_$1_')
-    .replace(/<i>(.*?)<\/i>/gi, '_$1_')
-    .replace(/<li>(.*?)<\/li>/gi, '• $1\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToSlackMrkdwn(dom).replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Convert TipTap HTML to plain text. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToSlackMrkdwn(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToSlackMrkdwn).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'strong': case 'b': return `*${inner}*`;
+    case 'em': case 'i': return `_${inner}_`;
+    case 'a': { const href = el.getAttribute('href'); return href ? `<${href}|${inner}>` : inner; }
+    case 'li': return `• ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
+}
+
+/** Convert TipTap HTML to plain text using DOM traversal. */
 function htmlToPlainText(html: string): string {
-  const clean = DOMPurify.sanitize(html, {
+  const dom = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href'],
-  });
-  return clean
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
-    .replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
-    .replace(/<li>(.*?)<\/li>/gi, '- $1\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToPlainText(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToPlainText(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToPlainText).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'a': { const href = el.getAttribute('href'); return href && href !== inner ? `${inner} (${href})` : inner; }
+    case 'li': return `- ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
 }
 
 /**

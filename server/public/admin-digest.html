@@ -648,7 +648,7 @@
 
     function saveNoteEdit() {
       const html = noteEditor.getHTML();
-      const isEmpty = !html || html === '<p></p>' || html.replace(/<[^>]*>/g, '').trim() === '';
+      const isEmpty = !html || html === '<p></p>' || noteEditor.isEmpty;
       const value = isEmpty ? '' : html;
 
       document.getElementById('editNoteEditor').style.display = 'none';
