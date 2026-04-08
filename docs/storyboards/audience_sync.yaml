@@ -1,0 +1,187 @@
+id: audience_sync
+version: "1.0.0"
+title: "Audience sync"
+category: audience_sync
+summary: "Full audience lifecycle: account discovery, audience creation with hashed identifiers, and audience deletion."
+track: audiences
+required_tools:
+  - sync_audiences
+platform_types:
+  - display_ad_server
+  - social_platform
+  - retail_media
+  - dsp
+  - pmax_platform
+
+narrative: |
+  You support audience syncing via the sync_audiences task. Buyers push first-party
+  audience segments to your platform using hashed identifiers (emails, phones). Your
+  platform matches those identifiers against your user graph and returns match rates.
+
+  This storyboard verifies the full audience lifecycle: discover an account to sync
+  against, create a test audience with hashed identifiers, and clean up by deleting it.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_audiences
+  examples:
+    - "Retail media networks"
+    - "Social platforms"
+    - "DSPs with audience onboarding"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs an active account on the seller platform. The account_setup phase
+    discovers or creates the account relationship before syncing audiences.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      Before syncing audiences, the buyer needs an account on the seller platform.
+      This phase discovers an existing account via list_accounts or establishes one
+      via sync_accounts.
+
+    steps:
+      - id: discover_account
+        title: "Discover or create account"
+        narrative: |
+          List existing accounts to find one suitable for audience sync. If no accounts
+          exist, sync_accounts creates one. The account_id is captured for use in
+          subsequent audience operations.
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        expected: |
+          Return at least one account with:
+          - account_id: platform-assigned identifier
+          - status: active (required for audience sync)
+
+        sample_request: {}
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "At least one account exists with an account_id"
+
+  - id: audience_sync
+    title: "Audience sync"
+    narrative: |
+      The buyer syncs a test audience containing hashed email and phone identifiers.
+      The seller platform matches those identifiers and returns per-audience results
+      including action (created/updated), status, and match rates.
+
+      After verifying creation, the test audience is deleted to clean up.
+
+    steps:
+      - id: discover_audiences
+        title: "Discover existing audiences"
+        narrative: |
+          Call sync_audiences with no audiences array to discover what audiences
+          already exist on the platform for this account. This is a read-only
+          discovery call.
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        comply_scenario: sync_audiences
+        stateful: false
+        expected: |
+          Return existing audiences for the account (may be empty).
+          Each audience should have an audience_id and status.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json schema"
+
+      - id: create_audience
+        title: "Create test audience"
+        narrative: |
+          Push a test audience with hashed email and phone identifiers. The seller
+          matches identifiers against their user graph and returns the audience with
+          action: created, match counts, and match rate.
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        comply_scenario: sync_audiences
+        stateful: true
+        expected: |
+          Accept the audience and return:
+          - audience_id: matches the submitted ID
+          - action: created
+          - status: active or processing
+          - uploaded_count: number of identifiers received
+          - matched_count: number of identifiers matched
+          - effective_match_rate: ratio of matched to uploaded
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          audiences:
+            - audience_id: "adcp-test-audience-001"
+              name: "AdCP test audience"
+              add:
+                - hashed_email: "a000000000000000000000000000000000000000000000000000000000000000"
+                - hashed_phone: "b000000000000000000000000000000000000000000000000000000000000000"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json schema"
+          - check: field_present
+            path: "audiences[0].audience_id"
+            description: "Audience has an audience_id"
+          - check: field_present
+            path: "audiences[0].action"
+            description: "Audience has an action (created or updated)"
+
+      - id: delete_audience
+        title: "Delete test audience"
+        narrative: |
+          Clean up by deleting the test audience. The seller should acknowledge the
+          deletion with action: deleted.
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        comply_scenario: sync_audiences
+        stateful: true
+        expected: |
+          Delete the test audience and return:
+          - audience_id: matches the test audience
+          - action: deleted
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          audiences:
+            - audience_id: "adcp-test-audience-001"
+              delete: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json schema"
+          - check: field_present
+            path: "audiences[0].action"
+            description: "Audience deletion acknowledged with action field"
