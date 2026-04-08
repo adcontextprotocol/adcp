@@ -258,6 +258,20 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
   const results: Array<{ plan_id: string; status: string; version: number; categories: Array<{ category_id: string; status: string }> }> = [];
 
+  // Validate all plans before mutating session state to keep the operation atomic
+  for (let i = 0; i < input.plans.length; i++) {
+    const plan = input.plans[i];
+    if (!plan.plan_id || !plan.brand || !plan.objectives || !plan.budget || !plan.flight) {
+      return { errors: [{ code: 'validation_error', message: `plan at index ${i} requires plan_id, brand, objectives, budget, and flight` }] };
+    }
+    if (plan.budget.total == null || !plan.budget.currency || !plan.budget.authority_level) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget requires total, currency, and authority_level` }] };
+    }
+    if (!plan.flight.start || !plan.flight.end) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} flight requires start and end` }] };
+    }
+  }
+
   for (const plan of input.plans) {
     const existing = session.governancePlans.get(plan.plan_id);
     const version = existing ? existing.version + 1 : 1;
