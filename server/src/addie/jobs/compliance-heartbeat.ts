@@ -61,6 +61,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         dry_run: true,
         timeout_ms: 60_000,
         auth,
+        userAgent: AAO_UA_COMPLIANCE,
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
