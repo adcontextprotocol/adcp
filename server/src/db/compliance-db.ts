@@ -420,6 +420,8 @@ export class ComplianceDatabase {
             logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon for compliance auth');
             return undefined;
           }
+        } else {
+          logger.debug({ agentUrl }, 'OAuth token has no expiration recorded');
         }
 
         const token = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, row.organization_id);

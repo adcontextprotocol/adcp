@@ -953,6 +953,7 @@
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
         panel.innerHTML = '<em>Loading storyboards...</em>';
+        if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
         try {
           const res = await fetch('/api/storyboards', { credentials: 'include' });
           const data = await res.json();
@@ -1089,7 +1090,11 @@
         const agentUrl = backBtn.dataset.agentUrl;
         const cardId = backBtn.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
-        if (panel) await renderStoryboardPicker(panel, agentUrl, cardId);
+        if (panel) {
+          let tracks = null;
+          try { tracks = JSON.parse(panel.dataset.agentTracks || 'null'); } catch {}
+          await renderStoryboardPicker(panel, agentUrl, cardId, tracks);
+        }
         return;
       }
 

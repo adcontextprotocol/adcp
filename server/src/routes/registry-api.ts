@@ -2443,20 +2443,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-      if (!isOwner) {
-        return res.status(403).json({ error: "You do not have permission to modify this agent" });
-      }
-
       const { auth_token, auth_type, platform_type } = req.body;
 
       if (auth_token && typeof auth_token !== "string") {
         return res.status(400).json({ error: "auth_token must be a string" });
       }
+      if (auth_token && auth_token.length > 4096) {
+        return res.status(400).json({ error: "auth_token exceeds maximum length" });
+      }
 
       const validAuthTypes = ["bearer", "basic"];
+      if (auth_token && auth_type && !validAuthTypes.includes(auth_type)) {
+        return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
+      }
       const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
 
+      if (platform_type && typeof platform_type !== "string") {
+        return res.status(400).json({ error: "platform_type must be a string" });
+      }
       const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
       if (platform_type && !validPlatformTypes.has(platform_type)) {
         return res.status(400).json({
@@ -2464,7 +2468,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         });
       }
 
-      // Find the org that owns this agent
+      // Verify ownership and get org ID in a single query
       const orgResult = await query(
         `SELECT mp.workos_organization_id
          FROM member_profiles mp
@@ -2477,7 +2481,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       );
 
       if (orgResult.rows.length === 0) {
-        return res.status(404).json({ error: "Agent not found in your organization" });
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
 
       const orgId = orgResult.rows[0].workos_organization_id;
