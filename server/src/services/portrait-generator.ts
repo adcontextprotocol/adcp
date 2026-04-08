@@ -8,6 +8,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createLogger } from '../logger.js';
+import { withGeminiRetry } from '../utils/gemini-retry.js';
 
 const logger = createLogger('portrait-generator');
 
@@ -100,7 +101,11 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
 
   logger.info({ vibe, palette, hasPhoto: !!photoBuffer }, 'Generating portrait');
 
-  const result = await model.generateContent(parts);
+  const result = await withGeminiRetry(
+    () => model.generateContent(parts),
+    undefined,
+    'generatePortrait',
+  );
   const response = result.response;
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
