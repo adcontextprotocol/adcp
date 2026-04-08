@@ -101,20 +101,66 @@ export function setupAccountRoutes(
 
         const churnedStatusList = CHURNED_STATUSES.map(s => `'${s}'`).join(', ');
 
-        // Pre-aggregate community points once, then reference in queries that need it
-        // This avoids expensive per-row LATERAL joins in count queries
-        const orgPointsCTE = `
+        // Compute needs_attention + hot counts in a single query to avoid
+        // aggregating community points twice (the CTE runs once, both counts
+        // are derived from the same scan).
+        const pointsDependentCounts = pool.query(`
           WITH org_points AS (
             SELECT om.workos_organization_id, COALESCE(SUM(cp.points), 0)::int AS org_points
             FROM organization_memberships om
             JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
             GROUP BY om.workos_organization_id
-          )`;
+          )
+          SELECT
+            COUNT(DISTINCT CASE WHEN (
+              -- Non-members with action items
+              (
+                (${NOT_MEMBER_ALIASED})
+                AND (
+                  na.id IS NOT NULL
+                  OR oi.stripe_invoice_id IS NOT NULL
+                  OR (
+                    COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
+                    AND NOT EXISTS (
+                      SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                    )
+                  )
+                )
+              )
+              OR
+              -- Members with real problems
+              (
+                ${MEMBER_FILTER_ALIASED}
+                AND (
+                  o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                  OR (
+                    EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
+                    AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
+                  )
+                )
+              )
+            ) THEN o.workos_organization_id END) as needs_attention,
+            COUNT(DISTINCT CASE WHEN (
+              (${NOT_MEMBER_ALIASED})
+              AND (
+                COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
+                OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
+              )
+            ) THEN o.workos_organization_id END) as hot
+          FROM organizations o
+          LEFT JOIN org_points ocp ON ocp.workos_organization_id = o.workos_organization_id
+          LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
+            AND na.is_next_step = TRUE
+            AND na.next_step_completed_at IS NULL
+            AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+          LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
+            AND oi.status IN ('draft', 'open')
+          WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+        `);
 
         const [
-          needsAttention,
+          combinedCounts,
           newInsights,
-          hot,
           newProspects,
           goingCold,
           myAccounts,
@@ -126,48 +172,7 @@ export function setupAccountRoutes(
           churned,
           unmapped,
         ] = await Promise.all([
-          // Needs attention - prospects with action items OR members with real problems
-          pool.query(`
-            ${orgPointsCTE}
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            LEFT JOIN org_points ocp ON ocp.workos_organization_id = o.workos_organization_id
-            LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
-            LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (
-                -- Non-members: show if they have action items
-                (
-                  (${NOT_MEMBER_ALIASED})
-                  AND (
-                    na.id IS NOT NULL
-                    OR oi.stripe_invoice_id IS NOT NULL
-                    OR (
-                      COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
-                      AND NOT EXISTS (
-                        SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
-                      )
-                    )
-                  )
-                )
-                OR
-                -- Members: show if they have a real problem (expiring soon OR missing owner)
-                (
-                  ${MEMBER_FILTER_ALIASED}
-                  AND (
-                    o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
-                    OR (
-                      EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
-                      AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
-                    )
-                  )
-                )
-              )
-          `),
+          pointsDependentCounts,
 
           // New insights - prospects with recent Slack activity (30 days)
           pool.query(`
@@ -181,20 +186,6 @@ export function setupAccountRoutes(
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
             AND (${NOT_MEMBER_ALIASED})
-          `),
-
-          // Hot prospects (engagement >= 50 OR high interest)
-          pool.query(`
-            ${orgPointsCTE}
-            SELECT COUNT(*) as count
-            FROM organizations o
-            LEFT JOIN org_points ocp ON ocp.workos_organization_id = o.workos_organization_id
-            WHERE (${NOT_MEMBER_ALIASED})
-              AND (
-                COALESCE(ocp.org_points, 0) >= ${HOT_PROSPECT_POINTS_THRESHOLD}
-                OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
-              )
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
 
           // New prospects - recently created non-members
@@ -302,9 +293,9 @@ export function setupAccountRoutes(
         ]);
 
         res.json({
-          needs_attention: parseInt(needsAttention.rows[0].count),
+          needs_attention: parseInt(combinedCounts.rows[0].needs_attention),
           new_insights: parseInt(newInsights.rows[0].count),
-          hot: parseInt(hot.rows[0].count),
+          hot: parseInt(combinedCounts.rows[0].hot),
           new_prospects: parseInt(newProspects.rows[0].count),
           going_cold: parseInt(goingCold.rows[0].count),
           my_accounts: parseInt(myAccounts.rows[0].count),
