@@ -53,8 +53,8 @@ phases:
       - id: discover_account
         title: "Discover or create account"
         narrative: |
-          List existing accounts to find one suitable for audience sync. If no accounts
-          exist, sync_accounts creates one. The account_id is captured for use in
+          List existing accounts to find one suitable for audience sync. The account
+          must already exist and be active. The account_id is captured for use in
           subsequent audience operations.
         task: list_accounts
         schema_ref: "account/list-accounts-request.json"
