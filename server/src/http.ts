@@ -6184,6 +6184,12 @@ Disallow: /api/admin/
           res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
+        // Expired or already-used authorization codes: redirect back to login
+        // instead of showing a raw error page.
+        if (error instanceof Error && error.name === 'OauthException' && 'error' in error && (error as Record<string, unknown>).error === 'invalid_grant') {
+          logger.warn({ err: error }, 'Auth code expired or already used, redirecting to login');
+          return res.redirect('/auth/login');
+        }
         logger.error({ err: error }, 'Auth callback error:');
         res.status(500).json({
           error: 'Authentication failed',
