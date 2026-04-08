@@ -4,6 +4,9 @@
  * Public MCP interface exposing:
  * - chat_with_addie: Conversational AI (wraps knowledge + directory tools internally)
  * - Directory tools: Programmatic lookup (list_members, list_agents, etc.)
+ * - Evaluation tools: Agent testing (probe, compliance, RFP response, IO execution)
+ * - Agent context tools: Save/list/remove agent credentials
+ * - Validation tools: Schema validation and adagents.json checking
  *
  * Knowledge and billing tools are NOT exposed directly - they're available
  * through chat_with_addie for conversational access, or internal Slack use only.
@@ -38,6 +41,15 @@ import { MCPToolHandler, TOOL_DEFINITIONS, RESOURCE_DEFINITIONS } from '../mcp-t
 // Chat tool - conversational AI wrapper (has knowledge + directory tools internally)
 import { CHAT_TOOL, createChatToolHandler } from './chat-tool.js';
 
+// Exposed tools - internal tools promoted to first-class MCP tools
+import {
+  ALL_EXPOSED_TOOL_DEFINITIONS,
+  EVAL_TOOL_DEFINITIONS,
+  AGENT_CONTEXT_TOOL_DEFINITIONS,
+  createMemberToolHandler,
+  createStatelessToolHandlers,
+} from './exposed-tools.js';
+
 const logger = createLogger('mcp-server');
 
 /**
@@ -54,31 +66,37 @@ function convertToMCPTool(tool: AddieTool) {
 /**
  * All tools available in the unified MCP server
  *
- * Only exposes:
+ * Exposes:
  * - chat_with_addie: Conversational wrapper (uses knowledge + directory tools internally)
  * - Directory tools: Programmatic member/agent/publisher lookup
+ * - Evaluation tools: Agent testing (probe, compliance, RFP, IO execution)
+ * - Agent context tools: Save/list/remove agent credentials
+ * - Validation tools: Schema validation and adagents.json checking
  *
  * Knowledge and billing tools are NOT exposed - use chat_with_addie instead.
  */
 export function getAllTools() {
   const chatTool = convertToMCPTool(CHAT_TOOL);
-
-  // Directory tools are already in MCP format
   const directoryTools = TOOL_DEFINITIONS;
+  const exposedTools = ALL_EXPOSED_TOOL_DEFINITIONS;
 
   return {
     directory: directoryTools,
+    exposed: exposedTools,
     chat: chatTool,
-    all: [chatTool, ...directoryTools],
+    all: [chatTool, ...directoryTools, ...exposedTools],
   };
 }
 
 /**
  * Create all tool handlers
  *
- * Only creates handlers for publicly exposed tools:
+ * Creates handlers for publicly exposed tools:
  * - chat_with_addie
  * - Directory tools (list_members, list_agents, etc.)
+ * - Evaluation tools (probe, compliance, RFP, IO execution)
+ * - Agent context tools (save_agent, list_saved_agents, remove_saved_agent)
+ * - Validation tools (validate_json, get_schema, validate_adagents)
  */
 function createAllHandlers() {
   const handlers = new Map<string, (args: Record<string, unknown>, authContext?: MCPAuthContext) => Promise<unknown>>();
@@ -98,6 +116,18 @@ function createAllHandlers() {
       const result = await handler(args);
       return { content: [{ type: 'text', text: result }] };
     });
+  }
+
+  // Member tools (eval + agent context) — need per-request auth bridging
+  const memberToolDefs = [...EVAL_TOOL_DEFINITIONS, ...AGENT_CONTEXT_TOOL_DEFINITIONS];
+  for (const tool of memberToolDefs) {
+    handlers.set(tool.name, createMemberToolHandler(tool.name));
+  }
+
+  // Stateless tools (schema + property validation) — created once
+  const statelessHandlers = createStatelessToolHandlers();
+  for (const [name, handler] of statelessHandlers) {
+    handlers.set(name, async (args) => handler(args));
   }
 
   return { handlers, directoryHandler };
@@ -124,6 +154,9 @@ function getHandlers() {
  * This server exposes Addie capabilities via MCP:
  * - chat_with_addie: Conversational AI with knowledge + directory access
  * - Directory tools: Programmatic lookup of members, agents, publishers
+ * - Evaluation tools: Agent testing and compliance checking
+ * - Agent context tools: Credential management for agent testing
+ * - Validation tools: Schema and adagents.json validation
  */
 export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
   const server = new Server(
