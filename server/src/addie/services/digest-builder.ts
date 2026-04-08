@@ -14,7 +14,7 @@ import {
   type DigestShipment,
   type DigestTakeAction,
 } from '../../db/digest-db.js';
-import { buildWgDigestContent, getDigestEligibleGroups } from './wg-digest-builder.js';
+import { buildWgDigestContent, getDigestEligibleGroups, truncateAtWord } from './wg-digest-builder.js';
 import { getPendingSuggestions } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('digest-builder');
@@ -236,18 +236,25 @@ async function buildInsiderSection(): Promise<DigestInsiderGroup[]> {
       const wgContent = await buildWgDigestContent(group.id);
       if (!wgContent) continue;
 
-      // Only show groups with meetings or active threads — new member joins alone aren't interesting
+      // Only show groups with meetings, active threads, or a substantive summary
       const hasActivity = wgContent.meetingRecaps.length > 0 || wgContent.activeThreads.length > 0;
-      if (!hasActivity) continue;
+      const NO_ACTIVITY = /^no recent activity\.?$/i;
+      const hasSubstantiveSummary = wgContent.summary
+        && !NO_ACTIVITY.test(wgContent.summary.trim())
+        && wgContent.summary.replace(/[*_~`#>\-\s]/g, '').length >= 20;
+      if (!hasActivity && !hasSubstantiveSummary) continue;
 
-      // Build summary from the most interesting activity item
+      // Prefer the AI-generated activity summary (includes Slack context),
+      // fall back to meeting recap or thread text
       let summary: string;
-      if (wgContent.meetingRecaps.length > 0 && wgContent.meetingRecaps[0].summary) {
-        summary = wgContent.meetingRecaps[0].summary.slice(0, 200);
+      if (hasSubstantiveSummary) {
+        summary = truncateAtWord(wgContent.summary!, 200);
+      } else if (wgContent.meetingRecaps.length > 0 && wgContent.meetingRecaps[0].summary) {
+        summary = truncateAtWord(wgContent.meetingRecaps[0].summary, 200);
       } else if (wgContent.activeThreads.length > 0) {
-        summary = wgContent.activeThreads[0].summary.slice(0, 200);
+        summary = truncateAtWord(wgContent.activeThreads[0].summary, 200);
       } else {
-        summary = '';
+        continue;
       }
 
       results.push({
