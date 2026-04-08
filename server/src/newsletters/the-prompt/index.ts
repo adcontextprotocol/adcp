@@ -6,6 +6,7 @@
  */
 
 import type { NewsletterConfig } from '../config.js';
+import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview } from '../../addie/templates/weekly-digest.js';
@@ -131,12 +132,44 @@ const promptDB: NewsletterEditionDB = {
 
 // ─── Markdown builder ──────────────────────────────────────────────────
 
+function htmlToMarkdown(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'a', 'strong', 'em', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToMarkdown(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToMarkdown(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToMarkdown).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'strong': return `**${inner}**`;
+    case 'em': return `_${inner}_`;
+    case 'a': { const href = el.getAttribute('href'); return href ? `[${inner}](${href})` : inner; }
+    case 'li': return `- ${inner}\n`;
+    default: return inner;
+  }
+}
+
 function buildPromptMarkdown(content: unknown): string {
   const c = content as DigestContent;
   const sections: string[] = [];
 
   sections.push(c.openingTake);
-  if (c.editorsNote) sections.push(`> ${c.editorsNote.split('\n').join('\n> ')}`);
+  if (c.editorsNote) {
+    const noteText = /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(c.editorsNote)
+      ? htmlToMarkdown(c.editorsNote)
+      : c.editorsNote;
+    sections.push(`> ${noteText.split('\n').join('\n> ')}`);
+  }
   if (c.newMembers.length > 0) {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
   }

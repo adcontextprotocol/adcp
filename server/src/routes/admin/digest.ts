@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import DOMPurify from 'isomorphic-dompurify';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import {
@@ -208,9 +209,16 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
           case 'openingTake':
             content.openingTake = String(value);
             break;
-          case 'editorsNote':
-            content.editorsNote = value ? String(value) : undefined;
+          case 'editorsNote': {
+            const raw = value ? String(value) : '';
+            content.editorsNote = raw
+              ? DOMPurify.sanitize(raw, {
+                  ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+                  ALLOWED_ATTR: ['href', 'target', 'rel'],
+                })
+              : undefined;
             break;
+          }
           case 'emailSubject':
             content.emailSubject = value ? String(value) : undefined;
             break;
