@@ -168,6 +168,34 @@ export const storyboardEvalRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for step-by-step storyboard execution.
+ * More generous than full evaluation (30/hour vs 5/hour) since each step is one MCP call.
+ */
+export const storyboardStepRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,
+  skipFailedRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('storyboard-step:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for storyboard step execution');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Step execution limit exceeded (30 per hour). Please try again later.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */
