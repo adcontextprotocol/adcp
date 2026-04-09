@@ -40,6 +40,9 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
 | Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
 | Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
+| Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
+| Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
+| Capabilities | `compliance_testing` protocol in `supported_protocols` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
 
 <Warning>
 **Comply-blocking requirement:** `buying_mode` on `get_products` is checked by comply testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.

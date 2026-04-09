@@ -139,7 +139,7 @@ Create an advertising campaign from selected products.
 
 **Response contains:**
 - `media_buy_id`: The created campaign identifier
-- `status`: Current state (often `pending` for async approval)
+- `status`: Current lifecycle state — `pending_creatives` (no creatives assigned yet), `pending_start` (waiting for flight date), or `active` (serving immediately)
 - `packages`: Created packages with their IDs
 
 ---
