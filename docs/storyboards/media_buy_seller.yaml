@@ -383,13 +383,13 @@ phases:
         expected: |
           Return the current state of the media buy:
           - media_buy_id: matches what was returned from create_media_buy
-          - status: draft, pending_approval, active, pending_creatives, paused, completed, canceled
+          - status: pending_creatives, pending_start, active, paused, completed, rejected, canceled
           - packages: line items with current delivery status
           - valid_actions: what operations are available in this state
 
-          If pending_approval:
-          - Include setup URL where the human completes approval
-          - Include message explaining what's needed
+          If pending_creatives:
+          - Include message explaining what creatives are needed
+          - valid_actions should include sync_creatives
 
         sample_request:
           account:

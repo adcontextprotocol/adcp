@@ -9,8 +9,8 @@ required_tools:
   - update_media_buy
 
 narrative: |
-  A media buy has a well-defined state machine: draft, pending_approval, active,
-  pending_creatives, paused, completed, canceled. Transitions between states must follow the spec — you cannot
+  A media buy has a well-defined state machine: pending_creatives, pending_start, active,
+  paused, completed, rejected, canceled. Transitions between states must follow the spec — you cannot
   resume a canceled buy or pause a completed one.
 
   This storyboard creates a media buy, walks it through pause/resume/cancel transitions, then

@@ -77,7 +77,7 @@ const SCENARIO_METADATA = {
     description: 'Force a media buy to a new status',
     required_params: ['media_buy_id', 'status'],
     optional_params: ['rejection_reason'],
-    valid_statuses: ['pending_start', 'pending_creatives', 'active', 'paused', 'completed', 'rejected', 'canceled'],
+    valid_statuses: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'rejected', 'canceled'],
     notes: 'rejection_reason required when status=rejected; completed/rejected/canceled are terminal',
   },
   force_session_status: {
