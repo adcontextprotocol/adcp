@@ -20,6 +20,9 @@ import {
   setBuildPerspectiveId,
   getRecentBuildEditions,
   getBuildRecipients,
+  setBuildCoverImage,
+  getBuildCoverImage,
+  getBuildCoverImageWithPrompt,
   type BuildContent,
   type BuildRecord,
 } from '../../db/build-db.js';
@@ -126,6 +129,15 @@ const buildDB: NewsletterEditionDB = {
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
+  async setCoverImage(id, imageData, promptUsed) {
+    return setBuildCoverImage(id, imageData, promptUsed);
+  },
+  async getCoverImage(editionDate) {
+    return getBuildCoverImage(editionDate);
+  },
+  async getCoverImageWithPrompt(editionDate) {
+    return getBuildCoverImageWithPrompt(editionDate);
+  },
 };
 
 // ─── Markdown builder ──────────────────────────────────────────────────
@@ -222,6 +234,7 @@ export const theBuildConfig: NewsletterConfig = {
     domain: 'docs.adcontextprotocol.org',
   },
   announcementChannelEnvVar: 'SLACK_BUILD_CHANNEL',
+  coverRoutePrefix: '/build',
   buildContent: buildBuildContent,
   hasMinimumContent: (c) => hasBuildMinimumContent(c as BuildContent),
   generateSubject: (c) => generateBuildSubject(c as BuildContent),
@@ -232,7 +245,7 @@ export const theBuildConfig: NewsletterConfig = {
   renderSlack: (content, editionDate) => renderBuildSlack(content as BuildContent, editionDate),
   renderReview: (content, editionDate) => renderBuildReview(content as BuildContent, editionDate),
   db: buildDB,
-  editableFields: ['statusLine', 'editorsNote', 'emailSubject'],
+  editableFields: ['statusLine', 'editorsNote', 'emailSubject', 'dateFlavor'],
 };
 
 registerNewsletter(theBuildConfig);

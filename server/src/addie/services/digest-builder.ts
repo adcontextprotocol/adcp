@@ -16,6 +16,7 @@ import {
 } from '../../db/digest-db.js';
 import { buildWgDigestContent, getDigestEligibleGroups, truncateAtWord } from './wg-digest-builder.js';
 import { getPendingSuggestions } from '../../db/newsletter-suggestions-db.js';
+import { generateDateFlavor } from '../../newsletters/cover.js';
 import DOMPurify from 'isomorphic-dompurify';
 import type { Event } from '../../types.js';
 
@@ -60,9 +61,10 @@ export async function buildDigestContent(): Promise<DigestContent> {
   // Generate takeaways for official items (Town Hall recaps, reports, etc.)
   await generateOfficialTakeaways(whatToWatch, whatToWatchResult.officialBodyMap);
 
-  const [openingTake, shareableTake] = await Promise.all([
+  const [openingTake, shareableTake, dateFlavor] = await Promise.all([
     generateOpeningTake(whatToWatch, fromTheInside, voices, newMembers),
     generateShareableTake(whatToWatch),
+    generateDateFlavor(),
   ]);
 
   const takeActions = buildTakeActions(whatToWatch);
@@ -77,6 +79,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     shareableTake: shareableTake || undefined,
     whatShipped: whatShipped.length > 0 ? whatShipped : undefined,
     takeActions: takeActions.length > 0 ? takeActions : undefined,
+    dateFlavor: dateFlavor || undefined,
     generatedAt: new Date().toISOString(),
   };
 
