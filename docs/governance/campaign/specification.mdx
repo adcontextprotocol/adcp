@@ -469,7 +469,7 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 ```json
 {
-  "media_buy_id": "mb_seller_456",
+  "seller_reference": "mb_seller_456",
   "packages": ["..."],
   "planned_delivery": {
     "geo": { "countries": ["US"] },
@@ -762,7 +762,7 @@ For accounts with a single governance agent, pass a one-element array.
 
 Governance checks complement the buyer-side governance loop, they do not replace it:
 
-| Concern | Intent checks (orchestrator, `tool` + `payload`) | Execution checks (seller, `media_buy_id` + `planned_delivery`) |
+| Concern | Intent checks (orchestrator, `tool` + `payload`) | Execution checks (seller, `governance_context` + `planned_delivery`) |
 |---------|--------------------------------------|---------------------------------------|
 | **Who checks** | Buyer's governance agent, called by orchestrator | Buyer's governance agent, called by seller |
 | **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
@@ -804,7 +804,7 @@ flowchart TD
     V --> U
     U --> W{Update needed?}
     W -->|yes| X["check_governance(tool: update_media_buy, payload)"]
-    X --> Y["Seller calls check_governance(media_buy_id, phase: modification)"]
+    X --> Y["Seller calls check_governance(governance_context, phase: modification)"]
     W -->|no| Z{Delivery active?}
     Z -->|yes| AA["Seller calls check_governance (delivery) periodically"]
     AA --> AB{Delivery approved?}

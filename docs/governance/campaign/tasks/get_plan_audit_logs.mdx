@@ -188,8 +188,8 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Plan IDs to retrieve. |
-| `portfolio_plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Portfolio plan IDs. Expanded to member plans. |
+| `plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Plan IDs to retrieve. |
+| `portfolio_plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Portfolio plan IDs. Expanded to member plans. |
 | `governance_contexts` | string[] | No | Filter results to specific governed actions by their `governance_context` values. When present, only entries and summaries for the matching governed actions are returned. |
 | `purchase_types` | string[] | No | Filter results by purchase type (e.g., `["rights_license"]` to see all rights activity). When present, only entries and summaries matching these purchase types are returned. |
 | `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |

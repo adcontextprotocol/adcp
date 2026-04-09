@@ -19,8 +19,10 @@ Sellers do not call this task. They report delivery data via [`check_governance`
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "completed",
     "seller_response": {
+      "seller_reference": "mb_seller_456",
       "packages": [
         {
           "package_id": "pkg_001",
@@ -100,6 +102,7 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "delivery",
     "delivery": {
       "reporting_period": {
@@ -157,6 +160,7 @@ If the seller rejected the request, report it so the governance agent can update
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "failed",
     "error": {
       "code": "PRODUCT_UNAVAILABLE",
