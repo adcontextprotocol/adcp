@@ -8094,6 +8094,11 @@ Disallow: /api/admin/
           startSeatRequestReminders(workos!);
         }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
       }
+
+      // Start Luma calendar sync (catches events missed by webhooks)
+      import('./luma/sync.js').then(({ startLumaSync }) => {
+        startLumaSync();
+      }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
     });
 
     // Setup graceful shutdown handlers
@@ -8139,6 +8144,11 @@ Disallow: /api/admin/
     // Stop seat request reminders
     import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
       stopSeatRequestReminders();
+    }).catch(() => {});
+
+    // Stop Luma calendar sync
+    import('./luma/sync.js').then(({ stopLumaSync }) => {
+      stopLumaSync();
     }).catch(() => {});
 
     // Close HTTP server

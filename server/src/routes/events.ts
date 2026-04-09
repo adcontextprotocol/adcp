@@ -15,6 +15,8 @@ import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
+import { getEvent as getLumaEvent, getEventBySlug as getLumaEventBySlug, extractLumaSlug, getEventGuests, isLumaEnabled } from "../luma/client.js";
+import { createEventFromLuma } from "../luma/sync.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import {
   createCheckoutSession,
@@ -34,6 +36,19 @@ import type {
 } from "../types.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose } from "../slack/client.js";
+
+/**
+ * Zoom participant report CSV row structure.
+ * Exported from Zoom admin → Reports → Usage → Participants.
+ * Column names vary by Zoom version; we normalize in the parser.
+ */
+interface ZoomCsvRow {
+  name: string;
+  email: string;
+  join_time: string;
+  leave_time: string;
+  duration_minutes: string;
+}
 
 /**
  * Luma CSV row structure
@@ -77,6 +92,38 @@ function parseCsv(csvContent: string): LumaCsvRow[] {
     bom: true,
   });
   return records as LumaCsvRow[];
+}
+
+/**
+ * Parse Zoom participant report CSV.
+ * Normalizes column names (Zoom uses various header formats across versions).
+ */
+function parseZoomCsv(csvContent: string): ZoomCsvRow[] {
+  const records: Record<string, string>[] = parseCsvLib(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+  });
+
+  return records.map(row => {
+    // Normalize column names — Zoom exports use inconsistent headers
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(row)) {
+      const k = key.toLowerCase().trim()
+        .replace(/[()]/g, '')
+        .replace(/\s+/g, '_');
+      normalized[k] = value;
+    }
+
+    return {
+      name: normalized['name_original_name'] || normalized['name'] || normalized['user_name'] || '',
+      email: normalized['user_email'] || normalized['email'] || '',
+      join_time: normalized['join_time'] || normalized['joined'] || '',
+      leave_time: normalized['leave_time'] || normalized['left'] || '',
+      duration_minutes: normalized['duration_minutes'] || normalized['duration'] || '',
+    };
+  });
 }
 
 /**
@@ -588,6 +635,105 @@ export function createEventsRouter(): {
     }
   );
 
+  // POST /api/admin/events/import-from-luma - Import an event from Luma by URL or slug
+  adminApiRouter.post(
+    "/import-from-luma",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { luma_url } = req.body;
+
+        if (!luma_url || typeof luma_url !== 'string') {
+          return res.status(400).json({
+            error: "Missing luma_url",
+            message: "Provide a Luma event URL (e.g., https://lu.ma/sm6ggl45) or slug",
+          });
+        }
+
+        if (!isLumaEnabled()) {
+          return res.status(503).json({
+            error: "Luma not configured",
+            message: "LUMA_API_KEY is not set",
+          });
+        }
+
+        const slug = extractLumaSlug(luma_url);
+        logger.info({ luma_url, slug }, "Importing event from Luma");
+
+        // Try to fetch the event from Luma
+        const lumaEvent = await getLumaEventBySlug(slug);
+        if (!lumaEvent) {
+          return res.status(404).json({
+            error: "Event not found on Luma",
+            message: `Could not find a Luma event for: ${luma_url}. The event may belong to a different Luma calendar than the one our API key has access to. If so, the event needs to be created on the AAO Calendar in Luma, or created manually in AAO.`,
+          });
+        }
+
+        // Create it in our database
+        const result = await createEventFromLuma(lumaEvent);
+        if (!result) {
+          // Already exists — find and return it
+          const existing = await eventsDb.getEventByLumaId(lumaEvent.api_id);
+          if (existing) {
+            return res.json({
+              success: true,
+              already_existed: true,
+              event: { id: existing.id, slug: existing.slug, title: existing.title },
+            });
+          }
+          return res.status(409).json({
+            error: "Event already exists",
+            message: "This Luma event has already been imported",
+          });
+        }
+
+        // Optionally sync registrations
+        let registrationsSynced = 0;
+        try {
+          const guests = await getEventGuests(lumaEvent.api_id);
+          for (const guest of guests) {
+            if (!guest.user_email) continue;
+            try {
+              await eventsDb.createRegistration({
+                event_id: result.id,
+                email: guest.user_email,
+                name: guest.user_name || undefined,
+                registration_source: 'luma',
+                luma_guest_id: guest.api_id,
+                registration_status: guest.approval_status === 'approved' ? 'registered' : 'registered',
+              });
+              registrationsSynced++;
+            } catch {
+              // Duplicate or other error — skip
+            }
+          }
+        } catch (err) {
+          logger.warn({ err, lumaEventId: lumaEvent.api_id }, "Could not sync registrations from Luma");
+        }
+
+        logger.info({
+          eventId: result.id,
+          slug: result.slug,
+          lumaEventId: lumaEvent.api_id,
+          registrationsSynced,
+        }, "Imported event from Luma");
+
+        res.json({
+          success: true,
+          event: { id: result.id, slug: result.slug, title: lumaEvent.name },
+          registrations_synced: registrationsSynced,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error importing event from Luma");
+        res.status(500).json({
+          error: "Failed to import",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
   // POST /api/admin/events/:id/import-luma - Import registrations from Luma CSV
   adminApiRouter.post(
     "/:id/import-luma",
@@ -757,6 +903,195 @@ export function createEventsRouter(): {
         });
       } catch (error) {
         logger.error({ err: error }, "Error importing Luma CSV");
+        res.status(500).json({
+          error: "Failed to import",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:id/import-zoom - Import attendees from Zoom participant report CSV
+  adminApiRouter.post(
+    "/:id/import-zoom",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { csv_content } = req.body;
+
+        if (!csv_content || typeof csv_content !== 'string') {
+          return res.status(400).json({
+            error: "Missing CSV content",
+            message: "Please provide csv_content in the request body (Zoom participant report CSV)",
+          });
+        }
+
+        if (csv_content.length > MAX_CSV_SIZE) {
+          return res.status(400).json({
+            error: "CSV too large",
+            message: `CSV must be smaller than ${MAX_CSV_SIZE / 1024 / 1024}MB`,
+          });
+        }
+
+        // Verify event exists
+        const event = await eventsDb.getEventById(id);
+        if (!event) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No event found with that ID",
+          });
+        }
+
+        // Parse Zoom CSV
+        const rows = parseZoomCsv(csv_content);
+        if (rows.length === 0) {
+          return res.status(400).json({
+            error: "Invalid CSV",
+            message: "CSV must have a header row and at least one data row",
+          });
+        }
+
+        // Get existing registrations for deduplication
+        const existingRegistrations = await eventsDb.getEventRegistrations(id);
+        const existingByEmail = new Map(
+          existingRegistrations
+            .filter(r => r.email)
+            .map(r => [r.email!.toLowerCase(), r])
+        );
+
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+        let contactsCreated = 0;
+        const errors: string[] = [];
+
+        // Zoom reports can have multiple rows per person (rejoin).
+        // Deduplicate by email, keeping the earliest join and latest leave.
+        const byEmail = new Map<string, { name: string; joinTime: Date | undefined; leaveTime: Date | undefined; totalMinutes: number }>();
+        for (const row of rows) {
+          if (!row.email) {
+            skipped++;
+            continue;
+          }
+          const email = row.email.toLowerCase().trim();
+          if (!email.includes('@') || email.length < 5 || !email.includes('.')) {
+            errors.push(`Row ${row.email}: Invalid email format`);
+            skipped++;
+            continue;
+          }
+
+          const joinTime = parseDate(row.join_time);
+          const leaveTime = parseDate(row.leave_time);
+          const minutes = parseInt(row.duration_minutes, 10) || 0;
+
+          const existing = byEmail.get(email);
+          if (existing) {
+            // Merge: earliest join, latest leave, sum minutes
+            if (joinTime && (!existing.joinTime || joinTime < existing.joinTime)) {
+              existing.joinTime = joinTime;
+            }
+            if (leaveTime && (!existing.leaveTime || leaveTime > existing.leaveTime)) {
+              existing.leaveTime = leaveTime;
+            }
+            existing.totalMinutes += minutes;
+            if (!existing.name && row.name) {
+              existing.name = row.name;
+            }
+          } else {
+            byEmail.set(email, {
+              name: row.name,
+              joinTime,
+              leaveTime,
+              totalMinutes: minutes,
+            });
+          }
+        }
+
+        // Process deduplicated attendees
+        for (const [email, attendee] of byEmail) {
+          try {
+            // Upsert email contact
+            const contact = await upsertEmailContact({
+              email,
+              displayName: attendee.name || null,
+            });
+            if (contact.isNew) {
+              contactsCreated++;
+            }
+
+            const existingReg = existingByEmail.get(email);
+
+            if (existingReg) {
+              // Update existing registration with attendance
+              if (!existingReg.attended) {
+                await eventsDb.updateRegistration(existingReg.id, {
+                  attended: true,
+                  checked_in_at: attendee.joinTime,
+                  email_contact_id: contact.contactId,
+                });
+                updated++;
+              } else if (!existingReg.email_contact_id) {
+                await eventsDb.updateRegistration(existingReg.id, {
+                  email_contact_id: contact.contactId,
+                });
+                skipped++;
+              } else {
+                skipped++;
+              }
+            } else {
+              // Create new registration (person attended but wasn't pre-registered)
+              const newReg = await eventsDb.createRegistration({
+                event_id: id,
+                email,
+                name: attendee.name || undefined,
+                email_contact_id: contact.contactId,
+                organization_id: contact.organizationId || undefined,
+                registration_status: 'registered',
+                registration_source: 'import',
+                registration_data: {
+                  zoom_join_time: attendee.joinTime?.toISOString(),
+                  zoom_leave_time: attendee.leaveTime?.toISOString(),
+                  zoom_duration_minutes: attendee.totalMinutes,
+                  imported_at: new Date().toISOString(),
+                },
+              });
+
+              if (newReg) {
+                await eventsDb.updateRegistration(newReg.id, {
+                  attended: true,
+                  checked_in_at: attendee.joinTime,
+                });
+              }
+
+              created++;
+            }
+          } catch (rowError) {
+            errors.push(`${email}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
+          }
+        }
+
+        logger.info(
+          { eventId: id, created, updated, skipped, contactsCreated, errors: errors.length },
+          "Zoom CSV import completed"
+        );
+
+        res.json({
+          success: true,
+          summary: {
+            total_rows: rows.length,
+            unique_attendees: byEmail.size,
+            created,
+            updated,
+            skipped,
+            contacts_created: contactsCreated,
+            errors: errors.length,
+          },
+          errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error importing Zoom CSV");
         res.status(500).json({
           error: "Failed to import",
           message: "An unexpected error occurred",
