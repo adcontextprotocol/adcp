@@ -15,7 +15,7 @@ import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
-import { getEvent as getLumaEvent, getEventBySlug as getLumaEventBySlug, extractLumaSlug, getEventGuests, isLumaEnabled } from "../luma/client.js";
+import { getEventBySlug as getLumaEventBySlug, extractLumaSlug, getEventGuests, isLumaEnabled } from "../luma/client.js";
 import { createEventFromLuma } from "../luma/sync.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import {
