@@ -9,7 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { createTestClient, loadBundledStoryboards } from "@adcp/client/testing";
+import { createTestClient, loadBundledStoryboards, runStoryboardStep, getStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -2720,6 +2720,73 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(500).json({ error: "Failed to discover agent tools" });
     }
   });
+
+  // Step-by-step storyboard execution
+  router.post(
+    "/registry/agents/:encodedUrl/storyboard/:storyboardId/step/:stepId",
+    storyboardEvalRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const storyboard = getStoryboardById(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const { context, dry_run } = req.body;
+
+        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, {
+          dry_run: dry_run !== false,
+          ...(auth && { auth }),
+          ...(context && { context }),
+        });
+
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
+        res.status(500).json({ error: "Failed to run storyboard step" });
+      }
+    },
+  );
+
+  // Get first step preview for a storyboard (no agent call needed)
+  router.get(
+    "/registry/agents/:encodedUrl/storyboard/:storyboardId/first-step",
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const storyboard = getStoryboardById(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        const preview = getFirstStepPreview(storyboard);
+        if (!preview) {
+          return res.status(404).json({ error: "Storyboard has no steps" });
+        }
+
+        res.json({ storyboard: { id: storyboard.id, title: storyboard.title }, step: preview });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get first step preview");
+        res.status(500).json({ error: "Failed to get first step preview" });
+      }
+    },
+  );
 
   router.post(
     "/registry/agents/:encodedUrl/storyboard/:storyboardId/run",

@@ -334,6 +334,95 @@
     .storyboard-picker-title { font-weight: 600; font-size: var(--text-sm); }
     .storyboard-picker-summary { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
 
+    .storyboard-map-tools {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-3);
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .storyboard-map-tools code {
+      background: var(--color-gray-100);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: var(--text-xs);
+    }
+    .storyboard-track-group { margin-bottom: var(--space-4); }
+    .storyboard-track-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-2);
+      color: var(--color-text-primary);
+    }
+    .storyboard-track-count {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      font-weight: normal;
+    }
+    .storyboard-map-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-1);
+    }
+    .storyboard-map-item-title { font-size: var(--text-sm); font-weight: 500; }
+    .storyboard-map-item-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; }
+    .storyboard-map-actions button {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+    }
+    .storyboard-map-actions button:hover { border-color: var(--color-primary-500); color: var(--color-primary-600); }
+    .storyboard-map-actions .btn-run {
+      background: var(--color-primary-600);
+      color: white;
+      border-color: var(--color-primary-600);
+    }
+    .storyboard-map-actions .btn-run:hover { background: var(--color-primary-700); }
+
+    .step-runner { margin-top: var(--space-3); }
+    .step-runner-current {
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
+    }
+    .step-runner-current h4 { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-1); }
+    .step-runner-current .step-narrative { font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-2); }
+    .step-runner-result {
+      padding: var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      margin-top: var(--space-2);
+    }
+    .step-runner-result--pass { background: var(--color-success-50, #ecfdf5); border: 1px solid var(--color-success-200, #a7f3d0); }
+    .step-runner-result--fail { background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); }
+    .step-runner-result--skip { background: var(--color-gray-50, #f9fafb); border: 1px solid var(--color-gray-200, #e5e7eb); }
+    .step-runner-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+    .step-runner-actions button {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: none;
+    }
+    .step-run-btn { background: var(--color-primary-600); color: white; }
+    .step-run-btn:hover { background: var(--color-primary-700); }
+    .step-run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .step-next-btn { background: var(--color-gray-200); color: var(--color-text-primary); }
+    .step-next-btn:hover { background: var(--color-gray-300); }
+
     .storyboard-phase {
       margin-bottom: var(--space-4);
     }
@@ -1090,66 +1179,99 @@
         }
       }
 
-      // Map storyboard category prefixes to agent tracks
-      function storyboardMatchesAgent(sb, agentTracks) {
-        if (!agentTracks) return true;
-        const cat = sb.category || '';
-        if (cat.startsWith('media_buy')) return !!agentTracks.media_buy && agentTracks.media_buy !== 'skip';
-        if (cat.startsWith('creative')) return !!agentTracks.creative && agentTracks.creative !== 'skip';
-        if (cat.startsWith('signal')) return !!agentTracks.signals && agentTracks.signals !== 'skip';
-        return true;
-      }
-
-      // Shared: render the storyboard picker into a panel
+      // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
-        panel.innerHTML = '<em>Loading storyboards...</em>';
+        panel.innerHTML = '<em>Discovering agent capabilities...</em>';
         if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
+
         try {
-          const res = await fetch('/api/storyboards', { credentials: 'include' });
-          const data = await res.json();
-          if (!data.storyboards || data.storyboards.length === 0) {
-            panel.innerHTML = '<em>No storyboards available yet.</em>';
-            return;
-          }
+          // Try the tool-based resolution endpoint first
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
 
-          const recommended = data.storyboards.filter(sb => storyboardMatchesAgent(sb, agentTracks));
-          const other = data.storyboards.filter(sb => !storyboardMatchesAgent(sb, agentTracks));
+          if (res.ok) {
+            const data = await res.json();
+            let html = '';
 
-          let html = '';
-          if (recommended.length > 0 && other.length > 0) {
-            html += '<div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Recommended for this agent</div>';
-          }
-          html += '<div class="storyboard-picker">';
-          for (const sb of recommended) {
-            html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-            html += '<div>';
-            html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-            html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-            html += '</div>';
-            html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
-            html += '</div>';
-          }
-          html += '</div>';
+            // Show detected tools
+            if (data.tools && data.tools.length > 0) {
+              html += '<div class="storyboard-map-tools">Tools detected: ';
+              html += data.tools.map(t => '<code>' + escapeHtml(t) + '</code>').join(' ');
+              html += '</div>';
+            }
 
-          if (other.length > 0) {
-            html += '<details style="margin-top:var(--space-3);">';
-            html += '<summary style="font-size:var(--text-sm);color:var(--color-text-tertiary);cursor:pointer;">Other storyboards (' + other.length + ')</summary>';
-            html += '<div class="storyboard-picker" style="margin-top:var(--space-2);">';
-            for (const sb of other) {
+            if (data.total_applicable === 0) {
+              html += '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">';
+              html += 'No applicable storyboards found. Your agent may not expose AdCP tools yet.';
+              html += '</div>';
+              panel.innerHTML = html;
+              return;
+            }
+
+            // Render track groups
+            const trackLabels = { core: 'Core', products: 'Products', media_buy: 'Media Buy', creative: 'Creative', governance: 'Governance', campaign_governance: 'Campaign Governance', signals: 'Signals', si: 'Sponsored Intelligence', audiences: 'Audiences', error_handling: 'Error Handling', general: 'General' };
+            const trackOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'campaign_governance', 'signals', 'si', 'audiences', 'error_handling', 'general'];
+
+            const sortedTracks = Object.keys(data.storyboards).sort((a, b) => {
+              const ai = trackOrder.indexOf(a);
+              const bi = trackOrder.indexOf(b);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+
+            for (const track of sortedTracks) {
+              const storyboards = data.storyboards[track];
+              const label = trackLabels[track] || track;
+              html += '<div class="storyboard-track-group">';
+              html += '<div class="storyboard-track-header"><span>' + escapeHtml(label) + '</span><span class="storyboard-track-count">' + storyboards.length + ' storyboard' + (storyboards.length === 1 ? '' : 's') + '</span></div>';
+
+              for (const sb of storyboards) {
+                html += '<div class="storyboard-map-item">';
+                html += '<div>';
+                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title) + '</div>';
+                html += '<div class="storyboard-map-item-meta">' + sb.step_count + ' steps</div>';
+                html += '</div>';
+                html += '<div class="storyboard-map-actions">';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" style="border:none;background:none;padding:0;font-size:var(--text-xs);color:var(--color-primary-600);cursor:pointer;">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Run step by step</button>';
+                html += '</div>';
+                html += '</div>';
+              }
+              html += '</div>';
+            }
+
+            // Show what's not applicable
+            const notApplicable = data.total_available - data.total_applicable;
+            if (notApplicable > 0) {
+              html += '<details style="margin-top:var(--space-2);">';
+              html += '<summary style="font-size:var(--text-xs);color:var(--color-text-tertiary);cursor:pointer;">Other capabilities (' + notApplicable + ' storyboards not matched)</summary>';
+              html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);padding:var(--space-2) 0;">These storyboards require tools your agent doesn\'t expose yet. Implement the required tools to unlock them.</div>';
+              html += '</details>';
+            }
+
+            panel.innerHTML = html;
+          } else {
+            // Fallback to flat list if agent can't be reached
+            panel.innerHTML = '<em>Loading storyboards...</em>';
+            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
+            const data = await fallback.json();
+            if (!data.storyboards || data.storyboards.length === 0) {
+              panel.innerHTML = '<em>No storyboards available yet.</em>';
+              return;
+            }
+            let html = '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
+            html += '<div class="storyboard-picker">';
+            for (const sb of data.storyboards) {
               html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
               html += '<div>';
               html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
               html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
               html += '</div>';
-              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
+              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
               html += '</div>';
             }
             html += '</div>';
-            html += '</details>';
+            panel.innerHTML = html;
           }
-
-          panel.innerHTML = html;
         } catch {
           panel.innerHTML = '<em>Failed to load storyboards.</em>';
         }
@@ -1245,6 +1367,117 @@
           let tracks = null;
           try { tracks = JSON.parse(panel.dataset.agentTracks || 'null'); } catch {}
           await renderStoryboardPicker(panel, agentUrl, cardId, tracks);
+        }
+        return;
+      }
+
+      // Step-by-step storyboard button (from map view)
+      const stepBtn = e.target.closest('.storyboard-step-btn');
+      if (stepBtn) {
+        const storyboardId = stepBtn.dataset.storyboardId;
+        const agentUrl = stepBtn.dataset.agentUrl;
+        const cardId = stepBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        // Fetch first step preview
+        panel.innerHTML = '<em>Loading first step...</em>';
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
+          const data = await res.json();
+          if (!res.ok) { panel.innerHTML = '<em>' + escapeHtml(data.error || 'Failed') + '</em>'; return; }
+
+          renderStepRunner(panel, agentUrl, cardId, storyboardId, data.storyboard.title, data.step, null);
+        } catch {
+          panel.innerHTML = '<em>Failed to load storyboard step.</em>';
+        }
+        return;
+      }
+
+      // Run step button (inside step runner)
+      const runStepBtn = e.target.closest('.step-run-btn');
+      if (runStepBtn) {
+        const agentUrl = runStepBtn.dataset.agentUrl;
+        const cardId = runStepBtn.dataset.cardId;
+        const storyboardId = runStepBtn.dataset.storyboardId;
+        const stepId = runStepBtn.dataset.stepId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        let context = null;
+        try { context = JSON.parse(runStepBtn.dataset.context || 'null'); } catch {}
+
+        runStepBtn.disabled = true;
+        runStepBtn.textContent = 'Running...';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/step/' + encodeURIComponent(stepId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ context, dry_run: true }),
+          });
+          const result = await res.json();
+          if (!res.ok) {
+            runStepBtn.disabled = false;
+            runStepBtn.textContent = 'Run this step';
+            const resultEl = panel.querySelector('.step-runner-result');
+            if (resultEl) { resultEl.className = 'step-runner-result step-runner-result--fail'; resultEl.innerHTML = '<strong>Error:</strong> ' + escapeHtml(result.error || 'Request failed'); }
+            return;
+          }
+
+          // Render result and next step
+          const resultEl = panel.querySelector('.step-runner-result');
+          const cls = result.skipped ? 'skip' : result.passed ? 'pass' : 'fail';
+          const label = result.skipped ? 'SKIPPED' : result.passed ? 'PASS' : 'FAIL';
+          if (resultEl) {
+            let rhtml = '<strong>' + label + '</strong> (' + result.duration_ms + 'ms)';
+            if (result.error) rhtml += '<div style="margin-top:var(--space-1);color:var(--color-error-700);">' + escapeHtml(result.error) + '</div>';
+            if (result.validations) {
+              for (const v of result.validations) {
+                if (!v.passed) {
+                  rhtml += '<div style="margin-top:2px;color:var(--color-error-600);">' + escapeHtml(v.description || v.check);
+                  if (v.error) rhtml += ': ' + escapeHtml(v.error);
+                  rhtml += '</div>';
+                }
+              }
+            }
+            resultEl.className = 'step-runner-result step-runner-result--' + cls;
+            resultEl.innerHTML = rhtml;
+          }
+
+          // Show next step button or "done"
+          const actionsEl = panel.querySelector('.step-runner-actions');
+          if (actionsEl) {
+            if (result.next) {
+              actionsEl.innerHTML = '<button class="step-next-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-next-step=\'' + JSON.stringify(result.next).replace(/'/g, '&#39;') + '\' data-context=\'' + JSON.stringify(result.context || {}).replace(/'/g, '&#39;') + '\'>Next: ' + escapeHtml(result.next.title) + ' →</button>';
+            } else {
+              actionsEl.innerHTML = '<span style="font-size:var(--text-xs);color:var(--color-success-600);font-weight:600;">Storyboard complete</span>';
+            }
+          }
+        } catch {
+          runStepBtn.disabled = false;
+          runStepBtn.textContent = 'Run this step';
+        }
+        return;
+      }
+
+      // Next step button (inside step runner)
+      const nextStepBtn = e.target.closest('.step-next-btn');
+      if (nextStepBtn) {
+        const agentUrl = nextStepBtn.dataset.agentUrl;
+        const cardId = nextStepBtn.dataset.cardId;
+        const storyboardId = nextStepBtn.dataset.storyboardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        let nextStep = null;
+        let context = null;
+        try { nextStep = JSON.parse(nextStepBtn.dataset.nextStep || 'null'); } catch {}
+        try { context = JSON.parse(nextStepBtn.dataset.context || 'null'); } catch {}
+
+        if (nextStep) {
+          renderStepRunner(panel, agentUrl, cardId, storyboardId, null, nextStep, context);
         }
         return;
       }
@@ -1422,6 +1655,38 @@
         return;
       }
     });
+
+    function renderStepRunner(panel, agentUrl, cardId, storyboardId, storyboardTitle, step, context) {
+      let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
+      if (storyboardTitle) {
+        html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(storyboardTitle) + '</strong> — Step by step</div>';
+      }
+      html += '<div class="step-runner">';
+      html += '<div class="step-runner-current">';
+      html += '<h4>' + escapeHtml(step.title) + '</h4>';
+      html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);margin-bottom:var(--space-1);">Task: <code>' + escapeHtml(step.task) + '</code></div>';
+      if (step.narrative) {
+        html += '<div class="step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
+      }
+      if (step.expected) {
+        html += '<details style="margin-top:var(--space-2);"><summary style="font-size:var(--text-xs);cursor:pointer;color:var(--color-text-tertiary);">Expected response</summary>';
+        html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);padding:var(--space-1) 0;white-space:pre-wrap;">' + escapeHtml(step.expected) + '</div>';
+        html += '</details>';
+      }
+      if (step.sample_request && Object.keys(step.sample_request).length > 0) {
+        html += '<details style="margin-top:var(--space-1);"><summary style="font-size:var(--text-xs);cursor:pointer;color:var(--color-text-tertiary);">Sample request</summary>';
+        html += '<pre style="font-size:var(--text-xs);background:var(--color-gray-50);padding:var(--space-2);border-radius:var(--radius-sm);overflow-x:auto;max-height:200px;">' + escapeHtml(JSON.stringify(step.sample_request, null, 2)) + '</pre>';
+        html += '</details>';
+      }
+      html += '<div class="step-runner-result"></div>';
+      html += '<div class="step-runner-actions">';
+      html += '<button class="step-run-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-step-id="' + escapeHtml(step.step_id) + '" data-context=\'' + JSON.stringify(context || {}).replace(/'/g, '&#39;') + '\'>Run this step</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      panel.innerHTML = html;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
     function escapeHtml(str) {
       if (!str) return '';
