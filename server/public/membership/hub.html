@@ -2373,7 +2373,6 @@
           const startDate = new Date(event.start_time);
           const isToday = startDate.toDateString() === now.toDateString();
           const isTomorrow = startDate.toDateString() === tomorrow.toDateString();
-          const dateStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
           const urgencyBadge = isToday ? '<span style="background: var(--color-error-100); color: var(--color-error-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Today!</span> '
             : isTomorrow ? '<span style="background: var(--color-warning-100); color: var(--color-warning-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Tomorrow</span> '

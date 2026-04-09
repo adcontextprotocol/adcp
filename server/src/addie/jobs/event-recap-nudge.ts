@@ -6,7 +6,6 @@
  */
 
 import { createLogger } from '../../logger.js';
-import { eventsDb } from '../../db/events-db.js';
 import { query } from '../../db/client.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
