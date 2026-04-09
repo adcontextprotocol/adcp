@@ -189,8 +189,9 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
         return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
       }
 
-      // Unknown context, log and treat as unrouted
-      logger.warn({ context, email }, 'Unknown Addie context in email address');
+      // Any other addie+<context> — route as prospect so the email gets processed
+      logger.info({ context, email }, 'Addie subaddress with unrecognized context — routing as prospect');
+      return { type: 'prospect', addiePosition: position, addieAddress: email };
     }
   }
 
@@ -879,22 +880,39 @@ async function handleFeedEmail(
 }
 
 /**
- * Handle unrouted emails (plain addie@ or unknown context)
+ * Handle unrouted emails — no routing handler matched.
  *
- * Logs the email but doesn't process it - for monitoring what comes in
- * without a clear routing context.
+ * Alerts the team via Slack and saves the email as a prospect
+ * fallback so it doesn't get lost.
  */
 async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<void> {
-  // Log with ERROR level so it's visible in monitoring — unrouted emails should not happen
-  // after the routing fix. If we're seeing these, there's a new from-address we need to handle.
+  const from = data.from;
+  const to = data.to;
+  const cc = data.cc;
+  const subject = data.subject;
+
   logger.error({
     emailId: data.email_id,
     messageId: data.message_id,
-    from: data.from,
-    to: data.to,
-    cc: data.cc,
-    subject: data.subject,
+    from,
+    to,
+    cc,
+    subject,
   }, 'Received unrouted inbound email — no handler matched. This email was NOT processed.');
+
+  // Sanitize for Slack mrkdwn — strip characters that could trigger mentions or formatting
+  const sanitize = (s: string) => s.replace(/[<>&*_~`@]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+  notifySystemError({
+    source: 'webhooks',
+    errorMessage: [
+      'Unrouted inbound email — no handler matched.',
+      `From: ${sanitize(from)}`,
+      `To: ${sanitize(String(to))}`,
+      cc ? `CC: ${sanitize(String(cc))}` : '',
+      `Subject: ${sanitize(subject ?? '(none)')}`,
+    ].filter(Boolean).join('\n'),
+  });
 
   // Store as a prospect email so it doesn't get lost
   try {
