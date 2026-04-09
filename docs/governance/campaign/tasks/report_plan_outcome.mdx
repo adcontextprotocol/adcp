@@ -189,6 +189,7 @@ If the seller rejected the request, report it so the governance agent can update
 | `purchase_type` | enum | No | The kind of financial commitment: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
+| `seller_response.seller_reference` | string | No | The seller's identifier for the created resource (e.g., `media_buy_id`, `rights_grant_id`, `deployment_id`). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque `governance_context`. |
 | `seller_response.committed_budget` | number | No | Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing individual package budgets. |
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
 | `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |

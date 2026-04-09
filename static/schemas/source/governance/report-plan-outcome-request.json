@@ -38,6 +38,11 @@
       "type": "object",
       "description": "The seller's full response. Required when outcome is 'completed'.",
       "properties": {
+        "seller_reference": {
+          "type": "string",
+          "description": "The seller's identifier for the created resource (e.g., media_buy_id, rights_grant_id, deployment_id). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque governance_context.",
+          "maxLength": 255
+        },
         "committed_budget": {
           "type": "number",
           "minimum": 0,

@@ -357,6 +357,7 @@ export interface GovernanceOutcomeState {
   checkId?: string;
   governanceContext?: string;
   purchaseType?: string;
+  sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
   findings: GovernanceFinding[];

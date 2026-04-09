@@ -94,6 +94,7 @@ interface ReportPlanOutcomeInput extends ToolArgs {
 }
 
 interface SellerResponseInput {
+  seller_reference?: string;
   committed_budget?: number;
   packages?: Array<{ budget?: number | { total?: number } }>;
 }
@@ -818,6 +819,7 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
     checkId,
     governanceContext,
     purchaseType,
+    sellerReference: sellerResponse?.seller_reference,
     outcomeType: outcome,
     committedBudget,
     findings,
@@ -910,7 +912,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     const channelAllocation: Record<string, { committed: number; pct: number }> = {};
 
     // Governed actions breakdown (grouped by governance_context)
-    const actionMap = new Map<string, { purchase_type: string; status: string; committed: number; checkCount: number }>();
+    const actionMap = new Map<string, { purchase_type: string; status: string; committed: number; checkCount: number; seller_reference?: string }>();
     for (const check of checks) {
       if (check.governanceContext) {
         if (!actionMap.has(check.governanceContext)) {
@@ -924,6 +926,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
         const entry = actionMap.get(outcome.governanceContext);
         if (entry) {
           entry.committed += outcome.committedBudget;
+          if (outcome.sellerReference) entry.seller_reference = outcome.sellerReference;
         }
       }
     }
@@ -934,6 +937,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
       status: data.status,
       committed: data.committed,
       check_count: data.checkCount,
+      ...(data.seller_reference && { seller_reference: data.seller_reference }),
     }));
 
     // Summary statistics
@@ -1015,6 +1019,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
           committed_budget: outcome.committedBudget,
           ...(outcome.purchaseType && { purchase_type: outcome.purchaseType }),
           ...(outcome.governanceContext && { governance_context: outcome.governanceContext }),
+          ...(outcome.sellerReference && { seller_reference: outcome.sellerReference }),
         });
       }
 

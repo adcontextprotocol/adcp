@@ -372,6 +372,10 @@
                 "check_count": {
                   "type": "integer",
                   "description": "Number of governance checks performed for this action."
+                },
+                "seller_reference": {
+                  "type": "string",
+                  "description": "The seller's identifier for the resource (e.g., media_buy_id, rights_grant_id). Present when reported via report_plan_outcome."
                 }
               },
               "required": [
