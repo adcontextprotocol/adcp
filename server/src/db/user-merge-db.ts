@@ -88,6 +88,8 @@ export async function previewUserMerge(
       { name: 'known_media_contacts', col: 'added_by' },
       { name: 'member_portraits', col: 'user_id' },
       { name: 'seat_upgrade_requests', col: 'workos_user_id' },
+      { name: 'user_email_aliases', col: 'workos_user_id' },
+      { name: 'email_link_tokens', col: 'primary_workos_user_id' },
     ];
 
     for (const table of tables) {
@@ -488,6 +490,42 @@ export async function mergeUsers(
         rows_skipped_duplicate: 0,
       });
     }
+
+    // user_email_aliases: UNIQUE(workos_user_id, email) + UNIQUE(LOWER(email))
+    // Move non-conflicting aliases, delete duplicates. Must happen before
+    // DELETE FROM users (which would CASCADE-delete them).
+    const aliasTotalResult = await client.query(
+      `SELECT COUNT(*) as count FROM user_email_aliases WHERE workos_user_id = $1`,
+      [secondaryUserId]
+    );
+    const aliasTotal = parseInt(aliasTotalResult.rows[0].count, 10);
+    // Delete secondary aliases that conflict case-insensitively with primary's
+    await client.query(
+      `DELETE FROM user_email_aliases
+       WHERE workos_user_id = $2
+       AND LOWER(email) IN (
+         SELECT LOWER(email) FROM user_email_aliases WHERE workos_user_id = $1
+       )`,
+      [primaryUserId, secondaryUserId]
+    );
+    const aliasUpdateResult = await client.query(
+      `UPDATE user_email_aliases SET workos_user_id = $1 WHERE workos_user_id = $2 RETURNING 1`,
+      [primaryUserId, secondaryUserId]
+    );
+    summary.tables_merged.push({
+      table_name: 'user_email_aliases',
+      rows_moved: aliasUpdateResult.rows.length,
+      rows_skipped_duplicate: aliasTotal - aliasUpdateResult.rows.length,
+    });
+
+    // email_link_tokens: CASCADE-deletes when secondary user is removed.
+    // Reassign any tokens where the secondary was the initiator, so they
+    // stay visible in the primary's account history.
+    await client.query(
+      `UPDATE email_link_tokens SET primary_workos_user_id = $1
+       WHERE primary_workos_user_id = $2`,
+      [primaryUserId, secondaryUserId]
+    );
 
     // =====================================================
     // 3. Update champion references in organizations
