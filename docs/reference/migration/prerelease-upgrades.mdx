@@ -35,23 +35,7 @@ If you adopted a prerelease version, review the relevant section below before up
 3. **State machine transitions** — `rejected` is now valid from both `pending_creatives` and `pending_start` (previously only from `pending_activation`). `pending_creatives` → `pending_start` happens when creatives are assigned via `sync_creatives`.
 4. **Legacy alias** — `pending` continues to be accepted as an alias for `pending_start` in delivery response status filters.
 
-**Updated lifecycle:**
-
-```
-create_media_buy ──┬──▶ pending_creatives ──▶ pending_start ──▶ active
-                   │                                              │
-                   └──▶ active (if creatives provided at creation) │
-                        │                                         │
-               (pause)  ▼        (resume)                         │
-                       paused ────────────────────────────────────┘
-                        │
-          active ───────┼──▶ completed (terminal)
-          paused ───────┘
-
-pending_creatives ──▶ rejected (terminal)
-pending_start ──────▶ rejected (terminal)
-Any non-terminal ───▶ canceled (terminal)
-```
+See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-states) for the full state machine.
 
 ### Additive changes in rc.4
 
@@ -62,7 +46,7 @@ Any non-terminal ───▶ canceled (terminal)
 
 ## rc.1 → rc.2
 
-## Potentially breaking for rc.1 adopters
+### Potentially breaking for rc.1 adopters
 
 | Area | rc.1 | rc.2 | What to do |
 |---|---|---|---|
@@ -72,7 +56,7 @@ Any non-terminal ───▶ canceled (terminal)
 | DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present | Add the discriminator in request builders and validators |
 | Deprecated governance task docs | `delete_content_standards`, `get_property_features` documented | Removed | Use `update_content_standards`, property lists, and `get_adcp_capabilities` instead |
 
-## Additive changes in rc.2
+### Additive changes in rc.2
 
 - **Creative generation and preview** — `build_creative` adds `include_preview`, `preview_inputs`, `preview_quality`, `preview_output_format`, `quality`, `item_limit`, and multi-format `target_format_ids`. Buyers can now preview inline, choose draft vs production generation, and request multiple output formats in one call.
 - **Creative library retrieval** — `build_creative` also supports library retrieval using `creative_id`, optional `concept_id`, `media_buy_id`, `package_id`, and `macro_values`, so ad servers and creative platforms can resolve stored creatives into delivery-ready manifests.

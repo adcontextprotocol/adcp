@@ -8,7 +8,7 @@ Restructure media buy lifecycle statuses and add compliance testing capability d
 - `pending_activation` removed — replaced by two distinct statuses with clearer semantics
 - `pending_creatives` added — media buy is approved but has no creatives assigned; buyer must call `sync_creatives` before the buy can serve
 - `pending_start` added — media buy is ready to serve and waiting for its flight date to begin
-- Lifecycle: `create_media_buy` → `pending_creatives` → `pending_start` → `active` → `paused` → `completed`
+- Lifecycle: `create_media_buy` → `pending_creatives` → `pending_start` → `active` (see [migration guide](/docs/reference/migration/prerelease-upgrades) for full state machine)
 - Rejection valid from `pending_creatives` or `pending_start` only (not `active`)
 - Legacy alias: `pending` continues to map to `pending_start`
 
