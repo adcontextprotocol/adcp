@@ -1,0 +1,581 @@
+id: media_buy_generative_seller
+version: "1.0.0"
+title: "Generative seller agent"
+category: media_buy_generative_seller
+summary: "Seller agent that generates creatives from briefs at buy time — no pre-built assets required."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - list_creative_formats
+  - sync_creatives
+  - get_media_buy_delivery
+
+narrative: |
+  You run a generative sell-side platform — an AI ad network, generative DSP, or any system that
+  both sells inventory and generates creatives from a brief. The buyer doesn't upload finished
+  assets. Instead, they describe what they want via a creative brief, point you at a brand.json,
+  and your platform produces finished creatives ready for delivery.
+
+  This is the media buy seller flow with generative creative capabilities. Your platform handles
+  the full lifecycle from brief to reporting, but the creative sync step accepts briefs instead
+  of static assets. Your formats declare what brief inputs they accept, and your platform
+  generates the creative — potentially asynchronously.
+
+  A programmatic seller with generative capabilities should also support standard IAB formats
+  (display, video, VAST, etc.) for buyers who bring their own assets. A platform that sells
+  programmatic inventory but can't accept a pre-built VAST tag or display banner is incoherent.
+  The generative capability is additive to standard programmatic creative acceptance.
+
+  This storyboard focuses on the generative creative delta. Governance agent registration and
+  proposal refinement work identically to the base media_buy_seller storyboard — see that
+  storyboard for those phases.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_generation
+    - supports_guaranteed
+    - supports_non_guaranteed
+  examples:
+    - "OpenAds"
+    - "AI ad networks"
+    - "Generative DSPs"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity hosted at the brand's domain (brand.json) or resolvable
+    via AgenticAdvertising.org. The brand.json provides visual identity — logos, colors, fonts,
+    tone — that the generative seller uses to produce on-brand creatives. The test kit provides
+    a sample brand with campaign parameters.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      Before buying anything, the buyer establishes an account relationship with your platform.
+      This is the same handshake as any media buy seller — the buyer identifies the brand and
+      operator, and you provision the account.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account relationship"
+        narrative: |
+          The buyer registers their brand and operator with your platform. Your platform should
+          resolve the brand via AgenticAdvertising.org to pull brand identity for creative
+          generation. If the brand domain doesn't resolve, return an error — don't generate
+          creatives for unknown brands.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with:
+          - account_id: your platform's identifier for this relationship
+          - action: created or updated
+          - status: active (instant approval) or pending_approval (requires human review)
+          - account_scope: operator, brand, operator_brand, or agent
+          - setup: URL and message if pending_approval
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              billing: "operator"
+              payment_terms: "net_30"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "accounts[0].status"
+            description: "Account has a status (active or pending_approval)"
+
+  - id: format_discovery
+    title: "Format discovery"
+    narrative: |
+      The buyer discovers what your platform can accept. A generative seller's format catalog
+      has two parts: generative formats that accept briefs as inputs, and standard IAB formats
+      that accept pre-built assets.
+
+      Generative formats declare brief asset slots. Standard formats declare image, video, or
+      HTML asset slots. The buyer uses this to decide whether to send a brief or upload finished
+      assets for each package.
+
+      A platform selling programmatic inventory should support both. Generative-only is fine for
+      a pure creative agent, but a seller that takes media buys needs to accept pre-built assets
+      from buyers who already have creatives.
+
+    steps:
+      - id: list_formats
+        title: "Discover creative formats"
+        narrative: |
+          The buyer asks what formats your platform supports. Your response should include both
+          generative formats (accepting brief inputs) and standard IAB formats (accepting image,
+          video, VAST, etc.).
+
+          A programmatic seller that only returns generative formats means the buyer can never
+          bring their own assets. If you sell inventory, you should accept pre-built creatives
+          too — the generative capability is additive.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return your format catalog. It should include:
+
+          Generative formats:
+          - format_id with your agent_url and a unique id (e.g., "display_300x250_generative")
+          - Asset slots accepting brief asset types
+          - Render dimensions for the output
+          - Description indicating this is a generative format
+
+          Standard formats:
+          - Standard IAB display formats (300x250, 728x90, etc.)
+          - Video formats (VAST, pre-roll, etc.) if applicable
+          - Asset slots accepting image, video, html, etc.
+
+          Both types should be present for a programmatic seller. Buyers who already
+          have creatives need to be able to upload them directly.
+
+        sample_request: {}
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains a formats array"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Each format has a format_id with agent_url"
+
+  - id: product_discovery
+    title: "Product discovery"
+    narrative: |
+      The buyer sends a natural-language brief describing what they want to buy. Your platform
+      interprets the brief against your inventory and returns products with pricing, delivery
+      forecasts, and creative format requirements.
+
+      Products from a generative seller should reference generative format IDs — telling the
+      buyer that this product accepts a brief rather than requiring pre-built assets. Products
+      may also reference standard formats for buyers who prefer to supply their own creatives.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief"
+        narrative: |
+          The buyer describes what they want. Your platform returns products. Each product's
+          creative_format_ids should reference formats from the catalog — some generative,
+          some standard. The buyer uses this to decide the creative approach per product.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product should include:
+          - product_id: unique identifier
+          - name and description
+          - delivery_type: guaranteed or non_guaranteed
+          - pricing_models: available pricing options
+          - forecast: estimated impressions, reach
+          - creative_format_ids: formats this product accepts (including generative formats)
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium display and video inventory on outdoor lifestyle content. Q2 flight, $50K budget. Adults 25-54, US. We want your platform to generate the creatives from our brand brief."
+          brand:
+            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+
+  - id: create_buy
+    title: "Create the media buy"
+    narrative: |
+      The buyer commits to specific products with budgets and flight dates. This is the same
+      create_media_buy flow as any seller — the generative aspect doesn't change the buy
+      creation. The buy may return pending_creatives status, indicating the buyer needs to
+      sync creatives (via brief) before the campaign can go live.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy"
+        narrative: |
+          The buyer commits to products. The response may include pending_creatives status
+          for packages that require creative sync before activation.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Process the media buy request and return one of:
+          - completed: buy confirmed, packages may be pending_creatives
+          - working: platform is processing (poll for status)
+          - submitted: long-running async (approval workflow, IO signing)
+          - input-required: need more information
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "acmeoutdoor.com"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "outdoor_display_q2"
+              budget: 30000
+              pricing_option_id: "cpm_guaranteed"
+            - product_id: "outdoor_video_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+          push_notification_config:
+            url: "https://buyer.example/webhooks/adcp"
+            authentication:
+              scheme: "HMAC-SHA256"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+  - id: creative_brief_sync
+    title: "Creative brief sync"
+    narrative: |
+      This is where a generative seller diverges from the standard flow. Instead of the buyer
+      uploading finished assets, they send a creative brief through sync_creatives. The brief
+      describes campaign messaging, tone, audience, and compliance requirements. The format_id
+      points to a generative format that accepts brief asset types.
+
+      Your platform resolves the brand via AgenticAdvertising.org (using the account's brand
+      domain), pulls brand.json for visual identity, and generates the creative. This may be
+      synchronous (accepted immediately) or asynchronous (pending_review while generation
+      completes). The buyer polls or waits for a webhook to know when the creative is ready.
+
+    steps:
+      - id: sync_creatives_brief
+        title: "Send creative brief via sync_creatives"
+        narrative: |
+          The buyer sends a creative brief through sync_creatives, using a generative format_id
+          that accepts brief asset types. The account's brand domain tells your platform where
+          to resolve brand identity for generation.
+
+          Your platform should actually read the operator and brand from the request — not
+          ignore them. If the brand domain is invalid or unresolvable, return a rejection
+          with a clear error rather than generating with defaults.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative brief and begin generation:
+          - Per-creative action: created
+          - Per-creative status: pending_review (generation in progress) or accepted (instant)
+          - The brand domain from the account should be resolved via AgenticAdvertising.org
+          - If the brand domain is invalid, reject with a clear error
+          - If the brief references a non-generative format, reject with format mismatch error
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "gen_display_summer_sale"
+              name: "Summer Sale - Generated Display 300x250"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250_generative"
+              assets:
+                brief:
+                  name: "Acme Outdoor Summer Sale Q2"
+                  objective: "conversion"
+                  tone: "Bold, adventurous, urgent"
+                  audience: "Active adults 25-54, outdoor enthusiasts"
+                  territory: "Summer gear clearance"
+                  messaging:
+                    headline: "Summer Sale — 40% Off All Gear"
+                    tagline: "Gear up for less"
+                    cta: "Shop Now"
+                    key_messages:
+                      - "40% off all trail running and hiking gear"
+                      - "Free shipping on orders over $75"
+                  compliance:
+                    required_disclosures:
+                      - text: "Sale ends June 30, 2026. Exclusions apply."
+                        position: "footer"
+                        jurisdictions: ["US"]
+                    prohibited_claims:
+                      - "Best price guaranteed"
+            - creative_id: "gen_video_summer_sale"
+              name: "Summer Sale - Generated Video 30s"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "video_30s_generative"
+              assets:
+                brief:
+                  name: "Acme Outdoor Summer Sale Q2 - Video"
+                  objective: "awareness"
+                  tone: "Cinematic, energetic"
+                  audience: "Active adults 25-54"
+                  territory: "Summer adventure"
+                  messaging:
+                    headline: "Your Next Adventure Starts Here"
+                    tagline: "Acme Outdoor — Gear up for less"
+                    cta: "Shop the Sale"
+                    key_messages:
+                      - "40% off all gear this summer"
+                  compliance:
+                    required_disclosures:
+                      - text: "Sale ends June 30, 2026. Exclusions apply."
+                        position: "audio"
+                        jurisdictions: ["US"]
+          assignments:
+            - creative_id: "gen_display_summer_sale"
+              package_id: "outdoor_display_q2"
+            - creative_id: "gen_video_summer_sale"
+              package_id: "outdoor_video_q2"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "results[0].action"
+            description: "Each creative has an action (created/updated)"
+          - check: field_present
+            path: "results[0].status"
+            description: "Each creative has a status (pending_review or accepted)"
+
+      - id: sync_creatives_standard
+        title: "Sync standard creatives alongside generative"
+        narrative: |
+          The buyer sends a pre-built creative using a standard format — verifying that this
+          programmatic seller also accepts traditional asset uploads alongside generative briefs.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the standard creative:
+          - Per-creative action: created
+          - Per-creative status: accepted or pending_review
+          - Standard asset validation (dimensions, file size, mime type)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "static_display_300x250"
+              name: "Trail Pro 3000 - Pre-built Display 300x250"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  format: "png"
+                  width: 300
+                  height: 250
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "results[0].action"
+            description: "Standard creative has an action"
+
+      - id: sync_creatives_invalid_brand
+        title: "Reject brief with invalid brand"
+        narrative: |
+          The buyer sends a brief referencing a brand domain that doesn't exist in
+          AgenticAdvertising.org. The seller should reject the creative rather than
+          generating with unknown brand identity.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Reject the creative with a clear error:
+          - Per-creative status: rejected
+          - Validation error indicating the brand domain could not be resolved
+          - The seller should not generate creatives for unknown brands
+
+        sample_request:
+          account:
+            brand:
+              domain: "nonexistent-brand-xyz.example"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "gen_invalid_brand"
+              name: "Invalid Brand Test"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250_generative"
+              assets:
+                brief:
+                  name: "Test brief"
+                  objective: "awareness"
+                  tone: "Neutral"
+                  messaging:
+                    headline: "Test"
+                    cta: "Click"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "results[0].status"
+            description: "Creative has a status (expected: rejected)"
+
+  - id: creative_generation_lifecycle
+    title: "Creative generation lifecycle"
+    narrative: |
+      If creative generation is asynchronous, the buyer monitors progress. The seller
+      transitions creatives through processing → pending_review → approved as generation
+      completes. The comply_test_controller can force these transitions for deterministic
+      testing via force_creative_status.
+
+      The buyer polls by re-calling sync_creatives with the same creatives. Because
+      sync_creatives has upsert semantics, re-sending the same brief is idempotent — the
+      seller returns the current status without restarting generation.
+
+    steps:
+      - id: check_creative_status
+        title: "Poll creative generation status"
+        narrative: |
+          The buyer re-sends the same creatives via sync_creatives. Because sync has upsert
+          semantics, this is idempotent — the seller returns updated statuses without
+          restarting generation. If the creative was pending_review after the initial sync,
+          it should transition to approved once generation completes. In testing, the
+          comply_test_controller forces this transition via force_creative_status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Return updated creative statuses:
+          - Generative creatives should transition from pending_review to approved
+          - Approved creatives should include generated assets (image URLs, VAST tags, etc.)
+          - The generated output should reflect the brand identity from the original brief
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "gen_display_summer_sale"
+              name: "Summer Sale - Generated Display 300x250"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250_generative"
+              assets:
+                brief:
+                  name: "Acme Outdoor Summer Sale Q2"
+                  objective: "conversion"
+                  tone: "Bold, adventurous, urgent"
+                  messaging:
+                    headline: "Summer Sale — 40% Off All Gear"
+                    cta: "Shop Now"
+            - creative_id: "gen_video_summer_sale"
+              name: "Summer Sale - Generated Video 30s"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "video_30s_generative"
+              assets:
+                brief:
+                  name: "Acme Outdoor Summer Sale Q2 - Video"
+                  objective: "awareness"
+                  tone: "Cinematic, energetic"
+                  messaging:
+                    headline: "Your Next Adventure Starts Here"
+                    cta: "Shop the Sale"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "results[0].status"
+            description: "Each creative has a current status"
+
+  - id: delivery_monitoring
+    title: "Delivery and reporting"
+    narrative: |
+      The campaign is live. Delivery monitoring is identical to any media buy seller —
+      the generative aspect doesn't change how delivery is reported. The buyer monitors
+      impressions, clicks, spend, and pacing.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data for the active media buy. Reporting is the same
+          regardless of whether creatives were generated or uploaded.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics for the media buy:
+          - Per-package delivery: impressions, clicks, spend, completion rates
+          - Daily breakdown if requested
+          - Pacing information
+          - Budget utilization
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026"
+          include_package_daily_breakdown: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "Response contains media buy delivery data"
