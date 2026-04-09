@@ -1078,39 +1078,61 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     expect(result.sandbox).toBe(true);
-    // Future dates → pending_activation status
-    expect(result.status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
   });
 
   it('derives status from flight dates', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'status.example' }, operator: 'status.example' };
 
-    // Past dates → completed
+    // Without creatives, all non-terminal buys are pending_creatives
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: past } = await simulateCallTool(server1, 'create_media_buy', {
-      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
+      account,
       brand: { domain: 'status.example' },
       start_time: '2020-01-01T00:00:00Z',
       end_time: '2020-01-31T23:59:59Z',
       packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
     });
-    expect(past.status).toBe('completed');
+    expect(past.status).toBe('pending_creatives');
 
-    // Current dates → active
+    // With creatives assigned, date-based derivation applies
     const now = new Date();
-    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureStart = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: active } = await simulateCallTool(server2, 'create_media_buy', {
-      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
+    const { result: created } = await simulateCallTool(server2, 'create_media_buy', {
+      account,
       brand: { domain: 'status.example' },
-      start_time: start,
-      end_time: end,
+      start_time: futureStart,
+      end_time: futureEnd,
       packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
     });
-    expect(active.status).toBe('active');
+    const mediaBuyId = created.media_buy_id as string;
+    const pkgs = (created.packages as Array<Record<string, unknown>>);
+    const packageId = pkgs[0].package_id as string;
+
+    // Sync a creative and assign it to the package
+    await simulateCallTool(server2, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_status_test',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Status Test Creative',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_status_test' }],
+    });
+
+    // Now retrieve — future dates with creatives → pending_start
+    const { result: buyResult } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = (buyResult.media_buys as Array<Record<string, unknown>>);
+    expect(buys[0].status).toBe('pending_start');
   });
 
   it('returns package with required fields', async () => {
@@ -1375,8 +1397,8 @@ describe('create_media_buy handler', () => {
         budget: 50000,
       }],
     });
-    // Future dates → pending_activation (not active)
-    expect(result.status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(result.status).toBe('pending_creatives');
   });
 });
 
@@ -1568,17 +1590,17 @@ describe('get_media_buys handler', () => {
         budget: 10000,
       }],
     });
-    // Retrieve (default status_filter is ['active'], so include pending_activation)
+    // Retrieve (default status_filter is ['active'], so include pending statuses)
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'get_media_buys', {
       account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
-      status_filter: ['pending_activation', 'active'],
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
     });
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
-    // Future dates => pending_activation status
-    expect(buys[0].status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(buys[0].status).toBe('pending_creatives');
   });
 
   it('persists governance_context from create and returns it on get', async () => {
@@ -2975,7 +2997,7 @@ describe('update_media_buy pause/resume', () => {
 
     // Verify via get_media_buys
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_activation', 'active', 'paused'] });
+    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_creatives', 'pending_start', 'active', 'paused'] });
     const buys = listResult.media_buys as Array<Record<string, unknown>>;
     const buyPkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(buyPkgs[0].paused).toBe(true);
@@ -3775,7 +3797,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed'] });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['pending_creatives', 'active', 'completed'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const mbPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3832,7 +3854,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed'] });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['pending_creatives', 'active', 'completed'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const refPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3880,7 +3902,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {

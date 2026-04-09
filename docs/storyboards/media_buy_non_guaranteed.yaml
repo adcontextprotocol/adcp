@@ -124,7 +124,7 @@ phases:
         expected: |
           Return the media buy in completed status:
           - media_buy_id: your platform's identifier
-          - status: confirmed or active (no async approval needed)
+          - status: active (no async approval needed)
           - confirmed_at: timestamp
           - packages: confirmed line items with bid prices acknowledged
           - valid_actions: pause, update_bid, get_delivery
@@ -285,5 +285,5 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
           - check: field_present
-            path: "media_buys"
+            path: "media_buy_deliveries"
             description: "Response contains media buy delivery data"

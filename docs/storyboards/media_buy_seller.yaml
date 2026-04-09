@@ -303,7 +303,7 @@ phases:
           - Proposal: buyer passes a proposal_id from get_products to execute a proposal
 
           The response status tells the buyer what happens next:
-          - completed: buy is confirmed and live
+          - completed: buy is active and live
           - working: your platform is processing (poll or wait for webhook)
           - submitted: long-running async — approval workflow, IO signing, etc.
           - input-required: need more information (budget clarification, approval)
@@ -318,8 +318,8 @@ phases:
 
           Synchronous (completed):
           - media_buy_id: your platform's identifier
-          - status: confirmed or pending_creatives
-          - packages: confirmed line items with pricing
+          - status: active or pending_creatives
+          - packages: line items with pricing
           - confirmed_at: timestamp
           - valid_actions: what the buyer can do next
 
@@ -368,7 +368,7 @@ phases:
         narrative: |
           If create_media_buy returned working or submitted, the buyer polls for status
           updates. Your platform returns the current state of the media buy — whether
-          it's still processing, awaiting approval, or confirmed.
+          it's still processing, awaiting approval, or active.
 
           This is also how the buyer checks for pending_approval status. If your platform
           requires IO signing or human authorization, the buy sits at pending_approval
@@ -383,13 +383,13 @@ phases:
         expected: |
           Return the current state of the media buy:
           - media_buy_id: matches what was returned from create_media_buy
-          - status: draft, pending_approval, confirmed, active, paused, completed, canceled
+          - status: pending_creatives, pending_start, active, paused, completed, rejected, canceled
           - packages: line items with current delivery status
           - valid_actions: what operations are available in this state
 
-          If pending_approval:
-          - Include setup URL where the human completes approval
-          - Include message explaining what's needed
+          If pending_creatives:
+          - Include message explaining what creatives are needed
+          - valid_actions should include sync_creatives
 
         sample_request:
           account:
@@ -495,7 +495,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Each creative has an action (created/updated)"
 
   - id: delivery_monitoring
@@ -544,5 +544,5 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
           - check: field_present
-            path: "media_buys"
+            path: "media_buy_deliveries"
             description: "Response contains media buy delivery data"

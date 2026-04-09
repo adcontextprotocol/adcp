@@ -764,8 +764,8 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         status_filter: {
           description: 'Filter by media buy status. Single status or array. Defaults to ["active"] when no IDs provided.',
           oneOf: [
-            { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
-            { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
+            { type: 'string', enum: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
+            { type: 'array', items: { type: 'string', enum: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
           ],
         },
         include_snapshot: {

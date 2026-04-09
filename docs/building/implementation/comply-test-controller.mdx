@@ -126,14 +126,14 @@ Transitions an account to the specified status. The seller MUST enforce the [acc
 
 ### `force_media_buy_status`
 
-Transitions a media buy to the specified status. The seller MUST enforce the media buy lifecycle — `rejected` is only valid from `pending_activation`.
+Transitions a media buy to the specified status. The seller MUST enforce the media buy lifecycle — `rejected` is only valid from `pending_creatives` or `pending_start`.
 
 **Params:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `media_buy_id` | string | Yes | Media buy to transition |
-| `status` | `pending_activation` \| `active` \| `paused` \| `completed` \| `rejected` \| `canceled` | Yes | Target status |
+| `status` | `pending_creatives` \| `pending_start` \| `active` \| `paused` \| `completed` \| `rejected` \| `canceled` | Yes | Target status |
 | `rejection_reason` | string | When `status` = `rejected` | Reason for rejection |
 
 **Example:**
@@ -402,13 +402,14 @@ Comply distinguishes three outcome categories in deterministic mode:
 ### Example: media buy lifecycle in deterministic mode
 
 ```
-1. create_media_buy() → status = "pending_activation"
+1. create_media_buy() → status = "pending_creatives"
 2. force_media_buy_status(media_buy_id, "rejected", reason) → expect success
 3. get_media_buys() → verify status = "rejected", rejection_reason persisted
 4. force_media_buy_status(media_buy_id, "active") → expect INVALID_TRANSITION (rejected is terminal)
-5. create_media_buy() → new buy, status = "pending_activation"
-6. force_media_buy_status(media_buy_id, "active")
-7. force_media_buy_status(media_buy_id, "rejected") → expect INVALID_TRANSITION (rejected only valid from pending_activation)
+5. create_media_buy() → new buy, status = "pending_creatives"
+6. force_media_buy_status(media_buy_id, "pending_start")
+7. force_media_buy_status(media_buy_id, "active")
+8. force_media_buy_status(media_buy_id, "rejected") → expect INVALID_TRANSITION (rejected only valid from pending_creatives or pending_start)
 ```
 
 ### Example: delivery and budget verification

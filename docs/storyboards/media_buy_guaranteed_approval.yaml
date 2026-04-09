@@ -16,7 +16,7 @@ narrative: |
 
   The buyer either polls get_media_buys or configures a push_notification_config webhook to
   receive a callback when the IO is signed. Once approved, the media buy transitions from
-  pending_approval to confirmed/active and the buyer can sync creatives and monitor delivery.
+  pending_approval to active and the buyer can sync creatives and monitor delivery.
 
   This storyboard isolates the guaranteed approval path — the async handshake between agent
   automation and human decision-making that makes guaranteed buys work in practice.
@@ -264,15 +264,15 @@ phases:
     narrative: |
       The human has reviewed the IO and signed it through the setup URL. The buyer
       polls get_media_buys again (or received a webhook notification) and sees that the
-      media buy has transitioned from pending_approval to confirmed or active. The buy
+      media buy has transitioned from pending_approval to active. The buy
       is now live.
 
     steps:
-      - id: get_media_buys_confirmed
-        title: "Check media buy status (confirmed/active)"
+      - id: get_media_buys_active
+        title: "Check media buy status (active)"
         narrative: |
           After the human signs the IO, the buyer checks the media buy status again.
-          Your platform returns confirmed or active, indicating the buy is approved
+          Your platform returns active, indicating the buy is approved
           and inventory is reserved.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
@@ -281,12 +281,12 @@ phases:
         comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
-          Return the media buy in confirmed or active status:
+          Return the media buy in active status:
           - media_buy_id: matches the buy created earlier
-          - status: confirmed or active (IO has been signed)
+          - status: active (IO has been signed)
           - confirmed_at: timestamp when the IO was signed
-          - packages: line items now confirmed with reserved inventory
-          - valid_actions: updated for confirmed state (creative sync, pause, etc.)
+          - packages: line items with reserved inventory
+          - valid_actions: updated for active state (creative sync, pause, etc.)
 
         sample_request:
           account:
@@ -301,15 +301,15 @@ phases:
             description: "Response matches get-media-buys-response.json schema"
           - check: field_present
             path: "media_buys[0].status"
-            description: "Media buy status is confirmed or active"
+            description: "Media buy status is active"
           - check: field_present
             path: "media_buys[0].confirmed_at"
-            description: "Confirmed buy includes a confirmed_at timestamp"
+            description: "Active buy includes a confirmed_at timestamp"
 
   - id: creative_sync
     title: "Creative sync"
     narrative: |
-      With the IO signed and the media buy confirmed, the buyer syncs creative assets
+      With the IO signed and the media buy active, the buyer syncs creative assets
       to your platform. Each package has creative format requirements that the buyer
       discovered during product discovery.
 
@@ -352,7 +352,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Each creative has an action (created/updated)"
 
   - id: delivery_monitoring
@@ -394,5 +394,5 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
           - check: field_present
-            path: "media_buys"
+            path: "media_buy_deliveries"
             description: "Response contains media buy delivery data"
