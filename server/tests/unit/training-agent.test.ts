@@ -5215,3 +5215,74 @@ describe('governance audit logs by governance_context', () => {
     expect(result.binding).toBe('proposed');
   });
 });
+
+describe('governance creative_services purchase type', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('governs creative_services end-to-end: check, report, audit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-creative',
+      brand: { name: 'Acme' },
+      objectives: 'creative test',
+      budget: {
+        total: 50000,
+        currency: 'USD',
+        authority_level: 'agent_full',
+        allocations: { creative_services: { amount: 10000 } },
+      },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Check governance for build_creative
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 5000 },
+    });
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+    expect(ctx).toBeDefined();
+
+    // Report outcome with seller_reference
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-creative',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'creative_order_001', committed_budget: 5000 },
+    });
+    expect(outcome.status).toBe('accepted');
+
+    // Check that allocation is tracked — $5K remaining, $6K should be denied
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 6000 },
+    });
+    expect(denied.status).toBe('denied');
+
+    // Audit logs show governed action with seller_reference
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-creative'],
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const actions = plans[0].governed_actions as Array<Record<string, unknown>>;
+    const creativeAction = actions.find(a => a.purchase_type === 'creative_services');
+    expect(creativeAction).toBeDefined();
+    expect(creativeAction!.committed).toBe(5000);
+    expect(creativeAction!.seller_reference).toBe('creative_order_001');
+  });
+});

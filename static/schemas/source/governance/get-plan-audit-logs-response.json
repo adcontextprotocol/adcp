@@ -382,7 +382,8 @@
                 "governance_context",
                 "purchase_type",
                 "status",
-                "committed"
+                "committed",
+                "check_count"
               ],
               "additionalProperties": false
             }
