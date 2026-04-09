@@ -1486,7 +1486,7 @@
         // Fetch first step preview
         panel.innerHTML = '<em>Loading first step...</em>';
         try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
+          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
           const data = await res.json();
           if (!res.ok) { panel.innerHTML = '<em>' + escapeHtml(data.error || 'Failed') + '</em>'; return; }
 

@@ -2819,11 +2819,23 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        let auth;
+        try {
+          auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        } catch (authErr) {
+          logger.debug({ err: authErr, agentUrl }, "Auth resolution failed for step run");
+        }
+
         const { context, dry_run } = req.body;
+        if (context && (typeof context !== "object" || Array.isArray(context))) {
+          return res.status(400).json({ error: "context must be a JSON object" });
+        }
+        if (context && JSON.stringify(context).length > 50_000) {
+          return res.status(400).json({ error: "context too large" });
+        }
 
         const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, {
-          dry_run: dry_run !== false,
+          dry_run: dry_run ?? true,
           ...(auth && { auth }),
           ...(context && { context }),
         });
@@ -2838,8 +2850,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // Get first step preview for a storyboard (no agent call needed)
   router.get(
-    "/registry/agents/:encodedUrl/storyboard/:storyboardId/first-step",
-    ...complianceWriteMiddleware,
+    "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
         const storyboard = getStoryboardById(req.params.storyboardId);
