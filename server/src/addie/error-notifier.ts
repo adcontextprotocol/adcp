@@ -148,10 +148,11 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
 
   recentErrors.set(throttleKey, now);
 
+  const quoted = ctx.errorMessage.substring(0, 500).split('\n').map(line => `> ${line}`).join('\n');
   const lines = [
     `:rotating_light: *System error: ${ctx.source}*`,
     '',
-    `> ${ctx.errorMessage.substring(0, 500)}`,
+    quoted,
   ];
 
   await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
