@@ -2679,7 +2679,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
 
     try {
-      const client = createTestClient(agentUrl, "mcp");
+      const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+      const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
       const agentInfo = await client.getAgentInfo();
       const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
