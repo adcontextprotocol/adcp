@@ -135,6 +135,18 @@ export class EventsDatabase {
   }
 
   /**
+   * Get event by Luma event ID
+   */
+  async getEventByLumaId(lumaEventId: string): Promise<Event | null> {
+    const result = await query<Event>(
+      'SELECT * FROM events WHERE luma_event_id = $1',
+      [lumaEventId]
+    );
+
+    return result.rows[0] ? this.deserializeEvent(result.rows[0]) : null;
+  }
+
+  /**
    * Update an event
    */
   async updateEvent(id: string, updates: UpdateEventInput): Promise<Event | null> {

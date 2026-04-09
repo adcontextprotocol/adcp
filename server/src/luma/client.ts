@@ -165,7 +165,7 @@ export async function createEvent(input: CreateEventInput): Promise<LumaEvent> {
 }
 
 /**
- * Get event details by ID
+ * Get event details by API ID
  */
 export async function getEvent(eventId: string): Promise<LumaEvent | null> {
   try {
@@ -173,6 +173,50 @@ export async function getEvent(eventId: string): Promise<LumaEvent | null> {
     return response.event;
   } catch (error) {
     logger.error({ err: error, eventId }, 'Error fetching Luma event');
+    return null;
+  }
+}
+
+/**
+ * Extract a Luma event slug from a URL.
+ * Handles: https://lu.ma/sm6ggl45, https://luma.com/sm6ggl45, or just "sm6ggl45"
+ */
+export function extractLumaSlug(urlOrSlug: string): string {
+  const trimmed = urlOrSlug.trim();
+
+  // Try to parse as URL
+  try {
+    const url = new URL(trimmed);
+    // Handle lu.ma/slug or luma.com/slug
+    const path = url.pathname.replace(/^\//, '').split('/')[0];
+    if (path) return path;
+  } catch {
+    // Not a URL — treat as bare slug
+  }
+
+  return trimmed;
+}
+
+/**
+ * Get event details by Luma URL slug or API ID.
+ * Tries the slug first, then falls back to treating it as an api_id.
+ *
+ * Note: The Luma API only returns events owned by the API key's calendar.
+ * Events created under other Luma accounts will return 403.
+ */
+export async function getEventBySlug(slug: string): Promise<LumaEvent | null> {
+  // Luma's public API uses `api_id` for lookups.
+  // URL slugs and api_ids are different — try the slug as api_id directly.
+  try {
+    const response = await lumaFetch<{ event: LumaEvent }>(`/event/get?api_id=${encodeURIComponent(slug)}`);
+    return response.event;
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg.includes('403')) {
+      logger.warn({ slug }, 'Luma API key does not have access to this event — it may belong to a different calendar');
+    } else {
+      logger.error({ err: error, slug }, 'Error fetching Luma event by slug');
+    }
     return null;
   }
 }
@@ -400,7 +444,7 @@ export async function listCalendarEvents(
 // ============================================================================
 
 export interface LumaWebhookPayload {
-  action: 'event.created' | 'event.updated' | 'event.deleted' | 'guest.created' | 'guest.updated';
+  action: 'event.created' | 'event.updated' | 'event.deleted' | 'event.cancelled' | 'guest.created' | 'guest.updated';
   data: {
     api_id: string;
     event?: LumaEvent;
@@ -431,7 +475,7 @@ export function parseWebhookPayload(body: unknown): LumaWebhookPayload | null {
     return null;
   }
 
-  const validActions = ['event.created', 'event.updated', 'event.deleted', 'guest.created', 'guest.updated'];
+  const validActions = ['event.created', 'event.updated', 'event.deleted', 'event.cancelled', 'guest.created', 'guest.updated'];
   if (!validActions.includes(payload.action)) {
     logger.warn({ action: payload.action }, 'Unknown webhook action');
     return null;

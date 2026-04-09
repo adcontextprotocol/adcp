@@ -27,6 +27,7 @@ import {
   parseWebhookPayload as parseLumaWebhook,
   type LumaWebhookPayload,
 } from '../luma/client.js';
+import { createEventFromLuma } from '../luma/sync.js';
 import { eventsDb } from '../db/events-db.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import {
@@ -1017,8 +1018,52 @@ async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void
 }
 
 /**
+ * Handle Luma event.created webhook
+ * Creates a new event in the AAO database from a Luma event
+ */
+async function handleLumaEventCreated(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEvent = payload.data.event;
+  if (!lumaEvent) {
+    logger.warn({ payload }, 'Luma event.created webhook missing event data');
+    return;
+  }
+
+  const result = await createEventFromLuma(lumaEvent);
+  if (result) {
+    logger.info({ eventId: result.id, slug: result.slug, lumaEventId: lumaEvent.api_id }, 'Created event from Luma webhook');
+  }
+}
+
+/**
+ * Handle Luma event.deleted or event.cancelled webhook
+ * Marks the AAO event as cancelled if it exists
+ */
+async function handleLumaEventCancelled(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEventId = payload.data.event?.api_id || payload.data.api_id;
+  if (!lumaEventId) {
+    logger.warn({ payload }, 'Luma event cancelled webhook missing event ID');
+    return;
+  }
+
+  const pool = getPool();
+  const eventResult = await pool.query(
+    `SELECT id, title FROM events WHERE luma_event_id = $1`,
+    [lumaEventId]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId }, 'Luma event cancelled for unknown event, ignoring');
+    return;
+  }
+
+  const event = eventResult.rows[0];
+  await eventsDb.updateEvent(event.id, { status: 'cancelled' as any });
+  logger.info({ eventId: event.id, title: event.title, lumaEventId }, 'Cancelled event from Luma webhook');
+}
+
+/**
  * Handle Luma event.updated webhook
- * Syncs event changes from Luma to our database
+ * Syncs event changes from Luma to our database, creating the event if it doesn't exist yet
  */
 async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void> {
   const lumaEvent = payload.data.event;
@@ -1036,13 +1081,15 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
   );
 
   if (eventResult.rows.length === 0) {
-    logger.debug({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, ignoring');
+    // Event doesn't exist yet — create it
+    logger.info({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, creating');
+    await createEventFromLuma(lumaEvent);
     return;
   }
 
   const eventId = eventResult.rows[0].id;
 
-  // Update our event with Luma changes
+  // Update our event with Luma changes (all fields that createEventFromLuma maps)
   await eventsDb.updateEvent(eventId, {
     title: lumaEvent.name,
     description: lumaEvent.description || undefined,
@@ -1052,7 +1099,10 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
     venue_name: lumaEvent.geo_address_json?.description || undefined,
     venue_address: lumaEvent.geo_address_json?.full_address || undefined,
     venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_state: lumaEvent.geo_address_json?.region || undefined,
     venue_country: lumaEvent.geo_address_json?.country || undefined,
+    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
+    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
     virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
     featured_image_url: lumaEvent.cover_url || undefined,
   });
@@ -1073,12 +1123,22 @@ export function createWebhooksRouter(): Router {
   router.post('/luma', async (req: Request, res: Response) => {
     const requestStartTime = Date.now();
 
+    // Verify webhook authenticity via signing secret
+    const LUMA_WEBHOOK_SECRET = process.env.LUMA_WEBHOOK_SECRET;
+    if (LUMA_WEBHOOK_SECRET) {
+      const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
+      if (providedSecret !== LUMA_WEBHOOK_SECRET) {
+        logger.warn('Luma webhook rejected: invalid signing secret');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+
     try {
-      logger.info({ body: req.body }, 'Received Luma webhook');
+      logger.debug({ action: (req.body as Record<string, unknown>)?.action }, 'Received Luma webhook');
 
       const payload = parseLumaWebhook(req.body);
       if (!payload) {
-        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+        logger.warn('Invalid Luma webhook payload structure');
         return res.status(400).json({ error: 'Invalid payload' });
       }
 
@@ -1098,13 +1158,11 @@ export function createWebhooksRouter(): Router {
           await handleLumaEventUpdated(payload);
           break;
         case 'event.created':
-          // Events created via Luma directly are logged but not auto-synced
-          // (we create events from AAO, not vice versa)
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
+          await handleLumaEventCreated(payload);
           break;
         case 'event.deleted':
-          // Log but don't auto-delete our events
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
+        case 'event.cancelled':
+          await handleLumaEventCancelled(payload);
           break;
         default:
           logger.warn({ action: payload.action }, 'Unknown Luma webhook action');

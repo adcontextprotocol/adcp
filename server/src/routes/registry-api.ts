@@ -2559,6 +2559,58 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  router.get("/registry/agents/:encodedUrl/auth-status", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Verify ownership and get org ID in one query
+      const orgResult = await query(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
+         JOIN organization_memberships om
+           ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.agents @> $1::jsonb
+           AND om.workos_user_id = $2
+         LIMIT 1`,
+        [JSON.stringify([{ url: agentUrl }]), req.user.id],
+      );
+
+      const noAuthResponse = { has_auth: false, agent_context_id: null, auth_type: null, has_oauth_token: false, has_valid_oauth: false, oauth_token_expires_at: null };
+
+      if (orgResult.rows.length === 0) {
+        return res.json(noAuthResponse);
+      }
+
+      const orgId = orgResult.rows[0].workos_organization_id;
+      const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+
+      if (!context) {
+        return res.json(noAuthResponse);
+      }
+
+      const hasValidOAuth = agentContextDb.hasValidOAuthTokens(context);
+
+      res.json({
+        has_auth: context.has_auth_token || hasValidOAuth,
+        agent_context_id: context.id,
+        auth_type: context.has_auth_token ? context.auth_type : hasValidOAuth ? "oauth" : null,
+        has_oauth_token: context.has_oauth_token,
+        has_valid_oauth: hasValidOAuth,
+        oauth_token_expires_at: context.oauth_token_expires_at?.toISOString() || null,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get agent auth status");
+      res.status(500).json({ error: "Failed to get agent auth status" });
+    }
+  });
+
   router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -2636,6 +2688,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
+        agent_context_id: context.id,
         platform_type: platform_type || undefined,
       });
     } catch (error) {

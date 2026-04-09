@@ -254,7 +254,7 @@ export function createAccountLinkingRouter(): Router {
         await client.query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
-           ON CONFLICT (workos_user_id, email) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [userId, oldPrimary]
         );
 
@@ -410,11 +410,12 @@ export function handleEmailLinkVerification(app: {
           );
         }
 
-        // Record the email alias
+        // Record the email alias (use bare ON CONFLICT to handle both the
+        // composite UNIQUE(workos_user_id, email) and the LOWER(email) index)
         await query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
-           ON CONFLICT (workos_user_id, email) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [tokenRecord.primary_workos_user_id, tokenRecord.target_email]
         );
 
@@ -448,9 +449,9 @@ export function handleEmailLinkVerification(app: {
       );
 
       return renderVerifyPage(res, { success: true, message });
-    } catch (error) {
+    } catch (error: any) {
       await client.query('ROLLBACK').catch(() => {});
-      logger.error({ error }, 'Email link verification failed');
+      logger.error({ error, errorMessage: error?.message, errorCode: error?.code }, 'Email link verification failed');
       return renderVerifyPage(res, { success: false, message: 'Something went wrong during verification. Please try again or contact support.' });
     } finally {
       client.release();

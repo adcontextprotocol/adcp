@@ -2133,29 +2133,51 @@ export function createOrganizationsRouter(): Router {
       const slackDb = new SlackDatabase();
       const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
-      // Bulk-fetch seat types from local DB
-      const seatTypesResult = await getPool().query<{ workos_user_id: string; seat_type: string }>(
-        'SELECT workos_user_id, seat_type FROM organization_memberships WHERE workos_organization_id = $1',
-        [orgId]
-      );
-      const seatTypeMap = new Map(seatTypesResult.rows.map(r => [r.workos_user_id, r.seat_type]));
+      // Bulk-fetch local membership data and user-set names in parallel
+      const [localMembersResult, localUsersResult] = await Promise.all([
+        getPool().query<{
+          workos_user_id: string;
+          seat_type: string;
+          first_name: string | null;
+          last_name: string | null;
+          role: string | null;
+        }>(
+          'SELECT workos_user_id, seat_type, first_name, last_name, role FROM organization_memberships WHERE workos_organization_id = $1',
+          [orgId]
+        ),
+        getPool().query<{
+          workos_user_id: string;
+          first_name: string | null;
+          last_name: string | null;
+        }>(
+          'SELECT workos_user_id, first_name, last_name FROM users WHERE workos_user_id = ANY($1)',
+          [allMemberships.map(m => m.userId)]
+        ),
+      ]);
+      const localMemberMap = new Map(localMembersResult.rows.map(r => [r.workos_user_id, r]));
+      const localUserMap = new Map(localUsersResult.rows.map(r => [r.workos_user_id, r]));
 
       // Fetch user details for each membership
       const members = await Promise.all(
         allMemberships.map(async (membership) => {
+          const localMember = localMemberMap.get(membership.userId);
+          const localUser = localUserMap.get(membership.userId);
           try {
             const memberUser = await workos!.userManagement.getUser(membership.userId);
+            // Prefer local user names > local membership names > WorkOS names
+            const firstName = localUser?.first_name ?? localMember?.first_name ?? memberUser.firstName ?? null;
+            const lastName = localUser?.last_name ?? localMember?.last_name ?? memberUser.lastName ?? null;
             return {
               id: membership.id,
               user_id: membership.userId,
               email: memberUser.email,
-              first_name: memberUser.firstName || null,
-              last_name: memberUser.lastName || null,
-              role: membership.role?.slug || 'member',
+              first_name: firstName,
+              last_name: lastName,
+              role: membership.role?.slug || localMember?.role || 'member',
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: mappedWorkosUserIds.has(membership.userId),
-              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
+              seat_type: localMember?.seat_type ?? 'community_only',
             };
           } catch (error) {
             // User might have been deleted
@@ -2164,13 +2186,13 @@ export function createOrganizationsRouter(): Router {
               id: membership.id,
               user_id: membership.userId,
               email: 'Unknown',
-              first_name: null,
-              last_name: null,
-              role: membership.role?.slug || 'member',
+              first_name: localUser?.first_name ?? localMember?.first_name ?? null,
+              last_name: localUser?.last_name ?? localMember?.last_name ?? null,
+              role: membership.role?.slug || localMember?.role || 'member',
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: false,
-              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
+              seat_type: localMember?.seat_type ?? 'community_only',
             };
           }
         })
