@@ -199,22 +199,22 @@ Server-side header bidding that handles bid requests on the server:
 
 ## AdCP Sales Agent + Prebid Integration
 
-The AdCP Sales Agent (reference implementation: salesagent repo) integrates with Prebid through the Trusted Match Protocol (TMP) in a two-phase workflow:
+The AdCP Sales Agent (reference implementation: salesagent repo) integrates with Prebid through AXE (Agentic eXecution Engine) in a two-phase workflow. Note: AXE is deprecated and being replaced by the Trusted Match Protocol (TMP). Use search_docs for current TMP documentation.
 
 **Phase 1 - Offline Setup:**
 1. Buyer Agent creates campaigns with targeting and budgets via AdCP
 2. Signal Agents attach audiences, brand suitability rules, contextual signals
-3. Orchestrator maps campaigns to opaque TMP segment IDs and syncs data to the RTD module
-4. Sales Agent creates ad server line items (in GAM/Kevel) targeting TMP key-values (tmpi for include, tmpx for exclude, tmpm for creative macros)
+3. Orchestrator maps campaigns to opaque AXE segment IDs and syncs data to the RTD module
+4. Sales Agent creates ad server line items (in GAM/Kevel) targeting AXE key-values (axei for include, axex for exclude, axem for creative macros)
 
 **Phase 2 - Real-Time Serving (via Prebid):**
 1. User visits publisher page, triggering ad request
-2. Ad server initiates request; Prebid's RTD module sends OpenRTB request to TMP endpoint
-3. TMP evaluates user/context against segment rules and returns segment decisions
-4. Segment values (tmpi/tmpx/tmpm) are passed as key-values to the ad server
+2. Ad server initiates request; Prebid's RTD module sends OpenRTB request to AXE endpoint
+3. AXE evaluates user/context against segment rules and returns segment decisions
+4. Segment values (axei/axex/axem) are passed as key-values to the ad server
 5. Ad server matches line items to segments and serves the appropriate ad
 
-Publishers support this by integrating Prebid's RTD module, accepting TMP key-value targeting, and declaring TMP support in their adagents.json.
+Publishers support this by integrating Prebid's RTD module, accepting AXE key-value targeting, and declaring AXE support in their adagents.json. New integrations should use TMP instead.
 
 ## Common Troubleshooting
 
@@ -231,58 +231,28 @@ Prebid and AdCP are complementary:
 - Prebid optimizes yield per impression (real-time auction for individual ad slots)
 - AdCP enables budget allocation across many partners over time (campaign-level)
 - A publisher can use both: Prebid for programmatic demand, AdCP for direct/agentic campaigns
-- The Sales Agent bridges them: it creates ad server line items from AdCP campaigns, and Prebid's RTD module handles real-time execution via TMP
+- The Sales Agent bridges them: it creates ad server line items from AdCP campaigns, and Prebid's RTD module handles real-time execution via AXE (being replaced by TMP)
 
-## TMP Orchestrator Implementation
-TMP (Trusted Match Protocol) is a protocol-level concept. Orchestrators implement TMP and integrate it into ad serving environments. The integration path depends on the ad platform.
+## Trusted Match Protocol (TMP)
+TMP replaces AXE with a structurally different architecture. Key differences from AXE:
 
-## Integration Paths
+- **Two-operation model**: TMP splits requests into Context Match (content signals, no user data) and Identity Match (user eligibility, no content data). AXE sent everything in one request.
+- **Offers instead of segments**: TMP returns offers and eligibility decisions. AXE returned opaque segment IDs (axei/axex/axem).
+- **No intermediary required**: Buyer agents can serve Context Match and Identity Match endpoints directly. AXE required an orchestrator middleman.
+- **GAM targeting**: TMP uses `adcp_pkg` key-values. AXE used `axei`/`axex`/`axem`.
+- **TMP Router**: Replaces vendor-specific Prebid RTD modules with a single TMP Prebid module.
 
-TMP can be deployed in several ways:
+AXE and TMP can run in parallel during migration. For full details, use search_docs to look up "Trusted Match Protocol" or "AXE migration."
 
-1. **Prebid RTD module** - Orchestrator distributes a Prebid module that calls the TMP endpoint during auction. Example: Scope3's scope3RtdProvider. The module name in Prebid matches the orchestrator, not "TMP."
-2. **Proprietary ad platform** - TMP runs as a container or secure enclave within the platform's infrastructure. Segment evaluation happens natively in the platform's decisioning pipeline, with no external call at impression time.
-3. **Server-side** - TMP endpoint called server-to-server by the ad platform before decisioning. Custom ad server integration.
+## AXE (Deprecated)
+AXE (Agentic eXecution Engine) is the legacy impression-time execution layer. It is deprecated and being replaced by TMP. Existing AXE integrations continue to work.
 
-Regardless of integration path, TMP evaluates segments and returns tmpi/tmpx/tmpm decisions.
+Scope3 is the reference AXE implementation via their scope3RtdProvider Prebid RTD module. The AXE segment model uses three key-values:
+- `axei` — include segment (audience targeting)
+- `axex` — exclude segment (brand suitability/suppression)
+- `axem` — macro data (creative personalization, base64-encoded)
 
-## Scope3 as TMP Implementer
-
-Scope3 is the reference TMP implementation. They integrate via Prebid RTD module (scope3RtdProvider):
-
-1. Publisher's Prebid config includes scope3RtdProvider
-2. Module sends request to https://agentic.scope3.com (the TMP endpoint)
-3. TMP evaluates segments and returns tmpi/tmpx/tmpm values
-4. Values passed as key-values to the ad server
-5. Line items match on segment key-values
-
-## Connecting the Dots
-
-- The tmp_integrations URL in get_adcp_capabilities (e.g., "https://agentic.scope3.com") maps to a specific orchestrator's TMP endpoint
-- A seller declaring tmp_integrations: ["https://agentic.scope3.com"] means they integrate with Scope3's TMP — possibly via Prebid RTD module, container, or other path
-- Scope3's RTD module in Prebid IS one implementation of TMP — protocol vs implementation are different views of the same thing
-
-## Identifying TMP on a Publisher Page (Web/Prebid)
-
-When users ask about a web publisher's Prebid setup and TMP support:
-- Look for orchestrator RTD modules: scope3RtdProvider in pbjs.installedModules or the Prebid source
-- Check realTimeData.dataProviders config for name: "scope3" (or other orchestrator names)
-- Check network tab for tmpi/tmpx/tmpm key-values in ad server requests
-- A publisher with scope3RtdProvider loaded supports TMP targeting through Scope3
-
-## Identifying TMP on Proprietary Platforms
-
-For proprietary ad platforms, TMP may be integrated as a container or secure enclave:
-- Check get_adcp_capabilities for tmp_integrations URLs
-- The platform handles TMP internally — no visible Prebid module
-- Segment protocol (tmpi/tmpx/tmpm) is the same regardless of deployment
-
-## What This Means for Publishers
-
-Publishers don't implement TMP directly. Depending on their ad platform:
-- **Prebid publishers**: Add the orchestrator's RTD module to their build
-- **Proprietary platforms**: TMP is integrated by the platform or orchestrator
-- In both cases, the orchestrator handles segment evaluation and the publisher configures targeting in their ad server
+When users ask about AXE, explain that it works but new integrations should use TMP. Use search_docs for current migration guidance.
 
 ## Prebid RTD Module Internals
 ## Prebid RTD Module Architecture
@@ -299,7 +269,7 @@ RTD submodules implement RtdProviderSpec with these hooks:
 
 **Data Hooks (implement one or both):**
 - `getBidRequestData(request, callback, config, consent, timeout)` - Pre-auction. Modify bid requests via ortb2Fragments before they go to SSPs/exchanges. MUST call callback() when done, even on error.
-- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., {'ad-unit-1': {tmpi: 'seg123'}}).
+- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., {'ad-unit-1': {axei: 'seg123'}}).
 
 **Event Hooks (optional):**
 - `onAuctionInitEvent`, `onAuctionEndEvent`, `onBidRequestEvent`, `onBidResponseEvent`, `onBidAcceptedEvent`
@@ -343,21 +313,21 @@ Modules must use getStorageManager() for cookie/localStorage access, not direct 
 
 ## Scope3 RTD Module Specifics
 
-Scope3's scope3RtdProvider implements TMP for Prebid. Key details:
+Scope3's scope3RtdProvider implements AXE for Prebid. Key details:
 
 **Publisher params:**
 - orgId (required) - Scope3 organization identifier
-- endpoint (default: https://prebid.scope3.com/prebid) - TMP API endpoint
+- endpoint (default: https://prebid.scope3.com/prebid) - AXE API endpoint
 - timeout (default: 1000ms) - Request timeout
-- includeKey (default: 'tmpi') - GAM targeting key for include segments
-- excludeKey (default: 'tmpx') - GAM targeting key for exclude segments
-- macroKey (default: 'tmpm') - GAM targeting key for macro data
+- includeKey (default: 'axei') - GAM targeting key for include segments
+- excludeKey (default: 'axex') - GAM targeting key for exclude segments
+- macroKey (default: 'axem') - GAM targeting key for macro data
 
 **How it works:**
 1. getBidRequestData: Extracts OpenRTB data from ortb2Fragments.global, builds imp array from adUnits, POSTs to Scope3 endpoint
 2. Scope3 evaluates segments and returns: include[] (opaque targeting codes), exclude[] (suppression codes), macro (base64 contextual payload), bidders.{name}.segments/deals
 3. Module distributes signals to: ortb2Fragments.global (all bidders), ortb2Fragments.bidder (per-bidder segments/deals), adUnit.ortb2Imp (per-slot)
-4. getTargetingData: Returns cached signals as tmpi/tmpx/tmpm key-values per ad unit for GAM
+4. getTargetingData: Returns cached signals as axei/axex/axem key-values per ad unit for GAM
 
 **Caching:** Responses cached by domain+page+user key, configurable TTL (default 5 min).
 
@@ -374,9 +344,9 @@ Scope3's scope3RtdProvider implements TMP for Prebid. Key details:
 - Inspect bid requests in network tab for expected ortb2 data
 
 **Key-values not in ad server request:**
-- getTargetingData must return data keyed by ad unit code: {'div-gpt-ad-123': {tmpi: 'value'}}
-- Check GAM targeting in browser: googletag.pubads().getTargeting('tmpi')
-- Verify line items in GAM target the correct keys (tmpi, tmpx, tmpm)
+- getTargetingData must return data keyed by ad unit code: {'div-gpt-ad-123': {axei: 'value'}}
+- Check GAM targeting in browser: googletag.pubads().getTargeting('axei')
+- Verify line items in GAM target the correct keys (axei, axex, axem)
 
 **Auction proceeding without RTD data:**
 - Check auctionDelay is set and > 0
@@ -389,7 +359,7 @@ Scope3's scope3RtdProvider implements TMP for Prebid. Key details:
 - pbjs.getConfig('realTimeData') — see RTD configuration
 - pbjs.getConfig('ortb2') — see first-party data config
 - Network tab: filter for the orchestrator's endpoint (e.g., prebid.scope3.com)
-- GAM request: look for tmpi/tmpx/tmpm in key-value params
+- GAM request: look for axei/axex/axem in key-value params
 
 Note: Prebid and Scope3 are external projects. For their latest API details, use search_repos with repo_ids "prebid-docs", "prebid-js", or "prebid-server". The above is operational knowledge to help users debug — always verify against current Prebid documentation for the definitive API.
 

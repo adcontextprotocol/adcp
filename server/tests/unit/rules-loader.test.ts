@@ -37,7 +37,7 @@ describe('Rules Loader', () => {
     // Knowledge
     expect(rules).toContain('## AdCP Agent Types');
     expect(rules).toContain('## Prebid Expertise');
-    expect(rules).toContain('## TMP Orchestrator Implementation');
+    expect(rules).toContain('## Trusted Match Protocol (TMP)');
 
     // Constraints
     expect(rules).toContain('## No Speculative Answers');
@@ -48,14 +48,18 @@ describe('Rules Loader', () => {
     expect(rules).toContain('## Concise and Helpful');
   });
 
-  it('should not contain deprecated AXE references', () => {
+  it('should contain accurate TMP and AXE references', () => {
     const rules = loadRules();
 
-    // AXE has been renamed to TMP
-    expect(rules).not.toContain('AXE Orchestrator');
-    expect(rules).not.toContain('axei');
-    expect(rules).not.toContain('axex');
-    expect(rules).not.toContain('axem');
+    // TMP is the current protocol, AXE is deprecated but documented
+    expect(rules).toContain('Trusted Match Protocol (TMP)');
+    expect(rules).toContain('AXE is deprecated');
+    // AXE key-values (axei/axex/axem) are correct — they're the real key names
+    expect(rules).toContain('axei');
+    // Fake TMP key-values (tmpi/tmpx/tmpm) should NOT exist — they were never real
+    expect(rules).not.toContain('tmpi');
+    expect(rules).not.toContain('tmpx');
+    expect(rules).not.toContain('tmpm');
   });
 
   it('should cache results across calls', () => {
