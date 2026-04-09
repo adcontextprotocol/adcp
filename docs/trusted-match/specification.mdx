@@ -39,7 +39,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | `"context_match_request"`. Message type discriminator for dispatch. |
+| `type` | string | Yes | `"context_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. Allows receivers to handle semantic differences across versions. |
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
@@ -122,7 +122,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | `"context_match_response"`. Message type discriminator. |
+| `type` | string | Yes | `"context_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
@@ -170,7 +170,7 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | `"identity_match_request"`. Message type discriminator for dispatch. |
+| `type` | string | Yes | `"identity_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
@@ -184,7 +184,7 @@ Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | `"identity_match_response"`. Message type discriminator. |
+| `type` | string | Yes | `"identity_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
 | `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
@@ -210,7 +210,7 @@ Returned by a provider or router when a request cannot be processed. Distinct fr
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | `"error"`. Message type discriminator. |
+| `type` | string | Yes | `"error"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the original request's `request_id`. |
 | `code` | enum | Yes | Machine-readable error code: `invalid_request`, `unknown_package`, `rate_limited`, `timeout`, `internal_error`, `provider_unavailable`. |
 | `message` | string | No | Human-readable error description for debugging. |
@@ -367,8 +367,8 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 ## Transport
 
 - JSON over HTTP/2 POST. All implementations MUST use this transport.
-- The router calls each provider's configured endpoint URL.
-- The request type is distinguished by a `type` field in the message, not by URL path.
+- Each provider exposes two path-based endpoints under its base URL: `POST /context` for Context Match and `POST /identity` for Identity Match. The router dispatches requests by path, not by inspecting the message body.
+- The `type` field in each message identifies the message for deserialization — routers and agents use it to select the correct schema, not for routing.
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.
 - The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides the reference client and server implementation. Conformance tests validate compatibility — implementations in other languages MUST pass the same test suite.
