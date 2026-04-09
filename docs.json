@@ -1193,6 +1193,11 @@
       }
     ]
   },
+  "socials": {
+    "linkedin": "https://www.linkedin.com/company/agenticadvertisingorg",
+    "youtube": "https://www.youtube.com/@AgenticAdvertisingOrg",
+    "github": "https://github.com/adcontextprotocol/adcp"
+  },
   "api": {
     "maintainOrder": true
   },

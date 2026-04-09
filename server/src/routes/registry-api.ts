@@ -15,8 +15,8 @@ import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
-import { listStoryboards, getStoryboard, getTestKitForStoryboard, extractScenariosFromStoryboard } from "../services/storyboards.js";
-import { comply, filterToKnownScenarios } from "../addie/services/compliance-testing.js";
+import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
+import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -54,6 +54,8 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { AgentContextDatabase } from "../db/agent-context-db.js";
+import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 
 const logger = createLogger("registry-api");
@@ -61,6 +63,7 @@ const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
 const complianceDb = new ComplianceDatabase();
+const agentContextDb = new AgentContextDatabase();
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
@@ -2539,6 +2542,91 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { auth_token, auth_type, platform_type } = req.body;
+
+      if (auth_token && typeof auth_token !== "string") {
+        return res.status(400).json({ error: "auth_token must be a string" });
+      }
+      if (auth_token && auth_token.length > 4096) {
+        return res.status(400).json({ error: "auth_token exceeds maximum length" });
+      }
+
+      const validAuthTypes = ["bearer", "basic"];
+      if (auth_token && auth_type && !validAuthTypes.includes(auth_type)) {
+        return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
+      }
+      const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
+
+      if (platform_type && typeof platform_type !== "string") {
+        return res.status(400).json({ error: "platform_type must be a string" });
+      }
+      const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
+      if (platform_type && !validPlatformTypes.has(platform_type)) {
+        return res.status(400).json({
+          error: `Invalid platform_type. Valid types: ${[...validPlatformTypes].join(", ")}`,
+        });
+      }
+
+      // Verify ownership and get org ID in a single query
+      const orgResult = await query(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
+         JOIN organization_memberships om
+           ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.agents @> $1::jsonb
+           AND om.workos_user_id = $2
+         LIMIT 1`,
+        [JSON.stringify([{ url: agentUrl }]), req.user.id],
+      );
+
+      if (orgResult.rows.length === 0) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const orgId = orgResult.rows[0].workos_organization_id;
+
+      // Get or create agent context
+      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      if (!context) {
+        context = await agentContextDb.create({
+          organization_id: orgId,
+          agent_url: agentUrl,
+          created_by: req.user.id,
+        });
+      }
+
+      // Save auth token if provided
+      if (auth_token) {
+        await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
+      }
+
+      // Set platform type if provided
+      if (platform_type) {
+        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type });
+      }
+
+      res.json({
+        connected: true,
+        has_auth: !!auth_token || context.has_auth_token,
+        platform_type: platform_type || undefined,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to connect agent");
+      res.status(500).json({ error: "Failed to connect agent" });
+    }
+  });
+
   // ── Storyboards ────────────────────────────────────────────────
 
   router.get("/storyboards", async (req, res) => {
@@ -2595,49 +2683,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Resolve agent auth
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
 
-        // Only run scenarios this storyboard references, not the full suite
-        const storyboardScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
         const complyResult = await comply(agentUrl, {
           dry_run: true,
           timeout_ms: 90_000,
-          ...(storyboardScenarios.length > 0 && { scenarios: storyboardScenarios }),
+          storyboards: [req.params.storyboardId],
           ...(auth && { auth }),
         });
 
         // Record the run
-        const tracksSummary = complyResult.tracks.map((t) => ({
-          track: t.track,
-          status: t.status,
-          scenario_count: t.scenarios.length,
-          passed_count: t.scenarios.filter((s) => s.overall_passed).length,
-          duration_ms: t.duration_ms,
-        }));
-
-        // Look up lifecycle stage for this agent
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-
-        await complianceDb.recordComplianceRun({
-          agent_url: agentUrl,
-          lifecycle_stage: metadata?.lifecycle_stage || "development",
-          overall_status: complyResult.v3_gate_failed
-            ? "failing"
-            : complyResult.summary.tracks_failed > 0
-              ? "failing"
-              : complyResult.summary.tracks_partial > 0
-                ? "partial"
-                : "passing",
-          headline: complyResult.summary.headline,
-          total_duration_ms: complyResult.total_duration_ms,
-          tracks_json: tracksSummary,
-          tracks_passed: complyResult.summary.tracks_passed,
-          tracks_failed: complyResult.summary.tracks_failed,
-          tracks_skipped: complyResult.summary.tracks_skipped,
-          tracks_partial: complyResult.summary.tracks_partial,
-          agent_profile_json: complyResult.agent_profile,
-          observations_json: complyResult.observations,
-          triggered_by: "manual",
-          dry_run: complyResult.dry_run,
-        });
+        await complianceDb.recordComplianceRun(
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual"),
+        );
 
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
@@ -2715,21 +2772,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Only run scenarios this storyboard references, not the full suite
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
-        const compareScenarios = filterToKnownScenarios(extractScenariosFromStoryboard(storyboard));
+        const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             dry_run: true,
             timeout_ms: 90_000,
-            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
+            storyboards: storyboardIds,
             ...(auth && { auth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             dry_run: true,
             timeout_ms: 90_000,
-            ...(compareScenarios.length > 0 && { scenarios: compareScenarios }),
+            storyboards: storyboardIds,
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);

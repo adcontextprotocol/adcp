@@ -1145,7 +1145,7 @@ Roles: member (default), admin (can manage team), owner (full control)`,
         },
         limit: {
           type: 'number',
-          description: 'Maximum results (default: 50, max: 200)',
+          description: 'Maximum results (default: 200, max: 500)',
         },
       },
     },
@@ -6845,7 +6845,7 @@ Use add_committee_leader to assign a leader.`;
       const pool = getPool();
       const includeIndividual = input.include_individual !== false;
       const includePaymentIssues = input.include_payment_issues === true;
-      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 200);
+      const limit = Math.min(Math.max((input.limit as number) || 200, 1), 500);
       const allowedStatuses = includePaymentIssues
         ? ['active', 'past_due', 'unpaid']
         : ['active'];

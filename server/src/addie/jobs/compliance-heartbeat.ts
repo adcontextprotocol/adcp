@@ -5,8 +5,8 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { comply, type ComplyOptions, type PlatformType } from '../services/compliance-testing.js';
-import { ComplianceDatabase, type TrackSummaryEntry, type OverallRunStatus, type LifecycleStage } from '../../db/compliance-db.js';
+import { comply, complianceResultToDbInput, type ComplyOptions, type PlatformType } from '../services/compliance-testing.js';
+import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
@@ -79,45 +79,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         success: true,
       });
 
-      // Map track results to storage format
-      const tracksJson: TrackSummaryEntry[] = complianceResult.tracks.map(t => ({
-        track: t.track,
-        status: t.status,
-        scenario_count: t.scenarios.length,
-        passed_count: t.scenarios.filter(s => s.overall_passed).length,
-        duration_ms: t.duration_ms,
-      }));
-
-      // Derive overall status from track counts
-      const { tracks_passed, tracks_failed, tracks_partial } = complianceResult.summary;
-      let overallStatus: OverallRunStatus;
-      if (tracks_failed === 0 && tracks_partial === 0 && !complianceResult.v3_gate_failed) {
-        overallStatus = 'passing';
-      } else if (tracks_passed > 0 || tracks_partial > 0) {
-        overallStatus = 'partial';
-      } else {
-        overallStatus = 'failing';
-      }
-
-      const { statusTransition } = await complianceDb.recordComplianceRun({
-        agent_url: agent.agent_url,
-        lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
-        overall_status: overallStatus,
-        headline: complianceResult.summary.headline,
-        total_duration_ms: complianceResult.total_duration_ms,
-        tracks_json: tracksJson,
-        tracks_passed: complianceResult.summary.tracks_passed,
-        tracks_failed: complianceResult.summary.tracks_failed,
-        tracks_skipped: complianceResult.summary.tracks_skipped,
-        tracks_partial: complianceResult.summary.tracks_partial,
-        agent_profile_json: complianceResult.agent_profile,
-        observations_json: complianceResult.observations,
-        triggered_by: 'heartbeat',
-        dry_run: complianceResult.dry_run,
-      });
+      const dbInput = complianceResultToDbInput(
+        complianceResult,
+        agent.agent_url,
+        agent.lifecycle_stage as LifecycleStage,
+        'heartbeat',
+      );
+      const { statusTransition } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
-      if (overallStatus === 'passing') {
+      if (dbInput.overall_status === 'passing') {
         result.passed++;
       } else {
         result.failed++;
@@ -131,7 +102,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             previousStatus: statusTransition.previous,
             currentStatus: statusTransition.current,
             headline: complianceResult.summary.headline,
-            tracksJson,
+            tracksJson: dbInput.tracks_json,
           });
         } catch (notifyError) {
           logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send compliance notification');
