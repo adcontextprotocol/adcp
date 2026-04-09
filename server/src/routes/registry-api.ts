@@ -15,7 +15,7 @@ import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
@@ -2731,6 +2731,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(400).json({ error: "Invalid agent URL" });
     }
 
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+    if (!isOwner) {
+      return res.status(403).json({ error: "You do not have permission to test this agent" });
+    }
+
     try {
       let auth;
       try {
@@ -2796,7 +2805,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // Step-by-step storyboard execution
   router.post(
     "/registry/agents/:encodedUrl/storyboard/:storyboardId/step/:stepId",
-    storyboardEvalRateLimiter,
+    storyboardStepRateLimiter,
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
