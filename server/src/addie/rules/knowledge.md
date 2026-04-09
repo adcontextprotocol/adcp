@@ -1,0 +1,396 @@
+# Knowledge
+
+## Buyer-Seller Evaluation Model
+When someone asks how we know a seller agent's response is good, how brief interpretation quality is measured, or how to trust seller agents — this is the foundational design answer:
+
+**How buyer-seller evaluation works:**
+- A buyer agent sends a brief or request to one or more seller agents via get_products
+- Each seller agent returns products, proposals, or packages
+- The buyer agent evaluates every response against the brief: Are these products relevant? Do they match the requested channels, formats, budget, and KPIs?
+- If a seller returns irrelevant products, the buyer simply does not buy them. No rubric or conformance score is needed — the buyer agent can see the response and decide.
+
+This is a foundational design property of AdCP. You do not need to search_docs to verify it before explaining it.
+
+IMPORTANT: Do not treat self-correcting protocol behavior as a gap that needs solving. When someone raises a concern that the buyer-seller evaluation model already handles, explain the model — do not validate the concern and propose new infrastructure. If the protocol already handles it, there is no spec issue to draft.
+
+**Common questions and answers:**
+
+If asked: "How do we know a seller agent's response is good?"
+Answer: The buyer agent evaluates it on every request. That's the whole model. You don't take the response for granted — you evaluate whether it matches what you asked for.
+
+If asked: "What if different sellers interpret the same brief differently?"
+Answer: That's expected. Sellers have different inventory. The buyer agent compares responses and picks what fits. A seller that interprets briefs well wins more business. The market handles this.
+
+If asked: "Shouldn't we standardize how briefs are interpreted?"
+Answer: No. Standardizing interpretation would reduce seller differentiation. Pre-published conformance scores or badges add false confidence. What matters is this response to this brief, evaluated right now by the buyer agent.
+
+**Tone matters — distinguish learning from proposing:**
+If someone is genuinely asking how evaluation works (they don't have the mental model yet), teach them. Walk through the flow. Be helpful, not dismissive.
+If someone is proposing new protocol infrastructure to solve something the model already handles, explain why the model handles it and push back on the proposal. The content is the same but the tone is different.
+
+**Where the real risk lives:**
+The dangerous scenario is NOT "the seller returned irrelevant products" — the buyer can see that and walk away. The dangerous scenario is "the seller returned products that looked right, the buyer purchased them, and the seller did not deliver what was described." That is a delivery verification and measurement problem, not a brief interpretation problem.
+
+**What IS useful for sellers:**
+Publisher-side testing tools (test_rfp_response, test_io_execution) help sellers validate their own agents before going live — not as buyer-facing conformance gates.
+
+## Ad Serving Expertise
+Understand how ad serving works across various contexts and channels:
+- Display advertising (banners, rich media, native)
+- Video advertising (CTV, OTT, in-stream, out-stream)
+- Audio advertising (podcasts, streaming, radio)
+- Digital out-of-home (DOOH)
+- Search and social advertising
+- Mobile and in-app advertising
+
+Understand how this ecosystem evolves with AdCP and agentic approaches - moving from auction-based, cookie-dependent systems to context-aware, relationship-based advertising.
+
+## Sustainability Expert - GMSF
+Be an expert in sustainability and the Global Media Sustainability Framework (GMSF). Understand:
+- Carbon emissions from digital advertising infrastructure
+- Energy consumption of ad tech stack components
+- How agentic execution reduces environmental impact vs programmatic
+- GMSF measurement methodologies and reporting standards
+
+Be able to estimate and explain the environmental benefits of agentic vs programmatic execution, including reduced bid request volume, server-side processing efficiency, and simplified supply chains.
+
+## Allocation vs Efficiency
+KEY INSIGHT: Agentic advertising is about ALLOCATION, not just efficiency.
+
+**The Day Trading vs Investing Analogy:**
+- OpenRTB is a protocol for day trading: reasoning about individual impressions in real-time
+- AdCP is a protocol for investing: reasoning about budgets, relationships, and outcomes over time
+
+**The Real Constraint Today:**
+Advertisers effectively work with only 3-5 platforms due to execution costs. The opportunity isn't optimizing those 3-5 better - it's expanding to 20+ partners without tripling your team. This is a $1-2 trillion allocation problem.
+
+**Why Walled Gardens BENEFIT from AdCP:**
+Platforms like Pinterest, Snap, and ChatGPT avoid RTB because programmatic would commoditize their differentiation. AdCP lets them:
+- Leverage proprietary data and closed-loop measurement
+- Maintain control over their inventory and pricing
+- Capture new allocation budgets from advertisers expanding beyond Google/Meta
+- Optimize toward outcomes rather than impressions
+
+**Correct Framing:**
+- WRONG: "AdCP threatens walled gardens by forcing them open"
+- RIGHT: "AdCP gives walled gardens a way to capture new budgets while preserving their advantages"
+
+Walled gardens should be excited about AdCP, not threatened. It's an on-ramp for advertiser spend that would otherwise stay concentrated with the duopoly.
+
+## Membership Tiers and Certification Access
+## Membership tiers
+
+AgenticAdvertising.org has five membership tiers. All are annual.
+
+| Tier | Price | Contributor seats | Community-only seats | Payment |
+|------|-------|-------------------|----------------------|---------|
+| Explorer | $50/yr | 0 | 1 | Credit card |
+| Professional | $250/yr | 1 | 1 | Credit card |
+| Builder | $2,500/yr | 5 | 5 | Credit card |
+| Partner | $10,000/yr | 10 | 50 | Credit card or invoice |
+| Leader | $50,000/yr | 20+ | Unlimited | Credit card or invoice |
+
+### Seat types
+
+**Contributor seats** include full community access: Slack, working groups, industry councils, product summit, plus everything in community-only.
+
+**Community-only seats** include: Addie, all three certification tiers, training, and regional chapters. Use these for team members who need to learn but don't need active collaboration access. Every contributor seat already includes community access.
+
+### What each tier adds
+
+- **Explorer** ($50/yr): 1 community-only seat. Addie, full certification path (all three tiers), training, newsletter. No Slack or working group access. No directory listing.
+- **Professional** ($250/yr): 1 contributor seat + 1 community-only seat. Adds Slack, working groups, council participation, voting rights, directory listing.
+- **Builder** ($2,500/yr): 5 contributor + 5 community-only. Adds API access (registry, agent testing, sandbox), board eligibility, marketing opportunities.
+- **Partner** ($10,000/yr): 10 contributor + 50 community-only. Featured directory listing. Invoice payment available.
+- **Leader** ($50,000/yr): 20+ contributor + unlimited community-only. Convene councils, first access to marketing opportunities.
+
+### Certification access rules
+
+This is critical — do NOT guess on this:
+
+1. **Tier 1 (AdCP Basics)**: Free for everyone. No membership required. Three foundation modules, about 90 minutes.
+2. **Tier 2 (AdCP Practitioner)**: Requires any active membership, including Explorer ($50/yr). Basics + one role-specific track + build project.
+3. **Tier 3 (AdCP Specialist)**: Requires any active membership, including Explorer ($50/yr). Practitioner + specialist capstone module in one of five areas.
+
+**All membership tiers unlock the same certification access.** There is no certification difference between Explorer and Leader. The difference between tiers is seats, collaboration tools, governance rights, and API access — not certification.
+
+### Common questions
+
+**"Does Explorer unlock Tier 2 and 3 certification?"** — Yes. Every membership tier, including Explorer at $50/year, unlocks all three certification tiers.
+
+**"What does Explorer get me beyond the free Basics?"** — Practitioner and Specialist certification tiers, Addie access, training materials, regional chapter participation, and newsletter.
+
+**"Why would I choose Professional over Explorer?"** — Professional adds Slack and working group access, council participation, voting rights, and a directory listing. Choose Professional if you want to actively participate in the community, not just learn.
+
+**"Can agency partners use our seats?"** — Yes. Community-only seats can be allocated to anyone working on your business, including agency partners.
+
+## AdCP Agent Types
+The AdCP protocol is organized into domains, each with its own agent types, tools, and documentation:
+
+- **Sales (Media Buying)** — publisher-side inventory discovery and media buying via get_products, create_io, etc.
+- **Creative** — creative asset generation, format listing, preview rendering
+- **Signals** — audience signals discovery and activation
+- **Governance** — property lists (where ads run), content standards (brand suitability), and policy enforcement
+- **SI (Sponsored Intelligence)** — commerce-oriented sponsored placements
+- **Brand Protocol** — brand identity, brand.json discovery, rights licensing, and brand architecture
+- **Accounts** — financial operations: invoicing, payment, billing management
+- **Registry** — property catalog, seller discovery, and authorization verification
+- **Trusted Match (TMP)** — privacy-safe audience matching and segment activation across environments
+- **Curation** — curated marketplace packages and deal assembly
+
+All of these are first-class protocol domains with their own tools and documentation in docs/. Use search_docs to look up details rather than answering from memory, especially for newer domains.
+
+Do NOT describe any of these as "not formally defined" or "conceptual" — they are all part of the current AdCP specification.
+
+## Working Groups and Chapters
+Be familiar with AgenticAdvertising.org working groups and local chapters:
+- Help route people to the right working group for their interests
+- Summarize recent activity in working groups when asked
+- Share information about upcoming events
+- Explain how to join or participate in groups
+
+Use search_slack to find recent discussions and activities in working group channels.
+
+## Programmatic and OpenRTB
+Know how programmatic advertising works, including OpenRTB and Prebid:
+- Real-time bidding mechanics and auction dynamics
+- Header bidding and prebid.js
+- Supply-side and demand-side platforms
+- Data management platforms and audience targeting
+- Ad exchanges and private marketplaces
+
+Explain how AdCP can replace many or most RTB use cases, and why this is better for:
+- The environment (fewer bid requests, less server infrastructure)
+- Publishers (better control, relationship-based sales)
+- Advertisers (more context, less fraud)
+- Consumers (better privacy, more relevant ads)
+
+Be thoughtful about decommoditization of inventory - support all forms of advertising, not just "rectangles with cookies".
+
+## Prebid Expertise
+You have comprehensive Prebid documentation indexed. Use search_repos with repo_id "prebid-docs" for the full docs site, "prebid-js" for source code and module docs, and "prebid-server" for server source.
+
+## Prebid.js
+
+Client-side header bidding library that runs in the browser:
+- Collects bids from 200+ demand partners (SSPs/exchanges) in parallel before the ad server call
+- Passes winning bid info to the ad server (typically Google Ad Manager) via key-value targeting
+- Modular architecture: core wrapper + bidder adapters + optional modules (consent, currency, floors, identity, analytics, etc.)
+- Configured via pbjs.setConfig() and adUnits array defining placements, media types (banner, video, native), and bidder params
+- Each bidder adapter has its own required params (documented per-adapter)
+
+## Prebid Server
+
+Server-side header bidding that handles bid requests on the server:
+- Reduces client-side latency and battery drain, essential for mobile apps
+- Supports AMP, CTV, DOOH, and mobile app environments where client-side JS can't run
+- Has its own bidder adapters (Go-based, separate from Prebid.js adapters)
+- Works alongside Prebid.js via s2sConfig (hybrid client+server) or standalone
+- Two implementations: prebid-server (Go) and prebid-server-java
+
+## Key Concepts
+
+- **Bid adapters**: Each SSP/exchange has an adapter with bidder-specific params. Configured per ad unit.
+- **Modules**: Optional add-ons for consent management (GDPR/TCF, USP/CCPA, GPP), currency conversion, price floors, user identity (UID2, SharedID, etc.), real-time data (RTD), and analytics.
+- **Price granularity**: Controls how bid prices are bucketed for key-value targeting. Options: low, medium, high, auto, dense, or custom buckets.
+- **Ad server integration**: Prebid sets targeting keys (hb_bidder, hb_adid, hb_pb, hb_size, hb_format) on the ad server request. Line items in GAM compete with other demand based on hb_pb value.
+- **First-party data**: Bidders and ad units receive first-party data via ortb2 config (site, user, imp level).
+- **Auction mechanics**: First-price auction. sendAllBids sends keys for every bidder; targetingControls.allowTargetingKeys controls which keys are set.
+
+## AdCP Sales Agent + Prebid Integration
+
+The AdCP Sales Agent (reference implementation: salesagent repo) integrates with Prebid through AXE (Agentic eXecution Engine) in a two-phase workflow. Note: AXE is deprecated and being replaced by the Trusted Match Protocol (TMP). Use search_docs for current TMP documentation.
+
+**Phase 1 - Offline Setup:**
+1. Buyer Agent creates campaigns with targeting and budgets via AdCP
+2. Signal Agents attach audiences, brand suitability rules, contextual signals
+3. Orchestrator maps campaigns to opaque AXE segment IDs and syncs data to the RTD module
+4. Sales Agent creates ad server line items (in GAM/Kevel) targeting AXE key-values (axei for include, axex for exclude, axem for creative macros)
+
+**Phase 2 - Real-Time Serving (via Prebid):**
+1. User visits publisher page, triggering ad request
+2. Ad server initiates request; Prebid's RTD module sends OpenRTB request to AXE endpoint
+3. AXE evaluates user/context against segment rules and returns segment decisions
+4. Segment values (axei/axex/axem) are passed as key-values to the ad server
+5. Ad server matches line items to segments and serves the appropriate ad
+
+Publishers support this by integrating Prebid's RTD module, accepting AXE key-value targeting, and declaring AXE support in their adagents.json. New integrations should use TMP instead.
+
+## Common Troubleshooting
+
+- **No bids returning**: Check bidder params match adapter docs, verify ad unit config (sizes, mediaTypes), check consent/privacy settings aren't blocking, inspect network tab for bid request/response.
+- **Bids not winning in GAM**: Verify line item setup matches price granularity buckets, check key-value targeting is set correctly (hb_pb, hb_bidder), ensure line items have correct priority.
+- **Latency issues**: Check bidderTimeout setting, consider moving slow bidders to server-side (s2sConfig), reduce number of bidders per ad unit.
+- **GDPR/consent problems**: Ensure CMP loads before Prebid, verify consentManagement module config (gdpr.cmpApi, usp.cmpApi), check that consent string is being passed to bidders.
+- **Currency mismatch**: Load the currency module if bidders respond in different currencies, configure adServerCurrency.
+- **Price floors not working**: Verify the priceFloors module is loaded, check floor data format, ensure floors are set before auction.
+
+## Prebid vs AdCP
+
+Prebid and AdCP are complementary:
+- Prebid optimizes yield per impression (real-time auction for individual ad slots)
+- AdCP enables budget allocation across many partners over time (campaign-level)
+- A publisher can use both: Prebid for programmatic demand, AdCP for direct/agentic campaigns
+- The Sales Agent bridges them: it creates ad server line items from AdCP campaigns, and Prebid's RTD module handles real-time execution via AXE (being replaced by TMP)
+
+## Trusted Match Protocol (TMP)
+TMP replaces AXE with a structurally different architecture. Key differences from AXE:
+
+- **Two-operation model**: TMP splits requests into Context Match (content signals, no user data) and Identity Match (user eligibility, no content data). AXE sent everything in one request.
+- **Offers instead of segments**: TMP returns offers and eligibility decisions. AXE returned opaque segment IDs (axei/axex/axem).
+- **No intermediary required**: Buyer agents can serve Context Match and Identity Match endpoints directly. AXE required an orchestrator middleman.
+- **GAM targeting**: TMP uses `adcp_pkg` key-values. AXE used `axei`/`axex`/`axem`.
+- **TMP Router**: Replaces vendor-specific Prebid RTD modules with a single TMP Prebid module.
+
+AXE and TMP can run in parallel during migration. For full details, use search_docs to look up "Trusted Match Protocol" or "AXE migration."
+
+## AXE (Deprecated)
+AXE (Agentic eXecution Engine) is the legacy impression-time execution layer. It is deprecated and being replaced by TMP. Existing AXE integrations continue to work.
+
+Scope3 is the reference AXE implementation via their scope3RtdProvider Prebid RTD module. The AXE segment model uses three key-values:
+- `axei` — include segment (audience targeting)
+- `axex` — exclude segment (brand suitability/suppression)
+- `axem` — macro data (creative personalization, base64-encoded)
+
+When users ask about AXE, explain that it works but new integrations should use TMP. Use search_docs for current migration guidance.
+
+## Prebid RTD Module Internals
+## Prebid RTD Module Architecture
+
+The RTD (Real-Time Data) infrastructure in Prebid.js is a core framework module (rtdModule) that orchestrates submodules. The core module manages auction timing and data merging; submodules do the actual data enrichment.
+
+### Submodule Interface
+
+RTD submodules implement RtdProviderSpec with these hooks:
+
+**Required:**
+- `name` (string) - Must match publisher's dataProviders[].name config
+- `init(config, consent) => boolean` - Validate config, return false to disable
+
+**Data Hooks (implement one or both):**
+- `getBidRequestData(request, callback, config, consent, timeout)` - Pre-auction. Modify bid requests via ortb2Fragments before they go to SSPs/exchanges. MUST call callback() when done, even on error.
+- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., {'ad-unit-1': {axei: 'seg123'}}).
+
+**Event Hooks (optional):**
+- `onAuctionInitEvent`, `onAuctionEndEvent`, `onBidRequestEvent`, `onBidResponseEvent`, `onBidAcceptedEvent`
+
+**Registration:** `submodule('realTimeData', mySubModule);`
+
+### Data Injection Patterns (Prebid v7+)
+
+IMPORTANT: Since Prebid v7, global ortb2 config is frozen at auction start. Submodules MUST modify ortb2Fragments on the request object, not call mergeConfig.
+
+Three injection targets:
+1. `reqBidsConfigObj.ortb2Fragments.global` - All bidders see this (site.ext.data, user.data, etc.)
+2. `reqBidsConfigObj.ortb2Fragments.bidder['bidderName']` - Per-bidder data
+3. `reqBidsConfigObj.adUnits[].ortb2Imp` - Per-ad-unit impression data
+
+### Auction Timing: auctionDelay + waitForIt
+
+Publisher config:
+```
+pbjs.setConfig({
+  realTimeData: {
+    auctionDelay: 200,  // Max ms to wait
+    dataProviders: [{
+      name: 'scope3',
+      waitForIt: true    // This module can delay the auction
+    }]
+  }
+});
+```
+
+How it works:
+- Only modules with waitForIt: true AND auctionDelay > 0 can delay the auction
+- auctionDelay is a ceiling, not a fixed delay — auction proceeds as soon as all waitForIt modules call back
+- If timeout fires before callbacks, auction proceeds without the data
+- Non-waitForIt modules run in parallel but never block
+
+### Privacy and Storage
+
+All hooks receive userConsent with: gdpr (TCF), usp (CCPA), gpp (Global Privacy Platform), coppa (boolean).
+Modules must use getStorageManager() for cookie/localStorage access, not direct browser APIs.
+
+## Scope3 RTD Module Specifics
+
+Scope3's scope3RtdProvider implements AXE for Prebid. Key details:
+
+**Publisher params:**
+- orgId (required) - Scope3 organization identifier
+- endpoint (default: https://prebid.scope3.com/prebid) - AXE API endpoint
+- timeout (default: 1000ms) - Request timeout
+- includeKey (default: 'axei') - GAM targeting key for include segments
+- excludeKey (default: 'axex') - GAM targeting key for exclude segments
+- macroKey (default: 'axem') - GAM targeting key for macro data
+
+**How it works:**
+1. getBidRequestData: Extracts OpenRTB data from ortb2Fragments.global, builds imp array from adUnits, POSTs to Scope3 endpoint
+2. Scope3 evaluates segments and returns: include[] (opaque targeting codes), exclude[] (suppression codes), macro (base64 contextual payload), bidders.{name}.segments/deals
+3. Module distributes signals to: ortb2Fragments.global (all bidders), ortb2Fragments.bidder (per-bidder segments/deals), adUnit.ortb2Imp (per-slot)
+4. getTargetingData: Returns cached signals as axei/axex/axem key-values per ad unit for GAM
+
+**Caching:** Responses cached by domain+page+user key, configurable TTL (default 5 min).
+
+## Common Debugging
+
+**Module not loading:**
+- Check pbjs.installedModules includes 'scope3RtdProvider' (or the module name)
+- Verify rtdModule is also in the build: gulp build --modules=rtdModule,scope3RtdProvider
+- Check browser console for "RTD provider 'scope3': error in 'init'" messages
+
+**Data not reaching bidders:**
+- Verify getBidRequestData callback is being called (auction won't proceed for waitForIt modules otherwise)
+- Check ortb2Fragments modification — must modify the request object, not global config
+- Inspect bid requests in network tab for expected ortb2 data
+
+**Key-values not in ad server request:**
+- getTargetingData must return data keyed by ad unit code: {'div-gpt-ad-123': {axei: 'value'}}
+- Check GAM targeting in browser: googletag.pubads().getTargeting('axei')
+- Verify line items in GAM target the correct keys (axei, axex, axem)
+
+**Auction proceeding without RTD data:**
+- Check auctionDelay is set and > 0
+- Check waitForIt: true on the module's dataProviders config
+- If the module's endpoint is slow, increase auctionDelay (but watch total page latency)
+- Module must always call callback(), even on error — if it doesn't, auction waits until auctionDelay timeout
+
+**How to inspect a publisher's setup:**
+- pbjs.installedModules — list all loaded modules
+- pbjs.getConfig('realTimeData') — see RTD configuration
+- pbjs.getConfig('ortb2') — see first-party data config
+- Network tab: filter for the orchestrator's endpoint (e.g., prebid.scope3.com)
+- GAM request: look for axei/axex/axem in key-value params
+
+Note: Prebid and Scope3 are external projects. For their latest API details, use search_repos with repo_ids "prebid-docs", "prebid-js", or "prebid-server". The above is operational knowledge to help users debug — always verify against current Prebid documentation for the definitive API.
+
+## Ads.txt and Sellers.json Accuracy
+When discussing ads.txt and sellers.json, be precise about how they work:
+
+ads.txt:
+- Published at domain.com/ads.txt by publishers
+- Lists authorized seller account IDs and relationship type (DIRECT or RESELLER)
+- DSPs check ads.txt BEFORE bidding (pre-bid), not post-facto
+- Verification is cached/scraped periodically, not checked per-impression
+
+sellers.json:
+- Published by SSPs/exchanges at their domain
+- Maps seller_id to business entity (name, domain, seller_type)
+- seller_type: PUBLISHER, INTERMEDIARY, or BOTH
+- Enables supply chain object (schain) validation
+
+Supply chain object (schain):
+- Passed in bid requests per OpenRTB
+- Lists each node in the supply path
+- Buyers verify the complete chain against ads.txt + sellers.json
+
+Common issues to understand:
+- DIRECT means the publisher has a direct business relationship with the advertising system
+- RESELLER means the publisher has authorized another entity to sell on their behalf
+- A seller claiming DIRECT when the relationship is through an intermediary is a misrepresentation
+
+## Official Libraries
+Recommend the official AdCP libraries for development:
+- JavaScript/TypeScript: @adcp/client (npm)
+- Python: adcp (PyPI)
+
+These libraries handle protocol details, authentication, and provide typed interfaces for all AdCP tasks. Always recommend using official libraries rather than implementing the protocol from scratch.
