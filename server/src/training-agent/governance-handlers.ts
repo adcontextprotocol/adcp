@@ -19,7 +19,7 @@ import type {
 import type { BrandReference } from '@adcp/client';
 import { getSession, sessionKeyFromArgs } from './state.js';
 
-const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification']);
+const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 
 interface SyncPlansInput extends ToolArgs {
   plans: SyncPlanInput[];
@@ -201,7 +201,7 @@ export const GOVERNANCE_TOOLS = [
       properties: {
         plan_id: { type: 'string' },
         caller: { type: 'string', format: 'uri' },
-        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
         payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
@@ -225,7 +225,7 @@ export const GOVERNANCE_TOOLS = [
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
-        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
         seller_response: { type: 'object' },
         delivery: { type: 'object' },
@@ -245,7 +245,7 @@ export const GOVERNANCE_TOOLS = [
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
         governance_contexts: { type: 'array', items: { type: 'string' }, description: 'Filter audit entries by governance context.' },
-        purchase_types: { type: 'array', items: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'] }, description: 'Filter audit entries by purchase type.' },
+        purchase_types: { type: 'array', items: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'] }, description: 'Filter audit entries by purchase type.' },
         include_entries: { type: 'boolean' },
       },
     },

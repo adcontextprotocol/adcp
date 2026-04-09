@@ -65,11 +65,14 @@ Governance plans govern all financial commitments, not just media buys. The `pur
 | `rights_license` | `acquire_rights`, `update_rights` | Brand rights licensing fees |
 | `signal_activation` | `activate_signal` | Data signal activation fees |
 | `creative_services` | `build_creative` | Creative generation fees |
-| `measurement_verification` | *(vendor-specific)* | Measurement, viewability, brand safety, and fraud detection services |
 
 All purchase types share the same governance loop: `sync_plans` → `check_governance` → execute → `report_plan_outcome`. The governance agent validates budget authority, geo compliance, and flight compliance across all types. Media-buy-specific validations (channel compliance, seller concentration, delivery pacing) apply only when `purchase_type` is `media_buy` or when the payload contains the relevant fields.
 
 When `purchase_type` is omitted, the governance agent assumes `media_buy`.
+
+<Note>
+**Future purchase types**: Content standards, property list curation, and measurement/verification services (brand lift studies, viewability, fraud detection) all carry `pricing_options` in their schemas and bill through `report_usage`. These services currently lack an explicit activation tool where the buyer commits to the service — the billing relationship is implicit. When the protocol adds activation surfaces for these services, corresponding purchase types will be added to enable governance checks at the point of commitment.
+</Note>
 
 ### Budget authority levels
 

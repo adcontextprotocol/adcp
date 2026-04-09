@@ -4,5 +4,5 @@
   "title": "Purchase Type",
   "description": "The type of financial commitment being governed.",
   "type": "string",
-  "enum": ["media_buy", "rights_license", "signal_activation", "creative_services", "measurement_verification"]
+  "enum": ["media_buy", "rights_license", "signal_activation", "creative_services"]
 }

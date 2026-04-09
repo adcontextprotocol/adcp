@@ -212,7 +212,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
 | `plans[].governed_actions` | array | Per-governed-action breakdown, grouped by `governance_context`. |
 | `plans[].governed_actions[].governance_context` | string | Opaque governance context identifying this governed action. |
-| `plans[].governed_actions[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, `creative_services`, or `measurement_verification`. |
+| `plans[].governed_actions[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. |
 | `plans[].governed_actions[].status` | enum | `active`, `suspended`, or `completed`. |
 | `plans[].governed_actions[].committed` | number | Budget committed for this governed action. |
 | `plans[].governed_actions[].check_count` | integer | Number of governance checks performed. |
@@ -251,7 +251,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). |
 | `plans[].entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
 | `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
-| `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, `creative_services`, or `measurement_verification`. Present when the entry is associated with a specific governed action. |
+| `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
 | `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
 | `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
