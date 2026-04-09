@@ -118,6 +118,7 @@ phases:
             description: "Response matches schema"
           - check: field_value
             path: "formats[*].type"
+            value: "display"
             description: "All returned formats are display type"
 
   - id: preview
@@ -182,7 +183,7 @@ phases:
           - check: response_schema
             description: "Response matches preview-creative-response.json schema"
           - check: field_present
-            path: "previews[0].renders[0].url"
+            path: "previews[0].renders[0].preview_url"
             description: "Preview includes a renderable URL"
 
   - id: build

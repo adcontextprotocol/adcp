@@ -11,7 +11,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
-- **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative)?
+- **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative, compliance_testing)?
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
@@ -65,7 +65,7 @@ Version Negotiation Flow:
 | Field | Type | Description |
 |-------|------|-------------|
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns `VERSION_UNSUPPORTED` if not in range. When omitted, the seller assumes the highest major version it supports. |
-| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`). If omitted, returns all supported protocols. |
+| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `compliance_testing`). If omitted, returns all supported protocols. |
 
 ## Response Structure
 
@@ -358,6 +358,22 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
   }
 }
 ```
+
+### compliance_testing
+
+Compliance testing capabilities. Only present if `compliance_testing` is in `supported_protocols`. Indicates this agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`. |
+
+Storyboard runners check for `compliance_testing` in `supported_protocols` before running deterministic testing steps. If the agent does not declare compliance testing support, controller-dependent storyboard steps cannot be validated.
+
+Agents that implement `comply_test_controller` SHOULD declare `compliance_testing` in `supported_protocols` and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+
+:::note
+Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
+:::
 
 ### extensions_supported
 

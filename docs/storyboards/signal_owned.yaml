@@ -208,4 +208,5 @@ phases:
             description: "Deployment includes activation key"
           - check: field_value
             path: "deployments[0].type"
+            value: "agent"
             description: "Deployment type is 'agent'"

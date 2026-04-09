@@ -8,6 +8,7 @@
 
 import type { TrainingContext, ToolArgs, SessionState, MediaBuyState, CreativeState } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
+import { deriveStatus } from './task-handlers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -34,7 +35,8 @@ const ACCOUNT_TERMINAL = new Set(['rejected', 'closed']);
 
 /** Valid transitions per media buy status. */
 const MEDIA_BUY_TRANSITIONS: Record<string, string[]> = {
-  pending_activation: ['active', 'rejected', 'canceled'],
+  pending_start: ['active', 'rejected', 'canceled'],
+  pending_creatives: ['pending_start', 'rejected', 'canceled'],
   active: ['paused', 'completed', 'canceled'],
   paused: ['active', 'completed', 'canceled'],
   completed: [],   // terminal
@@ -75,7 +77,7 @@ const SCENARIO_METADATA = {
     description: 'Force a media buy to a new status',
     required_params: ['media_buy_id', 'status'],
     optional_params: ['rejection_reason'],
-    valid_statuses: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'],
+    valid_statuses: ['pending_start', 'pending_creatives', 'active', 'paused', 'completed', 'rejected', 'canceled'],
     notes: 'rejection_reason required when status=rejected; completed/rejected/canceled are terminal',
   },
   force_session_status: {
@@ -407,7 +409,7 @@ function handleForceMediaBuyStatus(session: SessionState, params: Record<string,
     };
   }
 
-  const currentStatus = mb.status;
+  const currentStatus = deriveStatus(mb);
 
   // Idempotent
   if (currentStatus === targetStatus) {
@@ -588,12 +590,13 @@ function handleSimulateDelivery(session: SessionState, params: Record<string, un
     };
   }
 
-  if (MEDIA_BUY_TERMINAL.has(mb.status)) {
+  const currentStatus = deriveStatus(mb);
+  if (MEDIA_BUY_TERMINAL.has(currentStatus)) {
     return {
       success: false,
       error: 'INVALID_STATE',
-      error_detail: `Cannot simulate delivery for media buy in ${mb.status} state`,
-      current_state: mb.status,
+      error_detail: `Cannot simulate delivery for media buy in ${currentStatus} state`,
+      current_state: currentStatus,
     };
   }
 

@@ -372,10 +372,10 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Each creative has an action (created/updated)"
           - check: field_present
-            path: "results[0].status"
+            path: "creatives[0].status"
             description: "Each creative has a status (pending_review or accepted)"
 
       - id: sync_creatives_standard
@@ -417,7 +417,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Standard creative has an action"
 
       - id: sync_creatives_invalid_brand
@@ -462,7 +462,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].status"
+            path: "creatives[0].status"
             description: "Creative has a status (expected: rejected)"
 
   - id: creative_generation_lifecycle
@@ -535,7 +535,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].status"
+            path: "creatives[0].status"
             description: "Each creative has a current status"
 
   - id: delivery_monitoring
@@ -577,5 +577,5 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
           - check: field_present
-            path: "media_buys"
+            path: "media_buy_deliveries"
             description: "Response contains media buy delivery data"

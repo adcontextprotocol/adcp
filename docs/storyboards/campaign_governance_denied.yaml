@@ -129,6 +129,7 @@ phases:
             description: "Response contains a governance decision"
           - check: field_value
             path: "decision"
+            value: "denied"
             description: "Decision is denied"
           - check: field_present
             path: "findings"

@@ -29,12 +29,12 @@ Transform discovered products into active advertising campaigns using [`create_m
 
 This phase may involve:
 - Immediate creation with `active` status (instant activation)
-- Deferred creation with `pending_activation` status (awaiting platform setup)
+- Deferred creation with `pending_creatives` status (awaiting creative assignment) or `pending_start` status (ready to serve, waiting for flight date)
 - Human approval workflow via `pending_manual` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
 - Permission requirements via `pending_permission` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
 
 <Note>
-`pending_manual` and `pending_permission` are **task-level** statuses from the human-in-the-loop queue — they describe whether the *operation* requires approval, not the media buy's lifecycle state. The media buy itself enters `pending_activation` or `active` once the operation completes.
+`pending_manual` and `pending_permission` are **task-level** statuses from the human-in-the-loop queue — they describe whether the *operation* requires approval, not the media buy's lifecycle state. The media buy itself enters `pending_creatives`, `pending_start`, or `active` once the operation completes.
 </Note>
 
 **Platform Mapping:**
@@ -52,7 +52,7 @@ Once created, the media buy requires creative assets via [`sync_creatives`](/doc
 ### 3. Activation & Delivery Phase
 Monitor and manage active campaigns:
 
-- **Status Tracking**: Campaign transitions from `pending_activation` to `active`
+- **Status Tracking**: Campaign transitions from `pending_creatives` to `pending_start` to `active`
 - **Creative Assignment**: Attach assets from the creative library
 - **Delivery Monitoring**: Track pacing and performance metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 - **Issue Resolution**: Handle approval delays and platform issues
@@ -245,23 +245,25 @@ See [Media Products - Property Targeting](/docs/media-buy/product-discovery/medi
 Media buys progress through defined states with explicit transition rules:
 
 ```
-create_media_buy ──┬──▶ pending_activation ──▶ active
-                   │                              ▲
-                   └──▶ active                    │ resume
-                        │    ▲                    │
-               (pause)  │    │ (resume)           │
-                        ▼    │                    │
-                       paused ────────────────────┘
+create_media_buy ──┬──▶ pending_creatives ──▶ pending_start ──▶ active
+                   │                                              ▲
+                   └──▶ active                                    │ resume
+                        │    ▲                                    │
+               (pause)  │    │ (resume)                           │
+                        ▼    │                                    │
+                       paused ────────────────────────────────────┘
                         │
           active ───────┼──────────────▶ completed (terminal)
           paused ───────┘                ▲ flight ends / goal met / budget exhausted
 
-pending_activation ──▶ rejected (terminal)  — seller rejects during setup
+pending_creatives ──▶ rejected (terminal)  — seller rejects during setup
+pending_start ──────▶ rejected (terminal)  — seller rejects during setup
 
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
 ```
 
-- **`pending_activation`**: Created, awaiting platform setup or creative upload
+- **`pending_creatives`**: Approved but no creatives assigned
+- **`pending_start`**: Ready to serve, waiting for flight date
 - **`active`**: Running and delivering impressions
 - **`paused`**: Temporarily stopped by buyer or seller
 - **`completed`**: Finished — flight ended, goal met, or budget exhausted

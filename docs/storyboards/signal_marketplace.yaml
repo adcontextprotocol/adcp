@@ -173,6 +173,7 @@ phases:
         validations:
           - check: field_value
             path: "signals[0].signal_id.source"
+            value: "catalog"
             description: "Signal source is 'catalog' (verifiable via adagents.json)"
           - check: field_present
             path: "signals[0].signal_id.data_provider_domain"
@@ -228,6 +229,7 @@ phases:
             description: "Deployment includes type"
           - check: field_value
             path: "deployments[0].type"
+            value: "platform"
             description: "Deployment type is 'platform'"
 
   - id: agent_activation
@@ -281,4 +283,5 @@ phases:
             description: "Deployment includes activation key"
           - check: field_value
             path: "deployments[0].type"
+            value: "agent"
             description: "Deployment type is 'agent'"

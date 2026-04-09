@@ -317,13 +317,15 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
+  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
+  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
-    if (new Date(mb.startTime) > now) return 'pending_activation';
+    if (new Date(mb.startTime) > now) return 'pending_start';
   }
   if (mb.status === 'paused') return 'paused';
   return mb.status;
@@ -332,7 +334,9 @@ function deriveStatus(mb: MediaBuyState): string {
 /** Map lifecycle status to valid buyer actions. */
 function validActionsForStatus(status: string): string[] {
   switch (status) {
-    case 'pending_activation':
+    case 'pending_start':
+      return ['cancel', 'sync_creatives'];
+    case 'pending_creatives':
       return ['cancel', 'sync_creatives'];
     case 'active':
       return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
@@ -494,7 +498,7 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
-        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
+        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_start', 'pending_creatives', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
         include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.' },
         include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
@@ -1856,7 +1860,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -1878,6 +1882,16 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
       required_for_products: false,
       sandbox: true,
       supported_billing: [],
+    },
+    compliance_testing: {
+      scenarios: [
+        'force_creative_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+      ],
     },
     agent: {
       name: 'AdCP Training Agent',

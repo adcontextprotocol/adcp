@@ -197,7 +197,7 @@ phases:
       The buyer is satisfied with the refined proposal and accepts it by creating a
       media buy with the proposal_id. Instead of specifying individual packages, the
       buyer passes the proposal_id and total_budget. Your platform converts the proposal
-      into a confirmed media buy with the exact product selections and budget allocations
+      into an active media buy with the exact product selections and budget allocations
       from the proposal.
 
     steps:
@@ -217,9 +217,9 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expected: |
-          Convert the proposal into a confirmed media buy:
+          Convert the proposal into an active media buy:
           - media_buy_id: your platform's identifier
-          - status: confirmed or active
+          - status: active
           - confirmed_at: timestamp
           - packages: line items derived from the proposal's budget allocations
           - proposal_id: echoed back to confirm which proposal was accepted
@@ -324,7 +324,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Each creative has an action (created/updated)"
 
   - id: delivery
@@ -366,5 +366,5 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
           - check: field_present
-            path: "media_buys"
+            path: "media_buy_deliveries"
             description: "Response contains media buy delivery data"

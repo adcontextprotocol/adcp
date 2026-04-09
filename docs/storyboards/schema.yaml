@@ -62,4 +62,5 @@
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value", "status_code")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
+# value: any (expected value — string, number, or boolean; required when check is "field_value")
 # description: string (human-readable description of validation)
