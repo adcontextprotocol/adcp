@@ -1250,6 +1250,13 @@
 
             panel.innerHTML = html;
           } else {
+            // Check if auth is needed
+            const errBody = await res.json().catch(() => ({}));
+            if (errBody.needs_auth) {
+              panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Save an auth token using the connect form above, then try again.</div>';
+              return;
+            }
+
             // Fallback to flat list if agent can't be reached
             panel.innerHTML = '<em>Loading storyboards...</em>';
             const fallback = await fetch('/api/storyboards', { credentials: 'include' });
@@ -1258,7 +1265,7 @@
               panel.innerHTML = '<em>No storyboards available yet.</em>';
               return;
             }
-            let html = '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
+            let html = '<div style="font-size:var(--text-xs);color:var(--color-warning-600);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
             html += '<div class="storyboard-picker">';
             for (const sb of data.storyboards) {
               html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';

@@ -2682,11 +2682,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let auth;
       try {
         auth = await complianceDb.resolveOwnerAuth(agentUrl);
-      } catch {
-        // Auth resolution can fail (e.g., corrupted encrypted token) — proceed without auth
+      } catch (authErr) {
+        logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
       }
-      const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
-      const agentInfo = await client.getAgentInfo();
+
+      let agentInfo;
+      try {
+        const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
+        agentInfo = await client.getAgentInfo();
+      } catch (connectErr) {
+        // If auth failed and connection failed, give a specific error
+        if (!auth) {
+          return res.status(422).json({
+            error: "Agent requires authentication. Save an auth token first using the connect form.",
+            needs_auth: true,
+          });
+        }
+        throw connectErr;
+      }
       const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
       const allStoryboards = loadBundledStoryboards();
