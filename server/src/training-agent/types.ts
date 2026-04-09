@@ -168,6 +168,7 @@ export interface SignalActivationState {
   destinationId: string;
   account?: string;
   pricingOptionId?: string;
+  governanceContext?: string;
   isLive: boolean;
   activatedAt: string;
 }

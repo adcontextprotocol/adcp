@@ -6,6 +6,7 @@ summary: "Stateful ad server with pre-loaded creatives. Generates serving tags p
 track: creative
 required_tools:
   - build_creative
+  - check_governance
 
 narrative: |
   You run a creative ad server — think Innovid, Flashtalking, or CM360. Your clients
@@ -129,6 +130,38 @@ phases:
       accrues when impressions are served.
 
     steps:
+      - id: check_governance_build
+        title: "Governance check before creative build"
+        narrative: |
+          Before generating a serving tag (a potential financial commitment when the
+          ad server charges for tag generation or serving), the orchestrator calls
+          check_governance with tool: "build_creative". The governance agent validates
+          budget authority and delegation. The returned governance_context flows
+          through to the ad server agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the build lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "creative_services"
+          tool: "build_creative"
+          payload:
+            creative_id: "campaign_hero_video"
+            account:
+              account_id: "acct_acme_creative"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: build_tag
         title: "Generate a tag for a media buy"
         narrative: |
