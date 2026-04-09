@@ -7,7 +7,7 @@
 
 import { createLogger } from '../logger.js';
 import type { NewsletterConfig, EditionRecord, SendStats } from './config.js';
-import { getPersonaCluster } from '../db/digest-db.js';
+import { getPersonaCluster, getDigestCoverImageWithPrompt } from '../db/digest-db.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../notifications/email.js';
 import { proposeContentForUser, type ContentUser } from '../routes/content.js';
@@ -142,23 +142,38 @@ async function publishAsPerspective(
   await config.db.setPerspectiveId(editionId, result.id);
   logger.info({ editionId, perspectiveId: result.id, slug: result.slug }, 'Published as perspective');
 
-  // Generate cover image (non-blocking)
-  generateCoverImage(config, result.id, subject, editionDate).catch((err) => {
-    logger.warn({ error: err, perspectiveId: result.id }, 'Failed to generate cover image');
+  // Reuse the digest cover image if available, otherwise generate a new one
+  reuseOrGenerateCoverImage(config, result.id, subject, editionDate).catch((err) => {
+    logger.warn({ error: err, perspectiveId: result.id }, 'Failed to set cover image');
   });
 }
 
-async function generateCoverImage(
+/**
+ * Try to reuse the cover image already generated at draft time.
+ * Falls back to generating a new one via Gemini if none exists.
+ */
+async function reuseOrGenerateCoverImage(
   config: NewsletterConfig,
   perspectiveId: string,
   title: string,
   editionDate: string,
 ): Promise<void> {
-  const { imageBuffer, promptUsed } = await generateIllustration({
-    title,
-    category: config.perspectiveCategory,
-    editionDate,
-  });
+  // Check for existing digest cover image
+  const existing = await getDigestCoverImageWithPrompt(editionDate);
+  let imageBuffer: Buffer;
+  let promptUsed: string;
+  if (existing) {
+    imageBuffer = existing.imageData;
+    promptUsed = existing.promptUsed;
+  } else {
+    const generated = await generateIllustration({
+      title,
+      category: config.perspectiveCategory,
+      editionDate,
+    });
+    imageBuffer = generated.imageBuffer;
+    promptUsed = generated.promptUsed;
+  }
 
   const illustration = await createIllustration({
     perspective_id: perspectiveId,
@@ -168,5 +183,5 @@ async function generateCoverImage(
   });
 
   await approveIllustration(illustration.id, perspectiveId);
-  logger.info({ perspectiveId, newsletterId: config.id }, 'Cover image generated');
+  logger.info({ perspectiveId, newsletterId: config.id, reused: !!existing }, 'Cover image set for perspective');
 }

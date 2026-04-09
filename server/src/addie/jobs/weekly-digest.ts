@@ -4,6 +4,8 @@ import {
   createDigest,
   getDigestByDate,
   setReviewMessage,
+  setDigestCoverImage,
+  updateDigestContent,
   markSent,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
@@ -18,11 +20,13 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
 import { publishDigestAsPerspective } from '../services/digest-publisher.js';
+import { generateIllustration } from '../../services/illustration-generator.js';
 import { markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
 
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const EDITORIAL_SLUG = 'editorial';
 const ANNOUNCEMENTS_CHANNEL = process.env.ANNOUNCEMENTS_CHANNEL_ID;
 
@@ -171,6 +175,29 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
     .map((item) => item.suggestionId!);
   if (includedSuggestionIds.length > 0) {
     await markSuggestionsIncluded(includedSuggestionIds, editionDate);
+  }
+
+  // Generate cover image (non-blocking — draft still goes up for review if this fails)
+  try {
+    const subject = generateDigestSubject(content);
+    const { imageBuffer, promptUsed } = await generateIllustration({
+      title: subject,
+      category: 'The Prompt',
+      excerpt: content.openingTake,
+      editionDate,
+      dateFlavor: content.dateFlavor,
+    });
+    const stored = await setDigestCoverImage(digest.id, imageBuffer, promptUsed);
+    if (stored) {
+      content.coverImageUrl = `${BASE_URL}/digest/${editionDate}/cover.png`;
+      const updated = await updateDigestContent(digest.id, content);
+      if (!updated) {
+        logger.warn({ editionDate }, 'Could not attach cover URL — digest status may have changed');
+      }
+    }
+    logger.info({ editionDate, sizeKB: (imageBuffer.length / 1024).toFixed(0) }, 'Cover image generated for The Prompt');
+  } catch (err) {
+    logger.warn({ error: err, editionDate }, 'Failed to generate cover image — proceeding without it');
   }
 
   // Post to Editorial working group channel for review

@@ -163,6 +163,9 @@ function buildPromptMarkdown(content: unknown): string {
   const c = content as DigestContent;
   const sections: string[] = [];
 
+  if (c.coverImageUrl) {
+    sections.push(`![The Prompt cover](${c.coverImageUrl})`);
+  }
   sections.push(c.openingTake);
   if (c.editorsNote) {
     const noteText = /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(c.editorsNote)
@@ -282,7 +285,7 @@ export const thePromptConfig: NewsletterConfig = {
   renderSlack: (content, editionDate) => renderDigestSlack(content as DigestContent, editionDate),
   renderReview: (content, editionDate) => renderDigestReview(content as DigestContent, editionDate),
   db: promptDB,
-  editableFields: ['openingTake', 'editorsNote', 'shareableTake', 'emailSubject'],
+  editableFields: ['openingTake', 'editorsNote', 'shareableTake', 'emailSubject', 'dateFlavor'],
 };
 
 registerNewsletter(thePromptConfig);

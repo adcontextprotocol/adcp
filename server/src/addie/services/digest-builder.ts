@@ -60,9 +60,10 @@ export async function buildDigestContent(): Promise<DigestContent> {
   // Generate takeaways for official items (Town Hall recaps, reports, etc.)
   await generateOfficialTakeaways(whatToWatch, whatToWatchResult.officialBodyMap);
 
-  const [openingTake, shareableTake] = await Promise.all([
+  const [openingTake, shareableTake, dateFlavor] = await Promise.all([
     generateOpeningTake(whatToWatch, fromTheInside, voices, newMembers),
     generateShareableTake(whatToWatch),
+    generateDateFlavor(),
   ]);
 
   const takeActions = buildTakeActions(whatToWatch);
@@ -77,6 +78,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     shareableTake: shareableTake || undefined,
     whatShipped: whatShipped.length > 0 ? whatShipped : undefined,
     takeActions: takeActions.length > 0 ? takeActions : undefined,
+    dateFlavor: dateFlavor || undefined,
     generatedAt: new Date().toISOString(),
   };
 
@@ -489,6 +491,54 @@ async function generateShareableTake(whatToWatch: DigestNewsItem[]): Promise<str
   });
 
   return result.text.trim() || null;
+}
+
+// ─── Date Flavor (for cover illustrations) ──────────────────────────────
+
+/**
+ * Generate a fun, globally-aware cultural or seasonal note for today's date.
+ * Used as visual context for the cover illustration — NOT displayed to readers.
+ * Picks from global holidays, obscure celebrations, seasonal events from any
+ * hemisphere/region, or just an interesting fact about the date.
+ */
+async function generateDateFlavor(): Promise<string | null> {
+  if (!isLLMConfigured()) return null;
+
+  const today = new Date();
+  const formatted = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  try {
+    const result = await complete({
+      system: `You pick a single fun, globally-aware observance, celebration, or seasonal fact for a given date. This will be used as visual inspiration for a newsletter cover illustration.
+
+RULES:
+- Be GLOBAL. Draw from any country, culture, region, or hemisphere. Do NOT default to US/Western holidays.
+- It's fine to pick something obscure, nerdy, or delightful — "National Cheese Donut Day in Perth" is great.
+- It's equally fine to pick a major global celebration if one falls on this date (Diwali, Lunar New Year, Eid, etc.).
+- If nothing interesting falls on this exact date, pick the closest upcoming notable observance within a week.
+- Include the country/region/culture of origin.
+- Respond with ONLY a single sentence describing the observance and a brief visual cue for an illustrator.
+- Example: "It's Holi in India — a festival of colors with clouds of bright powder in the air."
+- Example: "Today is World Standards Day — celebrated globally with flags and formal ceremonies."
+- Example: "It's cherry blossom season in Tokyo — pale pink petals against clear skies."
+- If nothing is particularly interesting, respond with an empty string.`,
+      prompt: `What's interesting about ${formatted}?`,
+      maxTokens: 80,
+      model: 'fast',
+      operationName: 'prompt-date-flavor',
+    });
+
+    const text = result.text.trim();
+    return text.length > 5 ? text : null;
+  } catch {
+    logger.warn('Failed to generate date flavor');
+    return null;
+  }
 }
 
 // ─── Official Content Takeaways ─────────────────────────────────────────

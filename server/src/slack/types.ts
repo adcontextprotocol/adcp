@@ -187,6 +187,8 @@ export interface SlackBlock {
   fields?: SlackTextObject[];
   elements?: SlackElement[];
   accessory?: SlackElement;
+  image_url?: string;
+  alt_text?: string;
 }
 
 export interface SlackTextObject {

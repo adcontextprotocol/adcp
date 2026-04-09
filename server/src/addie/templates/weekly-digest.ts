@@ -195,8 +195,16 @@ export function renderDigestEmail(
     </p>
 
     <!-- Header -->
+    ${content.coverImageUrl ? `
+    <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
+      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(editionDate))}" style="width: 100%; height: auto; display: block;">
+    </div>
     <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
     <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    ` : `
+    <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    `}
 
     ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
 
@@ -582,6 +590,15 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     type: 'header',
     text: { type: 'plain_text', text: `The Prompt — ${formatDate(editionDate)}` },
   });
+
+  // Cover image
+  if (content.coverImageUrl) {
+    blocks.push({
+      type: 'image',
+      image_url: content.coverImageUrl,
+      alt_text: `The Prompt cover — ${formatDate(editionDate)}`,
+    });
+  }
 
   // Opening take
   blocks.push({
