@@ -45,6 +45,8 @@ export interface EmailShellOptions {
   trackingId: string;
   segment: string;
   firstName?: string;
+  /** Optional cover image URL for the edition */
+  coverImageUrl?: string;
   /** Newsletter-specific body HTML (all content sections) */
   bodyHtml: string;
 }
@@ -54,7 +56,7 @@ export interface EmailShellOptions {
  * Returns the complete inner HTML (sendMarketingEmail wraps this in the outer chrome + footer).
  */
 export function renderEmailShell(opts: EmailShellOptions): string {
-  const { newsletterName, author, palette, perspectiveSlugPrefix, signOff, preheaderText, editionDate, trackingId, segment, firstName, bodyHtml } = opts;
+  const { newsletterName, author, palette, perspectiveSlugPrefix, signOff, preheaderText, editionDate, trackingId, segment, firstName, coverImageUrl, bodyHtml } = opts;
   const t = (tag: string, url: string) => trackLink(trackingId, tag, url);
   const viewUrl = t('view_browser', `${BASE_URL}/perspectives/${perspectiveSlugPrefix}-${editionDate}`);
   const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : '';
@@ -70,6 +72,10 @@ export function renderEmailShell(opts: EmailShellOptions): string {
     </p>
 
     <!-- Header -->
+    ${coverImageUrl ? `
+    <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
+      <img src="${escapeHtml(coverImageUrl)}" alt="${escapeHtml(newsletterName)} — ${formatDate(editionDate)}" style="width: 100%; height: auto; display: block;">
+    </div>` : ''}
     <h1 style="font-size: 22px; color: ${palette.dark}; margin-bottom: 0;">${escapeHtml(newsletterName)}</h1>
     <p style="font-size: 14px; color: #666; margin-top: 4px;">from ${escapeHtml(author)} &middot; ${formatDate(editionDate)}</p>
 

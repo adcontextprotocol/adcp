@@ -8,11 +8,11 @@ import {
   getRecentDigests,
   updateDigestContent,
   approveDigest,
-  setDigestCoverImage,
   isLegacyContent,
   type DigestContent,
 } from '../../db/digest-db.js';
-import { generateIllustration } from '../../services/illustration-generator.js';
+import { generateCoverForEdition } from '../../newsletters/cover.js';
+import { thePromptConfig } from '../../newsletters/the-prompt/index.js';
 import { applyDigestEdit } from '../../addie/services/digest-editor.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { createDigest } from '../../db/digest-db.js';
@@ -456,22 +456,19 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       const content = digest.content as DigestContent;
       const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
       const subject = generateDigestSubject(content);
-      const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
-      const { imageBuffer, promptUsed } = await generateIllustration({
-        title: subject,
-        category: 'The Prompt',
-        excerpt: content.openingTake,
-        editionDate,
-        dateFlavor: content.dateFlavor,
-      });
+      const coverResult = await generateCoverForEdition(
+        thePromptConfig, id, subject, content.openingTake, editionDate, content.dateFlavor,
+      );
+      if (!coverResult) {
+        return res.status(500).json({ error: 'Failed to store cover image' });
+      }
 
-      await setDigestCoverImage(id, imageBuffer, promptUsed);
-      content.coverImageUrl = `${BASE_URL}/digest/${editionDate}/cover.png`;
+      content.coverImageUrl = coverResult.coverImageUrl;
       await updateDigestContent(id, content);
 
-      logger.info({ digestId: id, user: req.user?.email, sizeKB: (imageBuffer.length / 1024).toFixed(0) }, 'Cover image regenerated via admin');
-      res.json({ success: true, coverImageUrl: content.coverImageUrl });
+      logger.info({ digestId: id, user: req.user?.email }, 'Cover image regenerated via admin');
+      res.json({ success: true, coverImageUrl: coverResult.coverImageUrl });
     } catch (error) {
       logger.error({ err: error }, 'Failed to regenerate cover image');
       res.status(500).json({ error: 'Failed to regenerate cover image' });

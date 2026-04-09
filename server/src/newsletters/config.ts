@@ -82,6 +82,14 @@ export interface NewsletterEditionDB {
   getRecent(limit: number): Promise<EditionRecord[]>;
   getRecipients(): Promise<NewsletterRecipient[]>;
   getUserWorkingGroupMap(): Promise<Map<string, string[]>>;
+
+  // ─── Cover Image (optional) ──────────────────────────────────────────
+  /** Store a cover image for a draft edition. Returns false if not a draft. */
+  setCoverImage?(id: number, imageData: Buffer, promptUsed: string): Promise<boolean>;
+  /** Get the cover image binary by edition date. */
+  getCoverImage?(editionDate: string): Promise<Buffer | null>;
+  /** Get cover image + prompt (for reuse when publishing as perspective). */
+  getCoverImageWithPrompt?(editionDate: string): Promise<{ imageData: Buffer; promptUsed: string } | null>;
 }
 
 // ─── Newsletter Config ─────────────────────────────────────────────────
@@ -117,6 +125,8 @@ export interface NewsletterConfig {
   signOff: { text: string; attribution: string; domain: string };
   /** Slack announcement channel env var */
   announcementChannelEnvVar: string;
+  /** URL prefix for public cover images, e.g. '/digest' → /digest/:date/cover.png */
+  coverRoutePrefix?: string;
 
   /** Build content for a new edition */
   buildContent: () => Promise<unknown>;

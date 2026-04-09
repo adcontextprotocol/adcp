@@ -7,7 +7,7 @@
 
 import { createLogger } from '../logger.js';
 import type { NewsletterConfig, EditionRecord, SendStats } from './config.js';
-import { getPersonaCluster, getDigestCoverImageWithPrompt } from '../db/digest-db.js';
+import { getPersonaCluster } from '../db/digest-db.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../notifications/email.js';
 import { proposeContentForUser, type ContentUser } from '../routes/content.js';
@@ -158,8 +158,8 @@ async function reuseOrGenerateCoverImage(
   title: string,
   editionDate: string,
 ): Promise<void> {
-  // Check for existing digest cover image
-  const existing = await getDigestCoverImageWithPrompt(editionDate);
+  // Check for existing cover image from draft-time generation
+  const existing = await config.db.getCoverImageWithPrompt?.(editionDate) ?? null;
   let imageBuffer: Buffer;
   let promptUsed: string;
   if (existing) {
