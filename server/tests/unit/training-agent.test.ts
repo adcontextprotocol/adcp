@@ -4988,7 +4988,7 @@ describe('governance purchase_type and allocations', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
 
-    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+    const { isError } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-multi',
       binding: 'proposed',
       caller: 'https://buyer.example',
