@@ -717,10 +717,14 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const explanation = buildExplanation(status, findings, conditions, shouldEscalate);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
+  // Generate or reuse governance_context for lifecycle correlation
+  const effectiveContext = (status === 'approved' || status === 'conditions')
+    ? (governanceContext || randomUUID())
+    : governanceContext;
   const check: GovernanceCheckState = {
     checkId,
     planId,
-    governanceContext,
+    governanceContext: effectiveContext,
     binding,
     status,
     caller,
@@ -1151,8 +1155,8 @@ function buildCheckResponse(check: GovernanceCheckState) {
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),
-    ...((check.status === 'approved' || check.status === 'conditions') && {
-      governance_context: randomUUID(),
+    ...(check.governanceContext && {
+      governance_context: check.governanceContext,
     }),
   };
 }
