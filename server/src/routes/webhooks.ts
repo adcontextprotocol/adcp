@@ -1089,7 +1089,7 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
 
   const eventId = eventResult.rows[0].id;
 
-  // Update our event with Luma changes
+  // Update our event with Luma changes (all fields that createEventFromLuma maps)
   await eventsDb.updateEvent(eventId, {
     title: lumaEvent.name,
     description: lumaEvent.description || undefined,
@@ -1099,7 +1099,10 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
     venue_name: lumaEvent.geo_address_json?.description || undefined,
     venue_address: lumaEvent.geo_address_json?.full_address || undefined,
     venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_state: lumaEvent.geo_address_json?.region || undefined,
     venue_country: lumaEvent.geo_address_json?.country || undefined,
+    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
+    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
     virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
     featured_image_url: lumaEvent.cover_url || undefined,
   });
@@ -1120,12 +1123,22 @@ export function createWebhooksRouter(): Router {
   router.post('/luma', async (req: Request, res: Response) => {
     const requestStartTime = Date.now();
 
+    // Verify webhook authenticity via signing secret
+    const LUMA_WEBHOOK_SECRET = process.env.LUMA_WEBHOOK_SECRET;
+    if (LUMA_WEBHOOK_SECRET) {
+      const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
+      if (providedSecret !== LUMA_WEBHOOK_SECRET) {
+        logger.warn('Luma webhook rejected: invalid signing secret');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+
     try {
-      logger.info({ body: req.body }, 'Received Luma webhook');
+      logger.debug({ action: (req.body as Record<string, unknown>)?.action }, 'Received Luma webhook');
 
       const payload = parseLumaWebhook(req.body);
       if (!payload) {
-        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+        logger.warn('Invalid Luma webhook payload structure');
         return res.status(400).json({ error: 'Invalid payload' });
       }
 

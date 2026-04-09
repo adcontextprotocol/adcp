@@ -701,11 +701,11 @@ export function createEventsRouter(): {
                 name: guest.user_name || undefined,
                 registration_source: 'luma',
                 luma_guest_id: guest.api_id,
-                registration_status: guest.approval_status === 'approved' ? 'registered' : 'registered',
+                registration_status: 'registered',
               });
               registrationsSynced++;
-            } catch {
-              // Duplicate or other error — skip
+            } catch (err) {
+              logger.debug({ err, email: guest.user_email }, 'Skipped registration sync (duplicate or error)');
             }
           }
         } catch (err) {

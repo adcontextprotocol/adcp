@@ -138,13 +138,17 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Sync events from a single Luma calendar to AAO.
- * Fetches all events (past and future) so we capture the full event history.
+ * On first run (bootstrap=true), fetches all events including past.
+ * On subsequent hourly runs, only fetches recent events (last 7 days).
  */
-async function syncCalendar(calendarId: string, stats: { created: number; skipped: number; errors: number }): Promise<void> {
-  // Fetch all events — no after/before filter
-  const events = await listCalendarEvents(calendarId);
+async function syncCalendar(calendarId: string, stats: { created: number; skipped: number; errors: number }, bootstrap: boolean): Promise<void> {
+  const options = bootstrap
+    ? {} // Fetch all events on first run
+    : { after: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() };
 
-  logger.info({ calendarId, eventCount: events.length }, 'Fetched calendar events');
+  const events = await listCalendarEvents(calendarId, options);
+
+  logger.info({ calendarId, eventCount: events.length, bootstrap }, 'Fetched calendar events');
 
   for (const lumaEvent of events) {
     try {
@@ -164,8 +168,10 @@ async function syncCalendar(calendarId: string, stats: { created: number; skippe
 /**
  * Sync all events from Luma calendars to AAO.
  * Uses LUMA_CALENDAR_ID if configured, otherwise discovers calendars via API.
+ *
+ * @param bootstrap - If true, fetches all events (past + future). If false, only recent events.
  */
-export async function syncLumaCalendar(): Promise<{ created: number; skipped: number; errors: number }> {
+export async function syncLumaCalendar(bootstrap = false): Promise<{ created: number; skipped: number; errors: number }> {
   if (!isLumaEnabled()) {
     logger.debug('Luma not enabled, skipping calendar sync');
     return { created: 0, skipped: 0, errors: 0 };
@@ -176,16 +182,16 @@ export async function syncLumaCalendar(): Promise<{ created: number; skipped: nu
   try {
     if (LUMA_CALENDAR_ID) {
       // Use configured calendar ID directly
-      logger.info({ calendarId: LUMA_CALENDAR_ID }, 'Syncing configured Luma calendar');
-      await syncCalendar(LUMA_CALENDAR_ID, stats);
+      logger.info({ calendarId: LUMA_CALENDAR_ID, bootstrap }, 'Syncing configured Luma calendar');
+      await syncCalendar(LUMA_CALENDAR_ID, stats, bootstrap);
     } else {
       // Discover calendars via API
       const calendars = await listCalendars();
-      logger.info({ calendarCount: calendars.length }, 'Syncing discovered Luma calendars');
+      logger.info({ calendarCount: calendars.length, bootstrap }, 'Syncing discovered Luma calendars');
 
       for (const calendar of calendars) {
         try {
-          await syncCalendar(calendar.api_id, stats);
+          await syncCalendar(calendar.api_id, stats, bootstrap);
         } catch (err) {
           stats.errors++;
           logger.error({ err, calendarId: calendar.api_id }, 'Failed to sync calendar');
@@ -211,11 +217,11 @@ export function startLumaSync(): void {
     return;
   }
 
-  // Run immediately on startup, then hourly
-  syncLumaCalendar().catch(err => logger.error({ err }, 'Luma calendar sync failed'));
+  // Bootstrap on startup (fetch all events including past), then hourly incremental
+  syncLumaCalendar(true).catch(err => logger.error({ err }, 'Luma calendar bootstrap sync failed'));
 
   intervalId = setInterval(() => {
-    syncLumaCalendar().catch(err => logger.error({ err }, 'Luma calendar sync failed'));
+    syncLumaCalendar(false).catch(err => logger.error({ err }, 'Luma calendar sync failed'));
   }, SYNC_INTERVAL_MS);
 
   logger.info({ intervalMs: SYNC_INTERVAL_MS }, 'Started Luma calendar sync');
