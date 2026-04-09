@@ -12,6 +12,7 @@ import { getPool } from '../db/client.js';
 import {
   listCalendars,
   listCalendarEvents,
+  getEventGuests,
   isLumaEnabled,
   type LumaEvent,
 } from './client.js';
@@ -48,6 +49,17 @@ function inferEventFormat(lumaEvent: LumaEvent): EventFormat {
   if (hasVenue && hasVirtual) return 'hybrid';
   if (hasVirtual) return 'virtual';
   return 'in_person';
+}
+
+/**
+ * Try to extract a city name from an event title.
+ * Handles patterns like "AAO Meetup: Amsterdam" or "AdCP London: Chapter 1"
+ */
+function inferCityFromTitle(title: string): string | null {
+  // Common patterns: "Something: CityName" or "Something CityName:"
+  const colonMatch = title.match(/:\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/);
+  if (colonMatch) return colonMatch[1];
+  return null;
 }
 
 /**
@@ -100,7 +112,7 @@ export async function createEventFromLuma(lumaEvent: LumaEvent): Promise<{ id: s
     timezone: lumaEvent.timezone,
     venue_name: lumaEvent.geo_address_json?.description || undefined,
     venue_address: lumaEvent.geo_address_json?.full_address || undefined,
-    venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_city: lumaEvent.geo_address_json?.city || inferCityFromTitle(lumaEvent.name) || undefined,
     venue_state: lumaEvent.geo_address_json?.region || undefined,
     venue_country: lumaEvent.geo_address_json?.country || undefined,
     venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
@@ -126,7 +138,68 @@ export async function createEventFromLuma(lumaEvent: LumaEvent): Promise<{ id: s
     title: lumaEvent.name,
   }, 'Created event from Luma');
 
+  // Sync registrations from Luma
+  await syncEventRegistrations(event.id, lumaEvent.api_id);
+
   return { id: event.id, slug: finalSlug };
+}
+
+/**
+ * Sync registrations from Luma for a specific event.
+ * Imports guests that aren't already in our database.
+ */
+export async function syncEventRegistrations(eventId: string, lumaEventId: string): Promise<number> {
+  let synced = 0;
+  try {
+    const guests = await getEventGuests(lumaEventId);
+    if (guests.length === 0) return 0;
+
+    for (const guest of guests) {
+      if (!guest.user_email) continue;
+      try {
+        // Check if registration already exists by luma_guest_id or email
+        const pool = getPool();
+        const existing = await pool.query(
+          `SELECT id FROM event_registrations
+           WHERE event_id = $1 AND (luma_guest_id = $2 OR LOWER(email) = LOWER($3))`,
+          [eventId, guest.api_id, guest.user_email]
+        );
+        if (existing.rows.length > 0) continue;
+
+        const status = guest.approval_status === 'declined' ? 'cancelled' as const : 'registered' as const;
+        await eventsDb.createRegistration({
+          event_id: eventId,
+          email: guest.user_email,
+          name: guest.user_name || undefined,
+          registration_source: 'luma',
+          luma_guest_id: guest.api_id,
+          registration_status: status,
+        });
+
+        // Mark attendance if checked in
+        if (guest.checked_in_at) {
+          const reg = await pool.query(
+            'SELECT id FROM event_registrations WHERE event_id = $1 AND luma_guest_id = $2',
+            [eventId, guest.api_id]
+          );
+          if (reg.rows[0]) {
+            await eventsDb.checkInAttendee(reg.rows[0].id);
+          }
+        }
+
+        synced++;
+      } catch {
+        // Duplicate or other error — skip individual guest
+      }
+    }
+
+    if (synced > 0) {
+      logger.info({ eventId, lumaEventId, synced, total: guests.length }, 'Synced registrations from Luma');
+    }
+  } catch (err) {
+    logger.warn({ err, eventId, lumaEventId }, 'Could not sync registrations from Luma');
+  }
+  return synced;
 }
 
 // ============================================================================
@@ -156,6 +229,18 @@ async function syncCalendar(calendarId: string, stats: { created: number; skippe
       if (result) {
         stats.created++;
       } else {
+        // Event already exists — backfill registrations if empty
+        const pool = getPool();
+        const existing = await pool.query(
+          `SELECT e.id FROM events e
+           WHERE e.luma_event_id = $1
+             AND NOT EXISTS (SELECT 1 FROM event_registrations er WHERE er.event_id = e.id)`,
+          [lumaEvent.api_id]
+        );
+        if (existing.rows[0]) {
+          const synced = await syncEventRegistrations(existing.rows[0].id, lumaEvent.api_id);
+          if (synced > 0) stats.created += synced; // Count registration syncs
+        }
         stats.skipped++;
       }
     } catch (err) {

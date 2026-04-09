@@ -182,6 +182,8 @@ export class EventsDatabase {
       require_rsvp_approval: 'require_rsvp_approval',
       visibility: 'visibility',
       access_rules: 'access_rules',
+      recap_html: 'recap_html',
+      recap_video_url: 'recap_video_url',
       metadata: 'metadata',
     };
 

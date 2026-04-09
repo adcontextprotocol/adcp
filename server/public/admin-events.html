@@ -7,6 +7,7 @@
   <title>Admin - Events - AAO</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
+  <script src="/vendor/tiptap.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -633,6 +634,31 @@
             </div>
           </div>
 
+        <!-- Recap (shown for existing events) -->
+        <div class="section-divider" id="recapSection" style="display: none;">
+          <div class="section-title">Event Recap</div>
+        </div>
+
+        <div id="recapFields" style="display: none;">
+          <div class="form-group">
+            <label>Recap Video URL</label>
+            <input type="url" id="recapVideoUrl" placeholder="YouTube or Vimeo URL for the event recording">
+          </div>
+
+          <div class="form-group">
+            <label>Event Recap</label>
+            <div id="recapToolbar" style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="recapEditor?.chain().focus().toggleBold().run()" title="Bold"><strong>B</strong></button>
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="recapEditor?.chain().focus().toggleItalic().run()" title="Italic"><em>I</em></button>
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="setRecapLink()" title="Link">🔗</button>
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="recapEditor?.chain().focus().toggleHeading({level:3}).run()" title="Heading">H3</button>
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="recapEditor?.chain().focus().toggleBulletList().run()" title="Bullet List">• List</button>
+              <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="recapEditor?.chain().focus().toggleOrderedList().run()" title="Numbered List">1. List</button>
+            </div>
+            <div id="recapEditorEl" style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); min-height: 200px; background: var(--color-bg-card);"></div>
+          </div>
+        </div>
+
           <div id="eventGroupNotExists" style="display: none;">
             <button type="button" class="btn btn-primary" onclick="createEventGroup()">
               Create Attendee Group + Slack Channel
@@ -674,6 +700,28 @@
     let editingEventId = null;
     let deletingEventId = null;
     let sponsorshipTierCount = 0;
+    let recapEditor = null;
+
+    function initRecapEditor(content = '') {
+      if (recapEditor) {
+        recapEditor.destroy();
+      }
+      const { Editor, StarterKit, Link } = window.TipTap;
+      recapEditor = new Editor({
+        element: document.getElementById('recapEditorEl'),
+        extensions: [StarterKit, Link.configure({ openOnClick: false })],
+        content: content || '',
+      });
+    }
+
+    function setRecapLink() {
+      const url = prompt('Enter URL:');
+      if (url && /^https?:\/\//i.test(url)) {
+        recapEditor?.chain().focus().setLink({ href: url }).run();
+      } else if (url) {
+        alert('Please enter a valid URL starting with https://');
+      }
+    }
 
     // Initialize
     async function init() {
@@ -844,6 +892,12 @@
 
       toggleLocationFields();
 
+      // Recap fields (show for existing events)
+      document.getElementById('recapSection').style.display = 'block';
+      document.getElementById('recapFields').style.display = 'block';
+      document.getElementById('recapVideoUrl').value = event.recap_video_url || '';
+      initRecapEditor(event.recap_html || '');
+
       // Show event group section for existing events
       document.getElementById('eventGroupSection').style.display = 'block';
       loadEventGroupInfo(id);
@@ -973,6 +1027,8 @@
         access_rules: {
           membership_required: document.getElementById('membershipRequired').checked || undefined,
         },
+        recap_html: recapEditor?.getHTML() || null,
+        recap_video_url: document.getElementById('recapVideoUrl').value || null,
       };
 
       try {
