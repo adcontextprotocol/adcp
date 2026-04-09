@@ -521,11 +521,16 @@ export async function mergeUsers(
     // email_link_tokens: CASCADE-deletes when secondary user is removed.
     // Reassign any tokens where the secondary was the initiator, so they
     // stay visible in the primary's account history.
-    await client.query(
+    const tokenUpdateResult = await client.query(
       `UPDATE email_link_tokens SET primary_workos_user_id = $1
-       WHERE primary_workos_user_id = $2`,
+       WHERE primary_workos_user_id = $2 RETURNING 1`,
       [primaryUserId, secondaryUserId]
     );
+    summary.tables_merged.push({
+      table_name: 'email_link_tokens',
+      rows_moved: tokenUpdateResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
 
     // =====================================================
     // 3. Update champion references in organizations
