@@ -387,8 +387,8 @@ export async function triageEmailDomain(
       const enrichResult = await enrichDomain(normalizedDomain);
       if (enrichResult.success && enrichResult.data) {
         const d = enrichResult.data;
-        enrichedCompanyName = d.companyName ?? undefined;
-        enrichedCompanyType = d.suggestedCompanyType ?? undefined;
+        enrichedCompanyName = d.companyName || undefined;
+        enrichedCompanyType = d.suggestedCompanyType || undefined;
         wasEnriched = true;
 
         const parts: string[] = [];
@@ -428,8 +428,8 @@ export async function triageEmailDomain(
     owner: assessment.owner,
     priority: assessment.priority ?? 'standard',
     verdict: assessment.verdict,
-    companyName: enrichedCompanyName ?? assessment.company_name ?? normalizedDomain,
-    companyType: enrichedCompanyType ?? assessment.company_type ?? undefined,
+    companyName: enrichedCompanyName || assessment.company_name || normalizedDomain,
+    companyType: enrichedCompanyType || assessment.company_type || undefined,
   };
 
   // 6. Log the decision (including skips)
@@ -480,7 +480,7 @@ export async function triageAndNotify(
 
   // Notify Slack so the team has visibility, but don't create an org
   notifyNewProspect({
-    orgName: result.companyName ?? domain,
+    orgName: result.companyName || domain,
     domain,
     owner: result.owner,
     priority: result.priority,
@@ -539,7 +539,7 @@ export async function triageAndCreateProspect(
   logger.info({ domain, owner: result.owner, priority: result.priority, companyName: result.companyName }, 'Triage: creating prospect');
 
   const prospectResult = await createProspect({
-    name: result.companyName ?? domain,
+    name: result.companyName || domain,
     domain,
     company_type: result.companyType,
     prospect_status: 'prospect',
@@ -576,7 +576,7 @@ export async function triageAndCreateProspect(
 
   // Notify (non-blocking — a missing channel config is fine)
   notifyNewProspect({
-    orgName: result.companyName ?? domain,
+    orgName: result.companyName || domain,
     domain,
     owner: result.owner,
     priority: result.priority,
