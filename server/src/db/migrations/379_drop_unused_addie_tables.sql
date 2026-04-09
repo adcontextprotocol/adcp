@@ -8,6 +8,10 @@
 -- Rules are now served from markdown files in server/src/addie/rules/.
 -- The addie_rules table is intentionally kept for historical reference.
 
+-- Drop FK constraints that reference tables being dropped
+ALTER TABLE IF EXISTS addie_interactions DROP CONSTRAINT IF EXISTS addie_interactions_experiment_id_fkey;
+ALTER TABLE IF EXISTS addie_threads DROP CONSTRAINT IF EXISTS addie_threads_experiment_id_fkey;
+
 DROP INDEX IF EXISTS idx_addie_eval_results_run_id;
 
 DROP TABLE IF EXISTS addie_eval_results;
