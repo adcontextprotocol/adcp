@@ -65,6 +65,7 @@ Governance plans govern all financial commitments, not just media buys. The `pur
 | `rights_license` | `acquire_rights`, `update_rights` | Brand rights licensing fees |
 | `signal_activation` | `activate_signal` | Data signal activation fees |
 | `creative_services` | `build_creative` | Creative generation fees |
+| `measurement_verification` | *(vendor-specific)* | Measurement, viewability, brand safety, and fraud detection services |
 
 All purchase types share the same governance loop: `sync_plans` → `check_governance` → execute → `report_plan_outcome`. The governance agent validates budget authority, geo compliance, and flight compliance across all types. Media-buy-specific validations (channel compliance, seller concentration, delivery pacing) apply only when `purchase_type` is `media_buy` or when the payload contains the relevant fields.
 
@@ -98,6 +99,8 @@ Plans can optionally partition the total budget across purchase types using `all
 ```
 
 When `allocations` is present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions — the sum of allocations MAY differ from the total.
+
+When `allocations` is present but a purchase type is not listed (e.g., `signal_activation` is attempted against a plan that only allocates for `media_buy` and `rights_license`), the governance agent validates the action against the plan's total budget only. Unlisted types are not denied — they draw from the shared pool. To restrict spending to listed types only, set `custom_policies` with explicit constraints.
 
 ### Channel mix targets
 

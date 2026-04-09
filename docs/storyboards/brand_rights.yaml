@@ -196,6 +196,32 @@ phases:
           - check: response_schema
             description: "Response matches acquire-rights-response.json schema"
 
+      - id: report_rights_outcome
+        title: "Report rights acquisition outcome"
+        narrative: |
+          After the brand agent responds, the orchestrator reports the outcome
+          to the governance agent. This commits the rights license cost against
+          the plan budget and closes the governance loop for this action.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "rights_license"
+          outcome: "completed"
+          seller_response:
+            committed_budget: 2500
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
   - id: rights_management
     title: "Manage rights"
     narrative: |

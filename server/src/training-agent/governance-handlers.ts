@@ -19,7 +19,7 @@ import type {
 import type { BrandReference } from '@adcp/client';
 import { getSession, sessionKeyFromArgs } from './state.js';
 
-const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
+const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification']);
 
 interface SyncPlansInput extends ToolArgs {
   plans: SyncPlanInput[];
@@ -102,6 +102,7 @@ interface GetPlanAuditLogsInput extends ToolArgs {
   plan_ids?: string[];
   portfolio_plan_ids?: string[];
   governance_contexts?: string[];
+  purchase_types?: string[];
   include_entries?: boolean;
 }
 
@@ -200,7 +201,7 @@ export const GOVERNANCE_TOOLS = [
       properties: {
         plan_id: { type: 'string' },
         caller: { type: 'string', format: 'uri' },
-        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'], description: 'Type of financial commitment. Defaults to media_buy.' },
         tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
         payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
@@ -224,7 +225,7 @@ export const GOVERNANCE_TOOLS = [
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
-        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'], description: 'Type of financial commitment. Defaults to media_buy.' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
         seller_response: { type: 'object' },
         delivery: { type: 'object' },
@@ -244,6 +245,7 @@ export const GOVERNANCE_TOOLS = [
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
         governance_contexts: { type: 'array', items: { type: 'string' }, description: 'Filter audit entries by governance context.' },
+        purchase_types: { type: 'array', items: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services', 'measurement_verification'] }, description: 'Filter audit entries by purchase type.' },
         include_entries: { type: 'boolean' },
       },
     },
@@ -850,6 +852,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
   const planIds = [...(req.plan_ids || [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
   const governanceContextsFilter = req.governance_contexts;
+  const purchaseTypesFilter = req.purchase_types;
   const includeEntries = req.include_entries || false;
 
   if (!planIds.length && !portfolioPlanIds.length && !governanceContextsFilter?.length) {
@@ -881,12 +884,17 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     const plan = session.governancePlans.get(planId);
     if (!plan) continue;
 
-    // Gather checks and outcomes for this plan, optionally filtered by governance context
+    // Gather checks and outcomes for this plan, optionally filtered by governance context and/or purchase type
     const ctxFilter = governanceContextsFilter?.length ? new Set(governanceContextsFilter) : undefined;
+    const ptFilter = purchaseTypesFilter?.length ? new Set(purchaseTypesFilter) : undefined;
     const checks = Array.from(session.governanceChecks.values())
-      .filter(c => c.planId === planId && (!ctxFilter || (c.governanceContext && ctxFilter.has(c.governanceContext))));
+      .filter(c => c.planId === planId
+        && (!ctxFilter || (c.governanceContext && ctxFilter.has(c.governanceContext)))
+        && (!ptFilter || ptFilter.has(c.purchaseType || 'media_buy')));
     const outcomes = Array.from(session.governanceOutcomes.values())
-      .filter(o => o.planId === planId && (!ctxFilter || (o.governanceContext && ctxFilter.has(o.governanceContext))));
+      .filter(o => o.planId === planId
+        && (!ctxFilter || (o.governanceContext && ctxFilter.has(o.governanceContext)))
+        && (!ptFilter || ptFilter.has(o.purchaseType || 'media_buy')));
 
     // Budget state
     const budget = {

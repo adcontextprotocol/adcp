@@ -266,6 +266,32 @@ phases:
             path: "deployments[0].type"
             description: "Deployment type is 'platform'"
 
+      - id: report_activation_outcome
+        title: "Report signal activation outcome"
+        narrative: |
+          After the signal agent responds, the orchestrator reports the outcome
+          to the governance agent. This commits the activation cost against
+          the plan budget.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_nova_ev_launch_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "signal_activation"
+          outcome: "completed"
+          seller_response:
+            committed_budget: 1500
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
   - id: agent_activation
     title: "Activate on a sales agent"
     narrative: |
