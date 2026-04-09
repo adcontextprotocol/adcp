@@ -321,9 +321,13 @@
                   "type": "number",
                   "description": "Budget committed (present for completed outcome entries)."
                 },
-                "media_buy_id": {
+                "governance_context": {
                   "type": "string",
-                  "description": "Media buy ID (present for delivery outcome entries)."
+                  "description": "Governance context for this entry (present for check and outcome entries)."
+                },
+                "purchase_type": {
+                  "$ref": "/schemas/enums/purchase-type.json",
+                  "description": "Purchase type for this entry."
                 },
                 "outcome_status": {
                   "type": "string",
@@ -338,15 +342,19 @@
               "additionalProperties": false
             }
           },
-          "media_buys": {
+          "governed_actions": {
             "type": "array",
-            "description": "Per-media-buy breakdown.",
+            "description": "Per-action breakdown grouped by governance context.",
             "items": {
               "type": "object",
               "properties": {
-                "media_buy_id": {
+                "governance_context": {
                   "type": "string",
-                  "description": "Seller-assigned media buy identifier."
+                  "description": "Governance context correlating this action's lifecycle."
+                },
+                "purchase_type": {
+                  "$ref": "/schemas/enums/purchase-type.json",
+                  "description": "Type of financial commitment."
                 },
                 "status": {
                   "type": "string",
@@ -355,19 +363,20 @@
                     "suspended",
                     "completed"
                   ],
-                  "description": "Media buy status."
+                  "description": "Action status."
                 },
                 "committed": {
                   "type": "number",
-                  "description": "Budget committed for this media buy."
+                  "description": "Budget committed for this action."
                 },
                 "check_count": {
                   "type": "integer",
-                  "description": "Number of governance checks performed for this media buy."
+                  "description": "Number of governance checks performed for this action."
                 }
               },
               "required": [
-                "media_buy_id",
+                "governance_context",
+                "purchase_type",
                 "status",
                 "committed"
               ],
@@ -380,7 +389,7 @@
           "plan_version",
           "status",
           "budget",
-          "media_buys",
+          "governed_actions",
           "summary"
         ],
         "additionalProperties": false

@@ -19,6 +19,8 @@ import type {
 import type { BrandReference } from '@adcp/client';
 import { getSession, sessionKeyFromArgs } from './state.js';
 
+const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
+
 interface SyncPlansInput extends ToolArgs {
   plans: SyncPlanInput[];
 }
@@ -27,7 +29,7 @@ interface SyncPlanInput {
   plan_id: string;
   brand: BrandReference;
   objectives: string;
-  budget: { total: number; currency: string; authority_level: string; per_seller_max_pct?: number; reallocation_threshold?: number };
+  budget: { total: number; currency: string; authority_level: string; per_seller_max_pct?: number; reallocation_threshold?: number; allocations?: Record<string, { amount?: number; max_pct?: number }> };
   flight: { start: string; end: string };
   channels?: { required?: string[]; allowed?: string[]; mix_targets?: Record<string, { min_pct?: number; max_pct?: number }> };
   countries?: string[];
@@ -41,8 +43,9 @@ interface SyncPlanInput {
 
 interface CheckGovernanceInput extends ToolArgs {
   plan_id: string;
-  binding: 'proposed' | 'committed';
+  binding?: 'proposed' | 'committed';
   caller: string;
+  purchase_type?: string;
   tool?: string;
   payload?: CheckPayload;
   governance_context?: string;
@@ -50,7 +53,6 @@ interface CheckGovernanceInput extends ToolArgs {
   planned_delivery?: PlannedDeliveryInput;
   delivery_metrics?: DeliveryMetricsInput;
   modification_summary?: string;
-  media_buy_id?: string;
 }
 
 interface CheckPayload {
@@ -65,6 +67,8 @@ interface CheckPayload {
   start_time?: string;
   end_time?: string;
   flight?: { start?: string; end?: string; start_time?: string; end_time?: string };
+  // Brand rights payload fields
+  campaign?: { countries?: string[]; start_date?: string; end_date?: string };
 }
 
 interface PlannedDeliveryInput {
@@ -82,21 +86,22 @@ interface ReportPlanOutcomeInput extends ToolArgs {
   plan_id: string;
   check_id?: string;
   governance_context?: string;
+  purchase_type?: string;
   outcome: 'completed' | 'failed' | 'delivery';
   seller_response?: SellerResponseInput;
-  delivery?: { spend?: number; media_buy_id?: string };
+  delivery?: { spend?: number };
   error?: object;
 }
 
 interface SellerResponseInput {
   committed_budget?: number;
   packages?: Array<{ budget?: number | { total?: number } }>;
-  media_buy_id?: string;
 }
 
 interface GetPlanAuditLogsInput extends ToolArgs {
   plan_ids?: string[];
   portfolio_plan_ids?: string[];
+  governance_contexts?: string[];
   include_entries?: boolean;
 }
 
@@ -127,6 +132,17 @@ export const GOVERNANCE_TOOLS = [
                   authority_level: { type: 'string', enum: ['agent_full', 'agent_limited', 'human_required'] },
                   per_seller_max_pct: { type: 'number' },
                   reallocation_threshold: { type: 'number' },
+                  allocations: {
+                    type: 'object',
+                    description: 'Optional budget partition across purchase types. Keys are purchase-type enum values.',
+                    additionalProperties: {
+                      type: 'object',
+                      properties: {
+                        amount: { type: 'number' },
+                        max_pct: { type: 'number' },
+                      },
+                    },
+                  },
                 },
                 required: ['total', 'currency', 'authority_level'],
               },
@@ -176,26 +192,25 @@ export const GOVERNANCE_TOOLS = [
   },
   {
     name: 'check_governance',
-    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending to a seller (proposed) or by the seller before executing (committed). Returns approved, denied, conditions, or escalated.',
+    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, conditions, or escalated. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
         plan_id: { type: 'string' },
-        binding: { type: 'string', enum: ['proposed', 'committed'] },
         caller: { type: 'string', format: 'uri' },
-        tool: { type: 'string' },
-        payload: { type: 'object' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
+        payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
-        media_buy_id: { type: 'string' },
 
         phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'] },
-        planned_delivery: { type: 'object' },
+        planned_delivery: { type: 'object', description: 'What the seller will deliver. Present on execution checks.' },
         delivery_metrics: { type: 'object' },
         modification_summary: { type: 'string' },
       },
-      required: ['plan_id', 'binding', 'caller'],
+      required: ['plan_id', 'caller'],
     },
   },
   {
@@ -209,12 +224,13 @@ export const GOVERNANCE_TOOLS = [
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
+        purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
         seller_response: { type: 'object' },
         delivery: { type: 'object' },
         error: { type: 'object' },
       },
-      required: ['plan_id', 'outcome'],
+      required: ['plan_id', 'outcome', 'governance_context'],
     },
   },
   {
@@ -227,6 +243,7 @@ export const GOVERNANCE_TOOLS = [
       properties: {
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
+        governance_contexts: { type: 'array', items: { type: 'string' }, description: 'Filter audit entries by governance context.' },
         include_entries: { type: 'boolean' },
       },
     },
@@ -270,6 +287,12 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     if (!plan.flight.start || !plan.flight.end) {
       return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} flight requires start and end` }] };
     }
+    if (plan.budget.allocations) {
+      const invalidKeys = Object.keys(plan.budget.allocations).filter(k => !VALID_PURCHASE_TYPES.has(k));
+      if (invalidKeys.length > 0) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget.allocations has invalid keys: ${invalidKeys.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+      }
+    }
   }
 
   for (const plan of input.plans) {
@@ -288,6 +311,9 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         authorityLevel: plan.budget.authority_level,
         perSellerMaxPct: plan.budget.per_seller_max_pct,
         reallocationThreshold: plan.budget.reallocation_threshold,
+        allocations: plan.budget.allocations ? Object.fromEntries(
+          Object.entries(plan.budget.allocations).map(([k, v]) => [k, { amount: v.amount, maxPct: v.max_pct }]),
+        ) : undefined,
       },
       channels: plan.channels ? {
         required: plan.channels.required,
@@ -312,6 +338,7 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       customPolicies: plan.custom_policies,
       mode: plan.mode || 'enforce',
       committedBudget: existing?.committedBudget ?? 0,
+      committedByType: existing?.committedByType ?? {},
       syncedAt: new Date().toISOString(),
     };
 
@@ -335,15 +362,23 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
-  const binding = req.binding;
   const caller = req.caller;
+  const purchaseType = req.purchase_type || 'media_buy';
   const tool = req.tool;
   const payload = req.payload;
   const governanceContext = req.governance_context;
   const phase = req.phase || 'purchase';
   const plannedDelivery = req.planned_delivery;
   const deliveryMetrics = req.delivery_metrics;
-  const mediaBuyId = req.media_buy_id;
+
+  if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
+    return { errors: [{ code: 'validation_error', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+  }
+
+  // Infer binding from field presence per the schema spec:
+  // tool+payload = intent check (proposed), governance_context+planned_delivery = execution check (committed)
+  const binding: 'proposed' | 'committed' = req.binding
+    || (req.governance_context && req.planned_delivery ? 'committed' : 'proposed');
 
   const plan = session.governancePlans.get(planId);
   if (!plan) {
@@ -362,7 +397,7 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
       mode: 'enforce',
       categoriesEvaluated: ['plan_lookup'],
       policiesEvaluated: [],
-      mediaBuyId,
+      purchaseType,
       timestamp: new Date().toISOString(),
     };
     session.governanceChecks.set(checkId, check);
@@ -474,6 +509,32 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
           requiredValue: maxSellerBudget,
           reason: `Budget exceeds per-seller maximum of ${plan.budget.perSellerMaxPct}% ($${maxSellerBudget}).`,
         });
+      }
+    }
+
+    // Per-type allocation check
+    const typeAllocation = plan.budget.allocations?.[purchaseType];
+    if (typeAllocation && payloadBudget !== undefined) {
+      const typeCommitted = plan.committedByType?.[purchaseType] ?? 0;
+      if (typeAllocation.amount !== undefined) {
+        const typeRemaining = typeAllocation.amount - typeCommitted;
+        if (payloadBudget > typeRemaining) {
+          findings.push({
+            categoryId: 'budget_authority',
+            severity: 'critical',
+            explanation: `Requested ${purchaseType} budget $${payloadBudget} exceeds remaining ${purchaseType} allocation $${typeRemaining} (committed: $${typeCommitted} of $${typeAllocation.amount}).`,
+          });
+        }
+      }
+      if (typeAllocation.maxPct !== undefined) {
+        const maxTypeAmount = plan.budget.total * (typeAllocation.maxPct / 100);
+        if (typeCommitted + payloadBudget > maxTypeAmount) {
+          findings.push({
+            categoryId: 'budget_authority',
+            severity: 'critical',
+            explanation: `${purchaseType} spend would reach $${typeCommitted + payloadBudget}, exceeding ${typeAllocation.maxPct}% allocation ($${maxTypeAmount}).`,
+          });
+        }
       }
     }
 
@@ -664,6 +725,7 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
     status,
     caller,
     tool,
+    purchaseType,
     phase,
     findings,
     conditions: conditions.length > 0 ? conditions : undefined,
@@ -675,7 +737,6 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
     mode,
     categoriesEvaluated: [...new Set(categoriesEvaluated)],
     policiesEvaluated: plan.policyIds || [],
-    mediaBuyId,
     timestamp: now.toISOString(),
     expiresAt,
   };
@@ -690,9 +751,14 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
   const planId = req.plan_id;
   const checkId = req.check_id;
   const governanceContext = req.governance_context;
+  const purchaseType = req.purchase_type || 'media_buy';
   const outcome = req.outcome;
   const sellerResponse = req.seller_response;
   const delivery = req.delivery;
+
+  if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
+    return { errors: [{ code: 'validation_error', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+  }
 
   const plan = session.governancePlans.get(planId);
   if (!plan) {
@@ -716,6 +782,8 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
     }
 
     plan.committedBudget += committedBudget;
+    plan.committedByType = plan.committedByType || {};
+    plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + committedBudget;
 
     // Check if committed now exceeds authorized
     if (plan.committedBudget > plan.budget.total) {
@@ -732,6 +800,8 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
     if (spend) {
       committedBudget = spend;
       plan.committedBudget += spend;
+      plan.committedByType = plan.committedByType || {};
+      plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + spend;
     }
   }
 
@@ -741,9 +811,9 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
     planId,
     checkId,
     governanceContext,
+    purchaseType,
     outcomeType: outcome,
     committedBudget,
-    mediaBuyId: sellerResponse?.media_buy_id ?? delivery?.media_buy_id,
     findings,
     timestamp: new Date().toISOString(),
   };
@@ -773,12 +843,23 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
 export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as GetPlanAuditLogsInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
-  const planIds = req.plan_ids || [];
+  const planIds = [...(req.plan_ids || [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
+  const governanceContextsFilter = req.governance_contexts;
   const includeEntries = req.include_entries || false;
 
-  if (!planIds.length && !portfolioPlanIds.length) {
-    return { errors: [{ code: 'validation_error', message: 'plan_ids or portfolio_plan_ids is required' }] };
+  if (!planIds.length && !portfolioPlanIds.length && !governanceContextsFilter?.length) {
+    return { errors: [{ code: 'validation_error', message: 'plan_ids, portfolio_plan_ids, or governance_contexts is required' }] };
+  }
+
+  // If filtering by governance_contexts, find the plans they belong to
+  if (governanceContextsFilter?.length && !planIds.length) {
+    const ctxSet = new Set(governanceContextsFilter);
+    for (const [, check] of session.governanceChecks) {
+      if (check.governanceContext && ctxSet.has(check.governanceContext) && !planIds.includes(check.planId)) {
+        planIds.push(check.planId);
+      }
+    }
   }
 
   const results: Array<{
@@ -787,7 +868,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     status: string;
     budget: object;
     channel_allocation: object;
-    media_buys: object;
+    governed_actions: object;
     summary: object;
     entries?: Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }>;
   }> = [];
@@ -796,11 +877,12 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     const plan = session.governancePlans.get(planId);
     if (!plan) continue;
 
-    // Gather checks and outcomes for this plan
+    // Gather checks and outcomes for this plan, optionally filtered by governance context
+    const ctxFilter = governanceContextsFilter?.length ? new Set(governanceContextsFilter) : undefined;
     const checks = Array.from(session.governanceChecks.values())
-      .filter(c => c.planId === planId);
+      .filter(c => c.planId === planId && (!ctxFilter || (c.governanceContext && ctxFilter.has(c.governanceContext))));
     const outcomes = Array.from(session.governanceOutcomes.values())
-      .filter(o => o.planId === planId);
+      .filter(o => o.planId === planId && (!ctxFilter || (o.governanceContext && ctxFilter.has(o.governanceContext))));
 
     // Budget state
     const budget = {
@@ -815,27 +897,28 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     // Channel allocation from outcomes
     const channelAllocation: Record<string, { committed: number; pct: number }> = {};
 
-    // Media buy breakdown (grouped by media_buy_id)
-    const mediaBuyMap = new Map<string, { status: string; committed: number; checkCount: number }>();
+    // Governed actions breakdown (grouped by governance_context)
+    const actionMap = new Map<string, { purchase_type: string; status: string; committed: number; checkCount: number }>();
     for (const check of checks) {
-      if (check.mediaBuyId) {
-        if (!mediaBuyMap.has(check.mediaBuyId)) {
-          mediaBuyMap.set(check.mediaBuyId, { status: 'active', committed: 0, checkCount: 0 });
+      if (check.governanceContext) {
+        if (!actionMap.has(check.governanceContext)) {
+          actionMap.set(check.governanceContext, { purchase_type: check.purchaseType || 'media_buy', status: 'active', committed: 0, checkCount: 0 });
         }
-        mediaBuyMap.get(check.mediaBuyId)!.checkCount++;
+        actionMap.get(check.governanceContext)!.checkCount++;
       }
     }
     for (const outcome of outcomes) {
-      if (outcome.mediaBuyId) {
-        const entry = mediaBuyMap.get(outcome.mediaBuyId);
+      if (outcome.governanceContext) {
+        const entry = actionMap.get(outcome.governanceContext);
         if (entry) {
           entry.committed += outcome.committedBudget;
         }
       }
     }
 
-    const mediaBuys = Array.from(mediaBuyMap.entries()).map(([id, data]) => ({
-      media_buy_id: id,
+    const governedActions = Array.from(actionMap.entries()).map(([ctx, data]) => ({
+      governance_context: ctx,
+      purchase_type: data.purchase_type,
       status: data.status,
       committed: data.committed,
       check_count: data.checkCount,
@@ -894,6 +977,8 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
           timestamp: check.timestamp,
           caller: check.caller,
           tool: check.tool,
+          purchase_type: check.purchaseType || 'media_buy',
+          ...(check.governanceContext && { governance_context: check.governanceContext }),
           status: check.status,
           binding: check.binding,
           explanation: check.explanation,
@@ -916,7 +1001,8 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
           timestamp: outcome.timestamp,
           outcome: outcome.outcomeType,
           committed_budget: outcome.committedBudget,
-          ...(outcome.mediaBuyId && { media_buy_id: outcome.mediaBuyId }),
+          ...(outcome.purchaseType && { purchase_type: outcome.purchaseType }),
+          ...(outcome.governanceContext && { governance_context: outcome.governanceContext }),
         });
       }
 
@@ -930,7 +1016,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
       status: plan.status,
       budget,
       channel_allocation: channelAllocation,
-      media_buys: mediaBuys,
+      governed_actions: governedActions,
       summary,
       ...(auditEntries && { entries: auditEntries }),
     });
@@ -954,7 +1040,7 @@ function extractFromPayload(payload: CheckPayload): ExtractedFields {
   return {
     budget: budgetInfo?.amount,
     budgetFieldPath: budgetInfo?.fieldPath ?? 'budget.total',
-    countries: payload.geo?.countries || payload.targeting?.countries || payload.countries || [],
+    countries: payload.geo?.countries || payload.targeting?.countries || payload.countries || payload.campaign?.countries || [],
     channels: extractChannels(payload),
     flight: extractFlight(payload),
   };
@@ -1000,6 +1086,10 @@ function extractFlight(payload: CheckPayload): { start?: string; end?: string } 
       start: payload.flight.start || payload.flight.start_time,
       end: payload.flight.end || payload.flight.end_time,
     };
+  }
+  // Brand rights payloads use campaign.start_date/end_date
+  if (payload.campaign?.start_date || payload.campaign?.end_date) {
+    return { start: payload.campaign.start_date, end: payload.campaign.end_date };
   }
   return { start: payload.start_time, end: payload.end_time };
 }

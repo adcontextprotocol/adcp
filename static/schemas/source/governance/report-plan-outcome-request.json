@@ -25,6 +25,11 @@
       "minLength": 16,
       "maxLength": 255
     },
+    "purchase_type": {
+      "$ref": "/schemas/enums/purchase-type.json",
+      "description": "The type of financial commitment this outcome is for. Determines which budget allocation (if any) to charge against. Defaults to 'media_buy' when omitted.",
+      "default": "media_buy"
+    },
     "outcome": {
       "$ref": "/schemas/enums/outcome-type.json",
       "description": "Outcome type."
@@ -33,10 +38,6 @@
       "type": "object",
       "description": "The seller's full response. Required when outcome is 'completed'.",
       "properties": {
-        "media_buy_id": {
-          "type": "string",
-          "description": "Seller's media buy identifier."
-        },
         "committed_budget": {
           "type": "number",
           "minimum": 0,
@@ -72,10 +73,6 @@
       "type": "object",
       "description": "Delivery metrics. Required when outcome is 'delivery'.",
       "properties": {
-        "media_buy_id": {
-          "type": "string",
-          "description": "The media buy being reported on."
-        },
         "reporting_period": {
           "type": "object",
           "description": "Start and end timestamps for the reporting window.",

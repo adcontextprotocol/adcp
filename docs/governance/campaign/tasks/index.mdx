@@ -13,7 +13,7 @@ Campaign Governance has four tasks.
 | Task | Direction | Description |
 |------|-----------|-------------|
 | [`sync_plans`](./sync_plans) | Orchestrator → Gov | Push campaign plans with budget, channels, flight dates, and authorized markets |
-| [`check_governance`](./check_governance) | Orchestrator or Seller → Gov | Universal governance check. Orchestrator sends `tool` + `payload` (intent check). Seller sends `media_buy_id` + `planned_delivery` (execution check). |
+| [`check_governance`](./check_governance) | Orchestrator or Seller → Gov | Universal governance check. Orchestrator sends `tool` + `payload` (intent check). Seller sends `governance_context` + `planned_delivery` (execution check). |
 | [`report_plan_outcome`](./report_plan_outcome) | Orchestrator → Gov | Post-action report: "here's what happened." Gov updates state and returns any findings |
 | [`get_plan_audit_logs`](./get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
 

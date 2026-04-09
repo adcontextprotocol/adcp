@@ -294,6 +294,7 @@ export interface GovernancePlanState {
     authorityLevel: string;
     perSellerMaxPct?: number;
     reallocationThreshold?: number;
+    allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
   channels?: {
     required?: string[];
@@ -309,6 +310,7 @@ export interface GovernancePlanState {
   customPolicies?: string[];
   mode: 'enforce' | 'advisory' | 'audit';
   committedBudget: number;
+  committedByType?: Record<string, number>;
   syncedAt: string;
 }
 
@@ -320,6 +322,7 @@ export interface GovernanceCheckState {
   status: 'approved' | 'denied' | 'conditions' | 'escalated';
   caller: string;
   tool?: string;
+  purchaseType?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -328,7 +331,6 @@ export interface GovernanceCheckState {
   mode: string;
   categoriesEvaluated: string[];
   policiesEvaluated: string[];
-  mediaBuyId?: string;
   timestamp: string;
   expiresAt?: string;
 }
@@ -353,9 +355,9 @@ export interface GovernanceOutcomeState {
   planId: string;
   checkId?: string;
   governanceContext?: string;
+  purchaseType?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
-  mediaBuyId?: string;
   findings: GovernanceFinding[];
   timestamp: string;
 }

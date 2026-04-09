@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-response.json",
   "title": "Check Governance Response",
-  "description": "Governance agent's response to a check request. Returns whether the action is approved under the campaign plan.",
+  "description": "Governance agent's response to a check request. Returns whether the action is approved under the governance plan.",
   "type": "object",
   "properties": {
     "check_id": {
@@ -122,7 +122,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Opaque governance context for this media buy. The buyer MUST attach this to the protocol envelope when sending the media buy to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this media buy's lifecycle. Only the issuing governance agent interprets this value.",
+      "description": "Opaque governance context for this governed action. The buyer MUST attach this to the protocol envelope when sending the purchase request (media buy, rights acquisition, signal activation) to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this action's lifecycle. Only the issuing governance agent interprets this value. This is the primary correlation key for audit and reporting across the governance lifecycle.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
