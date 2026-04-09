@@ -23,7 +23,7 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 
 ## Message Types
 
-All TMP message types include a `type` field that identifies the message for deserialization. This allows routers and agents to deserialize without inspecting URL path or content structure.
+All TMP message types include a `type` field that identifies the message for deserialization. Routers and agents use this field to select the correct schema for parsing the JSON body.
 
 | Message | `type` value |
 |---|---|
@@ -368,7 +368,7 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 
 - JSON over HTTP/2 POST. All implementations MUST use this transport.
 - Each provider exposes two path-based endpoints under its base URL: `POST /context` for Context Match and `POST /identity` for Identity Match. The router dispatches requests by path, not by inspecting the message body.
-- The `type` field in each message identifies the message for deserialization — routers and agents use it to select the correct schema, not for routing.
+- The `type` field in each message identifies the message for deserialization — routers and agents use it to select the correct schema, not for routing. Agents MUST validate that the `type` field matches the endpoint: `context_match_request` on `/context`, `identity_match_request` on `/identity`. A mismatch MUST be rejected with HTTP `400`.
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.
 - The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides the reference client and server implementation. Conformance tests validate compatibility — implementations in other languages MUST pass the same test suite.
