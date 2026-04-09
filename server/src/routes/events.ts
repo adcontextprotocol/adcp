@@ -8,6 +8,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { parse as parseCsvLib } from "csv-parse/sync";
+import DOMPurify from "isomorphic-dompurify";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -406,6 +407,29 @@ export function createEventsRouter(): {
               message: "max_sponsors must be between 0 and 1000",
             });
           }
+        }
+      }
+
+      // Sanitize recap HTML (defense-in-depth: sanitize on write AND read)
+      if (typeof updates.recap_html === 'string') {
+        if (updates.recap_html.length > 100_000) {
+          return res.status(400).json({ error: 'Recap too large', message: 'Recap content must be under 100KB' });
+        }
+        updates.recap_html = DOMPurify.sanitize(updates.recap_html, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'pre', 'code'],
+          ALLOWED_ATTR: ['href', 'target', 'rel'],
+        });
+      }
+
+      // Validate recap video URL
+      if (typeof updates.recap_video_url === 'string' && updates.recap_video_url.length > 0) {
+        try {
+          const parsed = new URL(updates.recap_video_url);
+          if (parsed.protocol !== 'https:') {
+            return res.status(400).json({ error: 'Invalid video URL', message: 'Video URL must use HTTPS' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'Invalid video URL', message: 'Must be a valid URL' });
         }
       }
 

@@ -40,6 +40,7 @@ import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { eventsDb } from '../../db/events-db.js';
+import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
@@ -458,6 +459,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.remindersSent > 0,
   });
 
+  // Event recap nudge - reminds admins to add recaps and attendee lists after events
+  jobScheduler.register({
+    name: 'event-recap-nudge',
+    description: 'Remind admins to add recaps for completed events',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: runEventRecapNudgeJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.nudgesSent > 0,
+  });
+
   // Brand registry sweep - researches unmapped org domains to maintain 100% coverage
   jobScheduler.register({
     name: 'brand-registry-sweep',
@@ -544,6 +556,7 @@ export const JOB_NAMES = {
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
   EVENT_REMINDER: 'event-reminder',
+  EVENT_RECAP_NUDGE: 'event-recap-nudge',
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',

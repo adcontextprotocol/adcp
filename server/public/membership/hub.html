@@ -1519,6 +1519,9 @@
           ${renderQuickActions(current_group_count, contentItems, seatType)}
         </div>
 
+        <!-- Upcoming events -->
+        <div id="hub-events"></div>
+
         <!-- Tier progress + social proof -->
         ${renderSocialProof(journey?.community_stats)}
         ${renderTierProgress(tier, tierIdx, points, nextTier, nextAt, progressPct, orgCtx, milestones)}
@@ -2345,6 +2348,52 @@
         .map(function (part) { return part.charAt(0).toUpperCase(); })
         .join('') || 'AA';
     }
+
+    // Load upcoming events into the hub
+    (async function loadHubEvents() {
+      try {
+        const res = await fetch('/api/events?upcoming=true');
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = (data.events || []).slice(0, 4);
+        if (events.length === 0) return;
+
+        const container = document.getElementById('hub-events');
+        if (!container) return;
+
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        let html = '<div class="hub-card" style="grid-column: 1 / -1;">';
+        html += '<div class="hub-card-header"><h3 class="hub-card-title">Upcoming Events</h3>';
+        html += '<a href="/events" class="hub-card-link">View all →</a></div>';
+        html += '<div style="display: grid; gap: var(--space-3);">';
+
+        for (const event of events) {
+          const startDate = new Date(event.start_time);
+          const isToday = startDate.toDateString() === now.toDateString();
+          const isTomorrow = startDate.toDateString() === tomorrow.toDateString();
+          const dateStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          const urgencyBadge = isToday ? '<span style="background: var(--color-error-100); color: var(--color-error-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Today!</span> '
+            : isTomorrow ? '<span style="background: var(--color-warning-100); color: var(--color-warning-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Tomorrow</span> '
+            : '';
+
+          const location = event.venue_city || (event.event_format === 'virtual' ? 'Virtual' : '');
+
+          html += '<a href="/events/' + escapeHtml(event.slug) + '" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-border); text-decoration: none; color: inherit; transition: border-color 0.15s;">';
+          html += '<div style="text-align: center; min-width: 48px;"><div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase;">' + startDate.toLocaleDateString('en-US', { month: 'short' }) + '</div><div style="font-size: var(--text-xl); font-weight: 700; color: var(--color-text-heading);">' + startDate.getDate() + '</div></div>';
+          html += '<div style="flex: 1; min-width: 0;"><div style="font-weight: 600; color: var(--color-text-heading);">' + urgencyBadge + escapeHtml(event.title) + '</div>';
+          html += '<div style="font-size: var(--text-sm); color: var(--color-text-secondary);">' + timeStr + (location ? ' · ' + escapeHtml(location) : '') + '</div></div>';
+          html += '</a>';
+        }
+
+        html += '</div></div>';
+        container.innerHTML = html;
+      } catch (err) {
+        // Silently fail — events section is supplementary
+      }
+    })();
   </script>
 </body>
 </html>
