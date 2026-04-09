@@ -9,6 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import { createTestClient, loadBundledStoryboards } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -2360,6 +2361,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     try {
       const url = new URL(raw);
       if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+
+      const hostname = url.hostname.toLowerCase();
+
+      // Block cloud metadata endpoints
+      if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") return null;
+
+      // Block private/loopback addresses in production
+      if (process.env.NODE_ENV === "production") {
+        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0") return null;
+        const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+        if (ipMatch) {
+          const [, a, b] = ipMatch.map(Number);
+          if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
+        }
+      }
+
       return raw;
     } catch {
       return null;
@@ -2652,6 +2669,55 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get storyboard");
       res.status(500).json({ error: "Failed to get storyboard" });
+    }
+  });
+
+  router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
+    const agentUrl = decodeURIComponent(req.params.encodedUrl);
+    if (!validateAgentUrlParam(agentUrl)) {
+      return res.status(400).json({ error: "Invalid agent URL" });
+    }
+
+    try {
+      const client = createTestClient(agentUrl, "mcp");
+      const agentInfo = await client.getAgentInfo();
+      const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
+
+      const allStoryboards = loadBundledStoryboards();
+      const applicable = allStoryboards.filter(sb => {
+        if (!sb.required_tools?.length) return true;
+        return sb.required_tools.some(tool => agentTools.includes(tool));
+      });
+
+      // Group by track
+      const byTrack: Record<string, Array<{ id: string; title: string; summary: string; step_count: number }>> = {};
+      for (const sb of applicable) {
+        const track = sb.track || "general";
+        if (!byTrack[track]) byTrack[track] = [];
+        byTrack[track].push({
+          id: sb.id,
+          title: sb.title,
+          summary: sb.summary,
+          step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+        });
+      }
+
+      res.json({
+        agent_url: agentUrl,
+        agent_name: agentInfo.name || "Unknown",
+        tools: agentTools,
+        storyboards: byTrack,
+        total_applicable: applicable.length,
+        total_available: allStoryboards.length,
+      });
+    } catch (error) {
+      logger.warn({ err: error, agentUrl }, "Failed to resolve applicable storyboards");
+
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return res.status(504).json({ error: "Connection timeout" });
+      }
+
+      return res.status(500).json({ error: "Failed to discover agent tools" });
     }
   });
 
