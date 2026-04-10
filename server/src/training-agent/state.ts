@@ -110,15 +110,15 @@ export function startSessionCleanup(): void {
       }
     }
     // Clean up expired MCP tasks from PostgreSQL
-    if (isDatabaseInitialized()) {
-      try {
+    try {
+      if (isDatabaseInitialized()) {
         const deleted = await cleanupExpiredTasks(getPool());
         if (deleted > 0) {
           logger.info({ deleted }, 'Cleaned up expired MCP tasks');
         }
-      } catch (err) {
-        logger.warn({ err }, 'Failed to clean up expired MCP tasks');
       }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to clean up expired MCP tasks');
     }
   }, CLEANUP_INTERVAL_MS);
   // Don't block process exit

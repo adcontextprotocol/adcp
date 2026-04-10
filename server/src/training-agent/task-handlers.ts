@@ -2650,7 +2650,7 @@ function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
 // ── Handler dispatch ──────────────────────────────────────────────
 
-type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
+type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,

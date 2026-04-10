@@ -1,10 +1,10 @@
 /**
  * Comply test controller for the training agent.
  *
- * Delegates dispatch, parameter validation, and response formatting to
- * the SDK's handleTestControllerRequest(). The training agent provides
- * the TestControllerStore backed by session state — state machine
- * transition tables, delivery/budget simulations, etc.
+ * Implements the TestControllerStore interface from @adcp/client backed
+ * by session state — state machine transition tables, delivery/budget
+ * simulations, etc. Dispatch and error handling are local since the
+ * SDK's handleTestControllerRequest is not publicly exported.
  */
 
 import { TestControllerError } from '@adcp/client';

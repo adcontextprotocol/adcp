@@ -445,10 +445,10 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('INVALID_TRANSITION');
     });
 
-    it('rejects rejected from active (only valid from pending_activation)', async () => {
+    it('rejects rejected from active (only valid from pending states)', async () => {
       const mediaBuyId = await createMediaBuy(server);
 
-      // Try to reject from active — rejected is only valid from pending_activation
+      // Try to reject from active — rejected is only valid from pending_creatives/pending_start
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_media_buy_status',
         params: { media_buy_id: mediaBuyId, status: 'rejected', rejection_reason: 'Test' },
