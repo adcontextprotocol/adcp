@@ -2137,13 +2137,20 @@ export function createCertificationToolHandlers(
     const codingTool = (input.coding_tool as string) || 'your coding assistant';
 
     // Skill file and storyboard mapping per track
+    // D4 auto-detects signals vs seller based on learner spec
+    const isSignalsAgent = moduleId === 'D4' && /signal|segment|audience|dmp|cdp/i.test(learnerSpec);
+
     const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string }> = {
       B4: {
         skill: 'build-seller-agent',
         skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
         storyboard: 'media_buy_seller',
       },
-      D4: {
+      D4: isSignalsAgent ? {
+        skill: 'build-signals-agent',
+        skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-signals-agent/SKILL.md',
+        storyboard: 'signal_owned',
+      } : {
         skill: 'build-seller-agent',
         skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
         storyboard: 'media_buy_seller',
@@ -2200,10 +2207,11 @@ The learner adds a new capability to their buyer agent, then re-runs the buying 
     }
 
     if (phase === 'build') {
+      const agentType = config.skill.includes('signals') ? 'signals agent' : 'seller agent';
       const isClaudeCode = codingTool.toLowerCase().includes('claude');
       const instruction = isClaudeCode
-        ? `In ${codingTool}, run exactly this:\n\nFetch ${config.skillUrl}, then build a seller agent for ${learnerSpec}`
-        : `Download the skill file from ${config.skillUrl} and include it as context in ${codingTool} with this prompt: "Build a seller agent for ${learnerSpec}"`;
+        ? `In ${codingTool}, run exactly this:\n\nFetch ${config.skillUrl}, then build a ${agentType} for ${learnerSpec}`
+        : `Download the skill file from ${config.skillUrl} and include it as context in ${codingTool} with this prompt: "Build a ${agentType} for ${learnerSpec}"`;
 
       return `## Phase 2: Build
 
