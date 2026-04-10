@@ -317,7 +317,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       if (!priceId) {
         return JSON.stringify({
           success: false,
-          error: `Product not found for lookup key: ${lookupKey}`,
+          error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
         });
       }
 

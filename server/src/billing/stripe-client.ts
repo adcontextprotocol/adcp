@@ -270,7 +270,6 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     return null;
   }
 
-  // First check our cached products - this is faster and more reliable
   const cachedProducts = await getBillingProducts();
   const cachedProduct = cachedProducts.find(p => p.lookup_key === lookupKey);
   if (cachedProduct) {
@@ -278,8 +277,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     return cachedProduct.price_id;
   }
 
-  // Fallback to direct Stripe query if not in cache
-  logger.info({ lookupKey }, 'getPriceByLookupKey: Not in cache, querying Stripe directly');
+  // Direct Stripe lookup as fallback when cache doesn't have the key
   try {
     const prices = await stripe.prices.list({
       lookup_keys: [lookupKey],
@@ -287,25 +285,18 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
       limit: 1,
     });
 
-    if (prices.data.length === 0) {
-      // Log available lookup keys for debugging
-      const allPrices = await stripe.prices.list({ active: true, limit: 100 });
-      const availableLookupKeys = allPrices.data
-        .filter(p => p.lookup_key?.startsWith('aao_'))
-        .map(p => p.lookup_key);
-      logger.error({
-        lookupKey,
-        availableLookupKeys,
-      }, 'getPriceByLookupKey: No price found for lookup key in Stripe');
-      return null;
+    if (prices.data.length > 0) {
+      logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price via direct Stripe lookup');
+      return prices.data[0].id;
     }
-
-    logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price in Stripe');
-    return prices.data[0].id;
   } catch (error) {
-    logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error fetching price');
-    return null;
+    logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error in direct Stripe lookup');
   }
+
+  const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
+  logger.error({ lookupKey, availableLookupKeys },
+    `getPriceByLookupKey: No price found for lookup key "${lookupKey}". Available: ${availableLookupKeys.join(', ')}`);
+  return null;
 }
 
 /**
