@@ -221,13 +221,113 @@ function findDocFiles() {
 }
 
 /**
- * Replace AdCP macro placeholders ({MACRO_NAME}) with dummy values so that
- * AJV's URI format validation can check the surrounding URL structure.
- * Only replaces patterns that look like AdCP macros: {UPPER_CASE_WITH_UNDERSCORES}.
+ * Realistic dummy values for AdCP macros, sourced from docs/creative/universal-macros.mdx.
+ * URL-valued macros use valid URIs so standalone URI fields pass format validation.
+ * All other values are URI-safe so they work inside query parameters too.
+ */
+const MACRO_DUMMY_VALUES = {
+  // Common
+  MEDIA_BUY_ID: 'mb_spring_2025',
+  PACKAGE_ID: 'pkg_ctv_prime',
+  CREATIVE_ID: 'cr_video_30s',
+  CACHEBUSTER: '87654321',
+  TIMESTAMP: '1704067200000',
+  CLICK_URL: 'https://click.example.com/track',
+  // Privacy
+  GDPR: '1',
+  GDPR_CONSENT: 'CPc7TgPPc7TgPAGABCENB',
+  US_PRIVACY: '1YNN',
+  GPP_STRING: 'DBABMA',
+  GPP_SID: '7',
+  IP_ADDRESS: '203.0.113.42',
+  LIMIT_AD_TRACKING: '0',
+  // Device
+  DEVICE_TYPE: 'desktop',
+  OS: 'iOS',
+  OS_VERSION: '17.2',
+  DEVICE_MAKE: 'Apple',
+  DEVICE_MODEL: 'iPhone15',
+  USER_AGENT: 'Mozilla',
+  APP_BUNDLE: 'com.publisher.app',
+  APP_NAME: 'Publisher_News',
+  // Geo
+  COUNTRY: 'US',
+  REGION: 'NY',
+  CITY: 'New_York',
+  ZIP: '10001',
+  DMA: '501',
+  LAT: '40.7128',
+  LONG: '-74.0060',
+  // Identity
+  DEVICE_ID: 'ABC-123-DEF-456',
+  DEVICE_ID_TYPE: 'idfa',
+  // Web context
+  DOMAIN: 'publisher.example.com',
+  PAGE_URL: 'https%3A%2F%2Fpublisher.example.com%2Farticle',
+  REFERRER: 'https://search.example.com',
+  KEYWORDS: 'business,finance',
+  // Placement
+  PLACEMENT_ID: '12345678',
+  FOLD_POSITION: 'above_fold',
+  AD_WIDTH: '300',
+  AD_HEIGHT: '250',
+  // Video
+  VIDEO_ID: 'vid_12345',
+  VIDEO_TITLE: 'Breaking_News',
+  VIDEO_DURATION: '600',
+  VIDEO_CATEGORY: 'IAB1',
+  CONTENT_GENRE: 'news',
+  CONTENT_RATING: 'TV-14',
+  PLAYER_WIDTH: '1920',
+  PLAYER_HEIGHT: '1080',
+  // Ad pod
+  POD_POSITION: '1',
+  POD_SIZE: '3',
+  AD_BREAK_ID: 'break_mid_1',
+  // Audio
+  STATION_ID: 'WXYZ-FM',
+  COLLECTION_NAME: 'Morning_Drive',
+  INSTALLMENT_ID: 'ep_2025_01_15',
+  AUDIO_DURATION: '3600',
+  // Legacy
+  AXEM: 'eyJjb250ZXh0IjoiLi4uIn0',
+  // Catalog
+  CATALOG_ID: 'gmc-primary',
+  SKU: 'SKU-12345',
+  GTIN: '00013000006040',
+  OFFERING_ID: 'summer-sale',
+  JOB_ID: 'vacancy-42',
+  HOTEL_ID: 'grand-amsterdam',
+  FLIGHT_ID: 'AMS-BCN-2025-06',
+  VEHICLE_ID: 'VIN-1234',
+  LISTING_ID: 'prop-01',
+  STORE_ID: 'amsterdam-flagship',
+  PROGRAM_ID: 'mba-2025',
+  DESTINATION_ID: 'barcelona',
+  CREATIVE_VARIANT_ID: 'variant_a',
+  APP_ITEM_ID: 'app_12345',
+  // DOOH
+  SCREEN_ID: 'screen_001',
+  VENUE_TYPE: 'airport',
+  PLAY_TIMESTAMP: '1704067200',
+  VENUE_LAT: '40.7128',
+  VENUE_LONG: '-74.0060',
+  // Carousel
+  CAROUSEL_INDEX: '0',
+  CAROUSEL_TOTAL: '5',
+};
+
+/**
+ * Replace AdCP macro placeholders ({MACRO_NAME}) with realistic dummy values
+ * so that AJV's URI format validation can check the surrounding URL structure.
+ * Known macros get values from MACRO_DUMMY_VALUES; unknown macros get a
+ * URI-safe fallback.
  */
 function replaceMacros(obj) {
   if (typeof obj === 'string') {
-    return obj.replace(/\{([A-Z][A-Z0-9_]*)\}/g, (_, name) => `__${name.toLowerCase()}__`);
+    return obj.replace(/\{([A-Z][A-Z0-9_]*)\}/g, (_, name) =>
+      MACRO_DUMMY_VALUES[name] || `__${name.toLowerCase()}__`
+    );
   }
   if (Array.isArray(obj)) {
     return obj.map(replaceMacros);
