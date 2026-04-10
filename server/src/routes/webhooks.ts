@@ -353,21 +353,21 @@ function parseEmailFromWebhook(data: ResendInboundPayload['data']): FetchEmailRe
   }
 
   // Last-writer-wins for duplicate header names. Safe for to/cc/in-reply-to/references
-  // which are single-valued per RFC 5322. Null-prototype object prevents prototype pollution.
-  const headerRecord: Record<string, string> = Object.create(null);
+  // which are single-valued per RFC 5322.
+  const headers = new Map<string, string>();
   if (data.headers) {
     for (const h of data.headers) {
-      headerRecord[h.name.toLowerCase()] = h.value;
+      headers.set(h.name.toLowerCase(), h.value);
     }
   }
 
   // Parse original recipients from headers
-  const originalTo = parseEmailHeaderList(headerRecord['to']);
-  const originalCc = parseEmailHeaderList(headerRecord['cc']);
+  const originalTo = parseEmailHeaderList(headers.get('to'));
+  const originalCc = parseEmailHeaderList(headers.get('cc'));
 
   // Extract threading headers for email conversation support
-  const inReplyTo = headerRecord['in-reply-to'];
-  const referencesRaw = headerRecord['references'];
+  const inReplyTo = headers.get('in-reply-to');
+  const referencesRaw = headers.get('references');
   const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
 
   logger.info({
