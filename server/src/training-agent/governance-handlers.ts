@@ -819,7 +819,7 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
     checkId,
     governanceContext,
     purchaseType,
-    sellerReference: sellerResponse?.seller_reference,
+    sellerReference: sellerResponse?.seller_reference?.slice(0, 255),
     outcomeType: outcome,
     committedBudget,
     findings,
@@ -859,6 +859,13 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
 
   if (!planIds.length && !portfolioPlanIds.length && !governanceContextsFilter?.length) {
     return { errors: [{ code: 'validation_error', message: 'plan_ids, portfolio_plan_ids, or governance_contexts is required' }] };
+  }
+
+  if (purchaseTypesFilter?.length) {
+    const invalid = purchaseTypesFilter.filter(t => !VALID_PURCHASE_TYPES.has(t));
+    if (invalid.length) {
+      return { errors: [{ code: 'validation_error', message: `Invalid purchase_types: ${invalid.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+    }
   }
 
   // If filtering by governance_contexts, find the plans they belong to
