@@ -14,6 +14,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
+import { PostgresTaskStore } from '@adcp/client';
+import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
 import type {
@@ -144,16 +146,26 @@ import { PUBLISHERS } from './publishers.js';
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
 /**
- * Shared task store across per-request Server instances. The SDK's
- * InMemoryTaskStore handles TTL cleanup, task ID generation, and
- * result storage. Passing this to the Server constructor auto-registers
- * handlers for tasks/get, tasks/result, tasks/list, and tasks/cancel.
+ * Shared task store across per-request Server instances.
+ *
+ * In production (database available), uses PostgresTaskStore so tasks
+ * survive across Fly.io instances. In tests (no database), falls back
+ * to InMemoryTaskStore.
  *
  * Note: no session isolation — any session can see/cancel tasks from
  * another. This is intentional for the training agent where all sessions
  * are sandboxed. Production servers should scope tasks by sessionId.
  */
-let sdkTaskStore = new InMemoryTaskStore();
+let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
+
+function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
+  if (!sdkTaskStore) {
+    sdkTaskStore = isDatabaseInitialized()
+      ? new PostgresTaskStore(getPool())
+      : new InMemoryTaskStore();
+  }
+  return sdkTaskStore;
+}
 
 /** Look up which tools allow task augmentation. */
 function toolSupportsTask(toolName: string): boolean {
@@ -164,8 +176,8 @@ function toolSupportsTask(toolName: string): boolean {
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
-  sdkTaskStore.cleanup();
-  sdkTaskStore = new InMemoryTaskStore();
+  sdkTaskStore?.cleanup();
+  sdkTaskStore = null;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -334,9 +346,8 @@ export function deriveStatus(mb: MediaBuyState): string {
 /** Map lifecycle status to valid buyer actions. */
 function validActionsForStatus(status: string): string[] {
   switch (status) {
-    case 'pending_start':
-      return ['cancel', 'sync_creatives'];
     case 'pending_creatives':
+    case 'pending_start':
       return ['cancel', 'sync_creatives'];
     case 'active':
       return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
@@ -585,6 +596,7 @@ const TOOLS = [
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         message: { type: 'string', description: 'Natural language instructions for generative builds' },
+        include_preview: { type: 'boolean', description: 'Include a preview URL or inline HTML in the build response' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Echoed on the response.' },
       },
     },
@@ -624,6 +636,7 @@ const TOOLS = [
         packages: { type: 'array' },
         new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
+        action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -1860,6 +1873,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
+  const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
@@ -1868,9 +1882,11 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     media_buy: {
       features: {
         inline_creative_management: true,
+        compliance_testing: true,
       },
       portfolio: {
-        channels,
+        publisher_domains: publisherDomains,
+        primary_channels: channels,
       },
     },
     creative: {
@@ -2656,7 +2672,7 @@ function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
 // ── Handler dispatch ──────────────────────────────────────────────
 
-type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
+type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
@@ -2695,17 +2711,17 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
  */
-export function executeTrainingAgentTool(
+export async function executeTrainingAgentTool(
   toolName: string,
   args: ToolArgs,
   ctx: TrainingContext,
-): { success: boolean; data?: object; error?: string } {
+): Promise<{ success: boolean; data?: object; error?: string }> {
   const handler = HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
-    const result = handler(args, ctx);
+    const result = await Promise.resolve(handler(args, ctx));
     return { success: true, data: result };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
@@ -2719,7 +2735,7 @@ export function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = sdkTaskStore;
+  const taskStore = getTaskStore();
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {
@@ -2761,7 +2777,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let toolResult: CallToolResult;
     let isError = false;
     try {
-      const result = handler((args as ToolArgs) || {}, ctx);
+      const result = await Promise.resolve(handler((args as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {

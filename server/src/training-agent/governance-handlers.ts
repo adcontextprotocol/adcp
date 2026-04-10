@@ -50,6 +50,8 @@ interface CheckGovernanceInput extends ToolArgs {
   payload?: CheckPayload;
   governance_context?: string;
   phase?: string;
+  governance_phase?: string;
+  human_approval?: object;
   planned_delivery?: PlannedDeliveryInput;
   delivery_metrics?: DeliveryMetricsInput;
   modification_summary?: string;
@@ -100,6 +102,7 @@ interface SellerResponseInput {
 }
 
 interface GetPlanAuditLogsInput extends ToolArgs {
+  plan_id?: string;
   plan_ids?: string[];
   portfolio_plan_ids?: string[];
   governance_contexts?: string[];
@@ -118,6 +121,7 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference for plan ownership' },
         plans: {
           type: 'array',
           items: {
@@ -208,6 +212,8 @@ export const GOVERNANCE_TOOLS = [
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
 
         phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'] },
+        governance_phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'], description: 'Alias for phase' },
+        human_approval: { type: 'object', description: 'Human approval data from escalation flow' },
         planned_delivery: { type: 'object', description: 'What the seller will deliver. Present on execution checks.' },
         delivery_metrics: { type: 'object' },
         modification_summary: { type: 'string' },
@@ -243,6 +249,7 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        plan_id: { type: 'string', description: 'Single plan ID (convenience alias for plan_ids)' },
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
         governance_contexts: { type: 'array', items: { type: 'string' }, description: 'Filter audit entries by governance context.' },
@@ -370,7 +377,7 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const tool = req.tool;
   const payload = req.payload;
   const governanceContext = req.governance_context;
-  const phase = req.phase || 'purchase';
+  const phase = req.phase || req.governance_phase || 'purchase';
   const plannedDelivery = req.planned_delivery;
   const deliveryMetrics = req.delivery_metrics;
 
@@ -851,7 +858,7 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
 export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as GetPlanAuditLogsInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
-  const planIds = [...(req.plan_ids || [])];
+  const planIds = [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
   const governanceContextsFilter = req.governance_contexts;
   const purchaseTypesFilter = req.purchase_types;

@@ -3921,7 +3921,7 @@ describe('get_adcp_capabilities handler', () => {
 
     const mediaBuy = result.media_buy as Record<string, unknown>;
     const portfolio = mediaBuy.portfolio as Record<string, unknown>;
-    const channels = portfolio.channels as string[];
+    const channels = portfolio.primary_channels as string[];
 
     // Channels should match what publishers actually offer
     const publisherChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
