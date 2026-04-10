@@ -113,7 +113,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
       }
     } catch (error) {
-      logger.error({ error, agentUrl: agent.agent_url }, 'Compliance check failed for agent');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
+
+      // Agent timeouts are expected (slow/unreachable agents) — log at warn, not error
+      if (isAgentTimeout) {
+        logger.warn({ agentUrl: agent.agent_url }, `Compliance check timed out for agent: ${agent.agent_url}`);
+      } else {
+        logger.error({ error, agentUrl: agent.agent_url }, 'Compliance check failed for agent');
+      }
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -121,23 +129,22 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         user_agent: AAO_UA_COMPLIANCE,
         response_time_ms: Date.now() - startTime,
         success: false,
-        error_message: error instanceof Error ? error.message : 'Unknown error',
+        error_message: errorMessage,
       });
 
       // Record failure so stale passing data doesn't persist
       try {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
-          headline: `Unreachable: ${errorMessage}`,
+          headline: isAgentTimeout ? `Timed out: agent did not respond within 60s` : `Unreachable: ${errorMessage}`,
           tracks_json: [],
           tracks_passed: 0,
           tracks_failed: 0,
           tracks_skipped: 0,
           tracks_partial: 0,
-          observations_json: [{ category: 'connectivity', severity: 'error', message: errorMessage }],
+          observations_json: [{ category: 'connectivity', severity: isAgentTimeout ? 'warning' : 'error', message: errorMessage }],
           triggered_by: 'heartbeat',
           dry_run: true,
         });
@@ -145,7 +152,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
-      result.skipped++;
+      // Timeouts count as checked (not skipped) — they're a valid result, not a skip
+      if (isAgentTimeout) {
+        result.checked++;
+        result.failed++;
+      } else {
+        result.skipped++;
+      }
     }
   }
 

@@ -1972,9 +1972,12 @@ export class HTTPServer {
       try {
         const pool = getPool();
         let timer: ReturnType<typeof setTimeout> | null = null;
+        const queryPromise = pool.query('SELECT 1');
+        // Prevent unhandled rejection when the timeout wins the race
+        queryPromise.catch(() => {});
         try {
           await Promise.race([
-            pool.query('SELECT 1'),
+            queryPromise,
             new Promise((_, reject) => {
               timer = setTimeout(() => reject(new Error('db health timeout')), 3000);
             }),
