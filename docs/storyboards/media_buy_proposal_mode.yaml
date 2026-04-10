@@ -7,6 +7,7 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - check_governance
 
 narrative: |
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
@@ -201,6 +202,42 @@ phases:
       from the proposal.
 
     steps:
+      - id: check_governance_buy
+        title: "Governance check before proposal acceptance"
+        narrative: |
+          Before accepting a proposal (a financial commitment), the orchestrator calls
+          check_governance with tool: "create_media_buy" and the full payload. The
+          governance agent validates budget authority and delegation. The returned
+          governance_context flows through to the seller agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the buy lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            proposal_id: "balanced_reach_q2"
+            total_budget: 50000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: create_media_buy
         title: "Create a media buy from proposal"
         narrative: |

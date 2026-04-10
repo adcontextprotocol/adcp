@@ -216,6 +216,7 @@ phases:
           purchase_type: "rights_license"
           outcome: "completed"
           seller_response:
+            seller_reference: "rg_acme_summer_2026"
             committed_budget: 2500
 
         validations:

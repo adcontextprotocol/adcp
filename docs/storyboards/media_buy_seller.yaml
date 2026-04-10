@@ -7,6 +7,7 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - check_governance
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -291,6 +292,45 @@ phases:
       denial — don't override it.
 
     steps:
+      - id: check_governance_buy
+        title: "Governance check before media buy"
+        narrative: |
+          Before creating a media buy (a financial commitment), the orchestrator calls
+          check_governance with tool: "create_media_buy" and the full payload. The
+          governance agent validates budget authority and delegation. The returned
+          governance_context flows through to the seller agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the buy lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
+            packages:
+              - product_id: "sports_preroll_q2"
+                budget: 25000
+              - product_id: "lifestyle_display_q2"
+                budget: 15000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: create_media_buy
         title: "Create a media buy"
         narrative: |
@@ -405,6 +445,36 @@ phases:
           - check: field_present
             path: "media_buys[0].status"
             description: "Each media buy has a status"
+
+      - id: report_buy_outcome
+        title: "Report media buy outcome"
+        narrative: |
+          After the seller responds, the orchestrator reports the outcome to the
+          governance agent. This commits the media buy cost against the plan budget
+          and closes the governance loop for this action.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "media_buy"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "mb_acme_q2_2026"
+            committed_budget: 40000
+            packages:
+              - budget: 25000
+              - budget: 15000
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
 
   - id: creative_sync
     title: "Creative sync"

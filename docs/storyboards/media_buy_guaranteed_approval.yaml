@@ -7,6 +7,7 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - check_governance
 
 narrative: |
   You run a sell-side platform that requires human approval before guaranteed media buys go
@@ -155,6 +156,45 @@ phases:
       status changes.
 
     steps:
+      - id: check_governance_buy
+        title: "Governance check before guaranteed buy"
+        narrative: |
+          Before creating a guaranteed media buy (a financial commitment), the
+          orchestrator calls check_governance with tool: "create_media_buy" and the
+          full payload. The governance agent validates budget authority and delegation.
+          The returned governance_context flows through to the seller agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the buy lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
+            packages:
+              - product_id: "sports_preroll_q2_guaranteed"
+                budget: 30000
+              - product_id: "outdoor_ctv_q2_guaranteed"
+                budget: 20000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: create_media_buy
         title: "Create a guaranteed media buy"
         narrative: |

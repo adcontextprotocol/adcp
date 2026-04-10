@@ -297,6 +297,33 @@ phases:
             path: "creative_manifest.format_id"
             description: "Output manifest includes format_id"
 
+      - id: report_build_outcome
+        title: "Report creative build outcome"
+        narrative: |
+          After the template agent responds with a built creative, the orchestrator
+          reports the outcome to the governance agent. This commits the creative
+          services cost against the plan budget.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "creative_services"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "built_display_300x250"
+            committed_budget: 300
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
       - id: build_multi_format
         title: "Build for multiple formats"
         narrative: |

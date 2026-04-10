@@ -7,6 +7,7 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - check_governance
 
 narrative: |
   You run a sell-side platform with auction-based inventory. Non-guaranteed buys don't
@@ -106,6 +107,47 @@ phases:
       bidding in auctions on the buyer's behalf.
 
     steps:
+      - id: check_governance_buy
+        title: "Governance check before non-guaranteed buy"
+        narrative: |
+          Before creating a non-guaranteed media buy (a financial commitment), the
+          orchestrator calls check_governance with tool: "create_media_buy" and the
+          full payload. The governance agent validates budget authority and delegation.
+          The returned governance_context flows through to the seller agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the buy lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
+            packages:
+              - product_id: "sports_display_auction"
+                budget: 10000
+                bid_price: 8.50
+              - product_id: "outdoor_video_auction"
+                budget: 15000
+                bid_price: 22.00
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: create_media_buy
         title: "Create a media buy with bid prices"
         narrative: |

@@ -288,6 +288,7 @@ phases:
           purchase_type: "signal_activation"
           outcome: "completed"
           seller_response:
+            seller_reference: "deploy_trident_ev_ttd"
             committed_budget: 1500
 
         validations:
