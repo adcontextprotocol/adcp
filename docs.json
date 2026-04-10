@@ -108,6 +108,7 @@
                     ]
                   },
                   "docs/building/schemas-and-sdks",
+                  "docs/building/build-with-js-ts",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -583,6 +584,7 @@
                 ]
               },
               "docs/building/schemas-and-sdks",
+              "docs/building/build-with-js-ts",
               {
                 "group": "Foundations",
                 "pages": [
