@@ -488,17 +488,26 @@ export async function createStripeCustomer(data: {
 
     if (existingCustomers.data.length > 0) {
       const existing = existingCustomers.data[0];
-      if (data.metadata) {
-        await stripe.customers.update(existing.id, {
-          name: data.name,
-          metadata: {
-            ...existing.metadata,
-            ...data.metadata,
-          },
-        });
+      const existingOrgId = existing.metadata?.workos_organization_id;
+
+      // Skip if this customer belongs to a different org or has no org metadata —
+      // reusing it would violate the unique constraint on organizations.stripe_customer_id
+      if (orgId && existingOrgId !== orgId) {
+        logger.info({ customerId: existing.id, existingOrgId, requestedOrgId: orgId, email: data.email },
+          'Skipping email-matched Stripe customer — belongs to a different org');
+      } else {
+        if (data.metadata) {
+          await stripe.customers.update(existing.id, {
+            name: data.name,
+            metadata: {
+              ...existing.metadata,
+              ...data.metadata,
+            },
+          });
+        }
+        logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
+        return existing.id;
       }
-      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
-      return existing.id;
     }
 
     // Create new customer
