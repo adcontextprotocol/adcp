@@ -1,7 +1,7 @@
 id: media_buy_broadcast_seller
 version: "1.0.0"
 title: "Broadcast linear TV seller agent"
-category: media_buy_seller
+category: media_buy_broadcast_seller
 summary: "Seller agent for broadcast linear TV inventory — primetime and fringe spots with measurement windows, agency estimate numbers, Ad-ID-based creative sync, and delayed delivery reporting."
 track: media_buy
 required_tools:
