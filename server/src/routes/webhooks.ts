@@ -55,7 +55,6 @@ import { emailDb } from '../db/email-db.js';
 
 const logger = createLogger('webhooks');
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -64,7 +63,6 @@ const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY 
 
 // Log configuration on module load
 logger.info({
-  resendConfigured: !!RESEND_API_KEY,
   webhookSecretConfigured: !!RESEND_WEBHOOK_SECRET,
   anthropicConfigured: !!anthropic,
   fastModel: ModelConfig.fast,
@@ -85,6 +83,9 @@ interface ResendInboundPayload {
     bcc?: string[];
     subject: string;
     message_id: string;
+    text?: string;
+    html?: string;
+    headers?: Array<{ name: string; value: string }>;
     attachments?: Array<{
       id: string;
       filename: string;
@@ -330,17 +331,6 @@ async function ensureContactsForParticipants(
   return contacts;
 }
 
-interface ResendEmailResponse {
-  text?: string;
-  html?: string;
-  headers?: {
-    to?: string;
-    cc?: string;
-    from?: string;
-    [key: string]: string | undefined;
-  };
-}
-
 interface FetchEmailResult {
   text?: string;
   html?: string;
@@ -352,82 +342,57 @@ interface FetchEmailResult {
 }
 
 /**
- * Fetch email body and headers from Resend API
- * The headers contain original TO/CC recipients that aren't in the webhook payload
+ * Parse email body and headers from the inbound webhook payload.
+ * Resend delivers text, html, and headers directly in the webhook —
+ * there is no separate REST endpoint for inbound email retrieval.
  */
-async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null> {
-  if (!RESEND_API_KEY) {
-    logger.warn('RESEND_API_KEY not configured, cannot fetch email body');
+function parseEmailFromWebhook(data: ResendInboundPayload['data']): FetchEmailResult | null {
+  if (!data.text && !data.html) {
+    logger.warn({ emailId: data.email_id }, 'Webhook payload missing text and html');
     return null;
   }
 
-  const startTime = Date.now();
-  logger.debug({ emailId }, 'Fetching email body from Resend');
-
-  try {
-    // CodeQL: emailId comes from Resend webhook payload, URL is always https://api.resend.com
-    const response = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, { // lgtm[js/request-forgery]
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-    });
-
-    const durationMs = Date.now() - startTime;
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error({
-        status: response.status,
-        emailId,
-        durationMs,
-        errorBody: errorBody.substring(0, 500),
-      }, 'Failed to fetch email from Resend API');
-      return null;
+  // Last-writer-wins for duplicate header names. Safe for to/cc/in-reply-to/references
+  // which are single-valued per RFC 5322.
+  const headers = new Map<string, string>();
+  if (data.headers) {
+    for (const h of data.headers) {
+      headers.set(h.name.toLowerCase(), h.value);
     }
-
-    const data = (await response.json()) as ResendEmailResponse;
-    const textLength = data.text?.length || 0;
-    const htmlLength = data.html?.length || 0;
-
-    // Parse original recipients from headers (these contain the real TO/CC, not just Resend addresses)
-    // Headers can contain multiple comma-separated addresses like: "John Doe" <john@example.com>, jane@example.com
-    const originalTo = parseEmailHeaderList(data.headers?.to);
-    const originalCc = parseEmailHeaderList(data.headers?.cc);
-
-    // Extract threading headers for email conversation support
-    const inReplyTo = data.headers?.['in-reply-to'] || data.headers?.['In-Reply-To'];
-    const referencesRaw = data.headers?.['references'] || data.headers?.['References'];
-    const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
-
-    logger.info({
-      emailId,
-      durationMs,
-      hasText: !!data.text,
-      hasHtml: !!data.html,
-      textLength,
-      htmlLength,
-      hasOriginalTo: originalTo.length > 0,
-      hasOriginalCc: originalCc.length > 0,
-      originalTo,
-      originalCc,
-      hasInReplyTo: !!inReplyTo,
-      hasReferences: !!references?.length,
-    }, 'Fetched email body from Resend');
-
-    return {
-      text: data.text,
-      html: data.html,
-      textLength,
-      originalTo,
-      originalCc,
-      inReplyTo,
-      references,
-    };
-  } catch (error) {
-    const durationMs = Date.now() - startTime;
-    logger.error({ error, emailId, durationMs }, 'Error fetching email body from Resend');
-    return null;
   }
+
+  // Parse original recipients from headers
+  const originalTo = parseEmailHeaderList(headers.get('to'));
+  const originalCc = parseEmailHeaderList(headers.get('cc'));
+
+  // Extract threading headers for email conversation support
+  const inReplyTo = headers.get('in-reply-to');
+  const referencesRaw = headers.get('references');
+  const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
+
+  logger.info({
+    emailId: data.email_id,
+    hasText: !!data.text,
+    hasHtml: !!data.html,
+    textLength: data.text?.length || 0,
+    htmlLength: data.html?.length || 0,
+    hasOriginalTo: originalTo.length > 0,
+    hasOriginalCc: originalCc.length > 0,
+    originalTo,
+    originalCc,
+    hasInReplyTo: !!inReplyTo,
+    hasReferences: !!references?.length,
+  }, 'Parsed email content from webhook payload');
+
+  return {
+    text: data.text,
+    html: data.html,
+    textLength: data.text?.length || 0,
+    originalTo,
+    originalCc,
+    inReplyTo,
+    references,
+  };
 }
 
 /**
@@ -575,6 +540,10 @@ function extractInsightsSimple(data: {
  */
 function verifyResendWebhook(req: Request, rawBody: string): boolean {
   if (!RESEND_WEBHOOK_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('RESEND_WEBHOOK_SECRET not configured in production — rejecting webhook');
+      return false;
+    }
     logger.warn('RESEND_WEBHOOK_SECRET not configured, skipping signature verification (dev mode)');
     return true;
   }
@@ -632,9 +601,8 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
 }> {
   const pool = getPool();
 
-  // Fetch email body and original headers first
-  // The Resend API returns original TO/CC in headers, which aren't in the webhook payload
-  const emailBody = await fetchEmailBody(data.email_id);
+  // Parse email body and headers from the webhook payload
+  const emailBody = parseEmailFromWebhook(data);
 
   // Use original recipients from headers if available, otherwise fall back to webhook data
   let toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
@@ -825,8 +793,8 @@ async function handleFeedEmail(
   // Extract links from HTML content for processing
   const links: { url: string; text?: string }[] = [];
 
-  // Fetch the email body to get HTML content
-  const emailBody = await fetchEmailBody(data.email_id);
+  // Parse the email body from the webhook payload
+  const emailBody = parseEmailFromWebhook(data);
 
   if (emailBody?.html) {
     // Simple regex to extract links from HTML
