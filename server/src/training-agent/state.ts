@@ -7,6 +7,11 @@
  */
 
 import type { SessionState, AccountRef, BrandRef, UsageRecord } from './types.js';
+import { cleanupExpiredTasks } from '@adcp/client';
+import { isDatabaseInitialized, getPool } from '../db/client.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('training-agent-state');
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -97,11 +102,22 @@ export function sessionKeyFromArgs(
 /** Start the TTL cleanup interval */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
-  cleanupTimer = setInterval(() => {
+  cleanupTimer = setInterval(async () => {
     const now = Date.now();
     for (const [key, session] of sessions) {
       if (now - session.lastAccessedAt.getTime() > SESSION_TTL_MS) {
         sessions.delete(key);
+      }
+    }
+    // Clean up expired MCP tasks from PostgreSQL
+    if (isDatabaseInitialized()) {
+      try {
+        const deleted = await cleanupExpiredTasks(getPool());
+        if (deleted > 0) {
+          logger.info({ deleted }, 'Cleaned up expired MCP tasks');
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to clean up expired MCP tasks');
       }
     }
   }, CLEANUP_INTERVAL_MS);

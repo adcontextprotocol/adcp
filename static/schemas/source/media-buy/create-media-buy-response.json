@@ -24,7 +24,7 @@
         },
         "status": {
           "$ref": "/schemas/enums/media-buy-status.json",
-          "description": "Initial media buy status. Either 'active' (immediate activation) or 'pending_activation' (awaiting platform setup)."
+          "description": "Initial media buy status. Either 'active' (immediate activation), 'pending_creatives' (waiting for creative assets), or 'pending_start' (waiting for flight start)."
         },
         "confirmed_at": {
           "type": "string",

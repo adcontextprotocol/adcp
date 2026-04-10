@@ -1078,8 +1078,8 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     expect(result.sandbox).toBe(true);
-    // Future dates → pending_activation status
-    expect(result.status).toBe('pending_activation');
+    // Future dates → pending_creatives status
+    expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
   });
@@ -1375,8 +1375,8 @@ describe('create_media_buy handler', () => {
         budget: 50000,
       }],
     });
-    // Future dates → pending_activation (not active)
-    expect(result.status).toBe('pending_activation');
+    // Future dates → pending_creatives (not active)
+    expect(result.status).toBe('pending_creatives');
   });
 });
 
@@ -1568,17 +1568,17 @@ describe('get_media_buys handler', () => {
         budget: 10000,
       }],
     });
-    // Retrieve (default status_filter is ['active'], so include pending_activation)
+    // Retrieve (default status_filter is ['active'], so include pending_creatives)
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'get_media_buys', {
       account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
-      status_filter: ['pending_activation', 'active'],
+      status_filter: ['pending_creatives', 'active'],
     });
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
-    // Future dates => pending_activation status
-    expect(buys[0].status).toBe('pending_activation');
+    // Future dates => pending_creatives status
+    expect(buys[0].status).toBe('pending_creatives');
   });
 
   it('persists governance_context from create and returns it on get', async () => {
@@ -2975,7 +2975,7 @@ describe('update_media_buy pause/resume', () => {
 
     // Verify via get_media_buys
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_activation', 'active', 'paused'] });
+    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_creatives', 'active', 'paused'] });
     const buys = listResult.media_buys as Array<Record<string, unknown>>;
     const buyPkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(buyPkgs[0].paused).toBe(true);
@@ -3880,7 +3880,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -3899,7 +3899,7 @@ describe('get_adcp_capabilities handler', () => {
 
     const mediaBuy = result.media_buy as Record<string, unknown>;
     const portfolio = mediaBuy.portfolio as Record<string, unknown>;
-    const channels = portfolio.channels as string[];
+    const channels = portfolio.primary_channels as string[];
 
     // Channels should match what publishers actually offer
     const publisherChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();

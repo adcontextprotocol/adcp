@@ -2345,7 +2345,7 @@ export function createAdcpToolHandlers(
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
         const ctx = { mode: 'training' as const, userId };
-        const result = executeTrainingAgentTool(task, params, ctx);
+        const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
           return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
         }

@@ -122,8 +122,8 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(result.success).toBe(true);
-      const scenarios = result.scenarios as Record<string, unknown>;
-      expect(Object.keys(scenarios)).toEqual([
+      const scenarios = result.scenarios as string[];
+      expect(scenarios).toEqual([
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
@@ -131,11 +131,6 @@ describe('comply_test_controller', () => {
         'simulate_delivery',
         'simulate_budget_spend',
       ]);
-      // Each scenario includes parameter documentation
-      const creative = scenarios.force_creative_status as Record<string, unknown>;
-      expect(creative.required_params).toContain('creative_id');
-      expect(creative.required_params).toContain('status');
-      expect(creative.valid_statuses).toContain('approved');
     });
   });
 

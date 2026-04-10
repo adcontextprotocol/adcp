@@ -5,7 +5,8 @@
   "description": "Status of a media buy.",
   "type": "string",
   "enum": [
-    "pending_activation",
+    "pending_creatives",
+    "pending_start",
     "active",
     "paused",
     "completed",
@@ -13,7 +14,8 @@
     "canceled"
   ],
   "enumDescriptions": {
-    "pending_activation": "Media buy created but not yet activated",
+    "pending_creatives": "Media buy created, waiting for creative assets before activation",
+    "pending_start": "Media buy created with creatives, waiting for flight start or platform activation",
     "active": "Media buy is currently running",
     "paused": "Media buy is temporarily paused",
     "completed": "Media buy has finished running",
