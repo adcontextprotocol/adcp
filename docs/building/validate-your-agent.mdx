@@ -1,0 +1,154 @@
+---
+title: Validate Your Agent
+sidebarTitle: Validate Your Agent
+description: "Test your AdCP agent with storyboards and compliance checks — from the CLI or through Addie."
+"og:title": "AdCP — Validate Your Agent"
+---
+
+Once your agent is running, validate it before going live. AdCP provides two complementary validation tools:
+
+- **Storyboards** exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
+- **Comply** runs all applicable storyboards at once and produces an overall compliance assessment.
+
+Both are available from the command line and interactively through [Addie](https://agenticadvertising.org).
+
+## Setup
+
+Install the SDK, which includes the `adcp` CLI:
+
+```bash
+npm install @adcp/client
+```
+
+Save your agent as a named alias so you can reference it by name:
+
+```bash
+adcp --save-auth my-agent http://localhost:3001/mcp
+```
+
+This stores the alias in `~/.adcp/config.json`. You only need to do this once. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents — no setup needed.
+
+<Tip>
+You can also pass a URL directly instead of an alias: `adcp storyboard run http://localhost:3001/mcp media_buy_seller`
+</Tip>
+
+## Run a storyboard
+
+### 1. List available storyboards
+
+```bash
+adcp storyboard list
+```
+
+Each storyboard targets a specific agent type. The [Build an Agent](/docs/building/build-an-agent) page maps skills to their matching storyboards.
+
+### 2. Preview what a storyboard tests
+
+```bash
+adcp storyboard show media_buy_seller
+```
+
+This shows the phases, steps, and validations without running anything.
+
+### 3. Run the storyboard
+
+```bash
+adcp storyboard run my-agent media_buy_seller
+```
+
+Output shows each step with pass/fail:
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ list_creative_formats
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+Pass `--json` for machine-readable results. Pass `--debug` to see full request/response payloads for each step.
+
+### 4. Debug a failing step
+
+If a step fails, run it individually:
+
+```bash
+adcp storyboard step my-agent media_buy_seller create_media_buy --json --debug
+```
+
+Pass `--context` to provide state from earlier steps (account IDs, product IDs):
+
+```bash
+adcp storyboard step my-agent media_buy_seller get_products \
+  --context '{"account_id":"acct-123"}' --json
+```
+
+## Run a compliance check
+
+Comply runs all applicable storyboards based on the tools your agent exposes:
+
+```bash
+adcp comply my-agent
+```
+
+This discovers your agent's tools via `tools/list`, selects matching storyboards, runs them, and reports results. Add `--json` for structured output.
+
+Comply operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/implementation/comply-test-controller):
+
+| Mode | When | What it tests |
+|------|------|---------------|
+| **Observational** | No test controller | Response schemas and buyer-initiated flows |
+| **Deterministic** | Test controller present | Full lifecycle state machines, error codes, operation gates |
+
+## Validate through Addie
+
+Paste your agent URL in any [Addie](https://agenticadvertising.org) conversation. Addie will:
+
+1. Connect to your agent and discover its tools
+2. Recommend applicable storyboards
+3. Run storyboards interactively with step-by-step coaching
+4. Explain failures and suggest fixes
+
+This is the fastest way to iterate when you're building — no CLI setup needed.
+
+## The build-validate-fix loop
+
+The typical development workflow:
+
+1. **Build** — Point a coding agent at a [skill file](/docs/building/build-an-agent) to generate your agent
+2. **Run** — Start the agent locally (`npx tsx agent.ts`)
+3. **Validate** — Run the matching storyboard (`adcp storyboard run my-agent media_buy_seller`)
+4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
+5. **Repeat** — Run the storyboard again until all steps pass
+6. **Comply** — Run `adcp comply my-agent` for a full assessment before going live
+
+<Info>
+For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
+</Info>
+
+## CLI reference
+
+| Command | Description |
+|---------|-------------|
+| `adcp storyboard list` | List all available storyboards |
+| `adcp storyboard show <id>` | Preview storyboard structure |
+| `adcp storyboard run <agent> <id>` | Run full storyboard |
+| `adcp storyboard step <agent> <id> <step>` | Run a single step |
+| `adcp comply <agent>` | Run compliance assessment |
+| `adcp <agent> [tool] [payload]` | Call any tool directly |
+| `adcp --save-auth <alias> <url>` | Save agent alias |
+| `adcp --list-agents` | List saved aliases |
+
+All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
+
+## What's next
+
+- **[Compliance test controller](/docs/building/implementation/comply-test-controller)** — Implement deterministic testing for full lifecycle coverage
+- **[Task lifecycle](/docs/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/docs/building/implementation/error-handling)** — Error categories, codes, and recovery
