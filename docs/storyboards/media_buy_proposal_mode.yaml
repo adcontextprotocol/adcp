@@ -278,6 +278,33 @@ phases:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
 
+      - id: report_buy_outcome
+        title: "Report media buy outcome"
+        narrative: |
+          After the seller responds, the orchestrator reports the outcome to the
+          governance agent. This commits the media buy cost against the plan budget
+          and closes the governance loop for this action.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "media_buy"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "mb_acme_proposal_q2_2026"
+            committed_budget: 50000
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
   - id: creative_sync
     title: "Creative sync"
     narrative: |

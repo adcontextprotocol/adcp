@@ -5525,7 +5525,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
 
     expect(isError).toBeFalsy();
-    expect(result.status).toBeDefined();
+    expect(result.status).toBe('approved');
   });
 
   it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
