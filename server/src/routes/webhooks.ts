@@ -353,8 +353,8 @@ function parseEmailFromWebhook(data: ResendInboundPayload['data']): FetchEmailRe
   }
 
   // Last-writer-wins for duplicate header names. Safe for to/cc/in-reply-to/references
-  // which are single-valued per RFC 5322.
-  const headerRecord: Record<string, string> = {};
+  // which are single-valued per RFC 5322. Null-prototype object prevents prototype pollution.
+  const headerRecord: Record<string, string> = Object.create(null);
   if (data.headers) {
     for (const h of data.headers) {
       headerRecord[h.name.toLowerCase()] = h.value;
