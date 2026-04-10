@@ -2136,74 +2136,12 @@ export function createCertificationToolHandlers(
     const learnerSpec = (input.learner_spec as string) || '[their specification]';
     const codingTool = (input.coding_tool as string) || 'your coding assistant';
 
-    // All available agent types with their skill files and storyboards
-    const SKILL_BASE = 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills';
-    const agentTypes: Record<string, { skill: string; skillUrl: string; storyboard: string; keywords: RegExp; description: string }> = {
-      seller: {
-        skill: 'build-seller-agent',
-        skillUrl: `${SKILL_BASE}/build-seller-agent/SKILL.md`,
-        storyboard: 'media_buy_seller',
-        keywords: /sell|inventory|publisher|ssp|exchange|media.buy|product|ad.network/i,
-        description: 'Seller agent — exposes inventory to buyer agents (publishers, SSPs, exchanges, ad networks)',
-      },
-      generative_seller: {
-        skill: 'build-generative-seller-agent',
-        skillUrl: `${SKILL_BASE}/build-generative-seller-agent/SKILL.md`,
-        storyboard: 'media_buy_generative_seller',
-        keywords: /generative|ai.ad.network|generate.*ads?.*from.*brief|brief.*to.*ad/i,
-        description: 'Generative seller agent — AI ad network that generates ads from briefs',
-      },
-      retail_media: {
-        skill: 'build-retail-media-agent',
-        skillUrl: `${SKILL_BASE}/build-retail-media-agent/SKILL.md`,
-        storyboard: 'media_buy_catalog_creative',
-        keywords: /retail.media|catalog|sku|commerce|shopp|sponsor.*product/i,
-        description: 'Retail media agent — retail media network with catalog-driven creative',
-      },
-      signals: {
-        skill: 'build-signals-agent',
-        skillUrl: `${SKILL_BASE}/build-signals-agent/SKILL.md`,
-        storyboard: 'signal_owned',
-        keywords: /signal|segment|audience|dmp|cdp|data.provider/i,
-        description: 'Signals agent — serves audience segments (DMPs, CDPs, data providers)',
-      },
-      creative: {
-        skill: 'build-creative-agent',
-        skillUrl: `${SKILL_BASE}/build-creative-agent/SKILL.md`,
-        storyboard: 'creative_lifecycle',
-        keywords: /creative.agent|ad.server|cmp|render|creative.management|format.compliance/i,
-        description: 'Creative agent — ad server or creative management platform rendering creatives',
-      },
-    };
-
-    // B4 is always seller
-    const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string } | null> = {
-      B4: agentTypes.seller,
-    };
-
-    // D4: match against all agent types
-    if (moduleId === 'D4') {
-      const matches = Object.entries(agentTypes).filter(([_, t]) => t.keywords.test(learnerSpec));
-      if (matches.length === 1) {
-        trackConfig.D4 = matches[0][1];
-      } else {
-        trackConfig.D4 = null; // Ambiguous or no match
-      }
-    }
-
-    const config = trackConfig[moduleId];
-
-    // D4 with ambiguous spec — present all options
-    if (moduleId === 'D4' && config === null) {
-      const options = Object.entries(agentTypes)
-        .map(([_, t], i) => `${i + 1}. **${t.description}**\n   Skill: \`${t.skill}\` | Storyboard: \`${t.storyboard}\``)
-        .join('\n\n');
-
-      return `Cannot determine agent type from the learner's specification. D4 supports these agent types:\n\n${options}\n\nAsk the learner which type matches what they're building, then call get_build_phase_instructions again with a spec that makes the choice clear.`;
-    }
+    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/build-an-agent';
+    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent';
+    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks';
 
     if (moduleId === 'C4') {
-      // Buyer track uses client SDK against test agent, not skill files
+      // Buyer track: SDK against the public test agent, no skill file
       if (phase === 'build') {
         return `## Phase 2: Build — Buyer Agent
 
@@ -2218,7 +2156,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/client that connects to the
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Reference: https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks
+Reference: ${SDKS_URL}
 
 Tell them to come back when it runs against the test agent.`;
       }
@@ -2227,7 +2165,7 @@ Tell them to come back when it runs against the test agent.`;
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-Run your buyer agent against the public test agent and share the output:
+Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
 adcp test-mcp get_products '{"brief":"${learnerSpec}"}'
 \`\`\`
@@ -2236,7 +2174,7 @@ Then run the full buying flow: get_products → create_media_buy → list_creati
 
 Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
 
-Reference: https://docs.adcontextprotocol.org/docs/building/validate-your-agent`;
+Reference: ${VALIDATE_URL}`;
       }
       if (phase === 'extend') {
         return `## Phase 5: Extend — Buyer Agent
@@ -2245,55 +2183,71 @@ The learner adds a new capability to their buyer agent, then re-runs the buying 
       }
     }
 
-    if (!config) {
-      return `Module ${moduleId} is not a build project module. Build phase instructions are only available for B4, C4, and D4.`;
-    }
+    // B4 and D4: skill file + storyboard workflow
+    // The specific skill and storyboard come from the Build an Agent docs page.
+    // Use search_docs to look up the matching skill if you don't know it.
 
     if (phase === 'build') {
-      // Derive a human-readable agent type from the skill name
-      const agentType = config.skill.replace('build-', '').replace(/-/g, ' ');
       const isClaudeCode = codingTool.toLowerCase().includes('claude');
-      const instruction = isClaudeCode
-        ? `In ${codingTool}, run exactly this:\n\nFetch ${config.skillUrl}, then build a ${agentType} for ${learnerSpec}`
-        : `Download the skill file from ${config.skillUrl} and include it as context in ${codingTool} with this prompt: "Build a ${agentType} for ${learnerSpec}"`;
+
+      const lookupInstructions = moduleId === 'B4'
+        // B4 is always build-seller-agent
+        ? `The skill for B4 (publisher track) is \`build-seller-agent\`. The skill file URL is:
+https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md`
+        // D4: Addie must look up the right skill
+        : `Look up the matching skill for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL}
+The page has a table mapping each agent type to its skill file. If you're unsure which skill matches, use search_docs to look up "build an agent skill" and find the table. Skill files are at:
+https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/<skill-name>/SKILL.md`;
+
+      const fetchPattern = isClaudeCode
+        ? `In ${codingTool}: "Fetch <SKILL_FILE_URL>, then build an agent for ${learnerSpec}"`
+        : `In ${codingTool}: download the skill file and include it as context with: "Build an agent for ${learnerSpec}"`;
 
       return `## Phase 2: Build
 
-PRESENT THESE INSTRUCTIONS TO THE LEARNER EXACTLY:
+${lookupInstructions}
 
-${instruction}
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-The skill file walks ${codingTool} through everything — business model decisions, tool registration with correct schemas, response shapes that pass storyboard validation, and error handling. You do not need to tell your coding assistant which tools to implement or which schemas to use. The skill file handles all of that.
+${fetchPattern}
+
+The skill file walks the coding assistant through everything — business model decisions, tool registration with correct schemas, response shapes, and error handling.
 
 Come back when the agent is running locally.
 
-Reference: https://docs.adcontextprotocol.org/docs/building/build-an-agent
+Reference: ${BUILD_AN_AGENT_URL}
 
-DO NOT rewrite these instructions. DO NOT add your own build prompt. The skill file IS the prompt.`;
+DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill file IS the prompt.`;
     }
 
     if (phase === 'validate') {
+      const storyboardNote = moduleId === 'B4'
+        ? 'The storyboard for B4 is `media_buy_seller`.'
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`adcp storyboard list\` to see all options.`;
+
       return `## Phase 3: Validate
 
-PRESENT THESE INSTRUCTIONS TO THE LEARNER EXACTLY:
+${storyboardNote}
+
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Install the CLI if you haven't already:
 \`\`\`
 npm install @adcp/client
 \`\`\`
 
-Save your agent and run the storyboard:
+Save your agent and run the matching storyboard:
 \`\`\`
 adcp --save-auth my-agent http://localhost:3001/mcp
-adcp storyboard run my-agent ${config.storyboard}
+adcp storyboard run my-agent <STORYBOARD_NAME>
 \`\`\`
 
-Paste the output here. The storyboard exercises the complete buyer workflow — discovery, account sync, media buy, creatives, delivery — and validates every response against AdCP schemas.
+Paste the output here. The storyboard exercises the complete workflow and validates every response against AdCP schemas.
 
 If all steps pass: celebrate and move to Phase 4 (Explain).
 If steps fail: paste the output and I'll help you understand each failure.
 
-Reference: https://docs.adcontextprotocol.org/docs/building/validate-your-agent
+Reference: ${VALIDATE_URL}
 
 DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JSON responses one at a time. The storyboard IS the validation.`;
     }
@@ -2305,7 +2259,7 @@ The learner adds a new capability to their agent (you choose what — a new prod
 
 After making changes, they re-run the storyboard to verify everything still passes:
 \`\`\`
-adcp storyboard run my-agent ${config.storyboard}
+adcp storyboard run my-agent <STORYBOARD_NAME>
 \`\`\`
 
 This tests whether they can iterate on AdCP implementations using the same tools they'll use after certification.`;
