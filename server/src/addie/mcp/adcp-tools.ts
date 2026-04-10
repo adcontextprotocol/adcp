@@ -341,6 +341,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Purchase order number for tracking.',
         },
+        agency_estimate_number: {
+          type: 'string',
+          description: 'Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency media plan and billing.',
+        },
         packages: {
           type: 'array',
           description: 'Products to purchase',

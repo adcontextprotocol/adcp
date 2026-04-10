@@ -104,6 +104,11 @@
       "type": "string",
       "description": "Purchase order number for tracking"
     },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and Ad-IDs through the transaction lifecycle."
+    },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
     },
