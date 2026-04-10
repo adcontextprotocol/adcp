@@ -2136,40 +2136,70 @@ export function createCertificationToolHandlers(
     const learnerSpec = (input.learner_spec as string) || '[their specification]';
     const codingTool = (input.coding_tool as string) || 'your coding assistant';
 
-    // Skill file and storyboard mapping per track
-    const isSellerAgent = moduleId === 'D4' && /sell|inventory|publisher|ssp|exchange|media.buy|product/i.test(learnerSpec);
-    const isSignalsAgent = moduleId === 'D4' && /signal|segment|audience|dmp|cdp/i.test(learnerSpec);
-
-    const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string } | null> = {
-      B4: {
+    // All available agent types with their skill files and storyboards
+    const SKILL_BASE = 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills';
+    const agentTypes: Record<string, { skill: string; skillUrl: string; storyboard: string; keywords: RegExp; description: string }> = {
+      seller: {
         skill: 'build-seller-agent',
-        skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
+        skillUrl: `${SKILL_BASE}/build-seller-agent/SKILL.md`,
         storyboard: 'media_buy_seller',
+        keywords: /sell|inventory|publisher|ssp|exchange|media.buy|product|ad.network/i,
+        description: 'Seller agent — exposes inventory to buyer agents (publishers, SSPs, exchanges, ad networks)',
       },
-      D4: isSignalsAgent ? {
+      generative_seller: {
+        skill: 'build-generative-seller-agent',
+        skillUrl: `${SKILL_BASE}/build-generative-seller-agent/SKILL.md`,
+        storyboard: 'media_buy_generative_seller',
+        keywords: /generative|ai.ad.network|generate.*ads?.*from.*brief|brief.*to.*ad/i,
+        description: 'Generative seller agent — AI ad network that generates ads from briefs',
+      },
+      retail_media: {
+        skill: 'build-retail-media-agent',
+        skillUrl: `${SKILL_BASE}/build-retail-media-agent/SKILL.md`,
+        storyboard: 'media_buy_catalog_creative',
+        keywords: /retail.media|catalog|sku|commerce|shopp|sponsor.*product/i,
+        description: 'Retail media agent — retail media network with catalog-driven creative',
+      },
+      signals: {
         skill: 'build-signals-agent',
-        skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-signals-agent/SKILL.md',
+        skillUrl: `${SKILL_BASE}/build-signals-agent/SKILL.md`,
         storyboard: 'signal_owned',
-      } : isSellerAgent ? {
-        skill: 'build-seller-agent',
-        skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
-        storyboard: 'media_buy_seller',
-      } : null,  // Ambiguous — ask the learner
+        keywords: /signal|segment|audience|dmp|cdp|data.provider/i,
+        description: 'Signals agent — serves audience segments (DMPs, CDPs, data providers)',
+      },
+      creative: {
+        skill: 'build-creative-agent',
+        skillUrl: `${SKILL_BASE}/build-creative-agent/SKILL.md`,
+        storyboard: 'creative_lifecycle',
+        keywords: /creative.agent|ad.server|cmp|render|creative.management|format.compliance/i,
+        description: 'Creative agent — ad server or creative management platform rendering creatives',
+      },
     };
+
+    // B4 is always seller
+    const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string } | null> = {
+      B4: agentTypes.seller,
+    };
+
+    // D4: match against all agent types
+    if (moduleId === 'D4') {
+      const matches = Object.entries(agentTypes).filter(([_, t]) => t.keywords.test(learnerSpec));
+      if (matches.length === 1) {
+        trackConfig.D4 = matches[0][1];
+      } else {
+        trackConfig.D4 = null; // Ambiguous or no match
+      }
+    }
 
     const config = trackConfig[moduleId];
 
-    // D4 with ambiguous spec — ask the learner to choose
+    // D4 with ambiguous spec — present all options
     if (moduleId === 'D4' && config === null) {
-      return `Cannot determine agent type from the learner's specification. D4 supports two agent types:
+      const options = Object.entries(agentTypes)
+        .map(([_, t], i) => `${i + 1}. **${t.description}**\n   Skill: \`${t.skill}\` | Storyboard: \`${t.storyboard}\``)
+        .join('\n\n');
 
-1. **Seller agent** — exposes inventory to buyer agents via get_products, create_media_buy, etc. Use this for publishers, SSPs, exchanges, ad networks.
-   Skill: build-seller-agent | Storyboard: media_buy_seller
-
-2. **Signals agent** — serves audience segments via get_signals, activate_signal. Use this for DMPs, CDPs, data providers.
-   Skill: build-signals-agent | Storyboard: signal_owned
-
-Ask the learner which type they're building, then call get_build_phase_instructions again with a spec that makes the choice clear.`;
+      return `Cannot determine agent type from the learner's specification. D4 supports these agent types:\n\n${options}\n\nAsk the learner which type matches what they're building, then call get_build_phase_instructions again with a spec that makes the choice clear.`;
     }
 
     if (moduleId === 'C4') {
@@ -2220,7 +2250,8 @@ The learner adds a new capability to their buyer agent, then re-runs the buying 
     }
 
     if (phase === 'build') {
-      const agentType = config.skill.includes('signals') ? 'signals agent' : 'seller agent';
+      // Derive a human-readable agent type from the skill name
+      const agentType = config.skill.replace('build-', '').replace(/-/g, ' ');
       const isClaudeCode = codingTool.toLowerCase().includes('claude');
       const instruction = isClaudeCode
         ? `In ${codingTool}, run exactly this:\n\nFetch ${config.skillUrl}, then build a ${agentType} for ${learnerSpec}`
