@@ -2137,10 +2137,10 @@ export function createCertificationToolHandlers(
     const codingTool = (input.coding_tool as string) || 'your coding assistant';
 
     // Skill file and storyboard mapping per track
-    // D4 auto-detects signals vs seller based on learner spec
+    const isSellerAgent = moduleId === 'D4' && /sell|inventory|publisher|ssp|exchange|media.buy|product/i.test(learnerSpec);
     const isSignalsAgent = moduleId === 'D4' && /signal|segment|audience|dmp|cdp/i.test(learnerSpec);
 
-    const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string }> = {
+    const trackConfig: Record<string, { skill: string; skillUrl: string; storyboard: string } | null> = {
       B4: {
         skill: 'build-seller-agent',
         skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
@@ -2150,14 +2150,27 @@ export function createCertificationToolHandlers(
         skill: 'build-signals-agent',
         skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-signals-agent/SKILL.md',
         storyboard: 'signal_owned',
-      } : {
+      } : isSellerAgent ? {
         skill: 'build-seller-agent',
         skillUrl: 'https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md',
         storyboard: 'media_buy_seller',
-      },
+      } : null,  // Ambiguous — ask the learner
     };
 
     const config = trackConfig[moduleId];
+
+    // D4 with ambiguous spec — ask the learner to choose
+    if (moduleId === 'D4' && config === null) {
+      return `Cannot determine agent type from the learner's specification. D4 supports two agent types:
+
+1. **Seller agent** — exposes inventory to buyer agents via get_products, create_media_buy, etc. Use this for publishers, SSPs, exchanges, ad networks.
+   Skill: build-seller-agent | Storyboard: media_buy_seller
+
+2. **Signals agent** — serves audience segments via get_signals, activate_signal. Use this for DMPs, CDPs, data providers.
+   Skill: build-signals-agent | Storyboard: signal_owned
+
+Ask the learner which type they're building, then call get_build_phase_instructions again with a spec that makes the choice clear.`;
+    }
 
     if (moduleId === 'C4') {
       // Buyer track uses client SDK against test agent, not skill files
