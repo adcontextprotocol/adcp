@@ -641,7 +641,7 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -680,7 +680,7 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -707,7 +707,7 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -746,7 +746,7 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -812,8 +812,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -853,8 +854,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -879,8 +881,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -920,8 +923,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1006,7 +1010,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1048,7 +1052,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1088,7 +1092,7 @@
         "requirements": {
           "width": 1280,
           "height": 720,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1130,7 +1134,7 @@
         "requirements": {
           "width": 1280,
           "height": 720,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1170,7 +1174,7 @@
         "requirements": {
           "width": 1080,
           "height": 1920,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1212,7 +1216,7 @@
         "requirements": {
           "width": 1080,
           "height": 1920,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1252,7 +1256,7 @@
         "requirements": {
           "width": 1080,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1294,7 +1298,7 @@
         "requirements": {
           "width": 1080,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "mp4",
             "mov",
             "webm"
@@ -1319,8 +1323,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
@@ -1360,8 +1365,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
@@ -1385,8 +1391,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
@@ -1426,8 +1433,9 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
@@ -1451,39 +1459,43 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
-          "acceptable_resolutions": [
-            "1920x1080"
-          ],
-          "min_bitrate_mbps": 15,
-          "acceptable_frame_rates": [
-            "29.97",
-            "30"
+          "min_width": 1920,
+          "max_width": 1920,
+          "min_height": 1080,
+          "max_height": 1080,
+          "min_bitrate_kbps": 15000,
+          "frame_rates": [
+            29.97,
+            30
           ],
           "frame_rate_type": "constant",
           "scan_type": "progressive",
           "gop_type": "closed",
-          "gop_interval_seconds_min": 1,
-          "gop_interval_seconds_max": 2,
+          "min_gop_interval_seconds": 1,
+          "max_gop_interval_seconds": 2,
           "audio_required": true,
-          "audio_codec": [
+          "audio_codecs": [
             "aac",
             "pcm"
           ],
-          "audio_sampling_rate_hz": [
+          "audio_sample_rates": [
             48000
           ],
-          "audio_channels": "stereo",
-          "audio_loudness_lufs": -24,
-          "audio_loudness_tolerance_db": 2,
-          "audio_true_peak_dbfs": -2,
+          "audio_channels": [
+            "stereo"
+          ],
+          "loudness_lufs": -24,
+          "loudness_tolerance_db": 2,
+          "true_peak_dbfs": -2,
           "description": "15-second broadcast spot file (1920x1080 HD)"
         }
       },
@@ -1508,12 +1520,13 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
           "description": "15-second broadcast spot file (1920x1080 HD)"
@@ -1536,39 +1549,43 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
-          "acceptable_resolutions": [
-            "1920x1080"
-          ],
-          "min_bitrate_mbps": 15,
-          "acceptable_frame_rates": [
-            "29.97",
-            "30"
+          "min_width": 1920,
+          "max_width": 1920,
+          "min_height": 1080,
+          "max_height": 1080,
+          "min_bitrate_kbps": 15000,
+          "frame_rates": [
+            29.97,
+            30
           ],
           "frame_rate_type": "constant",
           "scan_type": "progressive",
           "gop_type": "closed",
-          "gop_interval_seconds_min": 1,
-          "gop_interval_seconds_max": 2,
+          "min_gop_interval_seconds": 1,
+          "max_gop_interval_seconds": 2,
           "audio_required": true,
-          "audio_codec": [
+          "audio_codecs": [
             "aac",
             "pcm"
           ],
-          "audio_sampling_rate_hz": [
+          "audio_sample_rates": [
             48000
           ],
-          "audio_channels": "stereo",
-          "audio_loudness_lufs": -24,
-          "audio_loudness_tolerance_db": 2,
-          "audio_true_peak_dbfs": -2,
+          "audio_channels": [
+            "stereo"
+          ],
+          "loudness_lufs": -24,
+          "loudness_tolerance_db": 2,
+          "true_peak_dbfs": -2,
           "description": "30-second broadcast spot file (1920x1080 HD)"
         }
       },
@@ -1593,12 +1610,13 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
           "description": "30-second broadcast spot file (1920x1080 HD)"
@@ -1621,39 +1639,43 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 60,
-          "acceptable_formats": [
+          "min_duration_ms": 60000,
+          "max_duration_ms": 60000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
-          "acceptable_resolutions": [
-            "1920x1080"
-          ],
-          "min_bitrate_mbps": 15,
-          "acceptable_frame_rates": [
-            "29.97",
-            "30"
+          "min_width": 1920,
+          "max_width": 1920,
+          "min_height": 1080,
+          "max_height": 1080,
+          "min_bitrate_kbps": 15000,
+          "frame_rates": [
+            29.97,
+            30
           ],
           "frame_rate_type": "constant",
           "scan_type": "progressive",
           "gop_type": "closed",
-          "gop_interval_seconds_min": 1,
-          "gop_interval_seconds_max": 2,
+          "min_gop_interval_seconds": 1,
+          "max_gop_interval_seconds": 2,
           "audio_required": true,
-          "audio_codec": [
+          "audio_codecs": [
             "aac",
             "pcm"
           ],
-          "audio_sampling_rate_hz": [
+          "audio_sample_rates": [
             48000
           ],
-          "audio_channels": "stereo",
-          "audio_loudness_lufs": -24,
-          "audio_loudness_tolerance_db": 2,
-          "audio_true_peak_dbfs": -2,
+          "audio_channels": [
+            "stereo"
+          ],
+          "loudness_lufs": -24,
+          "loudness_tolerance_db": 2,
+          "true_peak_dbfs": -2,
           "description": "60-second broadcast spot file (1920x1080 HD)"
         }
       },
@@ -1678,12 +1700,13 @@
         "required": true,
         "asset_type": "video",
         "requirements": {
-          "duration_seconds": 60,
-          "acceptable_formats": [
+          "min_duration_ms": 60000,
+          "max_duration_ms": 60000,
+          "containers": [
             "mp4",
             "mov"
           ],
-          "acceptable_codecs": [
+          "codecs": [
             "h264"
           ],
           "description": "60-second broadcast spot file (1920x1080 HD)"
@@ -1709,7 +1732,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -1756,7 +1779,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -1807,7 +1830,7 @@
           "width": 300,
           "height": 250,
           "max_file_size_mb": 0.2,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -1857,7 +1880,7 @@
           "width": 300,
           "height": 250,
           "max_file_size_mb": 0.2,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -1908,7 +1931,7 @@
           "width": 728,
           "height": 90,
           "max_file_size_mb": 0.15,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -1958,7 +1981,7 @@
           "width": 728,
           "height": 90,
           "max_file_size_mb": 0.15,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2009,7 +2032,7 @@
           "width": 320,
           "height": 50,
           "max_file_size_mb": 0.05,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2059,7 +2082,7 @@
           "width": 320,
           "height": 50,
           "max_file_size_mb": 0.05,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2110,7 +2133,7 @@
           "width": 160,
           "height": 600,
           "max_file_size_mb": 0.15,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2160,7 +2183,7 @@
           "width": 160,
           "height": 600,
           "max_file_size_mb": 0.15,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2211,7 +2234,7 @@
           "width": 336,
           "height": 280,
           "max_file_size_mb": 0.25,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2261,7 +2284,7 @@
           "width": 336,
           "height": 280,
           "max_file_size_mb": 0.25,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2312,7 +2335,7 @@
           "width": 300,
           "height": 600,
           "max_file_size_mb": 0.3,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2362,7 +2385,7 @@
           "width": 300,
           "height": 600,
           "max_file_size_mb": 0.3,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2413,7 +2436,7 @@
           "width": 970,
           "height": 250,
           "max_file_size_mb": 0.4,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -2463,7 +2486,7 @@
           "width": 970,
           "height": 250,
           "max_file_size_mb": 0.4,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png",
             "gif",
@@ -3300,8 +3323,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3338,8 +3362,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 15,
-          "acceptable_formats": [
+          "min_duration_ms": 15000,
+          "max_duration_ms": 15000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3363,8 +3388,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3401,8 +3427,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 30,
-          "acceptable_formats": [
+          "min_duration_ms": 30000,
+          "max_duration_ms": 30000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3426,8 +3453,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 60,
-          "acceptable_formats": [
+          "min_duration_ms": 60000,
+          "max_duration_ms": 60000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3464,8 +3492,9 @@
         "required": true,
         "asset_type": "audio",
         "requirements": {
-          "duration_seconds": 60,
-          "acceptable_formats": [
+          "min_duration_ms": 60000,
+          "max_duration_ms": 60000,
+          "containers": [
             "mp3",
             "aac",
             "m4a"
@@ -3504,7 +3533,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ]
@@ -3545,7 +3574,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ]
@@ -3568,7 +3597,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -3608,7 +3637,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -3632,7 +3661,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -3672,7 +3701,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -3711,7 +3740,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -3754,7 +3783,7 @@
         "requirements": {
           "width": 1920,
           "height": 1080,
-          "acceptable_formats": [
+          "containers": [
             "jpg",
             "png"
           ],
@@ -4758,7 +4787,9 @@
       {
         "catalog_type": "product",
         "required": false,
-        "required_fields": ["name"]
+        "required_fields": [
+          "name"
+        ]
       }
     ]
   },

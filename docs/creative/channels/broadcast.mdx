@@ -51,24 +51,28 @@ Broadcast spots are:
       "asset_type": "video",
       "required": true,
       "requirements": {
-        "duration_seconds": 30,
-        "acceptable_formats": ["mp4", "mov"],
-        "acceptable_codecs": ["h264"],
-        "acceptable_resolutions": ["1920x1080"],
-        "min_bitrate_mbps": 15,
-        "acceptable_frame_rates": ["29.97", "30"],
+        "min_duration_ms": 30000,
+        "max_duration_ms": 30000,
+        "containers": ["mp4", "mov"],
+        "codecs": ["h264"],
+        "min_width": 1920,
+        "max_width": 1920,
+        "min_height": 1080,
+        "max_height": 1080,
+        "min_bitrate_kbps": 15000,
+        "frame_rates": [29.97, 30],
         "frame_rate_type": "constant",
         "scan_type": "progressive",
         "gop_type": "closed",
-        "gop_interval_seconds_min": 1,
-        "gop_interval_seconds_max": 2,
+        "min_gop_interval_seconds": 1,
+        "max_gop_interval_seconds": 2,
         "audio_required": true,
-        "audio_codec": ["aac", "pcm"],
-        "audio_sampling_rate_hz": [48000],
-        "audio_channels": "stereo",
-        "audio_loudness_lufs": -24,
-        "audio_loudness_tolerance_db": 2,
-        "audio_true_peak_dbfs": -2
+        "audio_codecs": ["aac", "pcm"],
+        "audio_sample_rates": [48000],
+        "audio_channels": ["stereo"],
+        "loudness_lufs": -24,
+        "loudness_tolerance_db": 2,
+        "true_peak_dbfs": -2
       }
     },
     {
@@ -84,7 +88,7 @@ Broadcast spots are:
 }
 ```
 
-The :15 and :60 formats are identical except for `duration_seconds`. All three are available in the reference agent as `broadcast_spot_15s`, `broadcast_spot_30s`, and `broadcast_spot_60s`.
+The :15 and :60 formats are identical except for `min_duration_ms` and `max_duration_ms`. All three are available in the reference agent as `broadcast_spot_15s`, `broadcast_spot_30s`, and `broadcast_spot_60s`.
 
 ### What is absent
 

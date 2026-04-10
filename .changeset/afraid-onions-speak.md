@@ -9,4 +9,6 @@ Add broadcast TV support: Ad-ID creative identifiers, broadcast spot reference f
 - Add `agency_estimate_number` to create-media-buy-request, package-request, and confirmed package schemas
 - Add `measurement-window` schema and `measurement_windows` array on reporting-capabilities for broadcast Live/C3/C7 windows
 - Add `measurement_window` field on billing_measurement in measurement-terms for guarantee basis
-- Add broadcast TV channel documentation
+- Add broadcast TV channel documentation and broadcast seller storyboard
+- Extend `video-asset-requirements` schema with GOP, scan type, moov atom, audio codec/loudness fields
+- Align reference format and doc requirements field names to match schema (`containers`, `codecs`, `min_duration_ms`, etc.)
