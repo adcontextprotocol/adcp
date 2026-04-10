@@ -36,20 +36,26 @@
   --color-brand-light: var(--color-primary-300);
   --color-brand-bg: var(--color-primary-50);
 
+  /* Warm accent — amber, used sparingly at the 10% level */
+  --color-accent: #d97706;
+  --color-accent-bright: #f59e0b;  /* Lighter amber — passes WCAG AA on dark surfaces */
+  --color-accent-light: #fef3c7;
+  --color-accent-subtle: #fffbeb;
+
   /* -----------------------------------------------------------------------------
-     1.2 Neutral Colors (Gray Scale)
+     1.2 Neutral Colors (Gray Scale) — blue-tinted toward brand hue
      ----------------------------------------------------------------------------- */
-  --color-gray-950: #0a0a0a;        /* Near black */
-  --color-gray-900: #1d1d1d;        /* Primary text */
-  --color-gray-800: #2d3748;        /* Headings */
-  --color-gray-700: #374151;        /* Secondary text dark */
-  --color-gray-600: #4b5563;        /* Body text */
-  --color-gray-500: #6b7280;        /* Secondary text */
-  --color-gray-400: #9ca3af;        /* Placeholder, disabled */
-  --color-gray-300: #d1d5db;        /* Borders */
-  --color-gray-200: #e5e7eb;        /* Light borders */
-  --color-gray-100: #f3f4f6;        /* Light backgrounds */
-  --color-gray-50:  #f9fafb;        /* Subtle backgrounds */
+  --color-gray-950: #090b14;        /* Near black — blue-tinted */
+  --color-gray-900: #1a1d2b;        /* Primary text */
+  --color-gray-800: #2b3047;        /* Headings */
+  --color-gray-700: #353c54;        /* Secondary text dark */
+  --color-gray-600: #4a5268;        /* Body text */
+  --color-gray-500: #697183;        /* Secondary text */
+  --color-gray-400: #9aa1b0;        /* Placeholder, disabled */
+  --color-gray-300: #cfd3dc;        /* Borders */
+  --color-gray-200: #e3e6ed;        /* Light borders */
+  --color-gray-100: #f2f4f8;        /* Light backgrounds — blue-tinted */
+  --color-gray-50:  #f8f9fc;        /* Subtle backgrounds — blue-tinted */
 
   /* Semantic aliases for neutrals */
   --color-text: var(--color-gray-900);
@@ -102,6 +108,13 @@
   --color-surface-overlay: rgba(0, 0, 0, 0.5);
   --color-surface-invert: var(--color-gray-900);
 
+  /* Dark surfaces — hero, proof beat, inverted sections */
+  --color-dark-bg: var(--color-gray-950);
+  --color-dark-text: rgba(255, 255, 255, 0.85);
+  --color-dark-text-muted: rgba(255, 255, 255, 0.6);
+  --color-dark-text-subtle: rgba(255, 255, 255, 0.45);
+  --color-dark-border: rgba(255, 255, 255, 0.15);
+
   /* Off-white for alternating sections */
   --color-off-white: #f6f5ec;
 
@@ -148,7 +161,8 @@
   /* -----------------------------------------------------------------------------
      2.1 Font Families
      ----------------------------------------------------------------------------- */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
 
   /* -----------------------------------------------------------------------------

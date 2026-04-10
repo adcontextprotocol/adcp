@@ -12,6 +12,9 @@
 <meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400&display=swap">
 <link rel="stylesheet" href="/design-system.css">
 <link rel="stylesheet" href="/layout.css">
 <script type="application/ld+json">
@@ -32,6 +35,8 @@
 </head>
 <body data-nav-theme="dark">
 
+<a href="#main" class="skip-link">Skip to content</a>
+
 <!-- Shared navigation -->
 <div id="adcp-nav">
   <noscript>
@@ -39,29 +44,90 @@
       <a href="/stories">Stories</a>
       <a href="/certification">Academy</a>
       <a href="/chat">Ask Addie</a>
-      <a href="/registry">Registry</a>
+      <a href="/community">Community</a>
       <a href="/membership">Get started</a>
+      <a href="/registry">Registry</a>
       <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
-      <a href="/about">About</a>
       <a href="/members">Members</a>
-      <a href="/events">Events</a>
-      <a href="/committees">Committees</a>
     </nav>
   </noscript>
 </div>
-<script src="/nav.js"></script>
+<script src="/nav.js" defer></script>
+
+<main id="main">
 
 <!-- Hero: Who we are — full-screen dark pane -->
 <section class="homepage-hero homepage-hero--dark">
-  <h1>Pioneering a more intelligent, human-centric advertising future</h1>
-  <p class="subtitle">AgenticAdvertising.org publishes <a href="https://docs.adcontextprotocol.org">AdCP</a> &mdash; the open protocol that lets AI agents discover, plan, buy, sell, and measure media across every channel. We certify the professionals who use it and govern how it evolves.</p>
-  <p class="hero-audience">For ad tech companies, agencies, publishers, brand marketers, and practitioners.</p>
+  <!-- Protocol mesh background -->
+  <svg class="hero-mesh" viewBox="0 0 1200 480" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="meshFade" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="white" stop-opacity="1"/>
+        <stop offset="55%" stop-color="white" stop-opacity="1"/>
+        <stop offset="100%" stop-color="white" stop-opacity="0"/>
+      </radialGradient>
+      <mask id="meshEdgeMask">
+        <ellipse cx="600" cy="240" rx="680" ry="300" fill="url(#meshFade)"/>
+      </mask>
+    </defs>
+    <g mask="url(#meshEdgeMask)" stroke="#4169e1" stroke-width="1" fill="none">
+      <!-- Upper band -->
+      <line x1="80" y1="50" x2="240" y2="100" class="mesh-line" style="animation-delay:0s"/>
+      <line x1="240" y1="100" x2="420" y2="70" class="mesh-line" style="animation-delay:-1s"/>
+      <line x1="420" y1="70" x2="580" y2="120" class="mesh-line" style="animation-delay:-2.5s"/>
+      <line x1="580" y1="120" x2="760" y2="80" class="mesh-line" style="animation-delay:-0.5s"/>
+      <line x1="760" y1="80" x2="940" y2="110" class="mesh-line" style="animation-delay:-3s"/>
+      <line x1="940" y1="110" x2="1100" y2="60" class="mesh-line" style="animation-delay:-1.5s"/>
+      <!-- Middle band -->
+      <line x1="140" y1="200" x2="300" y2="170" class="mesh-line" style="animation-delay:-2s"/>
+      <line x1="300" y1="170" x2="480" y2="220" class="mesh-line" style="animation-delay:-0.8s"/>
+      <line x1="480" y1="220" x2="660" y2="180" class="mesh-line" style="animation-delay:-3.5s"/>
+      <line x1="660" y1="180" x2="840" y2="230" class="mesh-line" style="animation-delay:-1.2s"/>
+      <line x1="840" y1="230" x2="1020" y2="190" class="mesh-line" style="animation-delay:-2.8s"/>
+      <!-- Lower band -->
+      <line x1="200" y1="340" x2="380" y2="310" class="mesh-line" style="animation-delay:-1.8s"/>
+      <line x1="380" y1="310" x2="560" y2="360" class="mesh-line" style="animation-delay:-0.3s"/>
+      <line x1="560" y1="360" x2="740" y2="320" class="mesh-line" style="animation-delay:-2.2s"/>
+      <line x1="740" y1="320" x2="920" y2="370" class="mesh-line" style="animation-delay:-3.2s"/>
+      <line x1="920" y1="370" x2="1060" y2="340" class="mesh-line" style="animation-delay:-0.6s"/>
+      <!-- Cross-band connections -->
+      <line x1="240" y1="100" x2="300" y2="170" class="mesh-line" style="animation-delay:-1.5s"/>
+      <line x1="420" y1="70" x2="480" y2="220" class="mesh-line" style="animation-delay:-2.8s"/>
+      <line x1="580" y1="120" x2="660" y2="180" class="mesh-line" style="animation-delay:-0.4s"/>
+      <line x1="760" y1="80" x2="840" y2="230" class="mesh-line" style="animation-delay:-3.5s"/>
+      <line x1="940" y1="110" x2="1020" y2="190" class="mesh-line" style="animation-delay:-1s"/>
+      <line x1="300" y1="170" x2="380" y2="310" class="mesh-line" style="animation-delay:-2.2s"/>
+      <line x1="480" y1="220" x2="560" y2="360" class="mesh-line" style="animation-delay:-0.7s"/>
+      <line x1="660" y1="180" x2="740" y2="320" class="mesh-line" style="animation-delay:-3s"/>
+      <line x1="840" y1="230" x2="920" y2="370" class="mesh-line" style="animation-delay:-1.8s"/>
+      <line x1="140" y1="200" x2="240" y2="100" class="mesh-line" style="animation-delay:-2.5s"/>
+      <line x1="200" y1="340" x2="300" y2="170" class="mesh-line" style="animation-delay:-0.9s"/>
+      <!-- Outer wisps -->
+      <line x1="20" y1="130" x2="140" y2="200" class="mesh-line" style="animation-delay:-1.3s"/>
+      <line x1="80" y1="50" x2="140" y2="200" class="mesh-line" style="animation-delay:-2.6s"/>
+      <line x1="1100" y1="60" x2="1020" y2="190" class="mesh-line" style="animation-delay:-0.2s"/>
+      <line x1="1060" y1="340" x2="1140" y2="420" class="mesh-line" style="animation-delay:-3.3s"/>
+      <line x1="200" y1="340" x2="120" y2="420" class="mesh-line" style="animation-delay:-1.6s"/>
+    </g>
+  </svg>
+  <!-- Activity pulses -->
+  <div class="hero-pulse" style="top:100px;left:20%;animation-delay:0s"></div>
+  <div class="hero-pulse" style="top:260px;left:65%;animation-delay:-2.5s"></div>
+  <div class="hero-pulse" style="top:180px;left:45%;animation-delay:-4s"></div>
+  <div class="hero-pulse" style="top:350px;left:30%;animation-delay:-1.5s"></div>
+
+  <h1>Let's write the next chapter of advertising, together.</h1>
+  <p class="subtitle">
+    We publish the Ad Context Protocol
+    (<a href="https://docs.adcontextprotocol.org">AdCP</a>)—the
+    community-driven open standard for AI agents to plan, buy, and
+    measure advertising across every channel.
+    We also certify the professionals who use it and govern how it evolves.
+  </p>
   <div class="hero-actions">
-    <a href="/membership" class="hero-cta-primary">Become a Member &rarr;</a>
-    <a href="https://docs.adcontextprotocol.org" class="hero-cta-secondary">Read the AdCP Docs &rarr;</a>
-    <a href="/chat" class="hero-cta-secondary">Ask Addie &rarr;</a>
+    <a href="/membership" class="hero-cta-primary">Become a Member</a>
   </div>
-  <p class="hero-free-note">Free to sign up. Talk to Addie and start your first certification module at no cost.</p>
+  <p class="hero-secondary-links">Or <a href="/chat">talk to Addie</a> &rarr;</p>
   <div class="hero-logos">
     <p class="hero-logos-label"><span id="member-count">23+</span> members including</p>
     <div class="logo-carousel" id="logo-carousel" aria-label="Member logos">
@@ -75,146 +141,190 @@
         <span class="logo-placeholder">Wunderkind</span>
         <span class="logo-placeholder">Sightly</span>
         <!-- duplicate for seamless loop -->
-        <span class="logo-placeholder">Yahoo</span>
-        <span class="logo-placeholder">PubMatic</span>
-        <span class="logo-placeholder">Scope3</span>
-        <span class="logo-placeholder">Samba TV</span>
-        <span class="logo-placeholder">LG Ads</span>
-        <span class="logo-placeholder">Kargo</span>
-        <span class="logo-placeholder">Wunderkind</span>
-        <span class="logo-placeholder">Sightly</span>
+        <span class="logo-placeholder" aria-hidden="true">Yahoo</span>
+        <span class="logo-placeholder" aria-hidden="true">PubMatic</span>
+        <span class="logo-placeholder" aria-hidden="true">Scope3</span>
+        <span class="logo-placeholder" aria-hidden="true">Samba TV</span>
+        <span class="logo-placeholder" aria-hidden="true">LG Ads</span>
+        <span class="logo-placeholder" aria-hidden="true">Kargo</span>
+        <span class="logo-placeholder" aria-hidden="true">Wunderkind</span>
+        <span class="logo-placeholder" aria-hidden="true">Sightly</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Story: Why advertising needs agents -->
-<section class="story-intro">
-  <h2 class="story-headline">Why advertising needs agents</h2>
-</section>
-
+<!-- Section 1: The problem — text left, image right -->
 <section>
-  <div class="panel panel-wide">
-    <div class="panel-text">
-      <p class="drop">Advertising connects businesses with the people they serve. It funds the journalism you read, the shows you watch, the apps you use for free.</p>
-      <p>When it works, it's a quiet engine of growth &mdash; for a bakery opening its second location, for a publisher investing in their newsroom, for an entrepreneur in Nairobi reaching her first thousand customers.</p>
-      <p class="closing">It doesn't always work.</p>
+  <div class="panel panel-wide panel-breathe">
+    <div class="panel-split">
+      <div class="panel-text">
+        <p class="kicker">The Problem</p>
+        <h2 class="story-headline">Ad-tech is fragmented, opaque, and inefficient</h2>
+        <p>
+          Ads funds the journalism you read, the shows you watch,
+          the apps on your phone.
+          When it works, it's the quiet engine of growth:
+          for the bakery opening its second location,
+          the newsroom hiring reporters,
+          and the entrepreneur reaching her first customers.
+          <strong>It doesn't always work.</strong>
+        </p>
+      </div>
+      <img
+        src="/images/homepage/panel-01-everyday.png"
+        alt="Four everyday people affected by advertising: a consumer, a bakery owner, a journalist, and an entrepreneur"
+        class="panel-image"
+        loading="lazy"
+      >
     </div>
-    <img src="/images/homepage/panel-01-everyday.png" alt="Four everyday people affected by advertising: a consumer seeing irrelevant ads, a bakery owner struggling with complexity, a journalist worried about declining ad revenue, and an entrepreneur in Nairobi overwhelmed by the tools" class="panel-image story-panel-image">
   </div>
 </section>
 
-<!-- Panel 2: What's changing -->
+<!-- Section 2: The shift — image left, text right -->
 <section class="bg-subtle">
-  <div class="panel panel-wide">
-    <div class="panel-text">
-      <p class="kicker">What's changing</p>
+  <div class="panel panel-wide panel-breathe">
+    <div class="panel-split panel-split--reverse">
+      <img
+        src="/images/homepage/panel-02-change.png"
+        alt="Sam the media buyer and Priya the publisher, each working with AI agents that connect them across platforms"
+        class="panel-image"
+        loading="lazy"
+      >
+      <div class="panel-text">
+        <p class="kicker">The Shift</p>
+        <h2 class="story-headline">AI agents can help us break down the siloes</h2>
+        <p>
+          Agents can package audiences, negotiate deals, generate
+          creative, and execute across dozens of systems at once.
+          A local business gets the same media-buying intelligence
+          as a Fortune 500 brand, while mid-size publishers gain
+          direct access to premium campaigns.
+          <strong>This levels the playing field.</strong>
+        </p>
+      </div>
     </div>
-    <div class="panel-text">
-      <p class="drop">AI agents are learning to do the operational work of advertising &mdash; finding audiences, matching budgets to outcomes, generating creative, executing across dozens of systems at once.</p>
-      <p>This changes the economics of advertising in ways that matter. A local business gets the same media buying intelligence that used to require a six-figure agency retainer. A mid-size publisher competes for premium campaigns without a twenty-person sales team. A brand launches in a new market in days, not months.</p>
-      <p><span class="accent">Agents help people work better together.</span> They help businesses grow. They help fund the content people depend on. They can help grow the global economy responsibly.</p>
-    </div>
-    <img src="/images/homepage/panel-02-change.png" alt="Sam the media buyer and Priya the publisher, each working with AI agents that connect them across platforms" class="panel-image story-panel-image">
   </div>
 </section>
 
-<!-- Proof beat -->
+<!-- Section 3: The risk — text left, image right -->
+<section>
+  <div class="panel panel-wide panel-breathe">
+    <div class="panel-split">
+      <div class="panel-text">
+        <p class="kicker">The Stakes</p>
+        <h2 class="story-headline">Speed without judgment is just fast mistakes</h2>
+        <p>
+          Without standardized governance, AI agents drift and miss
+          the opportunity to align with the specific needs of the
+          brand, the publisher, and the consumer.
+          The question isn't whether AI transforms advertising,
+          it's how humans stay involved in the decisions.
+          <strong>We need to set those guardrails.</strong>
+        </p>
+      </div>
+      <img
+        src="/images/homepage/panel-03-stakes.png"
+        alt="Without governance, agents optimize blindly. With governance, humans stay in the loop on decisions that matter."
+        class="panel-image"
+        loading="lazy"
+      >
+    </div>
+  </div>
+</section>
+
+<!-- Proof beat — quote pause after the 1-2-3 arc -->
 <section class="proof-beat">
+  <svg class="section-mesh section-mesh--dark" viewBox="0 0 1200 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="proofFade" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="white" stop-opacity="1"/>
+        <stop offset="50%" stop-color="white" stop-opacity="1"/>
+        <stop offset="100%" stop-color="white" stop-opacity="0"/>
+      </radialGradient>
+      <mask id="proofMask">
+        <ellipse cx="600" cy="160" rx="650" ry="200" fill="url(#proofFade)"/>
+      </mask>
+    </defs>
+    <g mask="url(#proofMask)" stroke="#4169e1" stroke-width="1" stroke-opacity="0.08" fill="none">
+      <line x1="150" y1="60" x2="350" y2="100"/>
+      <line x1="350" y1="100" x2="550" y2="70"/>
+      <line x1="550" y1="70" x2="750" y2="110"/>
+      <line x1="750" y1="110" x2="950" y2="80"/>
+      <line x1="250" y1="200" x2="450" y2="170"/>
+      <line x1="450" y1="170" x2="650" y2="210"/>
+      <line x1="650" y1="210" x2="850" y2="180"/>
+      <line x1="350" y1="100" x2="450" y2="170"/>
+      <line x1="550" y1="70" x2="650" y2="210"/>
+      <line x1="750" y1="110" x2="850" y2="180"/>
+      <line x1="200" y1="280" x2="400" y2="250"/>
+      <line x1="450" y1="170" x2="400" y2="250"/>
+      <line x1="650" y1="210" x2="750" y2="280"/>
+      <line x1="850" y1="180" x2="1000" y2="260"/>
+    </g>
+  </svg>
   <div class="panel panel-wide">
+    <blockquote class="proof-quote">
+      <p>&ldquo;It felt like you were watching<br>the first banner ad being served.&rdquo;</p>
+      <cite>&mdash; Adam Broitman, Partner, McKinsey &amp; Company</cite>
+    </blockquote>
     <div class="panel-text">
-      <p class="kicker">It's already happening</p>
-    </div>
-    <div class="panel-text">
-      <p class="drop">On October 16, 2025, the first-ever agent-to-agent media buy was executed &mdash; real money, real inventory from LG Ads, real AI agents handling creative, targeting, and approval with human oversight.</p>
-      <blockquote class="proof-quote">
-        <p>&ldquo;It felt like you were watching the first banner ad being served.&rdquo;</p>
-        <cite>&mdash; Adam Broitman, Partner, McKinsey &amp; Company</cite>
-      </blockquote>
-      <p>Since then, <span class="member-count">23+</span> companies have joined &mdash; from Yahoo and PubMatic to Scope3 and Samba TV.</p>
+      <p>
+        On <time datetime="2025-10-16">Oct 16, 2025</time>, the
+        first-ever agent-to-agent media buy was executed on inventory
+        from LG Ads, where AI agents handling creative, targeting,
+        and approval with human oversight.
+      </p>
     </div>
   </div>
 </section>
 
-<!-- Panel 3: The stakes -->
-<section>
-  <div class="panel panel-wide">
-    <div class="panel-text">
-      <p class="kicker">The stakes</p>
-    </div>
-    <div class="panel-text">
-      <p class="drop">But speed without judgment is just fast mistakes.</p>
-      <p>Without governance, agents optimize for whatever metric they're pointed at &mdash; even when that doesn't align with what a brand intended, what a publisher deserves, or what a consumer should experience. Without standards, every platform becomes a silo, and the promise of efficiency collapses into a different kind of fragmentation.</p>
-      <p class="closing">The question isn't whether AI transforms advertising. It's whether humans stay involved in the decisions that matter.</p>
-    </div>
-    <img src="/images/homepage/panel-03-stakes.png" alt="Without governance, agents optimize blindly. With governance, humans like Jordan stay in the loop on decisions that matter." class="panel-image story-panel-image">
-  </div>
-</section>
-
-<!-- Panel 4: The community -->
+<!-- Two paths: organizations + practitioners -->
 <section class="bg-subtle">
-  <div class="panel panel-wide">
-    <div class="panel-text">
-      <p class="kicker">Who's building it</p>
-    </div>
-    <div class="panel-text">
-      <p class="drop">That's what we're building.</p>
-      <p>AgenticAdvertising.org brings together the people and companies shaping how AI and advertising work together. Publishers who want fair value for their content. Brands who want their identity respected at machine speed. Agencies finding better outcomes for their clients. Data providers who believe transparency makes markets work. Builders creating the tools. And the people just entering the field &mdash; learning the language of a profession being reinvented underneath them.</p>
-      <p>We publish <a href="https://docs.adcontextprotocol.org" class="accent">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. We govern through <span class="accent">Embedded Human Judgment</span> &mdash; the principle that humans stay in the loop on decisions with real consequences. We educate through a certification program taught by Addie, our AI, because the best way to build trust in agentic systems is to make sure people understand them deeply.</p>
-    </div>
-    <img src="/images/homepage/panel-04-community.png" alt="The AgenticAdvertising.org community: Alex, Sam, Jordan, Maya, Priya, Kai, Tomoko, Dayo, and Addie working together" class="panel-image story-panel-image">
-  </div>
-</section>
-
-<!-- Panel 5: What better looks like -->
-<section class="bg-warm">
-  <div class="panel panel-wide">
-    <div class="panel-text">
-      <p class="kicker">What better looks like</p>
-    </div>
-    <div class="panel-text">
-      <ul class="principles">
-        <li><strong>Better for people who see ads</strong> &mdash; relevant, respectful, transparent about when AI was involved.</li>
-        <li><strong>Better for businesses</strong> &mdash; accessible and efficient, no longer requiring a massive team just to participate.</li>
-        <li><strong>Better for the content you depend on</strong> &mdash; advertising that funds creators fairly, so they can invest in what they make.</li>
-        <li><strong>Better for the global economy</strong> &mdash; open standards that work the same whether you're buying media in London or Lagos, so growth isn't gated by geography.</li>
-      </ul>
-    </div>
-    <img src="/images/homepage/panel-05-outcomes.png" alt="The same four people from Panel 1, now thriving: the consumer sees a relevant ad, the bakery has expanded, the newsroom is growing, and the Nairobi entrepreneur is shipping across the continent" class="panel-image story-panel-image">
-  </div>
-</section>
-
-<!-- Panel 6: Join -->
-<section>
-  <div class="panel panel-wide">
-    <div class="cta-section">
-      <p class="closing-text">This is early. The standards are being written. The governance frameworks are being tested. The first generation of agentic advertising professionals is being certified right now. That means you can shape it.</p>
-      <div class="cta-grid">
-        <div class="cta-card">
-          <h3>Start learning</h3>
-          <p>Understand agentic advertising. Get certified. Free to start.</p>
-          <a href="/certification">Go to the Academy &rarr;</a>
-        </div>
-        <div class="cta-card">
-          <h3>Start building</h3>
-          <p>Implement the open protocol. Ship an agent. Join the ecosystem.</p>
-          <a href="https://docs.adcontextprotocol.org">Read the AdCP Docs &rarr;</a>
-        </div>
-        <div class="cta-card">
-          <h3>Start participating</h3>
-          <p>Join the member organization. Shape the standards.</p>
-          <a href="/membership">Become a member &rarr;</a>
-        </div>
-        <div class="cta-card">
-          <h3>Find a partner</h3>
-          <p>Browse the member directory. Find agencies, publishers, and technology providers.</p>
-          <a href="/members">Member directory &rarr;</a>
-        </div>
+  <div class="panel panel-wide panel-breathe">
+    <div class="paths">
+      <div class="path-col">
+        <img
+          src="/images/homepage/panel-04-community.png"
+          alt="The AgenticAdvertising.org community working together"
+          class="path-col__img"
+          loading="lazy"
+        >
+        <h2 class="path-col__heading">Shape the standard</h2>
+        <p class="path-col__body">
+          We're a coalition of publishers, brands, agencies, and
+          data providers writing the rules before someone else
+          writes them for us.
+          Members get access to committees, the AdCP registry, and
+          the working groups defining how agents and humans
+          collaborate in practice.
+        </p>
+        <a href="/membership" class="cta-card-btn">Become a Member</a>
+      </div>
+      <div class="paths__separator" aria-hidden="true"></div>
+      <div class="path-col">
+        <img
+          src="/images/homepage/panel-05-outcomes.png"
+          alt="People thriving with better advertising outcomes"
+          class="path-col__img"
+          loading="lazy"
+        >
+        <h2 class="path-col__heading">Learn the language</h2>
+        <p class="path-col__body">
+          The first generation of agentic advertising professionals
+          is getting certified right now.
+          The Academy takes you from "what is AdCP?" to fluent in
+          the protocol, the governance model, and the practical
+          skills agencies and brands are hiring for.
+          Free to start.
+        </p>
+        <a href="/certification" class="cta-card-btn">Go to the Academy</a>
       </div>
     </div>
-    <img src="/images/homepage/panel-06-join.png" alt="The AgenticAdvertising.org community welcoming you in" class="panel-image story-panel-image">
   </div>
 </section>
+
+</main>
 
 <!-- Footer injected by nav.js -->
 <div id="adcp-footer"></div>
@@ -241,13 +351,17 @@
       if (!response.ok) throw new Error('Failed to load members');
 
       const data = await response.json();
-      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url || m.resolved_brand?.logo_url_dark);
+      const members = (data.members || []).filter(
+        m => m.resolved_brand?.logo_url || m.resolved_brand?.logo_url_dark
+      );
 
       const track = document.getElementById('member-logos');
       if (members.length > 0) {
         // Build logo HTML once, then duplicate for seamless loop
         const logosHtml = members.map(member => {
-          const logoUrl = safeUrl(member.resolved_brand.logo_url_dark || member.resolved_brand.logo_url);
+          const logoUrl = safeUrl(
+            member.resolved_brand.logo_url_dark || member.resolved_brand.logo_url
+          );
           const name = escapeHtml(member.display_name);
           const slug = encodeURIComponent(member.slug);
           return `
@@ -257,8 +371,10 @@
             <span class="logo-placeholder" style="display:none">${name}</span>
           </a>`;
         }).join('');
-        // Duplicate the set so the scroll loops seamlessly
-        track.innerHTML = logosHtml + logosHtml;
+        // Duplicate the set so the scroll loops seamlessly (aria-hidden on duplicates)
+        track.innerHTML = logosHtml
+          + '<span aria-hidden="true" style="display:contents">'
+          + logosHtml + '</span>';
 
         // Update all member count elements
         if (data.members) {
