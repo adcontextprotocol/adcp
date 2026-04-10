@@ -10,6 +10,11 @@ echo "🔍 Validating Mintlify documentation..."
 # Check for broken internal links
 # Temporarily remove directories that contain non-MDX markdown
 rm -rf dist/docs
+ADDIE_RULES_MOVED=false
+if [ -d dist/addie/rules ]; then
+  mv dist/addie/rules /tmp/.addie-rules-push-$$
+  ADDIE_RULES_MOVED=true
+fi
 ADDIE_REPOS_MOVED=false
 if [ -d .addie-repos ]; then
   mv .addie-repos /tmp/.addie-repos-push-$$
@@ -23,6 +28,9 @@ fi
 npx --yes mintlify@latest broken-links
 BROKEN_LINKS_EXIT=$?
 git checkout dist/docs 2>/dev/null || true
+if [ "$ADDIE_RULES_MOVED" = true ]; then
+  mv /tmp/.addie-rules-push-$$ dist/addie/rules
+fi
 if [ "$ADDIE_REPOS_MOVED" = true ]; then
   mv /tmp/.addie-repos-push-$$ .addie-repos
 fi

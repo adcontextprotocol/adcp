@@ -9,13 +9,13 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { createTestClient, loadBundledStoryboards } from "@adcp/client/testing";
+import { createTestClient, loadBundledStoryboards, runStoryboardStep, getStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
@@ -2559,6 +2559,58 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  router.get("/registry/agents/:encodedUrl/auth-status", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Verify ownership and get org ID in one query
+      const orgResult = await query(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
+         JOIN organization_memberships om
+           ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.agents @> $1::jsonb
+           AND om.workos_user_id = $2
+         LIMIT 1`,
+        [JSON.stringify([{ url: agentUrl }]), req.user.id],
+      );
+
+      const noAuthResponse = { has_auth: false, agent_context_id: null, auth_type: null, has_oauth_token: false, has_valid_oauth: false, oauth_token_expires_at: null };
+
+      if (orgResult.rows.length === 0) {
+        return res.json(noAuthResponse);
+      }
+
+      const orgId = orgResult.rows[0].workos_organization_id;
+      const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+
+      if (!context) {
+        return res.json(noAuthResponse);
+      }
+
+      const hasValidOAuth = agentContextDb.hasValidOAuthTokens(context);
+
+      res.json({
+        has_auth: context.has_auth_token || hasValidOAuth,
+        agent_context_id: context.id,
+        auth_type: context.has_auth_token ? context.auth_type : hasValidOAuth ? "oauth" : null,
+        has_oauth_token: context.has_oauth_token,
+        has_valid_oauth: hasValidOAuth,
+        oauth_token_expires_at: context.oauth_token_expires_at?.toISOString() || null,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get agent auth status");
+      res.status(500).json({ error: "Failed to get agent auth status" });
+    }
+  });
+
   router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -2636,6 +2688,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
+        agent_context_id: context.id,
         platform_type: platform_type || undefined,
       });
     } catch (error) {
@@ -2678,9 +2731,37 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(400).json({ error: "Invalid agent URL" });
     }
 
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+    if (!isOwner) {
+      return res.status(403).json({ error: "You do not have permission to test this agent" });
+    }
+
     try {
-      const client = createTestClient(agentUrl, "mcp");
-      const agentInfo = await client.getAgentInfo();
+      let auth;
+      try {
+        auth = await complianceDb.resolveOwnerAuth(agentUrl);
+      } catch (authErr) {
+        logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
+      }
+
+      let agentInfo;
+      try {
+        const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
+        agentInfo = await client.getAgentInfo();
+      } catch (connectErr) {
+        // If auth failed and connection failed, give a specific error
+        if (!auth) {
+          return res.status(422).json({
+            error: "Agent requires authentication. Save an auth token first using the connect form.",
+            needs_auth: true,
+          });
+        }
+        throw connectErr;
+      }
       const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
       const allStoryboards = loadBundledStoryboards();
@@ -2720,6 +2801,84 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(500).json({ error: "Failed to discover agent tools" });
     }
   });
+
+  // Step-by-step storyboard execution
+  router.post(
+    "/registry/agents/:encodedUrl/storyboard/:storyboardId/step/:stepId",
+    storyboardStepRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const storyboard = getStoryboardById(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        let auth;
+        try {
+          auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        } catch (authErr) {
+          logger.debug({ err: authErr, agentUrl }, "Auth resolution failed for step run");
+        }
+
+        const { context, dry_run } = req.body;
+        if (context && (typeof context !== "object" || Array.isArray(context))) {
+          return res.status(400).json({ error: "context must be a JSON object" });
+        }
+        if (context && JSON.stringify(context).length > 50_000) {
+          return res.status(400).json({ error: "context too large" });
+        }
+
+        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, {
+          dry_run: dry_run ?? true,
+          ...(auth && { auth }),
+          ...(context && { context }),
+        });
+
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
+        res.status(500).json({ error: "Failed to run storyboard step" });
+      }
+    },
+  );
+
+  // Get first step preview for a storyboard (no agent call needed)
+  router.get(
+    "/storyboards/:storyboardId/first-step",
+    async (req, res) => {
+      try {
+        const storyboard = getStoryboardById(req.params.storyboardId);
+        if (!storyboard) {
+          return res.status(404).json({ error: "Storyboard not found" });
+        }
+
+        const preview = getFirstStepPreview(storyboard);
+        if (!preview) {
+          return res.status(404).json({ error: "Storyboard has no steps" });
+        }
+
+        res.json({ storyboard: { id: storyboard.id, title: storyboard.title }, step: preview });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get first step preview");
+        res.status(500).json({ error: "Failed to get first step preview" });
+      }
+    },
+  );
 
   router.post(
     "/registry/agents/:encodedUrl/storyboard/:storyboardId/run",

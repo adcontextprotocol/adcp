@@ -52,6 +52,30 @@
               "reallocation_threshold": {
                 "type": "number",
                 "description": "Amount above which reallocations require escalation (for agent_limited)."
+              },
+              "allocations": {
+                "type": "object",
+                "description": "Optional budget partition across purchase types. Keys are purchase-type enum values (media_buy, rights_license, signal_activation, creative_services). When present, the governance agent validates spend against both the total and the per-type allocation. When absent, all spend counts against the single total regardless of purchase type.",
+                "propertyNames": {
+                  "$ref": "/schemas/enums/purchase-type.json"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Maximum budget for this purchase type."
+                    },
+                    "max_pct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100,
+                      "description": "Maximum percentage of total budget for this purchase type."
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -100,7 +124,7 @@
           },
           "flight": {
             "type": "object",
-            "description": "Authorized flight dates. Media buys with dates outside this window are rejected.",
+            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected.",
             "properties": {
               "start": {
                 "type": "string",
@@ -125,7 +149,7 @@
               "type": "string"
             },
             "minItems": 1,
-            "description": "ISO 3166-1 alpha-2 country codes for authorized markets (e.g., ['US', 'GB']). The governance agent rejects media buys targeting outside these countries and resolves applicable policies by matching against policy jurisdictions."
+            "description": "ISO 3166-1 alpha-2 country codes for authorized markets (e.g., ['US', 'GB']). The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions."
           },
           "regions": {
             "type": "array",
@@ -133,7 +157,7 @@
               "type": "string"
             },
             "minItems": 1,
-            "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts buys to these specific regions rather than the full country. Use for campaigns limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
+            "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts governed actions to these specific regions rather than the full country. Use for plans limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
           },
           "policy_ids": {
             "type": "array",

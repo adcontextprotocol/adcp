@@ -118,7 +118,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results[0].action"
+            path: "creatives[0].action"
             description: "Each creative has an action (created/updated)"
 
   - id: preview
@@ -161,5 +161,5 @@ phases:
           - check: response_schema
             description: "Response matches preview-creative-response.json schema"
           - check: field_present
-            path: "previews[0].renders[0].url"
+            path: "previews[0].renders[0].preview_url"
             description: "Preview includes a renderable URL"

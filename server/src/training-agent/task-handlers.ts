@@ -329,17 +329,15 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
+  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
+  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
-    if (new Date(mb.startTime) > now) {
-      // pending_creatives when no creatives assigned, pending_start otherwise
-      const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-      return hasCreatives ? 'pending_start' : 'pending_creatives';
-    }
+    if (new Date(mb.startTime) > now) return 'pending_start';
   }
   if (mb.status === 'paused') return 'paused';
   return mb.status;
@@ -599,6 +597,7 @@ const TOOLS = [
         quality: { type: 'string', enum: ['draft', 'production'] },
         message: { type: 'string', description: 'Natural language instructions for generative builds' },
         include_preview: { type: 'boolean', description: 'Include a preview URL or inline HTML in the build response' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Echoed on the response.' },
       },
     },
   },
@@ -676,6 +675,7 @@ const TOOLS = [
         destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
         options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
       required: [] as const,
@@ -1876,7 +1876,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -1900,6 +1900,16 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
       required_for_products: false,
       sandbox: true,
       supported_billing: [],
+    },
+    compliance_testing: {
+      scenarios: [
+        'force_creative_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+      ],
     },
     agent: {
       name: 'AdCP Training Agent',
@@ -2069,6 +2079,8 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     }
   }
   const pricingOptionId = req.pricing_option_id;
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
@@ -2139,6 +2151,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
       destinationId: id,
       account: dest.account,
       pricingOptionId,
+      governanceContext,
       isLive: true,
       activatedAt: now,
     };
@@ -2158,7 +2171,11 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     };
   });
 
-  return { deployments, sandbox: true };
+  return {
+    deployments,
+    ...(governanceContext && { governance_context: governanceContext }),
+    sandbox: true,
+  };
 }
 
 function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
@@ -2307,11 +2324,13 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown> } {
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
 
   // Determine target formats (cap at 50 to prevent response amplification)
@@ -2353,10 +2372,11 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         vendor_cost: 0, // CPM-priced: cost accrues at serve time
         currency: pricing.currency,
         consumption: {},
+        ...(governanceContext && { governance_context: governanceContext }),
       };
     }
 
-    return base;
+    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -2382,7 +2402,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         };
       });
 
-      return { creative_manifests, sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
     }
 
     // Single format response
@@ -2395,6 +2415,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
+      ...(governanceContext && { governance_context: governanceContext }),
       sandbox: true,
     };
   }
@@ -2410,7 +2431,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
     }
 
     const fmtId = targetIds[0];
@@ -2422,6 +2443,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
+      ...(governanceContext && { governance_context: governanceContext }),
       sandbox: true,
     };
   }

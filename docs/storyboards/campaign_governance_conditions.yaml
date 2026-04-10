@@ -160,9 +160,9 @@ phases:
         expected: |
           Confirm the media buy with governance approval:
           - media_buy_id: your platform's identifier
-          - status: confirmed or active
+          - status: active
           - governance_context: echoed back confirming governance was validated
-          - packages: confirmed line items
+          - packages: line items
 
         sample_request:
           account:

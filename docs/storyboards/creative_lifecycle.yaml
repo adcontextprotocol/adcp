@@ -6,6 +6,7 @@ summary: "Full creative lifecycle on a stateful platform: sync multiple creative
 track: creative
 required_tools:
   - list_creative_formats
+  - check_governance
 
 narrative: |
   You run a creative platform with a persistent library — an ad server, creative management
@@ -149,7 +150,7 @@ phases:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
           - check: field_present
-            path: "results"
+            path: "creatives"
             description: "Response contains per-creative results"
 
   - id: list_and_filter
@@ -255,6 +256,39 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches preview-creative-response.json schema"
+
+      - id: check_governance_build
+        title: "Governance check before creative build"
+        narrative: |
+          Before building a serving tag (a potential financial commitment when the
+          creative platform charges for tag generation or serving), the orchestrator
+          calls check_governance with tool: "build_creative". The governance agent
+          validates budget authority and delegation. The returned governance_context
+          flows through to the creative platform.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the build lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "creative_services"
+          tool: "build_creative"
+          payload:
+            creative_id: "video_30s_trail_pro"
+            output_format:
+              agent_url: "https://your-platform.example.com"
+              id: "vast_30s"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
 
       - id: build_video_tag
         title: "Build a VAST tag for the video creative"

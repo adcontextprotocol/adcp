@@ -723,6 +723,38 @@
         `;
       }
 
+      // Event recap (past events with recap content)
+      if (event.recap_html || event.recap_video_url) {
+        html += `<div class="event-section">`;
+        html += `<h2 class="section-title">Event Recap</h2>`;
+
+        // Video embed
+        if (event.recap_video_url) {
+          const videoUrl = event.recap_video_url;
+          const ytMatch = videoUrl.match(/^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+          if (ytMatch) {
+            html += `<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: var(--radius-md); margin-bottom: var(--space-4);">
+              <iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe>
+            </div>`;
+          } else {
+            // Only render link for https URLs (block javascript: and other protocols)
+            try {
+              const parsed = new URL(videoUrl);
+              if (parsed.protocol === 'https:') {
+                html += `<p style="margin-bottom: var(--space-4);"><a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener" class="btn btn-secondary">Watch Recording</a></p>`;
+              }
+            } catch { /* invalid URL, skip */ }
+          }
+        }
+
+        // Recap HTML content
+        if (event.recap_html) {
+          html += `<div class="event-description">${DOMPurify.sanitize(event.recap_html)}</div>`;
+        }
+
+        html += `</div>`;
+      }
+
       // Email interest form (upcoming events only)
       if (!isPast) {
         const loggedInEmail = window.__APP_CONFIG__?.user?.email || '';

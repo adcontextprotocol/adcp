@@ -141,6 +141,7 @@ export function renderBuildEmail(
     trackingId,
     segment,
     firstName,
+    coverImageUrl: content.coverImageUrl,
     bodyHtml,
   });
 
@@ -212,6 +213,14 @@ export function renderBuildSlack(content: BuildContent, editionDate: string): Sl
     type: 'header',
     text: { type: 'plain_text', text: `The Build — ${formatDate(editionDate)}` },
   });
+
+  if (content.coverImageUrl) {
+    blocks.push({
+      type: 'image',
+      image_url: content.coverImageUrl,
+      alt_text: `The Build cover — ${formatDate(editionDate)}`,
+    });
+  }
 
   blocks.push({
     type: 'section',

@@ -10,6 +10,7 @@
 
 import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
+import { generateDateFlavor } from '../cover.js';
 import { query } from '../../db/client.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from '../../addie/services/wg-digest-builder.js';
 import type { WgDigestContent } from '../../db/wg-digest-db.js';
@@ -56,7 +57,10 @@ export async function buildBuildContent(): Promise<BuildContent> {
   const decisionUrls = new Set(decisions.map((d) => d.url));
   const helpNeeded = await buildHelpNeededSection(wgEntries, decisionUrls);
 
-  const statusLine = await generateStatusLine(decisions, whatShipped, helpNeeded, contributorSpotlight);
+  const [statusLine, dateFlavor] = await Promise.all([
+    generateStatusLine(decisions, whatShipped, helpNeeded, contributorSpotlight),
+    generateDateFlavor(),
+  ]);
 
   const content: BuildContent = {
     contentVersion: 1,
@@ -66,6 +70,7 @@ export async function buildBuildContent(): Promise<BuildContent> {
     deepDive: null, // Curated by admin, not auto-generated
     helpNeeded,
     contributorSpotlight,
+    dateFlavor: dateFlavor || undefined,
     generatedAt: new Date().toISOString(),
   };
 

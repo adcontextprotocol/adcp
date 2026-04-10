@@ -1,0 +1,148 @@
+---
+title: Build an Agent
+sidebarTitle: Build an Agent
+description: "Use AdCP SDK skill files to generate storyboard-compliant agents with a coding agent in minutes."
+"og:title": "AdCP — Build an Agent"
+---
+
+The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a working, storyboard-validated agent in 2–8 minutes.
+
+## Install the SDK
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```bash
+npm install @adcp/client
+```
+</Tab>
+<Tab title="Python">
+```bash
+pip install adcp
+```
+</Tab>
+<Tab title="Go">
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+</Tab>
+</Tabs>
+
+This installs the client library used for storyboard validation. Skill files are not included in the package — you'll fetch them from GitHub in the next step.
+
+## Choose a skill
+
+Each skill targets a specific agent type. Pick the one that matches what you're building:
+
+| Skill | You are building... | Storyboard | JS/TS | Go |
+|-------|---------------------|------------|-------|-----|
+| `build-seller-agent` | Publisher, SSP, or media network selling inventory | `media_buy_seller` | [adcp-client](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent) | [adcp-go](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-seller-agent) |
+| `build-generative-seller-agent` | AI ad network generating ads from briefs | `media_buy_generative_seller` | [adcp-client](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-generative-seller-agent) | — |
+| `build-retail-media-agent` | Retail media network with catalog-driven creative | `media_buy_catalog_creative` | [adcp-client](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-retail-media-agent) | — |
+| `build-signals-agent` | CDP or data provider serving audience segments | `signal_owned`, `signal_marketplace` | [adcp-client](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-signals-agent) | [adcp-go](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-signals-agent) |
+| `build-creative-agent` | Ad server or CMP rendering creatives | `creative_lifecycle` | [adcp-client](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-creative-agent) | [adcp-go](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-creative-agent) |
+
+Python agents use the same skill files as JS/TS — the skills are language-agnostic.
+
+## Build the agent
+
+Point your coding agent at the skill file for your agent type. In Claude Code:
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+</Tab>
+<Tab title="Python">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent in Python for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+
+Every Python agent follows the same structure — subclass `ADCPHandler`, implement tools, use response builders for every return value:
+
+```python
+from adcp.server import ADCPHandler, serve
+from adcp.server.responses import capabilities_response, products_response
+from adcp.server.test_controller import TestControllerStore
+
+class MySeller(ADCPHandler):
+    async def get_adcp_capabilities(self, params, context=None):
+        return capabilities_response(["media_buy", "compliance_testing"])
+
+    # ... implement tools, use response builders for every return
+
+serve(MySeller(), name="my-seller", test_controller=MyStore())
+```
+
+Response builders (`adcp.server.responses`) handle schema compliance so you don't have to construct raw JSON. Use them for every tool return.
+</Tab>
+<Tab title="Go">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-go/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports publisher.
+```
+</Tab>
+</Tabs>
+
+In Cursor or Windsurf, download the skill file and include it as context with your prompt. Each skill walks the coding agent through:
+
+1. Business model decisions (what you sell, how you price, approval workflow)
+2. Tool registration with correct schemas
+3. Response shapes that pass storyboard validation
+4. Error handling and edge cases
+
+## Validate with storyboards
+
+Once the agent is running, validate it against the matching storyboard:
+
+```bash
+# JS/TS agent
+npx tsx agent.ts &
+npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Python agent
+python agent.py &
+npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Go agent
+go run main.go &
+npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+```
+
+Storyboards exercise every required tool call and validate response shapes. A passing run means your agent is protocol-compliant.
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ list_creative_formats
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+<Tip>
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client storyboard list` to see all available storyboards.
+</Tip>
+
+See **[Validate Your Agent](/docs/building/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
+
+## Additional resources
+
+Each SDK includes documentation designed for both humans and coding agents:
+
+| Resource | Location | Purpose |
+|----------|----------|---------|
+| Protocol spec | `node_modules/@adcp/client/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
+| Server guide | `node_modules/@adcp/client/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
+
+## What's next
+
+- **[Validate Your Agent](/docs/building/validate-your-agent)** — Storyboards, compliance checks, and the build-validate-fix loop
+- **[Schemas and SDKs](/docs/building/schemas-and-sdks)** — Schema access, CLI tools, and SDK package exports
+- **[MCP integration guide](/docs/building/integration/mcp-guide)** — Transport, sessions, and auth details
+- **[Task lifecycle](/docs/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/docs/building/implementation/error-handling)** — Error categories, codes, and recovery

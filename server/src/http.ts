@@ -79,6 +79,7 @@ import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createDigestRouter } from "./routes/digest.js";
+import { getBuildCoverImage } from "./db/build-db.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
@@ -1212,6 +1213,22 @@ export class HTTPServer {
 
     // Mount weekly digest routes (public web view)
     this.app.use('/digest', createDigestRouter());
+
+    // Build cover image (public, used in emails)
+    this.app.get('/build/:date/cover.png', async (req, res) => {
+      const { date } = req.params;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).send('Invalid date format');
+      try {
+        const imageData = await getBuildCoverImage(date);
+        if (!imageData) return res.status(404).send('No cover image');
+        res.set('Content-Type', 'image/png');
+        res.set('Content-Length', String(imageData.length));
+        res.set('Cache-Control', 'public, max-age=604800');
+        res.send(imageData);
+      } catch (error) {
+        res.status(500).send('Failed to serve cover image');
+      }
+    });
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
@@ -8094,6 +8111,11 @@ Disallow: /api/admin/
           startSeatRequestReminders(workos!);
         }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
       }
+
+      // Start Luma calendar sync (catches events missed by webhooks)
+      import('./luma/sync.js').then(({ startLumaSync }) => {
+        startLumaSync();
+      }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
     });
 
     // Setup graceful shutdown handlers
@@ -8139,6 +8161,11 @@ Disallow: /api/admin/
     // Stop seat request reminders
     import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
       stopSeatRequestReminders();
+    }).catch(() => {});
+
+    // Stop Luma calendar sync
+    import('./luma/sync.js').then(({ stopLumaSync }) => {
+      stopLumaSync();
     }).catch(() => {});
 
     // Close HTTP server

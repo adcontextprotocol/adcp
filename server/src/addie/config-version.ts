@@ -14,6 +14,7 @@ import { createHash } from 'crypto';
 import { query } from '../db/client.js';
 import { logger } from '../logger.js';
 import { ROUTING_RULES } from './router.js';
+import { loadRules } from './rules/index.js';
 
 /**
  * CODE_VERSION - Bump this when making significant changes to Addie's core logic.
@@ -27,7 +28,7 @@ import { ROUTING_RULES } from './router.js';
  * Format: YYYY.MM.N where N is incremented for multiple changes in a month
  * Example: 2025.01.1, 2025.01.2, 2025.02.1
  */
-export const CODE_VERSION = '2026.04.1';
+export const CODE_VERSION = '2026.04.2';
 
 // Types
 export interface ConfigVersion {
@@ -42,14 +43,6 @@ export interface ConfigVersion {
   positive_feedback: number;
   negative_feedback: number;
   avg_rating: number | null;
-}
-
-export interface RuleSnapshot {
-  id: number;
-  rule_type: string;
-  name: string;
-  content: string;
-  priority: number;
 }
 
 // Cache for current config version (revalidated periodically)
@@ -67,27 +60,30 @@ export function computeRouterRulesHash(): string {
 }
 
 /**
- * Compute config hash from rule IDs, router rules, and code version
+ * Compute config hash from rules content, router rules, and code version.
+ * Rules are now loaded from markdown files, so we hash the file content.
  */
-function computeConfigHash(ruleIds: number[], routerHash: string): string {
-  const sortedIds = [...ruleIds].sort((a, b) => a - b);
-  const input = `rules:${sortedIds.join(',')}|router:${routerHash}|code:${CODE_VERSION}`;
+function computeConfigHash(rulesContentHash: string, routerHash: string): string {
+  const input = `rules:${rulesContentHash}|router:${routerHash}|code:${CODE_VERSION}`;
   return createHash('sha256').update(input).digest('hex').substring(0, 32);
 }
 
 /**
- * Get or create a config version for the given rules
- *
- * @param ruleIds - Active rule IDs
- * @param rulesSnapshot - Full rule content (for logging/debugging)
- * @returns The config version record
+ * Hash the rules content for config versioning
  */
-export async function getOrCreateConfigVersion(
-  ruleIds: number[],
-  rulesSnapshot: RuleSnapshot[]
-): Promise<ConfigVersion> {
+function computeRulesContentHash(): string {
+  const content = loadRules();
+  return createHash('sha256').update(content).digest('hex').substring(0, 16);
+}
+
+/**
+ * Get or create a config version for the current configuration.
+ * Hashes rule file content + router rules + code version.
+ */
+export async function getOrCreateConfigVersion(): Promise<ConfigVersion> {
   const routerHash = computeRouterRulesHash();
-  const configHash = computeConfigHash(ruleIds, routerHash);
+  const rulesHash = computeRulesContentHash();
+  const configHash = computeConfigHash(rulesHash, routerHash);
 
   // Check cache first
   const now = Date.now();
@@ -116,8 +112,8 @@ export async function getOrCreateConfigVersion(
       RETURNING *`,
       [
         configHash,
-        ruleIds,
-        JSON.stringify(rulesSnapshot),
+        [], // Rule IDs no longer used — rules are in files
+        JSON.stringify({ rules_content_hash: rulesHash }),
         routerHash,
         CODE_VERSION,
       ]
@@ -129,7 +125,7 @@ export async function getOrCreateConfigVersion(
     logger.info({
       version_id: cachedVersion.version_id,
       config_hash: configHash,
-      rule_count: ruleIds.length,
+      rules_hash: rulesHash,
       code_version: CODE_VERSION,
     }, 'Config: Created new configuration version');
 
@@ -144,12 +140,9 @@ export async function getOrCreateConfigVersion(
  * Get current config version ID (for logging with messages)
  * Returns null if config versioning isn't available (e.g., database not ready)
  */
-export async function getCurrentConfigVersionId(
-  ruleIds: number[],
-  rulesSnapshot: RuleSnapshot[]
-): Promise<number | null> {
+export async function getCurrentConfigVersionId(): Promise<number | null> {
   try {
-    const version = await getOrCreateConfigVersion(ruleIds, rulesSnapshot);
+    const version = await getOrCreateConfigVersion();
     return version.version_id;
   } catch {
     // Don't fail message processing if config versioning fails

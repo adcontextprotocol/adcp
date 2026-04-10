@@ -6,6 +6,7 @@ summary: "Signal agent that resells third-party data provider signals with verif
 track: signals
 required_tools:
   - get_signals
+  - check_governance
 
 narrative: |
   You operate a signal marketplace — an intermediary that aggregates audience data from
@@ -173,6 +174,7 @@ phases:
         validations:
           - check: field_value
             path: "signals[0].signal_id.source"
+            value: "catalog"
             description: "Signal source is 'catalog' (verifiable via adagents.json)"
           - check: field_present
             path: "signals[0].signal_id.data_provider_domain"
@@ -189,6 +191,41 @@ phases:
       not through a sales agent.
 
     steps:
+      - id: check_governance_activate_platform
+        title: "Governance check before signal activation on DSP"
+        narrative: |
+          Before activating a signal (a financial commitment via the selected
+          pricing option), the orchestrator calls check_governance with
+          tool: "activate_signal" and the full payload. The governance agent
+          validates budget authority and delegation. The returned governance_context
+          flows through the protocol envelope to the signal agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the activation lifecycle
+
+        sample_request:
+          plan_id: "plan_nova_ev_launch_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "signal_activation"
+          tool: "activate_signal"
+          payload:
+            signal_agent_segment_id: "trident_likely_ev_buyers"
+            pricing_option_id: "po_trident_ev_cpm"
+            destinations:
+              - type: "platform"
+                platform: "the-trade-desk"
+                account: "agency-123-ttd"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: activate_on_platform
         title: "Activate signal on a DSP"
         narrative: |
@@ -228,7 +265,34 @@ phases:
             description: "Deployment includes type"
           - check: field_value
             path: "deployments[0].type"
+            value: "platform"
             description: "Deployment type is 'platform'"
+
+      - id: report_activation_outcome
+        title: "Report signal activation outcome"
+        narrative: |
+          After the signal agent responds, the orchestrator reports the outcome
+          to the governance agent. This commits the activation cost against
+          the plan budget.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_nova_ev_launch_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "signal_activation"
+          outcome: "completed"
+          seller_response:
+            committed_budget: 1500
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
 
   - id: agent_activation
     title: "Activate on a sales agent"
@@ -242,6 +306,36 @@ phases:
       buys through create_media_buy.
 
     steps:
+      - id: check_governance_activate_agent
+        title: "Governance check before signal activation on sales agent"
+        narrative: |
+          Same governance check pattern as platform activation. The orchestrator
+          validates budget authority before committing to signal fees on a sales
+          agent destination.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision with governance_context.
+
+        sample_request:
+          plan_id: "plan_nova_ev_launch_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "signal_activation"
+          tool: "activate_signal"
+          payload:
+            signal_agent_segment_id: "shopgrid_new_to_brand"
+            pricing_option_id: "po_shopgrid_retail_cpm"
+            destinations:
+              - type: "agent"
+                agent_url: "https://wonderstruck.salesagents.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: activate_on_agent
         title: "Activate signal on a sales agent"
         narrative: |
@@ -281,4 +375,5 @@ phases:
             description: "Deployment includes activation key"
           - check: field_value
             path: "deployments[0].type"
+            value: "agent"
             description: "Deployment type is 'agent'"

@@ -34,7 +34,8 @@
           "governance",
           "sponsored_intelligence",
           "creative",
-          "brand"
+          "brand",
+          "compliance_testing"
         ]
       },
       "minItems": 1
@@ -846,6 +847,28 @@
           "type": "boolean",
           "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "compliance_testing": {
+      "type": "object",
+      "description": "Compliance testing capabilities. Only present if compliance_testing is in supported_protocols. Indicates this agent supports deterministic testing via comply_test_controller for lifecycle state machine validation.",
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "description": "Compliance testing scenarios this agent supports. Use comply_test_controller with scenario: 'list_scenarios' to discover available scenarios at runtime.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "force_creative_status",
+              "force_account_status",
+              "force_media_buy_status",
+              "force_session_status",
+              "simulate_delivery",
+              "simulate_budget_spend"
+            ]
+          }
         }
       },
       "additionalProperties": true

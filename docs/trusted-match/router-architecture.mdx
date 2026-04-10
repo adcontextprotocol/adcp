@@ -56,7 +56,7 @@ Publishers configure which providers the router calls. This is an operational re
 
 | Setting | Type | Description |
 |---|---|---|
-| `endpoint` | URL | Provider's HTTP/2 endpoint |
+| `endpoint` | URL | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
 | `context_match` | bool | Provider handles Context Match requests |
 | `identity_match` | bool | Provider handles Identity Match requests |
 Additional configuration per provider:
@@ -159,7 +159,7 @@ TEE auction infrastructure (AWS Nitro Enclaves, attestation, key management) is 
 
 ## Deployment
 
-The TMP Router is a single Go binary built on [adcp-go](https://github.com/adcontextprotocol/adcp-go). It reads a configuration file listing providers and their capabilities, then exposes a single HTTP/2 endpoint. The request `type` field distinguishes Context Match from Identity Match — the router uses type-based dispatch, not URL paths.
+The TMP Router is a single Go binary built on [adcp-go](https://github.com/adcontextprotocol/adcp-go). It reads a configuration file listing providers and their capabilities. Each provider exposes two path-based endpoints under its base URL — `POST /context` and `POST /identity` — and the router dispatches by path.
 
 ### Configuration
 

@@ -260,7 +260,7 @@ phases:
         expected: |
           Create the media buy with catalog-driven packages. Return:
           - media_buy_id
-          - status: active or confirmed
+          - status: active
           - packages with catalog references preserved
 
         sample_request:
@@ -428,6 +428,7 @@ phases:
             description: "Response matches provide-performance-feedback-response.json schema"
           - check: field_value
             path: "success"
+            value: true
             description: "Feedback accepted"
 
       - id: check_delivery

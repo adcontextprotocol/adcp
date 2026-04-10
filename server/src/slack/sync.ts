@@ -379,6 +379,15 @@ export async function syncUserToChaptersFromSlackChannels(
       userChannelIds = await getUserChannels(slackUserId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // If Slack says the user doesn't exist, mark them deleted so we don't keep trying
+      if (errorMessage.includes('user_not_found')) {
+        logger.warn({ slackUserId }, 'Slack user no longer exists — marking as deleted');
+        await slackDb.markSlackUserDeleted(slackUserId);
+        result.errors.push('Slack user no longer exists');
+        return result;
+      }
+
       result.errors.push(`Failed to fetch user channels: ${errorMessage}`);
       logger.error({ error, slackUserId }, 'Failed to fetch user channels from Slack');
       return result;

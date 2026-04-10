@@ -164,10 +164,11 @@
           },
           "status": {
             "type": "string",
-            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable.",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start.",
             "enum": [
               "pending_creatives",
               "pending_start",
+              "pending",
               "active",
               "paused",
               "completed",

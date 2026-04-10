@@ -14,8 +14,8 @@
     "canceled"
   ],
   "enumDescriptions": {
-    "pending_creatives": "Media buy created, waiting for creative assets before activation",
-    "pending_start": "Media buy created with creatives, waiting for flight start or platform activation",
+    "pending_creatives": "Media buy is approved but has no creatives assigned. The buyer must attach creatives via sync_creatives before the buy can serve.",
+    "pending_start": "Media buy is ready to serve and waiting for its flight date to begin.",
     "active": "Media buy is currently running",
     "paused": "Media buy is temporarily paused",
     "completed": "Media buy has finished running",

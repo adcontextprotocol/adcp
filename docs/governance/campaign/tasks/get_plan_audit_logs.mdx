@@ -21,7 +21,7 @@ Retrieve governance state and audit trail for a plan, multiple plans, or an enti
 }
 ```
 
-Results are grouped by `media_buy_id` within each plan.
+Results are grouped by `governance_context` within each plan. Each governed action (media buy, rights license, signal activation, creative service) appears under its `governance_context`.
 
 **Multiple plans** -- retrieve specific plans in one call:
 
@@ -68,18 +68,27 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
         "olv": { "committed": 275000, "pct": 55 },
         "display": { "committed": 150000, "pct": 30 }
       },
-      "media_buys": [
+      "governed_actions": [
         {
-          "media_buy_id": "mb_seller_456",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
           "status": "active",
           "committed": 275000,
           "check_count": 8
         },
         {
-          "media_buy_id": "mb_seller_789",
+          "governance_context": "gc_mb_seller_789",
+          "purchase_type": "media_buy",
           "status": "active",
           "committed": 150000,
           "check_count": 7
+        },
+        {
+          "governance_context": "gc_rights_acme_img",
+          "purchase_type": "rights_license",
+          "status": "active",
+          "committed": 75000,
+          "check_count": 2
         }
       ],
       "summary": {
@@ -133,6 +142,8 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "caller": "https://ads.seller-example.com/adcp",
           "tool": "create_media_buy",
           "check_type": "execution",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
           "status": "approved",
           "explanation": "Media buy within plan budget ($150,000 of $500,000 remaining). Geo targeting matches authorized markets. COPPA compliance verified.",
           "categories_evaluated": ["budget_authority", "regulatory_compliance", "brand_policy"],
@@ -150,6 +161,8 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "type": "outcome",
           "timestamp": "2026-03-15T11:10:00Z",
           "caller": "https://orchestrator.pinnacle-media.com/agent",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
           "outcome": "completed",
           "committed_budget": 150000
         },
@@ -158,8 +171,9 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "type": "outcome",
           "timestamp": "2026-03-22T00:00:00Z",
           "caller": "https://ads.seller-example.com/adcp",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
           "outcome": "delivery",
-          "media_buy_id": "mb_seller_456",
           "outcome_status": "accepted"
         }
       ]
@@ -174,8 +188,10 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Plan IDs to retrieve. |
-| `portfolio_plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Portfolio plan IDs. Expanded to member plans. |
+| `plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Plan IDs to retrieve. |
+| `portfolio_plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Portfolio plan IDs. Expanded to member plans. |
+| `governance_contexts` | string[] | No | Filter results to specific governed actions by their `governance_context` values. When present, only entries and summaries for the matching governed actions are returned. |
+| `purchase_types` | string[] | No | Filter results by purchase type (e.g., `["rights_license"]` to see all rights activity). When present, only entries and summaries matching these purchase types are returned. |
 | `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
 
 ### Response
@@ -194,11 +210,12 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].channel_allocation` | object | Current channel mix. Keyed by channel ID. |
 | `plans[].channel_allocation[channel].committed` | number | Budget committed to this channel. |
 | `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
-| `plans[].media_buys` | array | Per-media-buy breakdown. |
-| `plans[].media_buys[].media_buy_id` | string | Seller-assigned media buy identifier. |
-| `plans[].media_buys[].status` | enum | `active`, `suspended`, or `completed`. |
-| `plans[].media_buys[].committed` | number | Budget committed for this media buy. |
-| `plans[].media_buys[].check_count` | integer | Number of governance checks performed. |
+| `plans[].governed_actions` | array | Per-governed-action breakdown, grouped by `governance_context`. |
+| `plans[].governed_actions[].governance_context` | string | Opaque governance context identifying this governed action. |
+| `plans[].governed_actions[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. |
+| `plans[].governed_actions[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].governed_actions[].committed` | number | Budget committed for this governed action. |
+| `plans[].governed_actions[].check_count` | integer | Number of governance checks performed. |
 | `plans[].summary` | object | Aggregate validation and outcome statistics. |
 | `plans[].summary.checks_performed` | number | Total governance checks performed. |
 | `plans[].summary.outcomes_reported` | number | Total outcomes reported. |
@@ -233,9 +250,10 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
 | `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). |
 | `plans[].entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
+| `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
+| `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
 | `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
 | `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
-| `plans[].entries[].media_buy_id` | string | Media buy ID (present for `delivery` outcome entries). |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
 
 ## Error codes

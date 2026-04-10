@@ -108,6 +108,8 @@
                     ]
                   },
                   "docs/building/schemas-and-sdks",
+                  "docs/building/build-an-agent",
+                  "docs/building/validate-your-agent",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -583,6 +585,8 @@
                 ]
               },
               "docs/building/schemas-and-sdks",
+              "docs/building/build-an-agent",
+              "docs/building/validate-your-agent",
               {
                 "group": "Foundations",
                 "pages": [

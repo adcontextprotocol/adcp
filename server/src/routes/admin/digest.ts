@@ -11,6 +11,8 @@ import {
   isLegacyContent,
   type DigestContent,
 } from '../../db/digest-db.js';
+import { generateCoverForEdition } from '../../newsletters/cover.js';
+import { thePromptConfig } from '../../newsletters/the-prompt/index.js';
 import { applyDigestEdit } from '../../addie/services/digest-editor.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { createDigest } from '../../db/digest-db.js';
@@ -38,6 +40,7 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
           send_stats: current.send_stats,
           created_at: current.created_at,
           is_legacy: isLegacyContent(current.content),
+          has_cover_image: current.has_cover_image,
         });
       }
       for (const d of sent) {
@@ -50,6 +53,7 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
           send_stats: d.send_stats,
           created_at: d.created_at,
           is_legacy: isLegacyContent(d.content),
+          has_cover_image: d.has_cover_image,
         });
       }
 
@@ -224,6 +228,9 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
             break;
           case 'shareableTake':
             content.shareableTake = value ? String(value) : undefined;
+            break;
+          case 'dateFlavor':
+            content.dateFlavor = value ? String(value).slice(0, 300) : undefined;
             break;
           default:
             return res.status(400).json({ error: `Unknown field: ${field}` });
@@ -422,6 +429,49 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     } catch (error) {
       logger.error({ err: error }, 'Failed to reorder articles');
       res.status(500).json({ error: 'Failed to reorder articles' });
+    }
+  });
+
+  // POST /api/admin/digests/:id/regenerate-cover - Regenerate the cover image
+  apiRouter.post('/digests/:id/regenerate-cover', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid digest ID' });
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
+      }
+
+      const digest = await getCurrentWeekDigest();
+      if (!digest || digest.id !== id) {
+        return res.status(404).json({ error: 'Digest not found or not current' });
+      }
+      if (digest.status !== 'draft') {
+        return res.status(400).json({ error: 'Can only regenerate cover for draft editions' });
+      }
+      if (isLegacyContent(digest.content)) {
+        return res.status(400).json({ error: 'Cannot generate cover for legacy digest' });
+      }
+
+      const content = digest.content as DigestContent;
+      const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+      const subject = generateDigestSubject(content);
+
+      const coverResult = await generateCoverForEdition(
+        thePromptConfig, id, subject, content.openingTake, editionDate, content.dateFlavor,
+      );
+      if (!coverResult) {
+        return res.status(500).json({ error: 'Failed to store cover image' });
+      }
+
+      content.coverImageUrl = coverResult.coverImageUrl;
+      await updateDigestContent(id, content);
+
+      logger.info({ digestId: id, user: req.user?.email }, 'Cover image regenerated via admin');
+      res.json({ success: true, coverImageUrl: coverResult.coverImageUrl });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to regenerate cover image');
+      res.status(500).json({ error: 'Failed to regenerate cover image' });
     }
   });
 

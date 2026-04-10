@@ -20,6 +20,8 @@ import {
 import { buildBuildContent, hasBuildMinimumContent, generateBuildSubject } from '../../newsletters/the-build/builder.js';
 import { renderBuildEmail } from '../../newsletters/the-build/template.js';
 import { sendMarketingEmail } from '../../notifications/email.js';
+import { generateCoverForEdition } from '../../newsletters/cover.js';
+import { theBuildConfig } from '../../newsletters/the-build/index.js';
 
 const logger = createLogger('admin-build');
 
@@ -70,6 +72,20 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
         return res.status(409).json({ error: 'Edition was created by another process.' });
       }
 
+      // Generate cover image (non-blocking — draft proceeds if this fails)
+      try {
+        const subject = generateBuildSubject(content);
+        const coverResult = await generateCoverForEdition(
+          theBuildConfig, edition.id, subject, content.statusLine, editionDate, content.dateFlavor,
+        );
+        if (coverResult) {
+          content.coverImageUrl = coverResult.coverImageUrl;
+          await updateBuildContent(edition.id, content);
+        }
+      } catch (err) {
+        logger.warn({ error: err, editionDate }, 'Failed to generate cover — proceeding without');
+      }
+
       const subject = generateBuildSubject(content);
       logger.info({ editionDate, user: req.user?.email }, 'Build draft generated via admin');
       res.json({ digest: edition, subject });
@@ -94,7 +110,7 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
       }
 
       const { field, value } = req.body;
-      const EDITABLE = ['statusLine', 'editorsNote', 'emailSubject'];
+      const EDITABLE = ['statusLine', 'editorsNote', 'emailSubject', 'dateFlavor'];
       if (!field || !EDITABLE.includes(field)) {
         return res.status(400).json({ error: `Field not editable. Allowed: ${EDITABLE.join(', ')}` });
       }
@@ -134,6 +150,46 @@ export function setupBuildAdminRoutes(apiRouter: Router): void {
     } catch (error) {
       logger.error({ err: error }, 'Failed to approve Build edition');
       res.status(500).json({ error: 'Failed to approve Build edition' });
+    }
+  });
+
+  // POST /api/admin/build/:id/regenerate-cover
+  apiRouter.post('/build/:id/regenerate-cover', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
+      }
+
+      const edition = await getCurrentBuildEdition();
+      if (!edition || edition.id !== id) {
+        return res.status(404).json({ error: 'Edition not found or not current' });
+      }
+      if (edition.status !== 'draft') {
+        return res.status(400).json({ error: 'Can only regenerate cover for draft editions' });
+      }
+
+      const content = edition.content;
+      const editionDate = new Date(edition.edition_date).toISOString().split('T')[0];
+      const subject = generateBuildSubject(content);
+
+      const coverResult = await generateCoverForEdition(
+        theBuildConfig, id, subject, content.statusLine, editionDate, content.dateFlavor,
+      );
+      if (!coverResult) {
+        return res.status(500).json({ error: 'Failed to store cover image' });
+      }
+
+      content.coverImageUrl = coverResult.coverImageUrl;
+      await updateBuildContent(id, content);
+
+      logger.info({ editionId: id, user: req.user?.email }, 'Build cover regenerated via admin');
+      res.json({ success: true, coverImageUrl: coverResult.coverImageUrl });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to regenerate Build cover');
+      res.status(500).json({ error: 'Failed to regenerate cover image' });
     }
   });
 

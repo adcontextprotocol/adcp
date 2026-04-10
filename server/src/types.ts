@@ -1101,6 +1101,8 @@ export interface Event {
   access_rules: EventAccessRules;
   created_by_user_id?: string;
   organization_id?: string;
+  recap_html?: string;
+  recap_video_url?: string;
   metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
@@ -1175,6 +1177,8 @@ export interface UpdateEventInput {
   require_rsvp_approval?: boolean;
   visibility?: EventVisibility;
   access_rules?: EventAccessRules;
+  recap_html?: string;
+  recap_video_url?: string;
   metadata?: Record<string, unknown>;
 }
 

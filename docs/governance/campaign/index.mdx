@@ -44,7 +44,7 @@ Campaign Governance formalizes patterns that exist in ad tech today as manual pr
 
 ## How it works
 
-The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `tool` + `payload` before every action it sends to a seller. The seller independently calls `check_governance` with `media_buy_id` + `planned_delivery` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
+The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `tool` + `payload` before every action it sends to a seller. The seller independently calls `check_governance` with `governance_context` + `planned_delivery` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ flowchart LR
     end
 
     orchestrator -->|"3. create_media_buy<br/>(plan_id)"| seller["Seller Agent"]
-    seller -->|"4. check_governance<br/>(media_buy_id + planned_delivery)"| gov
+    seller -->|"4. check_governance<br/>(governance_context + planned_delivery)"| gov
     seller -->|"confirmed + planned_delivery"| orchestrator
 ```
 
@@ -103,7 +103,7 @@ Every seller interaction follows a before/after pattern:
 
 1. **Before**: The orchestrator calls `check_governance` with `tool` and `payload` — the action it intends to send. The governance agent returns a status.
 2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `governance_context`.
-3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `media_buy_id` and `planned_delivery` — what it will actually deliver. The governance agent approves or denies.
+3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `governance_context` and `planned_delivery` — what it will actually deliver. The governance agent approves or denies.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 
 This pattern applies to discovery (`get_products`), purchase (`create_media_buy`, `update_media_buy`), and periodic delivery reporting.

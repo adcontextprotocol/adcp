@@ -11,6 +11,7 @@ import { TestControllerError } from '@adcp/client';
 import type { TestControllerStore } from '@adcp/client';
 import type { TrainingContext, ToolArgs, SessionState, MediaBuyState } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
+import { deriveStatus } from './task-handlers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -34,7 +35,7 @@ const ACCOUNT_TRANSITIONS: Record<string, string[]> = {
 const ACCOUNT_TERMINAL = new Set(['rejected', 'closed']);
 
 const MEDIA_BUY_TRANSITIONS: Record<string, string[]> = {
-  pending_creatives: ['pending_start', 'active', 'rejected', 'canceled'],
+  pending_creatives: ['pending_start', 'rejected', 'canceled'],
   pending_start: ['active', 'rejected', 'canceled'],
   active: ['paused', 'completed', 'canceled'],
   paused: ['active', 'completed', 'canceled'],
@@ -476,3 +477,4 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const store = createStore(session);
   return dispatch(store, args as Record<string, unknown>);
 }
+

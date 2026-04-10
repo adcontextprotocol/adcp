@@ -4,6 +4,10 @@ title: "Generative creative agent"
 category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
 
+required_tools:
+  - build_creative
+  - check_governance
+
 narrative: |
   You run a generative creative platform — an AI ad network, a generative DSP, or any system
   that creates ad creatives from a natural-language brief and brand identity. The buyer doesn't
@@ -92,6 +96,38 @@ phases:
       they provide intent, and your agent creates.
 
     steps:
+      - id: check_governance_build
+        title: "Governance check before creative build"
+        narrative: |
+          Before generating a creative from a brief (a potential financial commitment
+          when the generative platform charges for generation), the orchestrator
+          calls check_governance with tool: "build_creative". The governance agent
+          validates budget authority and delegation. The returned governance_context
+          flows through to the generative creative agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - governance_context for the build lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "creative_services"
+          tool: "build_creative"
+          payload:
+            message: "Create a display banner for a summer outdoor gear sale. Bold, adventurous tone."
+            target_format_id:
+              id: "display_300x250_generative"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: build_draft
         title: "Generate a draft creative from brief"
         narrative: |
