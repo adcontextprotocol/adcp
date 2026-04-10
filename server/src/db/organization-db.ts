@@ -1043,6 +1043,14 @@ export class OrganizationDatabase {
       return newCustomerId;
     } catch (error) {
       await client.query('ROLLBACK');
+      // Unique constraint on stripe_customer_id — another org already owns this customer
+      if (error instanceof Error && 'code' in error && (error as any).code === '23505') {
+        logger.warn({
+          workos_organization_id,
+          error: String(error),
+        }, 'Stripe customer already linked to a different organization');
+        return null;
+      }
       throw error;
     } finally {
       client.release();
