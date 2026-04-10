@@ -1007,8 +1007,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -1059,8 +1060,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
@@ -1096,8 +1097,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D4: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Authentication', url: `${DOCS_BASE}/docs/building/integration/authentication` },
@@ -2136,6 +2138,10 @@ export function createCertificationToolHandlers(
     const learnerSpec = (input.learner_spec as string) || '[their specification]';
     const codingTool = (input.coding_tool as string) || 'your coding assistant';
 
+    if (!['B4', 'C4', 'D4'].includes(moduleId)) {
+      return `get_build_phase_instructions is only for build project modules (B4, C4, D4). Module "${moduleId}" is not a build project.`;
+    }
+
     const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/build-an-agent';
     const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent';
     const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks';
@@ -2167,10 +2173,10 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-adcp test-mcp get_products '{"brief":"${learnerSpec}"}'
+adcp test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
-Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
 
 Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
 
@@ -2225,9 +2231,17 @@ DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill
         ? 'The storyboard for B4 is `media_buy_seller`.'
         : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`adcp storyboard list\` to see all options.`;
 
+      const storyboardCmd = moduleId === 'B4'
+        ? 'adcp storyboard run my-agent media_buy_seller'
+        : 'adcp storyboard run my-agent <STORYBOARD_NAME>';
+
+      const placeholderNote = moduleId !== 'B4'
+        ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
+        : '';
+
       return `## Phase 3: Validate
 
-${storyboardNote}
+${storyboardNote}${placeholderNote}
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
@@ -2236,10 +2250,10 @@ Install the CLI if you haven't already:
 npm install @adcp/client
 \`\`\`
 
-Save your agent and run the matching storyboard:
+Save your agent and run the storyboard:
 \`\`\`
 adcp --save-auth my-agent http://localhost:3001/mcp
-adcp storyboard run my-agent <STORYBOARD_NAME>
+${storyboardCmd}
 \`\`\`
 
 Paste the output here. The storyboard exercises the complete workflow and validates every response against AdCP schemas.
@@ -2253,13 +2267,20 @@ DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JS
     }
 
     if (phase === 'extend') {
+      const extendCmd = moduleId === 'B4'
+        ? 'adcp storyboard run my-agent media_buy_seller'
+        : 'adcp storyboard run my-agent <STORYBOARD_NAME>';
+      const extendNote = moduleId !== 'B4'
+        ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
+        : '';
+
       return `## Phase 5: Extend
 
 The learner adds a new capability to their agent (you choose what — a new product, a new pricing model, error handling for a specific case, etc.).
 
-After making changes, they re-run the storyboard to verify everything still passes:
+After making changes, they re-run the storyboard to verify everything still passes:${extendNote}
 \`\`\`
-adcp storyboard run my-agent <STORYBOARD_NAME>
+${extendCmd}
 \`\`\`
 
 This tests whether they can iterate on AdCP implementations using the same tools they'll use after certification.`;
