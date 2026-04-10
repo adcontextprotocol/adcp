@@ -47,6 +47,16 @@ import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
 
+/** Log pool timeouts at warn (transient) instead of error (which triggers Slack). */
+function logJobSubtaskError(error: unknown, message: string): void {
+  const isPoolTimeout = error instanceof Error && /timeout.*connect|connection.*timeout/i.test(error.message);
+  if (isPoolTimeout) {
+    jobLogger.warn({ error }, `${message} (DB pool busy — skipping)`);
+  } else {
+    jobLogger.error({ error }, message);
+  }
+}
+
 /**
  * Composite runner for content curator that runs multiple sub-tasks sequentially.
  * Processes: pending resources, RSS perspectives, community articles, community replies.
@@ -63,19 +73,19 @@ async function runContentCuratorJob() {
   try {
     results.pendingResources = await processPendingResources({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: pending resources failed');
+    logJobSubtaskError(error, 'Content curator: pending resources failed');
   }
 
   try {
     results.rssPerspectives = await processRssPerspectives({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: RSS perspectives failed');
+    logJobSubtaskError(error, 'Content curator: RSS perspectives failed');
   }
 
   try {
     results.communityArticles = await processCommunityArticles({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: community articles failed');
+    logJobSubtaskError(error, 'Content curator: community articles failed');
   }
 
   try {
@@ -84,7 +94,7 @@ async function runContentCuratorJob() {
       return result.ok;
     });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: community replies failed');
+    logJobSubtaskError(error, 'Content curator: community replies failed');
   }
 
   return results;

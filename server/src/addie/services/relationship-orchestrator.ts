@@ -41,6 +41,7 @@ const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 const BUSINESS_HOURS_START = 9; // 9 AM
 const BUSINESS_HOURS_END = 17; // 5 PM
 const SLACK_DM_PER_RUN_LIMIT = 20; // Max Slack DMs per scheduler run to avoid burst spam
+const CYCLE_TIMEOUT_MS = 10 * 60 * 1000; // 10-minute hard ceiling per cycle
 
 /**
  * Result of sending a relationship message
@@ -416,6 +417,8 @@ export async function runRelationshipOrchestratorCycle(options: {
 
   logger.debug({ limit }, 'Running relationship orchestrator cycle');
 
+  const cycleStart = Date.now();
+
   // Get candidates from the relationship model
   const candidates = await relationshipDb.getEngagementCandidates({ limit: limit * 3 });
 
@@ -432,6 +435,15 @@ export async function runRelationshipOrchestratorCycle(options: {
 
   for (const candidate of candidates) {
     if (sent >= limit) break;
+
+    // Hard ceiling: stop processing if the cycle has been running too long
+    if (Date.now() - cycleStart > CYCLE_TIMEOUT_MS) {
+      logger.warn(
+        { sent, skipped, errors, elapsed: Date.now() - cycleStart },
+        'Relationship orchestrator cycle timed out — aborting remaining candidates'
+      );
+      break;
+    }
 
     try {
       // 1. Rule-based eligibility check
@@ -625,6 +637,14 @@ export async function runRelationshipOrchestratorCycle(options: {
       }, 'Sent engagement message');
     } catch (error) {
       errors++;
+      const isPoolExhausted = error instanceof Error && /timeout.*connect/i.test(error.message);
+      if (isPoolExhausted) {
+        logger.warn(
+          { person_id: candidate.id },
+          'DB pool exhausted during relationship orchestration — stopping early'
+        );
+        break;
+      }
       logger.error({ error, person_id: candidate.id }, 'Error during relationship orchestration');
     }
   }

@@ -131,6 +131,12 @@ export async function getOrCreateConfigVersion(): Promise<ConfigVersion> {
 
     return cachedVersion;
   } catch (error) {
+    // If DB is temporarily unreachable but we have a cached version, return stale
+    // cache instead of crashing callers. Config rarely changes so stale is fine.
+    if (cachedVersion) {
+      logger.warn({ error }, 'Config: DB unreachable, returning stale cached version');
+      return cachedVersion;
+    }
     logger.error({ error }, 'Config: Failed to get/create config version');
     throw error;
   }

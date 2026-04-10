@@ -3439,6 +3439,10 @@ export function createMemberToolHandlers(
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      // Return step-not-found as a message so the AI can self-correct with valid step IDs
+      if (msg.includes('not found in storyboard')) {
+        return `**Error:** ${msg}`;
+      }
       throw new ToolError(`Failed to run step ${stepId}: ${msg}`);
     }
   });
