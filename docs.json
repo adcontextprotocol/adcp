@@ -108,7 +108,7 @@
                     ]
                   },
                   "docs/building/schemas-and-sdks",
-                  "docs/building/build-with-js-ts",
+                  "docs/building/build-an-agent",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -584,7 +584,7 @@
                 ]
               },
               "docs/building/schemas-and-sdks",
-              "docs/building/build-with-js-ts",
+              "docs/building/build-an-agent",
               {
                 "group": "Foundations",
                 "pages": [
