@@ -176,14 +176,23 @@ phases:
               pricing_option_id: "unit_primetime_30"
               creative_assignments:
                 - creative_id: "volta_ev_launch_30s"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "videoamp.com"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
             - product_id: "late_fringe_15s_mf"
               budget: 120000
               pricing_option_id: "unit_fringe_15"
               creative_assignments:
                 - creative_id: "volta_ev_launch_15s"
-          measurement_terms:
-            vendor: "nielsen"
-            measurement_window: "c7"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "videoamp.com"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
           push_notification_config:
             url: "https://buyer.pinnacle-agency.example/webhooks/adcp"
             authentication:
@@ -307,10 +316,13 @@ phases:
                 - type: "ad_id"
                   value: "NOVA0042000H"
               assets:
-                - asset_id: "video"
-                  asset_type: "video"
+                video_file:
                   url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
-                  mime_type: "video/mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
+                  container_format: "mp4"
+                  video_codec: "h264"
             - creative_id: "volta_ev_launch_15s"
               name: "Nova Volta EV Launch - :15"
               format_id:
@@ -320,10 +332,13 @@ phases:
                 - type: "ad_id"
                   value: "NOVA0042001H"
               assets:
-                - asset_id: "video"
-                  asset_type: "video"
+                video_file:
                   url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
-                  mime_type: "video/mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 15000
+                  container_format: "mp4"
+                  video_codec: "h264"
 
         validations:
           - check: response_schema

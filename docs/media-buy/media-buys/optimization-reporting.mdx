@@ -253,9 +253,9 @@ Broadcast TV measurement works differently from digital. Measurement data is not
 | `c3` | Live + 3 days DVR playback | ~4 days after broadcast |
 | `c7` | Live + 7 days DVR playback | ~15 days after broadcast |
 
-Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against.
+Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against. Note that the measurement vendor (VideoAmp, Nielsen, Comscore) adds processing time on top of the accumulation period — C7 raw data accumulates over 7 days, but vendor-certified C7 numbers may arrive ~15 days after broadcast.
 
-Broadcast sellers set `expected_delay_minutes` to reflect the initial data availability (e.g., 21600 for 15 days). When using webhooks, the seller sends delivery data tagged with the applicable `measurement_window`. Buyers should expect the most recent 8 days of a flight to lack final C7 numbers.
+Broadcast sellers set `expected_delay_minutes` on their products to reflect the longest measurement pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines via `expected_availability_days`. When using webhooks, the seller sends delivery data tagged with the applicable measurement window. Buyers should expect the most recent 8 days of a flight to lack final C7 numbers.
 
 For broadcast reconciliation timing and the `measurement_window` field on billing measurement terms, see [Accountability](/docs/media-buy/advanced-topics/accountability).
 
