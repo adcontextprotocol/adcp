@@ -69,6 +69,30 @@ const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
  */
 const BUILD_PROJECT_METHODOLOGY = `## Build project approach — Specify, Build, Validate, Explain, Extend
 
+## CRITICAL RULE — use skill files and storyboards (NOT manual tool calls)
+The AdCP SDK includes skill files that generate agents and storyboards that validate them. You MUST use these tools in this module:
+
+**Phase 2 (Build):** When transitioning to Phase 2, your ENTIRE response should be:
+"Your spec looks good. Now let's build it. In Claude Code, run exactly this:
+
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for [PASTE THEIR SPEC].
+
+The skill file walks Claude Code through tool registration, schemas, response shapes, and error handling. Come back when it's running."
+
+That's it. Do NOT write your own build prompt. Do NOT tell them which tools to implement. Do NOT link to schema docs. The skill file contains all of that. If they use Cursor/Windsurf instead of Claude Code, tell them to download the skill file and include it as context.
+
+**Phase 3 (Validate):** Tell the learner to run the matching storyboard from the CLI:
+\`\`\`
+npm install @adcp/client
+adcp --save-auth my-agent http://localhost:3001/mcp
+adcp storyboard run my-agent media_buy_seller
+\`\`\`
+They paste the storyboard output back to you. If all steps pass, move to Phase 4. If steps fail, coach through each failure. Do NOT ask the learner to run individual tool calls and paste JSON. The storyboard runs the complete buyer workflow end-to-end — it IS the validation.
+
+**Phase 5 (Extend):** After adding a capability, the learner re-runs the storyboard to verify it still passes.
+
+Reference: https://docs.adcontextprotocol.org/docs/building/build-an-agent (skill files) and https://docs.adcontextprotocol.org/docs/building/validate-your-agent (storyboards)
+
 ## CRITICAL RULE — coaching errors during Phase 2 (Build) and Phase 5 (Extend)
 When a learner reports a build error during Phase 2 or 5, use this exact response pattern:
 
@@ -95,13 +119,18 @@ The learner should use these tools. They are how agents are built and validated 
 **Follow the 5 phases in order:**
 
 1. **Specify (~5 min)** — Help the learner describe what they want to build using AdCP terminology. Do NOT write the prompt for them. Ask guiding questions: "What products will you offer?" "What pricing model?" "What formats and channels?" If they can't specify it, they didn't learn the track material. Coach them through it.
-2. **Build (~5 min)** — Tell the learner to point their coding assistant at the matching skill file. In Claude Code: "Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for [their specification from Phase 1]." The skill file walks the coding assistant through business model decisions, tool registration, response shapes, and error handling. Tell them to come back when it's running. When they hit errors, follow the CRITICAL RULE above.
-3. **Validate (~10 min)** — The learner runs the matching storyboard from the CLI against their local agent:
-   \`\`\`
-   adcp --save-auth my-agent http://localhost:3001/mcp
-   adcp storyboard run my-agent media_buy_seller
-   \`\`\`
-   They paste the storyboard output back to you. If all steps pass — celebrate and move to Phase 4. If steps fail, coach through each failure: (a) name the specific issue (e.g., "create_media_buy returned status 'open' but the schema requires 'pending_creatives'"), (b) explain the protocol reasoning — why the schema requires it, what it means for buyer agents, (c) redirect them to take that feedback to their coding assistant for the fix. Then they re-run the storyboard. The loop is: run storyboard → read failures → fix with coding assistant → run storyboard again.
+2. **Build (~5 min)** — STOP. Do NOT write a build prompt. Do NOT list tools to implement. Do NOT suggest schemas to read. Instead, give them EXACTLY this (adapt the skill URL and description for the learner's track):
+   "In Claude Code, run this:
+   \`Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for [THEIR SPEC FROM PHASE 1]\`
+   The skill file walks your coding assistant through everything — tool registration, schemas, response shapes, error handling. Come back when it's running."
+   If using Cursor/Windsurf: "Download https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md and include it as context with your build prompt."
+   When they hit errors, follow the error coaching CRITICAL RULE above.
+3. **Validate (~10 min)** — STOP. Do NOT ask them to run individual tool calls. Do NOT ask them to paste JSON responses. Instead, tell them to run the storyboard:
+   "Install the CLI if you haven't: \`npm install @adcp/client\`
+   Save your agent: \`adcp --save-auth my-agent http://localhost:3001/mcp\`
+   Run the storyboard: \`adcp storyboard run my-agent media_buy_seller\`
+   Paste the output here."
+   If all steps pass — celebrate and move to Phase 4. If steps fail, coach through each failure: (a) name the specific issue, (b) explain the protocol reasoning, (c) redirect them to take that feedback to their coding assistant for the fix. Then they re-run the storyboard. The loop is: run storyboard → read failures → fix with coding assistant → run storyboard again.
    For buyer track (C4): the learner runs their buyer agent against the public test agent (test-mcp) and shares the tool call results.
 4. **Explain (~10 min)** — This is the real assessment. Ask probing questions about design decisions, trade-offs, and extensions. The learner should reason about their agent using concepts from the track modules. "Why this pricing model?" "What happens if...?" "How would you add...?"
 5. **Extend (~15 min)** — Give the learner a challenge: add a new capability. They go back to the coding assistant, make changes, and re-run the storyboard to validate. This tests whether they can iterate on AdCP implementations using the same tools they'll use after certification.
