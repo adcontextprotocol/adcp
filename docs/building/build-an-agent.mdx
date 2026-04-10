@@ -7,27 +7,17 @@ description: "Use AdCP SDK skill files to generate storyboard-compliant agents w
 
 The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a working, storyboard-validated agent in 2–8 minutes.
 
-## Install an SDK
+## Install the SDK
 
-<Tabs>
-  <Tab title="JavaScript / TypeScript">
-    ```bash
-    npm install @adcp/client
-    ```
+```bash
+npm install @adcp/client
+```
 
-    Skills and storyboards are available in the [adcp-client repository](https://github.com/adcontextprotocol/adcp-client).
-  </Tab>
-  <Tab title="Python (coming soon)">
-    ```bash
-    pip install adcp
-    ```
+This installs the client library and the `adcp` CLI used for storyboard validation. Skill files are not included in the package — you'll fetch them from GitHub in the next step.
 
-    Skill files are being ported to the [Python SDK](https://github.com/adcontextprotocol/adcp-client-python). The `adcp` package is available now for client usage — see [Schemas and SDKs](/docs/building/schemas-and-sdks).
-  </Tab>
-  <Tab title="Go (coming soon)">
-    The [Go SDK](https://github.com/adcontextprotocol/adcp-go) currently focuses on the Trusted Match Protocol (TMP) for real-time activation. Skill-based agent generation is planned.
-  </Tab>
-</Tabs>
+<Info>
+Skill-based agent generation is currently available for JavaScript/TypeScript. Ports to [Python](https://github.com/adcontextprotocol/adcp-client-python) and [Go](https://github.com/adcontextprotocol/adcp-go) are planned. See [Schemas and SDKs](/docs/building/schemas-and-sdks) for all available SDKs.
+</Info>
 
 ## Choose a skill
 
@@ -62,20 +52,9 @@ In Cursor or Windsurf, download the skill file and include it as context with yo
 
 Once the agent is running, configure it in your `adcp.config.json` and validate it against the matching storyboard:
 
-<Tabs>
-  <Tab title="JavaScript / TypeScript">
-    ```bash
-    adcp storyboard run my-agent media_buy_seller --json
-    ```
-  </Tab>
-  <Tab title="Python (coming soon)">
-    ```bash
-    adcp storyboard run my-agent media_buy_seller --json
-    ```
-
-    The Python CLI uses the same command syntax.
-  </Tab>
-</Tabs>
+```bash
+adcp storyboard run my-agent media_buy_seller --json
+```
 
 Storyboards exercise every required tool call and validate response shapes. A passing run means your agent is protocol-compliant.
 
