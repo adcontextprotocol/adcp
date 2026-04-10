@@ -269,7 +269,7 @@ RTD submodules implement RtdProviderSpec with these hooks:
 
 **Data Hooks (implement one or both):**
 - `getBidRequestData(request, callback, config, consent, timeout)` - Pre-auction. Modify bid requests via ortb2Fragments before they go to SSPs/exchanges. MUST call callback() when done, even on error.
-- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., {'ad-unit-1': {axei: 'seg123'}}).
+- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., `{"ad-unit-1": {"axei": "seg123"}}`).
 
 **Event Hooks (optional):**
 - `onAuctionInitEvent`, `onAuctionEndEvent`, `onBidRequestEvent`, `onBidResponseEvent`, `onBidAcceptedEvent`

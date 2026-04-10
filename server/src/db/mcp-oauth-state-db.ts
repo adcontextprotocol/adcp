@@ -194,7 +194,12 @@ export async function cleanupExpired(): Promise<number> {
     }
     return total;
   } catch (err) {
-    logger.error({ err }, 'Failed to clean up expired MCP OAuth state');
+    const isPoolTimeout = err instanceof Error && /timeout|connect/i.test(err.message);
+    if (isPoolTimeout) {
+      logger.warn({ err }, 'MCP OAuth cleanup skipped — DB pool busy');
+    } else {
+      logger.error({ err }, 'Failed to clean up expired MCP OAuth state');
+    }
     return 0;
   }
 }
