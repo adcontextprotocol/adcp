@@ -52,7 +52,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["h264", "h265", "vp8", "vp9", "av1"]
+        "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores"]
       },
       "description": "Accepted video codecs"
     },

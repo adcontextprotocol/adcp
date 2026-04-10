@@ -24,26 +24,33 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 15-Second Video
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_15s"
   },
+  "name": "Standard Video - 15 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
-        "duration": "15s",
-        "format": ["MP4"],
-        "codec": "H.264",
-        "resolution": ["1920x1080", "1280x720"],
-        "max_file_size_mb": 30,
-        "bitrate_min": "4Mbps",
-        "bitrate_max": "10Mbps",
-        "audio_codec": "AAC"
+        "min_duration_ms": 15000,
+        "max_duration_ms": 15000,
+        "containers": ["mp4"],
+        "codecs": ["h264"],
+        "min_width": 1280,
+        "max_width": 1920,
+        "min_height": 720,
+        "max_height": 1080,
+        "max_file_size_kb": 30720,
+        "min_bitrate_kbps": 4000,
+        "max_bitrate_kbps": 10000,
+        "audio_codecs": ["aac"]
       }
     }
   ]
@@ -53,26 +60,33 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 30-Second Video
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s"
   },
+  "name": "Standard Video - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
-        "duration": "30s",
-        "format": ["MP4"],
-        "codec": "H.264",
-        "resolution": ["1920x1080", "1280x720"],
-        "max_file_size_mb": 50,
-        "bitrate_min": "4Mbps",
-        "bitrate_max": "10Mbps",
-        "audio_codec": "AAC"
+        "min_duration_ms": 30000,
+        "max_duration_ms": 30000,
+        "containers": ["mp4"],
+        "codecs": ["h264"],
+        "min_width": 1280,
+        "max_width": 1920,
+        "min_height": 720,
+        "max_height": 1080,
+        "max_file_size_kb": 51200,
+        "min_bitrate_kbps": 4000,
+        "max_bitrate_kbps": 10000,
+        "audio_codecs": ["aac"]
       }
     }
   ]
@@ -82,25 +96,32 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 6-Second Bumper
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_6s"
   },
+  "name": "6-Second Bumper",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
-        "duration": "6s",
-        "format": ["MP4"],
-        "codec": "H.264",
-        "resolution": ["1920x1080", "1280x720"],
-        "max_file_size_mb": 15,
-        "bitrate_min": "4Mbps",
-        "bitrate_max": "10Mbps"
+        "min_duration_ms": 6000,
+        "max_duration_ms": 6000,
+        "containers": ["mp4"],
+        "codecs": ["h264"],
+        "min_width": 1280,
+        "max_width": 1920,
+        "min_height": 720,
+        "max_height": 1080,
+        "max_file_size_kb": 15360,
+        "min_bitrate_kbps": 4000,
+        "max_bitrate_kbps": 10000
       }
     }
   ]
@@ -111,24 +132,31 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_vertical_15s"
   },
+  "name": "Vertical Video - 15 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
-        "duration": "15s",
+        "min_duration_ms": 15000,
+        "max_duration_ms": 15000,
         "aspect_ratio": "9:16",
-        "resolution": "1080x1920",
-        "format": ["MP4"],
-        "codec": "H.264",
-        "max_file_size_mb": 30
+        "min_width": 1080,
+        "max_width": 1080,
+        "min_height": 1920,
+        "max_height": 1920,
+        "containers": ["mp4"],
+        "codecs": ["h264"],
+        "max_file_size_kb": 30720
       }
     }
   ]
@@ -145,16 +173,19 @@ This format represents common CTV requirements across most platforms:
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_ctv"
   },
+  "name": "CTV Video - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "min_duration_ms": 30000,
@@ -202,15 +233,18 @@ Different CTV platforms have varying requirements. Sales agents should define fo
 **Roku-Compliant Format:**
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.example.com",
     "id": "video_30s_roku"
   },
+  "name": "Roku CTV - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "min_duration_ms": 30000,
@@ -241,15 +275,18 @@ Different CTV platforms have varying requirements. Sales agents should define fo
 **Hulu-Compliant Format:**
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.example.com",
     "id": "video_30s_hulu"
   },
+  "name": "Hulu CTV - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "min_duration_ms": 30000,
@@ -284,15 +321,18 @@ Different CTV platforms have varying requirements. Sales agents should define fo
 **YouTube CTV Format:**
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.example.com",
     "id": "video_30s_youtube_ctv"
   },
+  "name": "YouTube CTV - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "min_duration_ms": 30000,
@@ -323,15 +363,18 @@ For server-side ad insertion (SSAI) compatibility, GOP structure is critical:
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.example.com",
     "id": "video_30s_ssai"
   },
+  "name": "SSAI Video - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
       "asset_type": "video",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "min_duration_ms": 30000,
@@ -366,20 +409,22 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vast"
   },
+  "name": "VAST Tag - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "vast_tag",
       "asset_type": "url",
       "asset_role": "vast_url",
+      "item_type": "individual",
       "required": true,
       "requirements": {
-        "vast_version": ["3.0", "4.0", "4.1", "4.2"],
-        "duration": "30s"
+        "vast_version": ["3.0", "4.0", "4.1", "4.2"]
       }
     }
   ]
@@ -390,20 +435,22 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vpaid"
   },
+  "name": "VPAID Interactive - 30 seconds",
   "type": "video",
   "assets": [
     {
       "asset_id": "vpaid_tag",
       "asset_type": "url",
       "asset_role": "vpaid_url",
+      "item_type": "individual",
       "required": true,
       "requirements": {
         "vpaid_version": ["2.0"],
-        "duration": "30s",
         "api_framework": "VPAID"
       }
     }
@@ -417,6 +464,7 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s"
@@ -424,22 +472,22 @@ For third-party ad servers:
   "assets": {
     "video_file": {
       "url": "https://cdn.brand.com/spring_30s.mp4",
-      "duration": 30,
+      "duration_ms": 30000,
       "width": 1920,
       "height": 1080,
-      "format": "video/mp4",
-      "codec": "H.264",
-      "bitrate_kbps": 8000
+      "container_format": "mp4",
+      "video_codec": "h264",
+      "video_bitrate_kbps": 8000
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&video={VIDEO_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/imp"
     },
     "landing_url": {
       "asset_type": "url",
       "url_type": "clickthrough",
-      "url": "https://brand.com/spring-sale?campaign={MEDIA_BUY_ID}"
+      "url": "https://brand.example/spring-sale"
     }
   }
 }
@@ -449,6 +497,7 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vast"
@@ -457,7 +506,7 @@ For third-party ad servers:
     "vast_tag": {
       "asset_type": "vast",
       "delivery_type": "url",
-      "url": "https://ad-server.brand.com/vast?campaign={MEDIA_BUY_ID}&cb={CACHEBUSTER}",
+      "url": "https://adserver.brand.example/vast",
       "vast_version": "4.2"
     }
   }
@@ -468,6 +517,7 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vast"
@@ -476,7 +526,7 @@ For third-party ad servers:
     "vast_xml": {
       "asset_type": "vast",
       "delivery_type": "inline",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">\n  <Ad>\n    <InLine>\n      <Impression><![CDATA[https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb=[CACHEBUSTING]]]></Impression>\n      <Creatives>\n        <Creative>\n          <Linear>\n            <Duration>00:00:30</Duration>\n            <MediaFiles>\n              <MediaFile delivery=\"progressive\" type=\"video/mp4\" width=\"1920\" height=\"1080\">\n                <![CDATA[https://cdn.brand.com/spring_30s.mp4]]>\n              </MediaFile>\n            </MediaFiles>\n            <VideoClicks>\n              <ClickThrough><![CDATA[https://brand.com/spring?campaign={MEDIA_BUY_ID}]]></ClickThrough>\n            </VideoClicks>\n          </Linear>\n        </Creative>\n      </Creatives>\n    </InLine>\n  </Ad>\n</VAST>",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">\n  <Ad>\n    <InLine>\n      <Impression><![CDATA[https://track.brand.example/imp]]></Impression>\n      <Creatives>\n        <Creative>\n          <Linear>\n            <Duration>00:00:30</Duration>\n            <MediaFiles>\n              <MediaFile delivery=\"progressive\" type=\"video/mp4\" width=\"1920\" height=\"1080\">\n                <![CDATA[https://cdn.brand.example/spring_30s.mp4]]>\n              </MediaFile>\n            </MediaFiles>\n            <VideoClicks>\n              <ClickThrough><![CDATA[https://brand.example/spring]]></ClickThrough>\n            </VideoClicks>\n          </Linear>\n        </Creative>\n      </Creatives>\n    </InLine>\n  </Ad>\n</VAST>",
       "vast_version": "4.2"
     }
   }
@@ -487,34 +537,32 @@ For third-party ad servers:
 
 ```json
 {
+  "$schema": "/schemas/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s"
   },
   "assets": {
     "video_1080p": {
-      "asset_type": "video",
       "url": "https://cdn.brand.com/spring_30s_1080p.mp4",
-      "duration": 30,
+      "duration_ms": 30000,
       "width": 1920,
       "height": 1080,
-      "bitrate_kbps": 8000
+      "video_bitrate_kbps": 8000
     },
     "video_720p": {
-      "asset_type": "video",
       "url": "https://cdn.brand.com/spring_30s_720p.mp4",
-      "duration": 30,
+      "duration_ms": 30000,
       "width": 1280,
       "height": 720,
-      "bitrate_kbps": 5000
+      "video_bitrate_kbps": 5000
     },
     "video_480p": {
-      "asset_type": "video",
       "url": "https://cdn.brand.com/spring_30s_480p.mp4",
-      "duration": 30,
+      "duration_ms": 30000,
       "width": 854,
       "height": 480,
-      "bitrate_kbps": 2500
+      "video_bitrate_kbps": 2500
     }
   }
 }
@@ -570,49 +618,51 @@ https://track.brand.com/imp?
 
 ```json
 {
+  "$schema": "/schemas/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s"
   },
   "assets": {
     "video_file": {
-      "asset_type": "video",
-      "url": "https://cdn.brand.com/video_30s.mp4"
+      "url": "https://cdn.brand.com/video_30s.mp4",
+      "width": 1920,
+      "height": 1080
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/imp"
     },
     "start_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/start?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/start"
     },
     "quartile_25_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/q25?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/q25"
     },
     "quartile_50_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/q50?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/q50"
     },
     "quartile_75_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/q75?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/q75"
     },
     "complete_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/complete"
     },
     "click_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://track.brand.com/click?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+      "url_type": "tracker_pixel",
+      "url": "https://track.brand.example/click"
     }
   }
 }
@@ -626,28 +676,28 @@ For formats supporting user interaction:
 {
   "pause_tracker": {
     "asset_type": "url",
-    "url_type": "tracker",
-    "url": "https://track.brand.com/pause?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    "url_type": "tracker_pixel",
+    "url": "https://track.brand.example/pause"
   },
   "resume_tracker": {
     "asset_type": "url",
-    "url_type": "tracker",
-    "url": "https://track.brand.com/resume?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    "url_type": "tracker_pixel",
+    "url": "https://track.brand.example/resume"
   },
   "skip_tracker": {
     "asset_type": "url",
-    "url_type": "tracker",
-    "url": "https://track.brand.com/skip?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    "url_type": "tracker_pixel",
+    "url": "https://track.brand.example/skip"
   },
   "mute_tracker": {
     "asset_type": "url",
-    "url_type": "tracker",
-    "url": "https://track.brand.com/mute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    "url_type": "tracker_pixel",
+    "url": "https://track.brand.example/mute"
   },
   "unmute_tracker": {
     "asset_type": "url",
-    "url_type": "tracker",
-    "url": "https://track.brand.com/unmute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    "url_type": "tracker_pixel",
+    "url": "https://track.brand.example/unmute"
   }
 }
 ```
@@ -698,15 +748,19 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vpaid"
   },
+  "name": "VPAID Interactive - 30 seconds",
   "assets": [
     {
       "asset_id": "vpaid_tag",
       "asset_type": "url",
       "asset_role": "vpaid_url",
+      "item_type": "individual",
+      "required": true,
       "requirements": {
         "vpaid_version": ["2.0"],
         "api_framework": "VPAID"
