@@ -189,7 +189,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
         "content": "<script src=\"https://cdn.example.com/frameworks/js/sdk.js\"></script><script>AdSDK.createBanner({clickTag:'https://publisher.example.com/click/abc123',width:300,height:250,id:'ft_88201_{CACHEBUSTER}'});</script>"
       },
       "clickthrough_url": {
-        "url": "https://acmecorp.example.com/holiday-sale"
+        "url": "https://acmecorp.example.com/holiday-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -251,7 +251,7 @@ Generate creatives for multiple formats in a single call using `target_format_id
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://acmecorp.com/spring"
+        "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -279,7 +279,7 @@ The response uses `creative_manifests` (array) instead of `creative_manifest` (s
           "height": 250
         },
         "headline": { "asset_type": "text", "content": "Spring Collection Now Available" },
-        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.com/spring" }
+        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}" }
       }
     },
     {
@@ -404,7 +404,7 @@ When the request uses `target_format_id`, the response contains a single creativ
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -633,7 +633,7 @@ Generate a creative from scratch using a generative format:
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -1224,7 +1224,7 @@ To refine, pass the previous response's `creative_manifest` back as input with a
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
