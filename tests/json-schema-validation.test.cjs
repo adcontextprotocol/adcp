@@ -221,6 +221,28 @@ function findDocFiles() {
 }
 
 /**
+ * Replace AdCP macro placeholders ({MACRO_NAME}) with dummy values so that
+ * AJV's URI format validation can check the surrounding URL structure.
+ * Only replaces patterns that look like AdCP macros: {UPPER_CASE_WITH_UNDERSCORES}.
+ */
+function replaceMacros(obj) {
+  if (typeof obj === 'string') {
+    return obj.replace(/\{([A-Z][A-Z0-9_]*)\}/g, (_, name) => `__${name.toLowerCase()}__`);
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(replaceMacros);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result = {};
+    for (const key of Object.keys(obj)) {
+      result[key] = replaceMacros(obj[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
+/**
  * Validate a JSON block against its declared schema
  */
 async function validateJsonBlock(ajv, block) {
@@ -258,9 +280,8 @@ async function validateJsonBlock(ajv, block) {
     };
   }
 
-  // Strip $schema from the data before validating
-  // (the $schema field itself isn't part of the data schema)
-  const dataToValidate = { ...block.parsed };
+  // Strip $schema and replace AdCP macros before validating
+  const dataToValidate = replaceMacros(JSON.parse(JSON.stringify(block.parsed)));
   delete dataToValidate.$schema;
 
   const valid = validate(dataToValidate);
