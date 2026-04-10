@@ -1,0 +1,98 @@
+---
+title: Build an Agent
+sidebarTitle: Build an Agent
+description: "Use AdCP SDK skill files to generate storyboard-compliant agents with a coding agent in minutes."
+"og:title": "AdCP — Build an Agent"
+---
+
+The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a working, storyboard-validated agent in 2–8 minutes.
+
+## Install the SDK
+
+```bash
+npm install @adcp/client
+```
+
+This installs the client library and the `adcp` CLI used for storyboard validation. Skill files are not included in the package — you'll fetch them from GitHub in the next step.
+
+<Info>
+Skill-based agent generation is currently available for JavaScript/TypeScript. Ports to [Python](https://github.com/adcontextprotocol/adcp-client-python) and [Go](https://github.com/adcontextprotocol/adcp-go) are planned. See [Schemas and SDKs](/docs/building/schemas-and-sdks) for all available SDKs.
+</Info>
+
+## Choose a skill
+
+Each skill targets a specific agent type. Pick the one that matches what you're building:
+
+| Skill | You are building... | Storyboard |
+|-------|---------------------|------------|
+| `build-seller-agent` | Publisher, SSP, or media network selling inventory | `media_buy_seller` |
+| `build-generative-seller-agent` | AI ad network generating ads from briefs | `media_buy_generative_seller` |
+| `build-retail-media-agent` | Retail media network with catalog-driven creative | `media_buy_catalog_creative` |
+| `build-signals-agent` | CDP or data provider serving audience segments | `signal_owned`, `signal_marketplace` |
+| `build-creative-agent` | Ad server or CMP rendering creatives | `creative_lifecycle` |
+
+Skill files are in the [adcp-client repository](https://github.com/adcontextprotocol/adcp-client/tree/main/skills) at `skills/<skill-name>/SKILL.md`.
+
+## Build the agent
+
+Point your coding agent at the skill file for your agent type. In Claude Code:
+
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+
+In Cursor or Windsurf, download the skill file and include it as context with your prompt. Each skill walks the coding agent through:
+
+1. Business model decisions (what you sell, how you price, approval workflow)
+2. Tool registration with correct schemas
+3. Response shapes that pass storyboard validation
+4. Error handling and edge cases
+
+## Validate with storyboards
+
+Once the agent is running, configure it in your `adcp.config.json` and validate it against the matching storyboard:
+
+```bash
+adcp storyboard run my-agent media_buy_seller --json
+```
+
+Storyboards exercise every required tool call and validate response shapes. A passing run means your agent is protocol-compliant.
+
+<Tip>
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `adcp storyboard list` to see all available storyboards.
+</Tip>
+
+### Reading storyboard output
+
+Pass `--json` for machine-readable results. Without it, you get a step-by-step summary:
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ list_creative_formats
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+## Additional resources
+
+Each SDK includes documentation designed for both humans and coding agents:
+
+| Resource | Location | Purpose |
+|----------|----------|---------|
+| Protocol spec | `node_modules/@adcp/client/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
+| Server guide | `node_modules/@adcp/client/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
+| Examples | [GitHub](https://github.com/adcontextprotocol/adcp-client/tree/main/examples) | Working examples covering multi-agent, A2A, MCP, and async patterns |
+
+## What's next
+
+- **[Schemas and SDKs](/docs/building/schemas-and-sdks)** — Schema access, CLI tools, and SDK package exports
+- **[MCP integration guide](/docs/building/integration/mcp-guide)** — Transport, sessions, and auth details
+- **[Task lifecycle](/docs/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/docs/building/implementation/error-handling)** — Error categories, codes, and recovery
