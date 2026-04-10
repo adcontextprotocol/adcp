@@ -167,7 +167,7 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 
 **~45 min** | Prerequisite: D3
 
-Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. This is the most ambitious build project.
+Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. Point your coding assistant at a [skill file](/docs/building/build-an-agent) — choose `build-seller-agent` or `build-signals-agent` depending on what you want to build. This is the most ambitious build project.
 
 ### What you'll build
 
@@ -176,6 +176,16 @@ Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cu
 - At least 3 AdCP tasks exposed as tools
 - OAuth/authentication flow
 - Proper error handling with AdCP error codes
+
+### How you'll validate
+
+Run the matching storyboard against your running agent:
+
+```bash
+adcp storyboard run my-agent media_buy_seller
+```
+
+The storyboard validates protocol compliance across the complete workflow. See [Validate Your Agent](/docs/building/validate-your-agent) for setup, debugging, and the full CLI reference.
 
 ### Assessment rubric
 
