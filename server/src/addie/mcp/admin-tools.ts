@@ -2814,6 +2814,13 @@ export function createAdminToolHandlers(
 
     // Step 1: Find the organization
     const searchPattern = `%${companyName}%`;
+    const searchParams: string[] = [searchPattern];
+    let paramIdx = 2;
+    const domainClause = domain ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})` : '';
+    if (domain) searchParams.push(`%${domain}%`);
+    const exactIdx = paramIdx++;
+    const prefixIdx = paramIdx++;
+    searchParams.push(companyName, `${companyName}%`);
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
@@ -2821,15 +2828,13 @@ export function createAdminToolHandlers(
               discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
-         AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
+         AND (LOWER(name) LIKE LOWER($1) ${domainClause})
        ORDER BY
-         CASE WHEN LOWER(name) = LOWER($3) THEN 0
-              WHEN LOWER(name) LIKE LOWER($4) THEN 1
+         CASE WHEN LOWER(name) = LOWER($${exactIdx}) THEN 0
+              WHEN LOWER(name) LIKE LOWER($${prefixIdx}) THEN 1
               ELSE 2 END
        LIMIT 5`,
-      domain
-        ? [searchPattern, `%${domain}%`, companyName, `${companyName}%`]
-        : [searchPattern, companyName, `${companyName}%`]
+      searchParams
     );
 
     if (searchResult.rows.length === 0) {
@@ -2953,7 +2958,8 @@ export function createAdminToolHandlers(
         );
       }
       if (!selectedProduct) {
-        return `❌ Product not found for lookup_key: "${lookupKey}". Use find_membership_products to get valid lookup keys.`;
+        const validKeys = products.map(p => p.lookup_key).filter(Boolean);
+        return `❌ Product not found for lookup_key: "${lookupKey}". Valid keys: ${validKeys.join(', ')}`;
       }
     }
 
