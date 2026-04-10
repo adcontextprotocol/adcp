@@ -16,8 +16,12 @@ const logger = createLogger('storyboards');
 // ── Types ────────────────────────────────────────────────────────
 
 export interface StoryboardValidation {
-  check: string;
+  check: 'response_schema' | 'field_present' | 'field_value' | 'status_code' | 'error_code';
   path?: string;
+  /** Expected value for field_value and error_code checks */
+  value?: unknown;
+  /** Accepted values for field_value checks (passes if actual matches any) */
+  allowed_values?: unknown[];
   description: string;
 }
 
