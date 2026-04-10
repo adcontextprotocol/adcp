@@ -6,6 +6,7 @@ summary: "Brand agent that serves identity assets and licenses rights for AI-gen
 track: core
 required_tools:
   - get_brand_identity
+  - check_governance
 
 narrative: |
   You run a brand agent — a system that holds brand identity data (logos, colors, fonts,
@@ -122,6 +123,46 @@ phases:
       period. The brand agent issues generation credentials.
 
     steps:
+      - id: check_governance_acquire
+        title: "Governance check before rights acquisition"
+        narrative: |
+          Before acquiring rights (a financial commitment), the orchestrator calls
+          check_governance with tool: "acquire_rights" and the full payload. The
+          governance agent validates budget authority, geo compliance (campaign
+          countries vs plan countries), and flight compliance (rights dates vs
+          plan dates). The returned governance_context flows through the protocol
+          envelope to the brand agent.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision:
+          - status: approved, denied, or conditions
+          - findings for any compliance issues
+          - governance_context for the action lifecycle
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "rights_license"
+          tool: "acquire_rights"
+          payload:
+            brand:
+              domain: "acmeoutdoor.com"
+            right_type: "image_generation"
+            pricing_option_id: "standard_monthly"
+            campaign:
+              name: "Acme Outdoor Summer 2026"
+              countries: ["US"]
+              start_date: "2026-04-01"
+              end_date: "2026-06-30"
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: acquire_rights
         title: "Purchase a rights license"
         narrative: |
@@ -155,6 +196,32 @@ phases:
           - check: response_schema
             description: "Response matches acquire-rights-response.json schema"
 
+      - id: report_rights_outcome
+        title: "Report rights acquisition outcome"
+        narrative: |
+          After the brand agent responds, the orchestrator reports the outcome
+          to the governance agent. This commits the rights license cost against
+          the plan budget and closes the governance loop for this action.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "{{governance_context from check}}"
+          purchase_type: "rights_license"
+          outcome: "completed"
+          seller_response:
+            committed_budget: 2500
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
   - id: rights_management
     title: "Manage rights"
     narrative: |
@@ -162,6 +229,37 @@ phases:
       impression caps, or pausing generation while keeping the license active.
 
     steps:
+      - id: check_governance_update
+        title: "Governance check before rights modification"
+        narrative: |
+          Before modifying an existing rights grant (potentially changing financial
+          terms), the orchestrator calls check_governance with phase: "modification".
+          The governance agent validates the updated terms against plan constraints.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          Return governance decision for the modification.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "rights_license"
+          tool: "update_rights"
+          phase: "modification"
+          governance_context: "{{governance_context from acquire check}}"
+          payload:
+            rights_grant_id: "rg_acme_summer_2026"
+            updates:
+              end_date: "2026-09-30"
+              impression_cap: 5000000
+
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+
       - id: update_rights
         title: "Modify an existing rights grant"
         narrative: |

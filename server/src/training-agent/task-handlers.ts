@@ -585,6 +585,7 @@ const TOOLS = [
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         message: { type: 'string', description: 'Natural language instructions for generative builds' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Echoed on the response.' },
       },
     },
   },
@@ -661,6 +662,7 @@ const TOOLS = [
         destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
         options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
       required: [] as const,
@@ -2061,6 +2063,8 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     }
   }
   const pricingOptionId = req.pricing_option_id;
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
@@ -2131,6 +2135,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
       destinationId: id,
       account: dest.account,
       pricingOptionId,
+      governanceContext,
       isLive: true,
       activatedAt: now,
     };
@@ -2150,7 +2155,11 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     };
   });
 
-  return { deployments, sandbox: true };
+  return {
+    deployments,
+    ...(governanceContext && { governance_context: governanceContext }),
+    sandbox: true,
+  };
 }
 
 function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
@@ -2299,11 +2308,13 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown> } {
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
 
   // Determine target formats (cap at 50 to prevent response amplification)
@@ -2345,10 +2356,11 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         vendor_cost: 0, // CPM-priced: cost accrues at serve time
         currency: pricing.currency,
         consumption: {},
+        ...(governanceContext && { governance_context: governanceContext }),
       };
     }
 
-    return base;
+    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -2374,7 +2386,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         };
       });
 
-      return { creative_manifests, sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
     }
 
     // Single format response
@@ -2387,6 +2399,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
+      ...(governanceContext && { governance_context: governanceContext }),
       sandbox: true,
     };
   }
@@ -2402,7 +2415,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
     }
 
     const fmtId = targetIds[0];
@@ -2414,6 +2427,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
+      ...(governanceContext && { governance_context: governanceContext }),
       sandbox: true,
     };
   }

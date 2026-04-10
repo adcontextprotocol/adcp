@@ -26,7 +26,7 @@ flowchart LR
 ```
 
 1. The **orchestrator** checks its intended action against the plan before sending it to any seller (intent check: `tool` + `payload`)
-2. The **seller** independently checks its planned delivery against the same plan before executing (execution check: `media_buy_id` + `planned_delivery`)
+2. The **seller** independently checks its planned delivery against the same plan before executing (execution check: `governance_context` + `planned_delivery`)
 3. The **governance agent** validates both sides against the campaign plan, maintaining state across the full lifecycle
 
 No party grades its own homework. The orchestrator cannot skip governance because the seller checks independently. The seller cannot deliver something different from what was approved because the governance agent has a record of the planned delivery.
