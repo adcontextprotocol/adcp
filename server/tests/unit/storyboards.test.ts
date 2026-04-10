@@ -434,6 +434,94 @@ describe('storyboard interaction models', () => {
   });
 });
 
+describe('storyboard validation integrity', () => {
+  it('field_value validations have a value or allowed_values property', () => {
+    const storyboards = listStoryboards();
+    const missing: string[] = [];
+    for (const summary of storyboards) {
+      const sb = getStoryboard(summary.id)!;
+      for (const phase of sb.phases) {
+        for (const step of phase.steps) {
+          if (!step.validations) continue;
+          for (const v of step.validations) {
+            if (v.check === 'field_value' && v.value === undefined && !v.allowed_values?.length) {
+              missing.push(`${sb.id}/${phase.id}/${step.id}: ${v.description}`);
+            }
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('field_present validations have a path', () => {
+    const storyboards = listStoryboards();
+    const missing: string[] = [];
+    for (const summary of storyboards) {
+      const sb = getStoryboard(summary.id)!;
+      for (const phase of sb.phases) {
+        for (const step of phase.steps) {
+          if (!step.validations) continue;
+          for (const v of step.validations) {
+            if ((v.check === 'field_present' || v.check === 'field_value') && !v.path) {
+              missing.push(`${sb.id}/${phase.id}/${step.id}: ${v.description}`);
+            }
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('signal storyboard sample_request correctness', () => {
+  it('activate_on_agent steps send agent destinations, not platform', () => {
+    for (const id of ['signal_marketplace', 'signal_owned']) {
+      const sb = getStoryboard(id)!;
+      const agentPhase = sb.phases.find((p) => p.id === 'agent_activation');
+      expect(agentPhase).toBeDefined();
+      const activateStep = agentPhase!.steps.find((s) => s.id === 'activate_on_agent');
+      expect(activateStep).toBeDefined();
+      const destinations = activateStep!.sample_request?.destinations as Array<{ type: string }>;
+      expect(destinations).toBeDefined();
+      expect(destinations.length).toBeGreaterThan(0);
+      for (const dest of destinations) {
+        expect(dest.type).toBe('agent');
+      }
+    }
+  });
+
+  it('activate_on_platform steps send platform destinations', () => {
+    for (const id of ['signal_marketplace', 'signal_owned']) {
+      const sb = getStoryboard(id)!;
+      const platformPhase = sb.phases.find((p) => p.id === 'platform_activation');
+      expect(platformPhase).toBeDefined();
+      const activateStep = platformPhase!.steps.find((s) => s.id === 'activate_on_platform');
+      expect(activateStep).toBeDefined();
+      const destinations = activateStep!.sample_request?.destinations as Array<{ type: string }>;
+      expect(destinations).toBeDefined();
+      expect(destinations.length).toBeGreaterThan(0);
+      for (const dest of destinations) {
+        expect(dest.type).toBe('platform');
+      }
+    }
+  });
+
+  // signal_owned has no verification phase — provenance is implicit for owned signals
+  it('verify_provenance_metadata checks signal_id.source equals catalog', () => {
+    const sb = getStoryboard('signal_marketplace')!;
+    const verifyPhase = sb.phases.find((p) => p.id === 'verification');
+    expect(verifyPhase).toBeDefined();
+    const step = verifyPhase!.steps.find((s) => s.id === 'verify_provenance_metadata');
+    expect(step).toBeDefined();
+    const sourceCheck = step!.validations?.find(
+      (v) => v.check === 'field_value' && v.path === 'signals[0].signal_id.source',
+    );
+    expect(sourceCheck).toBeDefined();
+    expect(sourceCheck!.value).toBe('catalog');
+  });
+});
+
 describe('extractScenariosFromStoryboard', () => {
   it('extracts deduped scenarios from media_buy_seller', () => {
     const sb = getStoryboard('media_buy_seller')!;
