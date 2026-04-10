@@ -47,7 +47,7 @@
                 "type": "array",
                 "description": "Validation or processing errors (only present when action='failed')",
                 "items": {
-                  "type": "string"
+                  "$ref": "/schemas/core/error.json"
                 }
               },
               "warnings": {
