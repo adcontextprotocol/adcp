@@ -1,0 +1,452 @@
+id: media_buy_broadcast_seller
+version: "1.0.0"
+title: "Broadcast linear TV seller agent"
+category: media_buy_seller
+summary: "Seller agent for broadcast linear TV inventory — primetime and fringe spots with measurement windows, agency estimate numbers, Ad-ID-based creative sync, and delayed delivery reporting."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  You run a broadcast television platform — a local TV station group, network affiliate,
+  or television rep firm that sells linear advertising inventory. A buyer agent connects
+  to discover your dayparts and programs, negotiate guaranteed buys, sync broadcast spot
+  files, and monitor delivery against measurement windows.
+
+  Broadcast buying differs from digital in several ways. Products are organized by daypart
+  and program rather than audience segment. Pricing is unit-based (cost per spot) rather
+  than impression-based. Measurement accumulates over time through Live, C3, and C7
+  windows as DVR playback is counted. Creative assets are broadcast-grade video files
+  identified by Ad-ID — no VAST wrappers, no impression trackers, no click URLs.
+
+  Delivery data arrives on a delay. Live ratings are available within a day, but C3 and
+  C7 data take 4 and 8 days respectively after broadcast. Final reconciliation happens
+  against C7 numbers, which means billing data is not complete until ~15 days after the
+  last air date.
+
+  This storyboard walks through the broadcast buying cycle from product discovery through
+  reconciliation, exercising the protocol fields that distinguish linear TV from digital.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_guaranteed
+  examples:
+    - "Local TV station groups"
+    - "Broadcast network affiliates"
+    - "Television rep firms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency"
+
+prerequisites:
+  description: |
+    The caller needs an established account relationship with the seller. The test
+    kit provides the Nova Motors Volta EV launch campaign — an automotive brand with
+    national broadcast reach goals and budget appropriate for primetime linear TV.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: product_discovery
+    title: "Product discovery"
+    narrative: |
+      The buyer sends a brief describing what they want to buy on linear TV. The seller
+      interprets the brief against their program schedule, ratings estimates, and
+      available inventory to return products organized by daypart.
+
+      Broadcast products include measurement windows — Live, C3, and C7 — that describe
+      how ratings data accumulates over time. The buyer uses these windows to understand
+      when delivery data will be available and which window will serve as the guarantee
+      basis for reconciliation.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a broadcast brief"
+        narrative: |
+          The buyer describes their linear TV goals in natural language. The seller
+          returns products representing available dayparts and programs, each with
+          unit-based pricing, audience delivery estimates, creative format requirements,
+          and measurement windows.
+
+          Measurement windows on each product tell the buyer: "Here is when data
+          becomes available and how it accumulates." Live ratings arrive within a day.
+          C3 (live + 3 days of DVR) arrives ~4 days after broadcast. C7 (live + 7 days
+          of DVR) arrives ~8 days after broadcast. The buyer decides which window to
+          use as the guarantee basis when creating the media buy.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product should include:
+          - product_id: unique identifier for the daypart or program package
+          - name: descriptive name (e.g., "Primetime :30 — M-F 8-11pm")
+          - delivery_type: guaranteed (standard for broadcast upfront and scatter)
+          - pricing_models: unit-based pricing (cost per spot or cost per unit)
+          - forecast: estimated impressions by demo, GRPs, reach
+          - creative_format_ids: broadcast spot formats (:15, :30, :60)
+          - reporting_capabilities with measurement_windows:
+            - live: real-time linear viewing, available within 24 hours
+            - c3: live + 3 days DVR playback, available ~4 days after air
+            - c7: live + 7 days DVR playback, available ~8 days after air
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
+          brand:
+            domain: "novamotors.com"
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed delivery"
+
+  - id: create_buy
+    title: "Create the media buy"
+    narrative: |
+      The buyer commits to specific daypart packages with unit counts and flight dates.
+      Broadcast buys carry an agency estimate number — the financial reference that links
+      the order to the agency's media plan and billing system. This number travels with
+      the order through traffic, delivery, and invoicing.
+
+      The buyer also specifies measurement terms, declaring which measurement window
+      (typically C7) serves as the guarantee basis. This tells the seller: "Bill me
+      based on C7 ratings, not live."
+
+    steps:
+      - id: create_media_buy
+        title: "Create a broadcast media buy"
+        narrative: |
+          The buyer places the order with an agency estimate number at the buy level.
+          Each package references a product from discovery. The measurement_terms
+          specify C7 as the guarantee window — the seller will reconcile delivery
+          and billing against C7 ratings.
+
+          The response may be synchronous (buy confirmed) or require human approval
+          (pending_approval with a URL for the traffic manager to review and confirm
+          the order in their scheduling system).
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Process the broadcast media buy and return:
+          - media_buy_id: the seller's order identifier
+          - agency_estimate_number: echoed from the request
+          - status: pending_creatives (awaiting spot files) or active
+          - packages: line items with confirmed units, rates, and flight dates
+          - measurement_terms: confirmed guarantee window (c7)
+          - valid_actions: sync_creatives as the next step
+
+          If pending_approval:
+          - setup URL for the traffic manager to review and confirm scheduling
+          - estimated_completion for when the buyer should expect confirmation
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "novamotors.com"
+          agency_estimate_number: "PNNL-NM-2026-Q4-0847"
+          start_time: "2026-10-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "primetime_30s_mf"
+              budget: 280000
+              pricing_option_id: "unit_primetime_30"
+              creative_assignments:
+                - creative_id: "volta_ev_launch_30s"
+            - product_id: "late_fringe_15s_mf"
+              budget: 120000
+              pricing_option_id: "unit_fringe_15"
+              creative_assignments:
+                - creative_id: "volta_ev_launch_15s"
+          measurement_terms:
+            vendor: "nielsen"
+            measurement_window: "c7"
+          push_notification_config:
+            url: "https://buyer.pinnacle-agency.example/webhooks/adcp"
+            authentication:
+              scheme: "HMAC-SHA256"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+      - id: check_buy_status
+        title: "Check media buy status"
+        narrative: |
+          If create_media_buy returned working or submitted, the buyer polls for status
+          updates. For broadcast, the seller's traffic department may need to confirm
+          scheduling availability before the buy is active.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Return the current state of the media buy:
+          - media_buy_id: matches what was returned from create_media_buy
+          - status: pending_creatives, pending_start, active, paused, completed
+          - packages: line items with scheduling confirmation
+          - valid_actions: what operations are available in this state
+
+          If pending_creatives:
+          - Include message explaining that broadcast spot files are needed
+          - valid_actions should include sync_creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_nova_q4_2026"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Each media buy has a status"
+
+  - id: creative_sync
+    title: "Creative sync"
+    narrative: |
+      Broadcast creative sync differs from digital in three ways. First, assets are
+      broadcast-grade video files — no VAST wrappers, no impression trackers, no click
+      URLs. The seller ingests the video file directly into their traffic and playout
+      system. Second, each creative carries an Ad-ID in industry_identifiers, which ties
+      the spot to rotation instructions and downstream traffic systems. Third, format
+      requirements are defined by spot length (:15, :30, :60) rather than pixel dimensions.
+
+    steps:
+      - id: list_formats
+        title: "Check broadcast format requirements"
+        narrative: |
+          The buyer confirms what broadcast spot formats the seller accepts. The seller
+          returns format specs defined by spot length, codec requirements, and file
+          delivery specifications. No VAST or tracker-related formats appear.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        stateful: false
+        expected: |
+          Return broadcast spot formats the platform accepts. Each format should define:
+          - format_id with your agent_url and unique id (e.g., "broadcast_30s", "broadcast_15s")
+          - Asset requirements: video codec, container format, bitrate, frame rate
+          - Duration constraints matching the spot length
+          - No VAST, VPAID, or tracker-related asset slots
+
+        sample_request: {}
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+
+      - id: sync_creatives
+        title: "Push broadcast spot files"
+        narrative: |
+          The buyer uploads broadcast spot files with Ad-ID identifiers. Each creative
+          has a single video asset and one or more industry_identifiers with type ad_id.
+          There are no impression_tracker or click_url assets — broadcast spots are
+          self-contained video files that the seller loads into playout.
+
+          The Ad-ID is the critical link. It connects the creative asset to rotation
+          instructions, traffic logs, and post-log reconciliation. Without a valid
+          Ad-ID, the spot cannot be scheduled.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          Accept and validate broadcast spot files:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation of video technical specs (codec, bitrate, duration)
+          - Confirmation that Ad-ID is recognized and valid
+          - Rejection if Ad-ID is missing or malformed
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "volta_ev_launch_30s"
+              name: "Nova Volta EV Launch - :30"
+              format_id:
+                agent_url: "https://your-station.example.com"
+                id: "broadcast_30s"
+              industry_identifiers:
+                - type: "ad_id"
+                  value: "NOVA0042000H"
+              assets:
+                - asset_id: "video"
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
+                  mime_type: "video/mp4"
+            - creative_id: "volta_ev_launch_15s"
+              name: "Nova Volta EV Launch - :15"
+              format_id:
+                agent_url: "https://your-station.example.com"
+                id: "broadcast_15s"
+              industry_identifiers:
+                - type: "ad_id"
+                  value: "NOVA0042001H"
+              assets:
+                - asset_id: "video"
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
+                  mime_type: "video/mp4"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+
+  - id: delivery_monitoring
+    title: "Delivery and reporting"
+    narrative: |
+      Broadcast delivery reporting operates on a fundamentally different timeline than
+      digital. Live ratings are available within 24 hours, but the numbers that matter
+      for billing — C7 — are not final until 8 days after each air date. A buyer
+      checking delivery mid-flight will see data at different maturation stages: recent
+      airings show only live numbers, while airings from two weeks ago have full C7.
+
+      The seller returns delivery data tagged with the measurement window so the buyer
+      understands which numbers are preliminary (live) and which are final (C7). The
+      buyer should not make pacing decisions based on live-only data for a C7-guaranteed
+      buy.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data for the active broadcast buy. The seller
+          returns ratings-based metrics broken down by package, with each data point
+          tagged by measurement window.
+
+          Data arrives on a delay. For a spot that aired on October 15:
+          - Live data: available October 16
+          - C3 data: available ~October 19
+          - C7 data: available ~October 23
+
+          The buyer should expect that the most recent 8 days of the flight will not
+          have final C7 numbers. The response should make this clear through the
+          measurement window tagging on each data point.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery metrics for the broadcast buy:
+          - Per-package delivery: impressions (viewers), GRPs, spots aired, spend
+          - Measurement window context on each data point (live, c3, or c7)
+          - Pacing information relative to the guaranteed unit count
+          - Data availability note: most recent 8 days will show live-only data
+
+          The buyer uses this to understand:
+          - How many spots have aired vs. the guaranteed count
+          - What the preliminary (live) and final (C7) audience delivery looks like
+          - Whether makegoods may be needed if C7 delivery is under-performing
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_nova_q4_2026"
+          include_package_daily_breakdown: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+
+  - id: reconciliation
+    title: "Post-flight reconciliation"
+    narrative: |
+      Broadcast reconciliation cannot happen until C7 data has matured for every air
+      date in the flight. For a flight ending December 31, final C7 data for the last
+      air dates arrives around January 8. The seller then has approximately one week to
+      compile final delivery numbers and issue a post-log.
+
+      The buyer pulls final delivery data ~15 days after the last air date. This is the
+      authoritative data set for billing reconciliation. If C7 delivery fell short of
+      the guaranteed audience levels, the buyer requests makegoods — additional spots
+      to close the delivery gap.
+
+    steps:
+      - id: get_final_delivery
+        title: "Pull final reconciliation data"
+        narrative: |
+          The buyer requests delivery data after C7 has fully matured for all air dates.
+          This is the same get_media_buy_delivery task used during monitoring, but now
+          all data points reflect final C7 measurement.
+
+          The buyer compares final C7 delivery against the guaranteed audience levels
+          from the media buy. If delivery is short, the buyer contacts the seller to
+          negotiate makegoods.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return final delivery metrics with all data points at C7 maturation:
+          - Per-package delivery: final impressions, GRPs, spots aired, spend
+          - All measurement windows should show c7 (fully matured)
+          - Final pacing: delivered vs. guaranteed audience levels
+          - Budget reconciliation: actual spend vs. committed
+
+          If delivery fell short of guaranteed levels:
+          - Shortfall amount by package
+          - The buyer uses this data to negotiate makegoods with the seller
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_nova_q4_2026"
+          include_package_daily_breakdown: true
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains final delivery data"

@@ -243,6 +243,22 @@ If reporting data is not available within the product's `expected_delay_minutes`
 
 This prevents buyers from incorrectly assuming a missed notification.
 
+#### Broadcast Measurement Windows
+
+Broadcast TV measurement works differently from digital. Measurement data is not delayed — it **matures over time** as time-shifted (DVR) viewing accumulates. Sellers declare `measurement_windows` on their products to describe this maturation:
+
+| Window | Accumulation | Typical availability |
+|--------|-------------|---------------------|
+| `live` | Real-time viewers only | ~1 day after broadcast |
+| `c3` | Live + 3 days DVR playback | ~4 days after broadcast |
+| `c7` | Live + 7 days DVR playback | ~15 days after broadcast |
+
+Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against.
+
+Broadcast sellers set `expected_delay_minutes` to reflect the initial data availability (e.g., 21600 for 15 days). When using webhooks, the seller sends delivery data tagged with the applicable `measurement_window`. Buyers should expect the most recent 8 days of a flight to lack final C7 numbers.
+
+For broadcast reconciliation timing and the `measurement_window` field on billing measurement terms, see [Accountability](/docs/media-buy/advanced-topics/accountability).
+
 #### Webhook Aggregation
 
 Publishers SHOULD aggregate webhooks to reduce call volume when multiple media buys share:
