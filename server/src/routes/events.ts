@@ -36,7 +36,8 @@ import type {
   RegistrationStatus,
 } from "../types.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
-import { createChannel, setChannelPurpose } from "../slack/client.js";
+import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
+import { SlackDatabase } from "../db/slack-db.js";
 
 /**
  * Zoom participant report CSV row structure.
@@ -339,6 +340,22 @@ export function createEventsRouter(): {
     }
   });
 
+  // GET /api/admin/events/committees/available - List chapters and working groups for linking
+  // Must be before /:id to avoid Express matching "committees" as an :id param
+  adminApiRouter.get("/committees/available", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const groups = await workingGroupDb.listWorkingGroups({
+        status: 'active',
+        committee_type: ['chapter', 'working_group', 'council'],
+        includePrivate: true,
+      });
+      res.json({ committees: groups.map(g => ({ id: g.id, name: g.name, slug: g.slug, committee_type: g.committee_type })) });
+    } catch (error) {
+      logger.error({ err: error }, "Error listing available committees");
+      res.status(500).json({ error: "Failed to list committees" });
+    }
+  });
+
   // GET /api/admin/events/:id - Get event by ID
   adminApiRouter.get("/:id", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -480,17 +497,32 @@ export function createEventsRouter(): {
       const significantFields = ['start_time', 'end_time', 'venue_name', 'virtual_url', 'status'] as const;
       const significantChange = significantFields.some(field => (updates as Record<string, unknown>)[field] !== undefined);
       if (significantChange) {
-        eventsDb.getEventRegistrations(id).then(registrations => {
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const slackDb = new SlackDatabase();
+        eventsDb.getEventRegistrations(id).then(async (registrations) => {
           for (const reg of registrations) {
-            if (reg.workos_user_id && reg.registration_status === 'registered') {
-              notifyUser({
-                recipientUserId: reg.workos_user_id,
-                type: 'event_updated',
-                referenceId: event.id,
-                referenceType: 'event',
-                title: `${event.title} has been updated`,
-                url: `/events/${event.slug}`,
-              }).catch(err => logger.error({ err }, 'Failed to send event update notification'));
+            if (reg.registration_status !== 'registered') continue;
+            try {
+              if (reg.workos_user_id) {
+                await notifyUser({
+                  recipientUserId: reg.workos_user_id,
+                  type: 'event_updated',
+                  referenceId: event.id,
+                  referenceType: 'event',
+                  title: `${event.title} has been updated`,
+                  url: `/events/${event.slug}`,
+                });
+              } else if (reg.email) {
+                const slackUser = await slackDb.findByEmail(reg.email);
+                if (slackUser?.slack_user_id) {
+                  const eventUrl = `${baseUrl}/events/${event.slug}`;
+                  await sendDirectMessage(slackUser.slack_user_id, {
+                    text: `${event.title} has been updated\n<${eventUrl}|View event>`,
+                  });
+                }
+              }
+            } catch (err) {
+              logger.error({ err }, 'Failed to send event update notification');
             }
           }
         }).catch(err => logger.error({ err }, 'Failed to load registrations for event notification'));
@@ -633,6 +665,48 @@ export function createEventsRouter(): {
           error: "Failed to check in attendee",
           message: "An unexpected error occurred",
         });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:eventId/registrations/:regId/approve - Approve a registration (waitlisted → registered)
+  adminApiRouter.post(
+    "/:eventId/registrations/:regId/approve",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { regId } = req.params;
+        const registration = await eventsDb.updateRegistration(regId, { registration_status: 'registered' });
+        if (!registration) {
+          return res.status(404).json({ error: "Registration not found" });
+        }
+        logger.info({ registrationId: regId }, "Registration approved");
+        res.json({ registration });
+      } catch (error) {
+        logger.error({ err: error }, "Error approving registration");
+        res.status(500).json({ error: "Failed to approve registration" });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:eventId/registrations/:regId/cancel - Cancel a registration
+  adminApiRouter.post(
+    "/:eventId/registrations/:regId/cancel",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { regId } = req.params;
+        const registration = await eventsDb.cancelRegistration(regId);
+        if (!registration) {
+          return res.status(404).json({ error: "Registration not found" });
+        }
+        logger.info({ registrationId: regId }, "Registration cancelled by admin");
+        res.json({ registration });
+      } catch (error) {
+        logger.error({ err: error }, "Error cancelling registration");
+        res.status(500).json({ error: "Failed to cancel registration" });
       }
     }
   );
@@ -1125,6 +1199,57 @@ export function createEventsRouter(): {
   );
 
   // =========================================================================
+  // COMMITTEE LINK ROUTES (mounted at /api/admin/events)
+  // =========================================================================
+
+  // GET /api/admin/events/:id/committees - Get committees linked to an event
+  adminApiRouter.get("/:id/committees", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const committees = await eventsDb.getCommitteesForEvent(id);
+      res.json({ committees });
+    } catch (error) {
+      logger.error({ err: error }, "Error getting event committees");
+      res.status(500).json({ error: "Failed to get committees" });
+    }
+  });
+
+  // POST /api/admin/events/:id/committees - Link a committee to an event
+  adminApiRouter.post("/:id/committees", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { committee_id, role } = req.body;
+      const user = req.user!;
+
+      if (!committee_id) {
+        return res.status(400).json({ error: "committee_id is required" });
+      }
+
+      const link = await eventsDb.linkEventToCommittee(id, committee_id, role || 'host', user.id);
+      res.status(201).json(link);
+    } catch (error) {
+      const pgCode = (error as { code?: string }).code;
+      if (pgCode === '23503' || pgCode === '22P02') {
+        return res.status(400).json({ error: "Committee or event not found" });
+      }
+      logger.error({ err: error }, "Error linking committee to event");
+      res.status(500).json({ error: "Failed to link committee" });
+    }
+  });
+
+  // DELETE /api/admin/events/:id/committees/:committeeId - Unlink a committee from an event
+  adminApiRouter.delete("/:id/committees/:committeeId", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id, committeeId } = req.params;
+      await eventsDb.unlinkEventFromCommittee(id, committeeId);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, "Error unlinking committee from event");
+      res.status(500).json({ error: "Failed to unlink committee" });
+    }
+  });
+
+  // =========================================================================
   // EVENT GROUP ROUTES (mounted at /api/admin/events)
   // =========================================================================
 
@@ -1372,7 +1497,8 @@ export function createEventsRouter(): {
   // =========================================================================
 
   // GET /api/events - List public events (published or completed)
-  publicApiRouter.get("/", async (req: Request, res: Response) => {
+  // Uses optionalAuth so logged-in users can see invite_unlisted events they're registered/invited to
+  publicApiRouter.get("/", optionalAuth, async (req: Request, res: Response) => {
     try {
       const event_type = req.query.event_type as EventType | undefined;
       const event_format = req.query.event_format as EventFormat | undefined;
@@ -1393,10 +1519,35 @@ export function createEventsRouter(): {
         past_only,
       });
 
+      // For logged-in users, also include invite_unlisted events they're registered/invited to
+      const user = req.user;
+      if (user?.email) {
+        const unlistedEvents = await eventsDb.listEvents({
+          statuses,
+          event_type,
+          event_format,
+          upcoming_only: past_only ? false : upcoming_only,
+          past_only,
+          include_invite_unlisted: true,
+        });
+
+        const existingIds = new Set(events.map(e => e.id));
+        for (const event of unlistedEvents) {
+          if (existingIds.has(event.id)) continue;
+          if (event.visibility !== 'invite_unlisted') continue;
+          const hasAccess = await eventsDb.checkUserAccess(event.id, user.email, await getUserOrgId(user.id) ?? undefined);
+          if (hasAccess) {
+            events.push(event);
+          }
+        }
+      }
+
       // Sort by start_time (ascending for upcoming, descending for past)
       // Database returns ASC by default, so only re-sort for past events (DESC)
       if (past_only) {
         events.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      } else {
+        events.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
       }
 
       res.json({ events });
@@ -1480,10 +1631,10 @@ export function createEventsRouter(): {
       const { slug } = req.params;
 
       const event = await eventsDb.getEventBySlug(slug);
-      if (!event || event.status !== "published") {
+      if (!event || !["published", "completed"].includes(event.status)) {
         return res.status(404).json({
           error: "Event not found",
-          message: "No published event found with that slug",
+          message: "No event found with that slug",
         });
       }
 

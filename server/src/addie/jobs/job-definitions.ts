@@ -22,7 +22,8 @@ import {
 import { sendCommunityReplies } from '../services/community-articles.js';
 import { processFeedsToFetch } from '../services/feed-fetcher.js';
 import { processAlerts } from '../services/industry-alerts.js';
-import { sendChannelMessage } from '../../slack/client.js';
+import { sendChannelMessage, sendDirectMessage } from '../../slack/client.js';
+import { SlackDatabase } from '../../db/slack-db.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
@@ -427,6 +428,8 @@ export function registerAllJobs(): void {
   });
 
   // Event reminder - sends notifications ~24h before events start
+  // For users with accounts: in-app notification + Slack DM
+  // For email-only registrations (e.g. Luma sync): Slack DM if we can match the email
   jobScheduler.register({
     name: 'event-reminder',
     description: 'Send reminder notifications for upcoming events',
@@ -440,25 +443,46 @@ export function registerAllJobs(): void {
       let remindersSent = 0;
 
       const notificationDb = new NotificationDatabase();
+      const slackDb = new SlackDatabase();
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
       for (const event of events) {
         const registrations = await eventsDb.getEventRegistrations(event.id);
         for (const reg of registrations) {
-          if (!reg.workos_user_id || reg.registration_status !== 'registered') continue;
-
-          // Skip if reminder already sent for this event+user
-          const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
-          if (alreadySent) continue;
+          if (reg.registration_status !== 'registered') continue;
 
           try {
-            await notifyUser({
-              recipientUserId: reg.workos_user_id,
-              type: 'event_reminder',
-              referenceId: event.id,
-              referenceType: 'event',
-              title: `Reminder: ${event.title} is tomorrow`,
-              url: `/events/${event.slug}`,
-            });
-            remindersSent++;
+            if (reg.workos_user_id) {
+              // Account user: in-app + Slack DM via notifyUser
+              const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
+              if (alreadySent) continue;
+
+              await notifyUser({
+                recipientUserId: reg.workos_user_id,
+                type: 'event_reminder',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `Reminder: ${event.title} is tomorrow`,
+                url: `/events/${event.slug}`,
+              });
+              remindersSent++;
+            } else if (reg.email) {
+              // Email-only registration (Luma sync): try Slack DM by email
+              const slackUser = await slackDb.findByEmail(reg.email);
+              if (!slackUser?.slack_user_id) continue;
+
+              // Dedup using the slack user's workos_user_id if linked, otherwise skip dedup
+              if (slackUser.workos_user_id) {
+                const alreadySent = await notificationDb.exists(slackUser.workos_user_id, 'event_reminder', event.id);
+                if (alreadySent) continue;
+              }
+
+              const eventUrl = `${baseUrl}/events/${event.slug}`;
+              await sendDirectMessage(slackUser.slack_user_id, {
+                text: `Reminder: ${event.title} is tomorrow\n<${eventUrl}|View event>`,
+              });
+              remindersSent++;
+            }
           } catch (err) {
             logger.error({ err }, 'Failed to send event reminder');
           }

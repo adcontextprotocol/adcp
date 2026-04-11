@@ -940,6 +940,13 @@ async function handleLumaGuestCreated(payload: LumaWebhookPayload): Promise<void
     luma_guest_id: guest.api_id,
   });
 
+  // Add to invite list so they appear in our admin UI and can access invite-only events
+  try {
+    await eventsDb.addInvites(event.id, [guest.user_email]);
+  } catch {
+    // Duplicate invite — safe to ignore
+  }
+
   logger.info({
     eventId: event.id,
     eventTitle: event.title,

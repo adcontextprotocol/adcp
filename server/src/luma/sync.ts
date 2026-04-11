@@ -176,6 +176,13 @@ export async function syncEventRegistrations(eventId: string, lumaEventId: strin
           registration_status: status,
         });
 
+        // Add to invite list for admin visibility and invite-only access
+        try {
+          await eventsDb.addInvites(eventId, [guest.user_email]);
+        } catch {
+          // Duplicate invite — safe to ignore
+        }
+
         // Mark attendance if checked in
         if (guest.checked_in_at) {
           const reg = await pool.query(

@@ -65,7 +65,8 @@ interface PersonalizedEventsResult {
 async function getPersonalizedEvents(
   workosUserId?: string,
   slackUserId?: string,
-  includePast = false
+  includePast = false,
+  userEmail?: string,
 ): Promise<PersonalizedEventsResult> {
   const result: PersonalizedEventsResult = {
     events: [],
@@ -131,28 +132,39 @@ async function getPersonalizedEvents(
   // Build queries for personalized events - separate queries for upcoming vs past to avoid SQL interpolation
   const eventIds: Set<string> = new Set();
 
-  // 1. Events user is registered for
-  if (workosUserId) {
+  // 1. Events user is registered for (match by workos_user_id OR email for Luma-synced registrations)
+  if (workosUserId || userEmail) {
+    const whereClause = workosUserId && userEmail
+      ? `(er.workos_user_id = $1 OR LOWER(er.email) = LOWER($2))`
+      : workosUserId
+        ? `er.workos_user_id = $1`
+        : `LOWER(er.email) = LOWER($1)`;
+    const params = workosUserId && userEmail
+      ? [workosUserId, userEmail]
+      : [workosUserId || userEmail];
+
     const registeredEvents = includePast
       ? await query<Event>(
-          `SELECT e.* FROM events e
+          `SELECT DISTINCT e.* FROM events e
            JOIN event_registrations er ON er.event_id = e.id
-           WHERE er.workos_user_id = $1
+           WHERE ${whereClause}
+             AND er.registration_status IN ('registered', 'waitlisted')
              AND e.status IN ('published', 'completed')
              AND e.start_time < NOW()
              AND e.event_format != 'virtual'
            ORDER BY e.start_time DESC`,
-          [workosUserId]
+          params
         )
       : await query<Event>(
-          `SELECT e.* FROM events e
+          `SELECT DISTINCT e.* FROM events e
            JOIN event_registrations er ON er.event_id = e.id
-           WHERE er.workos_user_id = $1
+           WHERE ${whereClause}
+             AND er.registration_status IN ('registered', 'waitlisted')
              AND e.status IN ('published', 'completed')
              AND e.start_time > NOW()
              AND e.event_format != 'virtual'
            ORDER BY e.start_time ASC`,
-          [workosUserId]
+          params
         );
     for (const event of registeredEvents.rows) {
       if (!eventIds.has(event.id)) {
@@ -555,6 +567,58 @@ the response will suggest they share their location or join industry gathering g
       required: ['event_slug'],
     },
   },
+  {
+    name: 'check_person_event_status',
+    description: `Look up a specific person's status at an event. Use when someone asks "Is [person] invited to [event]?", "Did [person] attend [event]?", "What's [person]'s RSVP status?", etc.
+
+Searches by name or email across invite list, registrations, and attendance records.
+Returns their invite status, registration status, and whether they attended.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug or ID',
+        },
+        person_query: {
+          type: 'string',
+          description: 'Person name or email to search for (e.g., "Bob Hope", "bob@stripe.com")',
+        },
+      },
+      required: ['event_slug', 'person_query'],
+    },
+  },
+  {
+    name: 'invite_to_event',
+    description: `Invite a person to an event. Adds them to the invite list and creates a registration record.
+
+Use when someone says "Invite [person] to [event]", "Add [person] to the Foundry guest list", etc.
+
+If draft_message is true, returns a suggested outreach message that can be sent via Slack or email.
+The invitation is recorded immediately; the outreach message is a draft for the admin to review.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug or ID',
+        },
+        email: {
+          type: 'string',
+          description: 'Email address of the person to invite',
+        },
+        name: {
+          type: 'string',
+          description: 'Display name of the person (optional)',
+        },
+        draft_message: {
+          type: 'boolean',
+          description: 'If true, draft an outreach message for the invite (default: true)',
+        },
+      },
+      required: ['event_slug', 'email'],
+    },
+  },
 ];
 
 /**
@@ -730,11 +794,12 @@ export function createEventToolHandlers(
     const includePast = input.include_past === true;
     const limit = Math.min((input.limit as number) || 10, 20);
 
-    // Get workos user ID from member context
+    // Get workos user ID and email from member context
     const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const userEmail = memberContext?.workos_user?.email ?? memberContext?.slack_user?.email ?? undefined;
 
     // Get personalized events for this user
-    const personalizedResult = await getPersonalizedEvents(workosUserId, slackUserId, includePast);
+    const personalizedResult = await getPersonalizedEvents(workosUserId, slackUserId, includePast, userEmail);
     let allEvents = personalizedResult.events;
 
     // Filter by event type if specified (excluding webinars)
@@ -1136,6 +1201,162 @@ export function createEventToolHandlers(
     logger.info({ eventId: event.id, email, contactId: contact.contactId }, 'Event interest registered via Addie');
 
     return `✅ You're on the interest list for **${event.title}**. We'll keep you posted on updates.`;
+  });
+
+  // Check person's event status
+  handlers.set('check_person_event_status', async (input) => {
+    const permCheck = await checkCreatePermission();
+    if (permCheck) return permCheck;
+
+    const eventSlug = input.event_slug as string;
+    const personQuery = (input.person_query as string).toLowerCase().trim();
+
+    let event = await eventsDb.getEventBySlug(eventSlug);
+    if (!event) event = await eventsDb.getEventById(eventSlug);
+    if (!event) return `❌ Event not found: "${eventSlug}"`;
+
+    const isEmail = personQuery.includes('@');
+
+    // Check invite list
+    const invites = await eventsDb.getEventInvites(event.id);
+    const matchingInvite = invites.find(inv =>
+      isEmail
+        ? inv.email.toLowerCase() === personQuery
+        : inv.email.toLowerCase().includes(personQuery)
+    );
+
+    // Check registrations
+    const registrations = await eventsDb.getEventRegistrations(event.id);
+    const matchingRegs = registrations.filter(reg => {
+      if (isEmail) {
+        return reg.email?.toLowerCase() === personQuery;
+      }
+      const nameMatch = reg.name?.toLowerCase().includes(personQuery);
+      const emailMatch = reg.email?.toLowerCase().includes(personQuery);
+      return nameMatch || emailMatch;
+    });
+
+    if (!matchingInvite && matchingRegs.length === 0) {
+      return `No record of "${input.person_query}" for **${event.title}**. They haven't been invited or registered.`;
+    }
+
+    let response = `## ${input.person_query} — ${event.title}\n\n`;
+
+    if (matchingInvite) {
+      response += `**Invited:** Yes (${matchingInvite.email})\n`;
+    } else {
+      response += `**Invited:** Not on the invite list\n`;
+    }
+
+    if (matchingRegs.length > 0) {
+      const reg = matchingRegs[0];
+      const statusLabels: Record<string, string> = {
+        registered: 'Accepted',
+        waitlisted: 'Waitlisted',
+        interested: 'Interested (no RSVP)',
+        cancelled: 'Declined',
+        no_show: 'No-show',
+      };
+
+      response += `**RSVP:** ${statusLabels[reg.registration_status] || reg.registration_status}\n`;
+      response += `**Source:** ${reg.registration_source}\n`;
+
+      if (reg.attended) {
+        response += `**Attended:** Yes`;
+        if (reg.checked_in_at) response += ` (checked in ${new Date(reg.checked_in_at).toLocaleString()})`;
+        response += `\n`;
+      } else if (new Date(event.start_time) < new Date()) {
+        response += `**Attended:** No\n`;
+      }
+
+      if (reg.email) response += `**Email:** ${reg.email}\n`;
+    }
+
+    return response;
+  });
+
+  // Invite person to event
+  handlers.set('invite_to_event', async (input) => {
+    const permCheck = await checkCreatePermission();
+    if (permCheck) return permCheck;
+
+    const eventSlug = input.event_slug as string;
+    const email = (input.email as string).toLowerCase().trim();
+    const name = input.name as string | undefined;
+    const draftMessage = input.draft_message !== false;
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      return `❌ Invalid email address: "${email}"`;
+    }
+
+    let event = await eventsDb.getEventBySlug(eventSlug);
+    if (!event) event = await eventsDb.getEventById(eventSlug);
+    if (!event) return `❌ Event not found: "${eventSlug}"`;
+
+    // Check if already registered
+    const registrations = await eventsDb.getEventRegistrations(event.id);
+    const existing = registrations.find(r => r.email?.toLowerCase() === email);
+    if (existing && existing.registration_status === 'registered') {
+      return `${name || email} is already registered for **${event.title}**.`;
+    }
+
+    // Add to invite list
+    const invitedByUserId = memberContext?.workos_user?.workos_user_id;
+    await eventsDb.addInvites(event.id, [email], invitedByUserId);
+
+    // Create registration if they don't have one
+    if (!existing) {
+      const contact = await upsertEmailContact({ email, displayName: name });
+      try {
+        await eventsDb.createRegistration({
+          event_id: event.id,
+          email_contact_id: contact.contactId,
+          email,
+          name,
+          registration_status: 'interested',
+          registration_source: 'admin',
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code !== '23505') throw err;
+      }
+    }
+
+    const baseUrl = process.env.PUBLIC_URL || 'https://agenticadvertising.org';
+    const eventUrl = `${baseUrl}/events/${event.slug}`;
+    const displayName = name || email.split('@')[0];
+
+    let response = `✅ **${displayName}** has been invited to **${event.title}**.\n`;
+    response += `• Added to invite list\n`;
+    response += `• Registration status: ${existing ? existing.registration_status : 'interested'}\n\n`;
+
+    if (draftMessage) {
+      const eventDate = formatDate(event.start_time);
+      const location = event.venue_city
+        ? `${event.venue_name ? event.venue_name + ', ' : ''}${event.venue_city}`
+        : 'Virtual';
+
+      response += `### Draft outreach message\n\n`;
+      response += `> Hi ${displayName.split(' ')[0]},\n>\n`;
+      response += `> I'd like to invite you to **${event.title}** on ${eventDate}`;
+      if (location !== 'Virtual') response += ` in ${location}`;
+      response += `.\n>\n`;
+      response += `> ${event.short_description || event.description?.substring(0, 200) || 'Join us for a great discussion on agentic advertising.'}\n>\n`;
+      if (event.luma_url) {
+        response += `> Register here: ${event.luma_url}\n>\n`;
+      } else {
+        response += `> Details: ${eventUrl}\n>\n`;
+      }
+      response += `> Would love to see you there!\n\n`;
+      response += `_You can send this via Slack DM or email. Want me to send it?_`;
+    }
+
+    logger.info({
+      eventId: event.id,
+      invitedEmail: email,
+      invitedBy: invitedByUserId || slackUserId,
+    }, 'Person invited to event via Addie');
+
+    return response;
   });
 
   return handlers;

@@ -369,6 +369,18 @@ export class EventsDatabase {
       if (inviteResult.rows.length > 0) return true;
     }
 
+    // Check if user is registered (or waitlisted) for this event
+    if (userEmail) {
+      const regResult = await query(
+        `SELECT 1 FROM event_registrations
+         WHERE event_id = $1 AND LOWER(email) = LOWER($2)
+           AND registration_status IN ('registered', 'waitlisted')
+         LIMIT 1`,
+        [eventId, userEmail]
+      );
+      if (regResult.rows.length > 0) return true;
+    }
+
     // Load access_rules
     const rulesResult = await query<{ access_rules: string | object }>(
       'SELECT access_rules FROM events WHERE id = $1',
