@@ -2156,16 +2156,20 @@
 
             if (result.variant === 'house_redirect') {
               const houseDomain = typeof brandData.house === 'string' ? brandData.house : brandData.house?.domain;
-              showError(
-                `${escapeHtml(domain)} redirects to ${escapeHtml(houseDomain)}`,
-                `This domain's brand.json is a house redirect.`
-              );
-              const link = document.createElement('a');
-              link.href = `/brand/view/${encodeURIComponent(houseDomain)}`;
-              link.className = 'btn btn-primary';
-              link.style.marginTop = 'var(--space-4)';
-              link.textContent = `View ${houseDomain} Brand`;
-              document.getElementById('error-state').appendChild(link);
+              if (houseDomain && houseDomain !== domain) {
+                showError(
+                  `${escapeHtml(domain)} redirects to ${escapeHtml(houseDomain)}`,
+                  `This domain's brand.json is a house redirect.`
+                );
+                const link = document.createElement('a');
+                link.href = `/brand/view/${encodeURIComponent(houseDomain)}`;
+                link.className = 'btn btn-primary';
+                link.style.marginTop = 'var(--space-4)';
+                link.textContent = `View ${houseDomain} Brand`;
+                document.getElementById('error-state').appendChild(link);
+              } else {
+                // Self-referential redirect — treat as if no brand.json exists
+              }
             } else if (result.variant === 'authoritative_location') {
               showError(
                 `${escapeHtml(domain)} redirects to another location`,
