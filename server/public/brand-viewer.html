@@ -873,7 +873,7 @@
         }
       }
 
-      .hidden { display: none; }
+      .hidden { display: none !important; }
 
       /* Upload modal */
       .modal-overlay {
@@ -1745,22 +1745,6 @@
           ...(fontSecondary ? { secondary: fontSecondary } : {}),
         } : undefined;
 
-        // Collect properties
-        const properties = [];
-        document.querySelectorAll('#edit-properties-container > div').forEach(row => {
-          const type = row.querySelector('.prop-type')?.value;
-          const identifier = row.querySelector('.prop-identifier')?.value.trim();
-          if (type && identifier) {
-            const prop = { type, identifier };
-            const store = row.querySelector('.prop-store')?.value;
-            const region = row.querySelector('.prop-region')?.value.trim();
-            const primary = row.querySelector('.prop-primary')?.checked;
-            if (store) prop.store = store;
-            if (region) prop.region = region;
-            if (primary) prop.primary = true;
-            properties.push(prop);
-          }
-        });
         // Include array if it has items, or if user cleared a section that previously had data
         const manifest = currentEditStatus?.brand_manifest || {};
 
