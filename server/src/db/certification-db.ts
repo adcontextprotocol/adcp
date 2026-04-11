@@ -1492,16 +1492,14 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
  */
 export async function refreshEngagementTime(): Promise<void> {
   // REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction,
-  // so use a dedicated client with a non-LOCAL SET for the timeout override.
-  const client = await getClient();
+  // and PgBouncer transaction mode discards non-LOCAL SET between statements.
+  // Rely on the role-level statement_timeout (set to 120s via ALTER ROLE for
+  // this specific need, or accept the 30s default — the view is non-critical).
   try {
-    await client.query('SET statement_timeout = 120000');
-    await client.query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
   } catch (error) {
     // Non-critical — view will be stale until next refresh
     logger.warn({ error }, 'Failed to refresh engagement time view');
-  } finally {
-    client.release();
   }
 }
 

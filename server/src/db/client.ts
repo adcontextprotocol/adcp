@@ -30,24 +30,13 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
+    // PgBouncer handles connection pooling on the server side. This Pool
+    // only limits concurrency — connections are closed immediately after use
+    // (idleTimeoutMillis: 1) so we never hold stale PgBouncer sessions.
     max: config.maxPoolSize || 10,
-    idleTimeoutMillis: config.idleTimeoutMillis || 10000,
-    connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
-    // Detect dead connections killed by managed Postgres providers (Neon, Supabase)
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
-  });
-
-  // Kill queries that run longer than 30s to prevent connection hoarding.
-  // Set per-connection (not via startup `options`) for PgBouncer compatibility.
-  // Note: pg's "connect" event doesn't support async callbacks, so there's a
-  // theoretical race where a query could run before SET completes. In practice
-  // the SET finishes in <1ms on a freshly established connection. For belt-and-
-  // suspenders, also set `ALTER ROLE ... SET statement_timeout = 30000` in Postgres.
-  pool.on("connect", (client) => {
-    client.query("SET statement_timeout = 30000").catch((err) => {
-      console.error("Failed to set statement_timeout on connection:", err);
-    });
+    idleTimeoutMillis: 1,
+    connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
+    allowExitOnIdle: true,
   });
 
   pool.on("error", (err) => {
