@@ -5308,3 +5308,261 @@ describe('governance creative_services purchase type', () => {
     expect(creativeAction!.seller_reference).toBe('creative_order_001');
   });
 });
+
+describe('storyboard governance sample_requests accepted by training agent', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  // Shared plan that covers all purchase types
+  const UNIVERSAL_PLAN = {
+    plan_id: 'plan_acme_summer_2026',
+    brand: { name: 'Acme Outdoor' },
+    objectives: 'storyboard governance validation',
+    budget: {
+      total: 500000,
+      currency: 'USD',
+      authority_level: 'agent_full',
+      allocations: {
+        media_buy: { amount: 300000 },
+        creative_services: { amount: 50000 },
+        rights_license: { amount: 50000 },
+        signal_activation: { amount: 100000 },
+      },
+    },
+    flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+    countries: ['US'],
+  };
+
+  async function setupPlan(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_plans', { plans: [UNIVERSAL_PLAN] });
+  }
+
+  it('media_buy_seller: check_governance with tool+payload pattern', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_preroll_q2', budget: 25000 },
+          { product_id: 'lifestyle_display_q2', budget: 15000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+    expect(result.governance_context).toBeDefined();
+  });
+
+  it('media_buy_seller: report_plan_outcome with seller_reference', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // First check to get governance_context
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = check.governance_context as string;
+
+    const { result, isError } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'media_buy',
+      outcome: 'completed',
+      seller_response: {
+        seller_reference: 'mb_acme_q2_2026',
+        committed_budget: 40000,
+        packages: [{ budget: 25000 }, { budget: 15000 }],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('accepted');
+  });
+
+  it('creative_services: check + report cycle from storyboard payloads', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // check_governance for build_creative (creative_template pattern)
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: {
+        creative_manifest: {
+          format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+          assets: [{ asset_id: 'image', asset_type: 'image', url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg' }],
+        },
+        target_format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    // report_plan_outcome (creative_template pattern)
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'built_display_300x250', committed_budget: 300 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('rights_license: check + report cycle from brand_rights storyboard', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        brand: { domain: 'acmeoutdoor.com' },
+        right_type: 'image_generation',
+        pricing_option_id: 'standard_monthly',
+        campaign: { name: 'Acme Outdoor Summer 2026', countries: ['US'], start_date: '2026-04-01', end_date: '2026-06-30' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'rights_license',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'rg_acme_summer_2026', committed_budget: 2500 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('signal_activation: check + report cycle from signal storyboards', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: {
+        signal_agent_segment_id: 'prism_high_ltv',
+        pricing_option_id: 'po_prism_flat_monthly',
+        destinations: [{ type: 'platform', platform: 'the-trade-desk', account: 'agency-123-ttd' }],
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'signal_activation',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'deploy_prism_high_ltv_ttd', committed_budget: 1000 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // Initial approval to get governance_context
+    const { result: initial } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = initial.governance_context as string;
+
+    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      phase: 'delivery',
+      governance_context: ctx,
+      delivery_metrics: {
+        reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
+        spend: 20000,
+        cumulative_spend: 20000,
+        impressions: 2500000,
+        cumulative_impressions: 2500000,
+        pacing: 'ahead',
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+  });
+
+  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // Plan with tight media_buy allocation
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'gov_acme_strict',
+        brand: { name: 'Acme' },
+        objectives: 'strict governance',
+        budget: {
+          total: 100000,
+          currency: 'USD',
+          authority_level: 'agent_full',
+          allocations: { media_buy: { amount: 10000 } },
+        },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'gov_acme_strict',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_ctv_q2', budget: 30000 },
+          { product_id: 'outdoor_video_q2', budget: 20000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('denied');
+  });
+});
