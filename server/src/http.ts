@@ -41,7 +41,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -799,6 +799,7 @@ export class HTTPServer {
         '/working-groups/': '/committees?type=working_group',
         '/brands': '/registry?tab=brands',
         '/publishers': '/registry?tab=properties',
+        '/my-content': '/dashboard/content',
       };
       const target = redirects[req.path];
       if (target && req.method === 'GET') {
@@ -1751,6 +1752,8 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
     this.app.get('/dashboard/agents', (req, res) => serveDashboardPage(req, res, 'dashboard-agents.html'));
+    this.app.get('/dashboard/content', (req, res) => serveDashboardPage(req, res, 'admin-content.html'));
+    this.app.get('/dashboard/editorial', (_req, res) => res.redirect(301, '/dashboard/content'));
     this.app.get('/dashboard/settings', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
@@ -1774,13 +1777,7 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
-    // My Content - unified CMS for all authenticated users
-    this.app.get('/my-content', async (req, res) => {
-      if (this.isAdcpDomain(req)) {
-        return res.redirect('https://agenticadvertising.org/my-content');
-      }
-      await this.serveHtmlWithConfig(req, res, 'my-content.html');
-    });
+    // My Content redirect is handled in pre-static middleware block above
 
     // API endpoints
 
@@ -5482,9 +5479,9 @@ Disallow: /api/admin/
 
     // Note: /admin/billing is now served from billing.ts router
 
-    // Admin content management
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-content.html');
+    // Admin content management — now lives in dashboard
+    this.app.get('/admin/perspectives', (_req, res) => {
+      res.redirect(301, '/dashboard/content');
     });
 
     // GET /api/admin/content - List all perspectives for admin
@@ -5493,6 +5490,7 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
+                  p.tags,
                   p.external_url, p.author_name, p.author_title,
                   p.featured_image_url, p.status, p.published_at,
                   p.content_origin, p.source_type,
@@ -5512,6 +5510,7 @@ Disallow: /api/admin/
     this.app.put('/api/admin/content/:id/origin', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const { content_origin } = req.body;
         if (!content_origin || !['official', 'member', 'external'].includes(content_origin)) {
           return res.status(400).json({ error: 'content_origin must be official, member, or external' });
@@ -5525,6 +5524,89 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'PUT /api/admin/content/:id/origin error');
         res.status(500).json({ error: 'Failed to update content origin' });
+      }
+    });
+
+    const isValidUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    // DELETE /api/admin/content/:id - Delete any perspective (admin only)
+    this.app.delete('/api/admin/content/:id', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const pool = getPool();
+        const result = await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        logger.info({ contentId: id, title: result.rows[0].title }, 'Admin deleted content');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'DELETE /api/admin/content/:id error');
+        res.status(500).json({ error: 'Failed to delete content' });
+      }
+    });
+
+    // GET /api/admin/content/:id - Get single perspective with full content (admin only)
+    this.app.get('/api/admin/content/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT p.id, p.slug, p.content_type, p.title, p.subtitle, p.category,
+                  p.excerpt, p.content, p.tags,
+                  p.external_url, p.external_site_name,
+                  p.author_name, p.author_title,
+                  p.featured_image_url, p.status, p.published_at,
+                  p.content_origin, p.source_type, p.updated_at,
+                  wg.slug as committee_slug, wg.name as committee_name
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.id = $1`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'GET /api/admin/content/:id error');
+        res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // PUT /api/admin/content/:id/status - Update content status (admin only)
+    this.app.put('/api/admin/content/:id/status', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const { status } = req.body;
+        if (!status || !['draft', 'pending_review', 'published', 'archived'].includes(status)) {
+          return res.status(400).json({ error: 'status must be draft, pending_review, published, or archived' });
+        }
+        const pool = getPool();
+        const updates: string[] = [`status = $1`];
+        const values: (string | null)[] = [status];
+        // Set published_at when publishing for the first time
+        if (status === 'published') {
+          updates.push(`published_at = COALESCE(published_at, NOW())`);
+        }
+        const result = await pool.query(
+          `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
+          [...values, id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        logger.info({ contentId: id, status }, 'Admin updated content status');
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'PUT /api/admin/content/:id/status error');
+        res.status(500).json({ error: 'Failed to update status' });
       }
     });
 
