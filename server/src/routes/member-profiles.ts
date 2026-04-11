@@ -23,6 +23,8 @@ import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import type { MemberBrandInfo } from "../types.js";
+import type { CrawlerService } from "../crawler.js";
+import { validateCrawlDomain } from "../utils/url-security.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
@@ -45,6 +47,7 @@ export interface MemberProfileRoutesConfig {
   brandDb: BrandDatabase;
   orgDb: OrganizationDatabase;
   invalidateMemberContextCache: () => void;
+  crawler?: CrawlerService;
 }
 
 /**
@@ -456,6 +459,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       delete updates.is_founding_member; // Only admins can set founding status
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+      // Trigger crawl for new/updated publisher domains (fire-and-forget)
+      if (config.crawler && updates.publishers && Array.isArray(updates.publishers)) {
+        const existingDomains = new Set(
+          (existingProfile.publishers || []).map((p: { domain?: string }) => p.domain?.toLowerCase().trim()).filter(Boolean)
+        );
+        const MAX_AUTO_CRAWL = 5;
+        let crawlCount = 0;
+        for (const pub of updates.publishers) {
+          if (crawlCount >= MAX_AUTO_CRAWL) break;
+          if (pub.domain && pub.is_public) {
+            validateCrawlDomain(pub.domain).then(domain => {
+              if (!existingDomains.has(domain)) {
+                config.crawler!.crawlSingleDomain(domain).catch(err => {
+                  logger.warn({ err, domain }, 'Auto-crawl for new publisher domain failed');
+                });
+              }
+            }).catch(() => {
+              // Domain failed validation (private IP, invalid format) — skip silently
+            });
+            crawlCount++;
+          }
+        }
+      }
 
       // Write user-reported org knowledge (fire-and-forget)
       const knowledgeWrites: Promise<unknown>[] = [];

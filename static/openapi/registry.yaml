@@ -3607,6 +3607,74 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/brand-crawl-request:
+    post:
+      operationId: requestBrandCrawl
+      summary: Request brand.json re-crawl
+      description: |-
+        Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: examplebrand.com
+                  description: Domain to re-crawl brand.json for
+              required:
+                - domain
+      responses:
+        "202":
+          description: Brand crawl request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Brand crawl request accepted
+                  domain:
+                    type: string
+                required:
+                  - message
+                  - domain
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
 tags:
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.

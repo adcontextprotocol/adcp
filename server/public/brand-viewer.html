@@ -770,7 +770,7 @@
         }
       }
 
-      .hidden { display: none; }
+      .hidden { display: none !important; }
 
       /* Upload modal */
       .modal-overlay {
@@ -892,6 +892,7 @@
         </div>
         <h1 id="hero-title">Brand Viewer</h1>
         <p class="hero-subtitle" id="hero-subtitle">Loading brand data...</p>
+        <button id="refresh-brand-btn" class="hidden" onclick="refreshBrand()" style="margin-top: var(--space-3); padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Refresh from brand.json</button>
       </div>
     </section>
 
@@ -1418,6 +1419,44 @@
         }
       }
 
+      async function refreshBrand() {
+        const pathParts = window.location.pathname.split('/');
+        const domain = pathParts.slice(3).join('/');
+        if (!domain) return;
+
+        const btn = document.getElementById('refresh-brand-btn');
+        const originalText = btn.textContent;
+        btn.textContent = 'Refreshing...';
+        btn.disabled = true;
+
+        try {
+          const resp = await fetch('/api/registry/brand-crawl-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+
+          if (resp.status === 429) {
+            const data = await resp.json();
+            btn.textContent = `Wait ${data.retry_after}s`;
+            setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 5000);
+            return;
+          }
+
+          if (!resp.ok) {
+            btn.textContent = 'Failed';
+            setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+            return;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          window.location.reload();
+        } catch {
+          btn.textContent = 'Failed';
+          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+        }
+      }
+
       async function init() {
         const pathParts = window.location.pathname.split('/');
         // /brand/view/domain.com → domain is everything after /brand/view/
@@ -1431,6 +1470,11 @@
         document.getElementById('hero-subtitle').textContent = domain;
         currentDomain = domain;
         initUploadUI();
+
+        // Show refresh button for logged-in users
+        if (window.__APP_CONFIG__?.user) {
+          document.getElementById('refresh-brand-btn').classList.remove('hidden');
+        }
 
         let brandJsonLoaded = false;
         try {
