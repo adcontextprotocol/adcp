@@ -41,7 +41,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
