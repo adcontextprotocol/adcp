@@ -1965,9 +1965,9 @@
           return;
         }
 
-        // Auto-generate edit summary
-        const editSummary = generateEditSummary();
-        if (!editFormDirty || editSummary === 'No changes') {
+        // Auto-generate edit summary — never block save on it
+        const editSummary = editFormDirty ? generateEditSummary() : 'No changes';
+        if (!editFormDirty) {
           saveBtn.textContent = 'No changes';
           setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 1500);
           return;
