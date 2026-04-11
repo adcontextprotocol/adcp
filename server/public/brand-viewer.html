@@ -893,14 +893,6 @@
         margin-top: var(--space-1);
       }
 
-      .edit-list-row:not(:first-child) .edit-list-label {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip: rect(0,0,0,0);
-      }
-
       .edit-form-help {
         font-size: var(--text-xs);
         color: var(--color-text-muted);
@@ -1641,9 +1633,12 @@
         // Update section counts and scroll into view
         updateSectionCounts();
         editFormDirty = false;
-        const markDirty = () => { editFormDirty = true; };
-        form.addEventListener('input', markDirty);
-        form.addEventListener('change', markDirty);
+        if (!form._dirtyListenersAttached) {
+          const markDirty = () => { editFormDirty = true; };
+          form.addEventListener('input', markDirty);
+          form.addEventListener('change', markDirty);
+          form._dirtyListenersAttached = true;
+        }
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
@@ -1664,7 +1659,7 @@
           <input type="text" value="${escapeAttr(name || '')}" placeholder="Color name" style="flex: 1;" class="color-name-input">
           <input type="color" value="${(hex && /^#[0-9A-Fa-f]{6}$/.test(String(hex))) ? hex : '#000000'}" class="color-hex-input">
           <input type="text" value="${escapeAttr(hex || '')}" placeholder="#000000" style="width: 90px; font-family: var(--font-mono);" class="color-text-input">
-          <button type="button" onclick="this.parentElement.remove()" class="edit-color-remove" title="Remove color">&times;</button>
+          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;" class="edit-color-remove" title="Remove color">&times;</button>
         `;
         // Sync color picker with text input
         const colorInput = row.querySelector('.color-hex-input');
@@ -1681,14 +1676,14 @@
         const container = document.getElementById('edit-properties-container');
         const row = document.createElement('div');
         row.className = 'edit-list-row';
-        const types = ['website','mobile_app','ctv_app','desktop_app','dooh','podcast','radio','streaming_audio'];
+        const types = ['','website','mobile_app','ctv_app','desktop_app','dooh','podcast','radio','streaming_audio'];
         const stores = ['','apple','google','amazon','roku','samsung','lg','other'];
         row.innerHTML = `
           <div class="edit-list-label">
             <span>Type</span><span>Identifier</span><span>Store</span><span>Region</span>
           </div>
           <select class="edit-form-input prop-type" aria-label="Property type">
-            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t.replace(/_/g, ' ')}</option>`).join('')}
+            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t ? t.replace(/_/g, ' ') : '(select type)'}</option>`).join('')}
           </select>
           <input type="text" class="edit-form-input prop-identifier" value="${escapeAttr(d.identifier || '')}" placeholder="e.g. example.com or com.example.app" aria-label="Property identifier">
           <select class="edit-form-input edit-select-sm prop-store" aria-label="App store">
@@ -1789,6 +1784,7 @@
           logos: document.querySelectorAll('#edit-logos-container > div').length,
           legal: document.querySelectorAll('#edit-disclaimers-container > div').length +
             (document.getElementById('edit-contact-name')?.value.trim() ? 1 : 0) +
+            (document.getElementById('edit-contact-email')?.value.trim() ? 1 : 0) +
             (document.getElementById('edit-privacy-url')?.value.trim() ? 1 : 0),
           additional: (document.getElementById('edit-target-audience')?.value.trim() ? 1 : 0) +
             (document.getElementById('edit-brand-url')?.value.trim() ? 1 : 0),
@@ -1967,9 +1963,9 @@
           }
         };
 
-        // Only include colors if user added any
-        if (Object.keys(colors).length > 0) {
-          body.brand_manifest.colors = colors;
+        // Include colors if user has any, or clear if previously had some
+        if (Object.keys(colors).length > 0 || manifest.colors) {
+          body.brand_manifest.colors = Object.keys(colors).length > 0 ? colors : undefined;
         }
 
         // Always write fonts to allow clearing empty fields; undefined gets removed by cleanup below
