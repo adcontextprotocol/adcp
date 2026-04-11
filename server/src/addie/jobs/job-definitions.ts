@@ -504,6 +504,92 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.nudgesSent > 0,
   });
 
+  // Auto-complete events that have ended
+  jobScheduler.register({
+    name: 'event-auto-complete',
+    description: 'Move published events to completed after they end',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    failureThreshold: 1,
+    runner: async () => {
+      const result = await query(
+        `UPDATE events
+         SET status = 'completed', updated_at = NOW()
+         WHERE status = 'published'
+           AND end_time < NOW() - INTERVAL '2 hours'
+         RETURNING id, title`
+      );
+      const completed = result.rows.length;
+      if (completed > 0) {
+        logger.info({ completed, events: result.rows.map((r: { title: string }) => r.title) }, 'Auto-completed past events');
+      }
+      return { completed };
+    },
+    shouldLogResult: (r) => r.completed > 0,
+  });
+
+  // Post-event follow-up — thank attendees and notify when recap is available
+  jobScheduler.register({
+    name: 'event-follow-up',
+    description: 'Send post-event thank-you to attendees 24h after event ends',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    failureThreshold: 1,
+    runner: async () => {
+      // Find events that ended 23-25h ago (same window pattern as reminder)
+      const from = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      const to = new Date(Date.now() - 23 * 60 * 60 * 1000);
+      const result = await query<{ id: string; title: string; slug: string; end_time: string }>(
+        `SELECT id, title, slug, end_time FROM events
+         WHERE status IN ('published', 'completed')
+           AND end_time >= $1 AND end_time <= $2`,
+        [from.toISOString(), to.toISOString()]
+      );
+
+      let followUpsSent = 0;
+      const notificationDb = new NotificationDatabase();
+      const slackDb = new SlackDatabase();
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+      for (const event of result.rows) {
+        const registrations = await eventsDb.getEventRegistrations(event.id);
+        for (const reg of registrations) {
+          if (reg.registration_status !== 'registered') continue;
+          try {
+            if (reg.workos_user_id) {
+              const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_follow_up', event.id);
+              if (alreadySent) continue;
+              await notifyUser({
+                recipientUserId: reg.workos_user_id,
+                type: 'event_follow_up',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `Thanks for joining ${event.title}! A recap will be posted soon.`,
+                url: `/events/${event.slug}`,
+              });
+              followUpsSent++;
+            } else if (reg.email) {
+              const slackUser = await slackDb.findByEmail(reg.email);
+              if (!slackUser?.slack_user_id) continue;
+              if (slackUser.workos_user_id) {
+                const alreadySent = await notificationDb.exists(slackUser.workos_user_id, 'event_follow_up', event.id);
+                if (alreadySent) continue;
+              }
+              await sendDirectMessage(slackUser.slack_user_id, {
+                text: `Thanks for joining ${event.title}! A recap will be posted soon.\n<${baseUrl}/events/${event.slug}|View event>`,
+              });
+              followUpsSent++;
+            }
+          } catch (err) {
+            logger.error({ err }, 'Failed to send event follow-up');
+          }
+        }
+      }
+      return { eventsChecked: result.rows.length, followUpsSent };
+    },
+    shouldLogResult: (r) => r.followUpsSent > 0,
+  });
+
   // Brand registry sweep - researches unmapped org domains to maintain 100% coverage
   jobScheduler.register({
     name: 'brand-registry-sweep',

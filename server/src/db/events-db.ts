@@ -289,9 +289,12 @@ export class EventsDatabase {
       : '';
 
     let sql = `
-      SELECT * FROM events
+      SELECT e.*,
+        (SELECT COUNT(*) FROM event_registrations er
+         WHERE er.event_id = e.id AND er.registration_status = 'registered')::int as registration_count
+      FROM events e
       ${whereClause}
-      ORDER BY start_time ASC
+      ORDER BY e.start_time ASC
     `;
 
     if (options.limit) {

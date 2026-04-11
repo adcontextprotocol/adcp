@@ -677,11 +677,38 @@ export function createEventsRouter(): {
     async (req: Request, res: Response) => {
       try {
         const { regId } = req.params;
+        const { eventId } = req.params;
         const registration = await eventsDb.updateRegistration(regId, { registration_status: 'registered' });
         if (!registration) {
           return res.status(404).json({ error: "Registration not found" });
         }
         logger.info({ registrationId: regId }, "Registration approved");
+
+        // Notify the user they've been promoted from waitlist
+        const event = await eventsDb.getEventById(eventId);
+        if (event) {
+          if (registration.workos_user_id) {
+            notifyUser({
+              recipientUserId: registration.workos_user_id,
+              type: 'waitlist_promoted',
+              referenceId: event.id,
+              referenceType: 'event',
+              title: `You're in! Your registration for ${event.title} has been confirmed`,
+              url: `/events/${event.slug}`,
+            }).catch(err => logger.error({ err }, 'Failed to send waitlist promotion notification'));
+          } else if (registration.email) {
+            const slackDb = new SlackDatabase();
+            slackDb.findByEmail(registration.email).then(slackUser => {
+              if (slackUser?.slack_user_id) {
+                const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+                sendDirectMessage(slackUser.slack_user_id, {
+                  text: `You're in! Your registration for ${event.title} has been confirmed.\n<${baseUrl}/events/${event.slug}|View event>`,
+                }).catch(err => logger.error({ err }, 'Failed to send waitlist promotion Slack DM'));
+              }
+            }).catch(() => {});
+          }
+        }
+
         res.json({ registration });
       } catch (error) {
         logger.error({ err: error }, "Error approving registration");
@@ -1670,6 +1697,21 @@ export function createEventsRouter(): {
       // Get industry gathering (attendee group) if one exists
       const industryGathering = await workingGroupDb.getIndustryGatheringByEventId(event.id);
 
+      // Get current user's registration if logged in
+      const user = req.user;
+      let myRegistration = null;
+      if (user) {
+        const userRegs = await eventsDb.getUserRegistrations(user.id, user.email);
+        const match = userRegs.find((r) => r.event_id === event.id);
+        if (match) {
+          myRegistration = {
+            status: match.registration_status,
+            attended: match.attended,
+            registered_at: match.registered_at,
+          };
+        }
+      }
+
       res.json({
         event,
         sponsors,
@@ -1680,6 +1722,7 @@ export function createEventsRouter(): {
           slug: industryGathering.slug,
           slack_channel_url: industryGathering.slack_channel_url,
         } : null,
+        my_registration: myRegistration,
       });
     } catch (error) {
       logger.error({ err: error }, "Error getting event");

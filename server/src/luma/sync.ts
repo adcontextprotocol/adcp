@@ -17,6 +17,7 @@ import {
   type LumaEvent,
 } from './client.js';
 import type { CreateEventInput, EventFormat, EventVisibility } from '../types.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
 
 const logger = createLogger('luma-sync');
 
@@ -140,6 +141,27 @@ export async function createEventFromLuma(lumaEvent: LumaEvent): Promise<{ id: s
 
   // Sync registrations from Luma
   await syncEventRegistrations(event.id, lumaEvent.api_id);
+
+  // Auto-link to regional chapter by matching venue_city to chapter region
+  if (eventInput.venue_city) {
+    try {
+      const workingGroupDb = new WorkingGroupDatabase();
+      const chapters = await workingGroupDb.listWorkingGroups({
+        status: 'active',
+        committee_type: 'chapter',
+      });
+      const city = eventInput.venue_city.toLowerCase();
+      const match = chapters.find(ch =>
+        ch.region && city.includes(ch.region.toLowerCase())
+      );
+      if (match) {
+        await eventsDb.linkEventToCommittee(event.id, match.id, 'participant');
+        logger.info({ eventId: event.id, chapterId: match.id, chapterName: match.name }, 'Auto-linked event to chapter');
+      }
+    } catch (err) {
+      logger.warn({ err, eventId: event.id }, 'Failed to auto-link event to chapter');
+    }
+  }
 
   return { id: event.id, slug: finalSlug };
 }

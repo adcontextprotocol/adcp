@@ -794,6 +794,7 @@
         <input type="email" id="regInviteEmail" placeholder="Email address">
         <input type="text" id="regInviteName" placeholder="Name (optional)">
         <button class="btn btn-primary btn-small" onclick="inviteFromRegPanel()">Invite</button>
+        <button class="btn btn-secondary btn-small" onclick="exportRegistrationsCsv()">Export CSV</button>
       </div>
     </div>
   </div>
@@ -894,6 +895,13 @@
                 ${event.visibility && event.visibility !== 'public' ? `<span class="badge badge-invite">${event.visibility === 'invite_listed' ? 'invite only' : 'unlisted'}</span>` : ''}
                 <span>${dateStr} at ${timeStr}</span>
                 ${event.venue_city ? `<span>${escapeHtml(event.venue_city)}</span>` : ''}
+                ${event.registration_count !== undefined ? (() => {
+                  const count = event.registration_count || 0;
+                  const max = event.max_attendees;
+                  const pct = max ? (count / max * 100) : 0;
+                  const color = !max ? 'var(--color-text-secondary)' : pct >= 50 ? 'var(--color-success-600)' : pct >= 25 ? 'var(--color-warning-600)' : 'var(--color-error-600)';
+                  return `<span style="color: ${color}; font-weight: 500;">${count}${max ? '/' + max : ''} registered</span>`;
+                })() : ''}
               </div>
             </div>
             <div class="event-actions">
@@ -1405,6 +1413,30 @@
       regEventId = null;
       allRegistrations = [];
       document.getElementById('regModal').style.display = 'none';
+    }
+
+    function exportRegistrationsCsv() {
+      if (allRegistrations.length === 0) return;
+      const rows = [['Name', 'Email', 'Status', 'Source', 'Registered At', 'Attended']];
+      for (const r of allRegistrations) {
+        rows.push([
+          r.name || '',
+          r.email || '',
+          r.registration_status,
+          r.registration_source || '',
+          r.registered_at ? new Date(r.registered_at).toISOString() : '',
+          r.attended ? 'Yes' : 'No',
+        ]);
+      }
+      const csv = rows.map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const event = events.find(e => e.id === regEventId);
+      a.download = `${event?.slug || 'registrations'}-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     // Delete modal
