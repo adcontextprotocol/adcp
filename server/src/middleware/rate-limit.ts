@@ -225,6 +225,29 @@ export const bulkResolveRateLimiter = rateLimit({
  * Rate limiter for logo uploads
  * Limits: 10 uploads per hour per user
  */
+export const emailPrefsRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('emailprefs:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for email preferences');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
 export const logoUploadRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,

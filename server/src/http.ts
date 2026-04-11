@@ -41,7 +41,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -1581,6 +1581,7 @@ export class HTTPServer {
 
         res.json({
           global_unsubscribe: prefs.global_unsubscribe,
+          marketing_opt_in: prefs.marketing_opt_in ?? null,
           categories: categoryPrefs,
         });
       } catch (error) {
@@ -1614,6 +1615,34 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
         res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Record marketing communications opt-in choice (authenticated)
+    this.app.post('/api/email-preferences/marketing-opt-in', requireAuth, emailPrefsRateLimiter, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { opt_in } = req.body;
+
+        if (typeof opt_in !== 'boolean') {
+          return res.status(400).json({ error: 'opt_in must be a boolean' });
+        }
+
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: userId,
+          email: userEmail,
+          optIn: opt_in,
+        });
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId, opt_in }, 'User set marketing opt-in preference');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error setting marketing opt-in');
+        res.status(500).json({ error: 'Error setting marketing preference' });
       }
     });
 
