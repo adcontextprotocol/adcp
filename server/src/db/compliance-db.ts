@@ -69,9 +69,12 @@ export interface AgentComplianceStatus {
   updated_at: Date;
 }
 
+export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
+const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
+
 export interface StoryboardStatusEntry {
   storyboard_id: string;
-  status: 'passing' | 'failing' | 'partial' | 'untested';
+  status: StoryboardStatus;
   steps_passed: number;
   steps_total: number;
 }
@@ -262,6 +265,14 @@ export class ComplianceDatabase {
 
       // 5. Batch upsert per-storyboard statuses (single query, not N+1)
       if (input.storyboard_statuses?.length) {
+        // Validate status values before sending to Postgres to surface typos
+        // as clear errors instead of cryptic constraint violations inside unnest
+        for (const sb of input.storyboard_statuses) {
+          if (!VALID_STORYBOARD_STATUSES.has(sb.status)) {
+            throw new Error(`Invalid storyboard status "${sb.status}" for ${sb.storyboard_id}`);
+          }
+        }
+
         const sbIds = input.storyboard_statuses.map(s => s.storyboard_id);
         const sbStatuses = input.storyboard_statuses.map(s => s.status);
         const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);

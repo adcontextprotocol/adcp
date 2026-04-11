@@ -61,6 +61,7 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
+import { enrichUserWithMembership } from "../utils/html-config.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -2452,7 +2453,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
         }
 
-        const { enrichUserWithMembership } = await import("../utils/html-config.js");
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any).isMember) {
           return res.status(403).json({
@@ -2505,7 +2505,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const { enrichUserWithMembership } = await import("../utils/html-config.js");
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any).isMember) {
           return res.status(403).json({
@@ -2524,14 +2523,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
         const validUrls = agent_urls.filter((u: unknown) => typeof u === "string" && validateAgentUrlParam(u as string));
 
-        // Filter out opted-out agents
         const metadataMap = await complianceDb.bulkGetRegistryMetadata(validUrls);
         const nonOptedOut = validUrls.filter((u: string) => !metadataMap.get(u)?.compliance_opt_out);
+        const optedOut = new Set(validUrls.filter((u: string) => metadataMap.get(u)?.compliance_opt_out));
 
         const statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
 
         const results: Record<string, any> = {};
-        for (const url of nonOptedOut) {
+        for (const url of validUrls) {
+          if (optedOut.has(url)) {
+            results[url] = { status: "opted_out" };
+            continue;
+          }
           const statuses = statusMap.get(url) || [];
           results[url] = statuses.map(s => {
             const sb = getStoryboard(s.storyboard_id);

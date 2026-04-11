@@ -32,7 +32,7 @@ import type {
   TriggeredBy,
 } from '../../db/compliance-db.js';
 
-import { listStoryboards, getStoryboard } from '../../services/storyboards.js';
+import { getStoryboard, getAllStoryboards } from '../../services/storyboards.js';
 import type { Storyboard } from '../../services/storyboards.js';
 
 // ── Re-exports ────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export function deriveStoryboardStatuses(
 
   const storyboardsToCheck: Storyboard[] = storyboardIds
     ? storyboardIds.map(id => getStoryboard(id)).filter((s): s is Storyboard => !!s)
-    : listStoryboards().map(s => getStoryboard(s.id)).filter((s): s is Storyboard => !!s);
+    : getAllStoryboards();
 
   const entries: StoryboardStatusEntry[] = [];
 
@@ -112,16 +112,16 @@ export function deriveStoryboardStatuses(
     if (testableSteps.length === 0) continue;
 
     // Only include storyboards where at least one scenario was tested
-    const testedSteps = testableSteps.filter(s => scenarioResults.has(s.scenario));
-    if (testedSteps.length === 0 && !storyboardIds) continue;
+    const testedCount = testableSteps.filter(s => scenarioResults.has(s.scenario)).length;
+    if (testedCount === 0 && !storyboardIds) continue;
 
-    const passedCount = testedSteps.filter(s => scenarioResults.get(s.scenario) === true).length;
-    const totalTestable = testableSteps.length;
+    const passedCount = testableSteps.filter(s => scenarioResults.get(s.scenario) === true).length;
+    const totalSteps = testableSteps.length;
 
     let status: StoryboardStatusEntry['status'];
-    if (testedSteps.length === 0) {
+    if (testedCount === 0) {
       status = 'untested';
-    } else if (passedCount === totalTestable) {
+    } else if (passedCount === totalSteps) {
       status = 'passing';
     } else if (passedCount === 0) {
       status = 'failing';
@@ -133,7 +133,7 @@ export function deriveStoryboardStatuses(
       storyboard_id: sb.id,
       status,
       steps_passed: passedCount,
-      steps_total: totalTestable,
+      steps_total: totalSteps,
     });
   }
 
