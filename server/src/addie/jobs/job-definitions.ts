@@ -471,15 +471,24 @@ export function registerAllJobs(): void {
               const slackUser = await slackDb.findByEmail(reg.email);
               if (!slackUser?.slack_user_id) continue;
 
-              // Dedup using the slack user's workos_user_id if linked, otherwise skip dedup
-              if (slackUser.workos_user_id) {
-                const alreadySent = await notificationDb.exists(slackUser.workos_user_id, 'event_reminder', event.id);
-                if (alreadySent) continue;
-              }
+              // Dedup using the slack user's workos_user_id if linked
+              const dedupUserId = slackUser.workos_user_id || `slack:${slackUser.slack_user_id}`;
+              const alreadySent = await notificationDb.exists(dedupUserId, 'event_reminder', event.id);
+              if (alreadySent) continue;
 
               const eventUrl = `${baseUrl}/events/${event.slug}`;
               await sendDirectMessage(slackUser.slack_user_id, {
                 text: `Reminder: ${event.title} is tomorrow\n<${eventUrl}|View event>`,
+              });
+
+              // Record notification for dedup on subsequent runs
+              await notificationDb.createNotification({
+                recipientUserId: dedupUserId,
+                type: 'event_reminder',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `Reminder: ${event.title} is tomorrow`,
+                url: `/events/${event.slug}`,
               });
               remindersSent++;
             }
@@ -532,8 +541,8 @@ export function registerAllJobs(): void {
       // Find events that ended 23-25h ago (same window pattern as reminder)
       const from = new Date(Date.now() - 25 * 60 * 60 * 1000);
       const to = new Date(Date.now() - 23 * 60 * 60 * 1000);
-      const result = await query<{ id: string; title: string; slug: string; end_time: string }>(
-        `SELECT id, title, slug, end_time FROM events
+      const result = await query<{ id: string; title: string; slug: string; end_time: string; recap_html: string | null }>(
+        `SELECT id, title, slug, end_time, recap_html FROM events
          WHERE status IN ('published', 'completed')
            AND end_time >= $1 AND end_time <= $2`,
         [from.toISOString(), to.toISOString()]
@@ -545,6 +554,9 @@ export function registerAllJobs(): void {
       const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
 
       for (const event of result.rows) {
+        const message = event.recap_html
+          ? `The recap for ${event.title} is live!`
+          : `${event.title} has wrapped up — a recap will be posted soon.`;
         const registrations = await eventsDb.getEventRegistrations(event.id);
         for (const reg of registrations) {
           if (reg.registration_status !== 'registered') continue;
@@ -557,19 +569,26 @@ export function registerAllJobs(): void {
                 type: 'event_follow_up',
                 referenceId: event.id,
                 referenceType: 'event',
-                title: `${event.title} has wrapped up — a recap will be posted soon.`,
+                title: message,
                 url: `/events/${event.slug}`,
               });
               followUpsSent++;
             } else if (reg.email) {
               const slackUser = await slackDb.findByEmail(reg.email);
               if (!slackUser?.slack_user_id) continue;
-              if (slackUser.workos_user_id) {
-                const alreadySent = await notificationDb.exists(slackUser.workos_user_id, 'event_follow_up', event.id);
-                if (alreadySent) continue;
-              }
+              const dedupUserId = slackUser.workos_user_id || `slack:${slackUser.slack_user_id}`;
+              const alreadySent = await notificationDb.exists(dedupUserId, 'event_follow_up', event.id);
+              if (alreadySent) continue;
               await sendDirectMessage(slackUser.slack_user_id, {
-                text: `${event.title} has wrapped up — a recap will be posted soon.\n<${baseUrl}/events/${event.slug}|View event>`,
+                text: `${message}\n<${baseUrl}/events/${event.slug}|View event>`,
+              });
+              await notificationDb.createNotification({
+                recipientUserId: dedupUserId,
+                type: 'event_follow_up',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: message,
+                url: `/events/${event.slug}`,
               });
               followUpsSent++;
             }

@@ -1145,8 +1145,8 @@
           container.innerHTML = committees.map(c => `
             <div style="display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; border-bottom: 1px solid var(--color-border);">
               <span style="flex: 1; font-size: var(--text-sm);">${escapeHtml(c.committee_name)}</span>
-              <span class="badge badge-${c.role}" style="font-size: 11px;">${c.role}</span>
-              <button type="button" class="btn btn-secondary btn-small" style="padding: 2px 8px; font-size: 11px;" onclick="unlinkCommittee('${c.committee_id}')">Remove</button>
+              <span class="badge badge-${escapeHtml(c.role)}" style="font-size: 11px;">${escapeHtml(c.role)}</span>
+              <button type="button" class="btn btn-secondary btn-small" style="padding: 2px 8px; font-size: 11px;" onclick="unlinkCommittee('${escapeHtml(c.committee_id)}')">Remove</button>
             </div>
           `).join('');
         }
@@ -1345,7 +1345,7 @@
         const source = escapeHtml(reg.registration_source || '—');
         const attendedStr = reg.attended
           ? `<span style="color: var(--color-success-600);">Yes</span>`
-          : (reg.registration_status === 'registered' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="checkInAttendee('${reg.id}')">Check in</button>` : '—');
+          : (reg.registration_status === 'registered' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="checkInAttendee('${escapeHtml(reg.id)}')">Check in</button>` : '—');
 
         return `<tr>
           <td>${name}</td>
@@ -1354,8 +1354,8 @@
           <td>${source}</td>
           <td>${attendedStr}</td>
           <td class="reg-actions">
-            ${reg.registration_status === 'waitlisted' ? `<button class="btn btn-primary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="approveRegistration('${reg.id}')">Approve</button>` : ''}
-            ${reg.registration_status !== 'cancelled' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="cancelRegistration('${reg.id}')">Cancel</button>` : ''}
+            ${reg.registration_status === 'waitlisted' ? `<button class="btn btn-primary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="approveRegistration('${escapeHtml(reg.id)}')">Approve</button>` : ''}
+            ${reg.registration_status !== 'cancelled' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="cancelRegistration('${escapeHtml(reg.id)}')">Cancel</button>` : ''}
           </td>
         </tr>`;
       }).join('');
