@@ -1050,7 +1050,8 @@ export function createEventToolHandlers(
 
         let csv = 'Name,Email,Status,Registered At,Attended\n';
         for (const reg of registrations) {
-          csv += `"${reg.name || ''}","${reg.email || ''}","${reg.registration_status}","${reg.registered_at.toISOString()}","${reg.attended ? 'Yes' : 'No'}"\n`;
+          const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+          csv += `${esc(reg.name || '')},${esc(reg.email || '')},${esc(reg.registration_status)},${esc(reg.registered_at.toISOString())},${esc(reg.attended ? 'Yes' : 'No')}\n`;
         }
 
         return `## Registration Export for ${event.title}\n\n\`\`\`csv\n${csv}\`\`\``;

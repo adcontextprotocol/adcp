@@ -1341,7 +1341,7 @@
       tbody.innerHTML = filtered.map(reg => {
         const name = escapeHtml(reg.name || '—');
         const email = escapeHtml(reg.email || '—');
-        const statusBadge = `<span class="badge badge-${reg.registration_status}">${reg.registration_status}</span>`;
+        const statusBadge = `<span class="badge badge-${escapeHtml(reg.registration_status)}">${escapeHtml(reg.registration_status)}</span>`;
         const source = escapeHtml(reg.registration_source || '—');
         const attendedStr = reg.attended
           ? `<span style="color: var(--color-success-600);">Yes</span>`

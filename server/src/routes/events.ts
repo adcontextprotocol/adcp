@@ -1711,8 +1711,46 @@ export function createEventsRouter(): {
         }
       }
 
+      // Project to safe subset -- exclude internal fields and gate virtual_url on registration
+      const isRegistered = myRegistration?.status === 'registered';
+      const publicEvent = {
+        id: event.id,
+        slug: event.slug,
+        title: event.title,
+        description: event.description,
+        short_description: event.short_description,
+        event_type: event.event_type,
+        event_format: event.event_format,
+        start_time: event.start_time,
+        end_time: event.end_time,
+        timezone: event.timezone,
+        venue_name: event.venue_name,
+        venue_address: event.venue_address,
+        venue_city: event.venue_city,
+        venue_state: event.venue_state,
+        venue_country: event.venue_country,
+        venue_lat: event.venue_lat,
+        venue_lng: event.venue_lng,
+        virtual_url: isRegistered ? event.virtual_url : undefined,
+        virtual_platform: event.virtual_platform,
+        featured_image_url: event.featured_image_url,
+        status: event.status,
+        visibility: event.visibility,
+        max_attendees: event.max_attendees,
+        require_rsvp_approval: event.require_rsvp_approval,
+        luma_url: event.luma_url,
+        luma_event_id: event.luma_event_id,
+        external_registration_url: event.external_registration_url,
+        is_external_event: event.is_external_event,
+        sponsorship_enabled: event.sponsorship_enabled,
+        sponsorship_tiers: event.sponsorship_tiers,
+        recap_html: event.recap_html,
+        recap_video_url: event.recap_video_url,
+        registration_count: (event as unknown as { registration_count?: number }).registration_count,
+      };
+
       res.json({
-        event,
+        event: publicEvent,
         sponsors,
         registration_count: registrationCount,
         industry_gathering: industryGathering ? {
