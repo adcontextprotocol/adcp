@@ -4,7 +4,7 @@
  * and verifies the SQL UPDATE statements work correctly with a real DB.
  */
 import { describe, test, expect } from 'vitest';
-import { buildSubscriptionUpdate, tierFromLookupKey, resolveMembershipTier, TIER_PRESERVING_STATUSES } from '../../server/src/db/organization-db.js';
+import { buildSubscriptionUpdate, resolveMembershipTier, TIER_PRESERVING_STATUSES } from '../../server/src/db/organization-db.js';
 
 // Realistic Stripe subscription shapes from different scenarios
 const STRIPE_SCENARIOS = {
