@@ -205,6 +205,29 @@ export class FederatedIndexService {
   }
 
   /**
+   * Get full authorization records for an agent (publisher domain, source, authorized_for).
+   */
+  async getAuthorizationsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
+    return this.db.getDomainsForAgent(agentUrl);
+  }
+
+  /**
+   * Get full authorization records for a domain (agent URL, source, authorized_for).
+   */
+  async getAuthorizationsForDomain(domain: string): Promise<AgentPublisherAuthorization[]> {
+    return this.db.getAgentsForDomain(domain);
+  }
+
+  /**
+   * Check whether a domain has a valid adagents.json (from cached crawl data).
+   */
+  async hasValidAdagents(domain: string): Promise<boolean | null> {
+    const publishers = await this.db.getSalesAgentsClaimingDomain(domain);
+    if (publishers.length === 0) return null;
+    return publishers.some(p => p.has_valid_adagents === true);
+  }
+
+  /**
    * Get all agent→domain pairs in a single query (for bulk snapshots).
    */
   async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {

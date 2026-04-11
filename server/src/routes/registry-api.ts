@@ -40,6 +40,8 @@ import {
   PolicySchema,
   PolicySummarySchema,
   PolicyHistorySchema,
+  OperatorLookupResultSchema,
+  PublisherLookupResultSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -591,6 +593,42 @@ registry.registerPath({
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
     200: { description: "Domains for the agent", content: { "application/json": { schema: z.object({ agent_url: z.string(), domains: z.array(z.string()), count: z.number().int() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/operator",
+  operationId: "lookupOperator",
+  summary: "Operator lookup",
+  description: "Given a domain, returns the agents this entity operates and which publishers trust them.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "pubmatic.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Operator lookup result", content: { "application/json": { schema: OperatorLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/publisher",
+  operationId: "lookupPublisher",
+  summary: "Publisher lookup",
+  description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "voxmedia.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -3099,6 +3137,99 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
   // ── Lookups & Authorization ───────────────────────────────────
+
+  router.get("/registry/operator", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (domain.length > 253 || !domain.includes(".")) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const profile = await memberDb.getProfileByDomain(domain);
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      const agentConfigs = (profile?.agents || []).filter(a => a.is_public);
+
+      // One query per agent — acceptable while members have < ~10 agents.
+      const agents = await Promise.all(
+        agentConfigs.map(async (ac) => {
+          const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
+          return {
+            url: ac.url,
+            name: ac.name || profile!.display_name,
+            type: ac.type || "unknown",
+            authorized_by: auths.map(a => ({
+              publisher_domain: a.publisher_domain,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            })),
+          };
+        })
+      );
+
+      res.json({ domain, member, agents });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Operator lookup failed");
+      res.status(500).json({ error: "Operator lookup failed" });
+    }
+  });
+
+  router.get("/registry/publisher", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (domain.length > 253 || !domain.includes(".")) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const [profile, properties, authorizations, adagentsValid] = await Promise.all([
+        memberDb.getProfileByDomain(domain),
+        federatedIndex.getPropertiesForDomain(domain),
+        federatedIndex.getAuthorizationsForDomain(domain),
+        federatedIndex.hasValidAdagents(domain),
+      ]);
+
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      res.json({
+        domain,
+        member,
+        adagents_valid: adagentsValid,
+        properties: properties.map(p => ({
+          id: p.property_id,
+          type: p.property_type,
+          name: p.name,
+          identifiers: p.identifiers,
+          tags: p.tags,
+        })),
+        authorized_agents: authorizations.map(a => ({
+          url: a.agent_url,
+          authorized_for: a.authorized_for,
+          source: a.source,
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Publisher lookup failed");
+      res.status(500).json({ error: "Publisher lookup failed" });
+    }
+  });
 
   router.get("/registry/lookup/domain/:domain", async (req, res) => {
     try {
