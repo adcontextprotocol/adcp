@@ -35,8 +35,11 @@ import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
-import { setupDigestAdminRoutes } from "./admin/digest.js";
-import { setupBuildAdminRoutes } from "./admin/build.js";
+import { getAllNewsletters } from "../newsletters/registry.js";
+import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
+// Ensure newsletters register themselves before routes mount
+import "../newsletters/the-build/index.js";
+import "../newsletters/the-prompt/index.js";
 
 const logger = createLogger("admin-routes");
 
@@ -101,16 +104,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
-  pageRouter.get("/digest", requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-digest.html").catch((err) => {
-      logger.error({ err }, "Error serving digest page");
-      res.status(500).send("Internal server error");
-    });
-  });
+  // Redirects from old newsletter admin URLs
+  pageRouter.get("/digest", (_req, res) => res.redirect(301, "/admin/newsletters/the_prompt"));
+  pageRouter.get("/the-build", (_req, res) => res.redirect(301, "/admin/newsletters/the_build"));
 
-  pageRouter.get("/the-build", requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-the-build.html").catch((err) => {
-      logger.error({ err }, "Error serving The Build page");
+  pageRouter.get("/newsletters/:id", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-newsletter.html").catch((err) => {
+      logger.error({ err }, "Error serving newsletter admin page");
       res.status(500).send("Internal server error");
     });
   });
@@ -164,9 +164,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Perspective illustration generation routes
   setupIllustrationRoutes(apiRouter);
 
-  // Newsletter admin routes
-  setupDigestAdminRoutes(apiRouter);
-  setupBuildAdminRoutes(apiRouter);
+  // Unified newsletter admin routes
+  for (const nlConfig of getAllNewsletters()) {
+    apiRouter.use(`/newsletters/${nlConfig.id}`, createNewsletterAdminRoutes(nlConfig));
+  }
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
