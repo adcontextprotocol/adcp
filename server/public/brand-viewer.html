@@ -1963,6 +1963,8 @@
           }
         };
 
+        const manifest = currentEditStatus?.brand_manifest || {};
+
         // Include colors if user has any, or clear if previously had some
         if (Object.keys(colors).length > 0 || manifest.colors) {
           body.brand_manifest.colors = Object.keys(colors).length > 0 ? colors : undefined;
@@ -1975,9 +1977,6 @@
           ...(fontPrimary ? { primary: fontPrimary } : {}),
           ...(fontSecondary ? { secondary: fontSecondary } : {}),
         } : undefined;
-
-        // Include array if it has items, or if user cleared a section that previously had data
-        const manifest = currentEditStatus?.brand_manifest || {};
 
         // Collect properties
         const properties = [];
