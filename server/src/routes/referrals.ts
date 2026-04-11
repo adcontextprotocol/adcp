@@ -5,6 +5,7 @@ import { MemberDatabase } from '../db/member-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query } from '../db/client.js';
+import { emailPrefsDb } from '../db/email-preferences-db.js';
 
 const logger = createLogger('referral-routes');
 const memberDb = new MemberDatabase();
@@ -90,6 +91,7 @@ export function createReferralsRouter(): Router {
   router.post('/referral/:code/accept', requireAuth, async (req, res) => {
     try {
       const { code } = req.params;
+      const { marketing_opt_in } = req.body || {};
       const userId = req.user!.id;
 
       // Look up the user's primary org
@@ -134,6 +136,19 @@ export function createReferralsRouter(): Router {
       const accepted = await getAcceptedReferralForOrg(orgId);
 
       logger.info({ referralId: referral.id, code, orgId }, 'Referral invitation accepted');
+
+      // Record marketing communications opt-in choice (best-effort, don't block referral acceptance)
+      if (typeof marketing_opt_in === 'boolean') {
+        try {
+          await emailPrefsDb.setMarketingOptIn({
+            workos_user_id: userId,
+            email: req.user!.email,
+            optIn: marketing_opt_in,
+          });
+        } catch (err) {
+          logger.error({ err, userId }, 'Failed to record marketing opt-in');
+        }
+      }
 
       res.json({
         referral: accepted || referral,
