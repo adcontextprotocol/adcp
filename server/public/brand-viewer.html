@@ -1249,7 +1249,7 @@
             <div class="edit-form-grid">
               <div class="edit-form-field">
                 <label class="edit-form-label" for="edit-contact-name">Contact name</label>
-                <input type="text" id="edit-contact-name" class="edit-form-input" placeholder="e.g. Brand Team">
+                <input type="text" id="edit-contact-name" class="edit-form-input" placeholder="e.g. Brand Team" maxlength="255">
               </div>
               <div class="edit-form-field">
                 <label class="edit-form-label" for="edit-contact-email">Contact email</label>
@@ -1257,7 +1257,7 @@
               </div>
               <div class="edit-form-field edit-form-field--full">
                 <label class="edit-form-label" for="edit-privacy-url">Privacy policy URL</label>
-                <input type="url" id="edit-privacy-url" class="edit-form-input" placeholder="https://example.com/privacy">
+                <input type="url" id="edit-privacy-url" class="edit-form-input" placeholder="https://example.com/privacy" maxlength="2000">
               </div>
               <div class="edit-form-field edit-form-field--full">
                 <label class="edit-form-label">Disclaimers</label>
@@ -1273,11 +1273,11 @@
             <div class="edit-form-grid">
               <div class="edit-form-field">
                 <label class="edit-form-label" for="edit-target-audience">Target audience</label>
-                <input type="text" id="edit-target-audience" class="edit-form-input" placeholder="e.g. Marketing professionals">
+                <input type="text" id="edit-target-audience" class="edit-form-input" placeholder="e.g. Marketing professionals" maxlength="500">
               </div>
               <div class="edit-form-field">
                 <label class="edit-form-label" for="edit-brand-url">Brand URL</label>
-                <input type="url" id="edit-brand-url" class="edit-form-input" placeholder="https://example.com">
+                <input type="url" id="edit-brand-url" class="edit-form-input" placeholder="https://example.com" maxlength="2000">
               </div>
               <div id="edit-collections-container" class="hidden"></div>
             </div>
@@ -1685,11 +1685,11 @@
           <select class="edit-form-input prop-type" aria-label="Property type">
             ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t ? t.replace(/_/g, ' ') : '(select type)'}</option>`).join('')}
           </select>
-          <input type="text" class="edit-form-input prop-identifier" value="${escapeAttr(d.identifier || '')}" placeholder="e.g. example.com or com.example.app" aria-label="Property identifier">
+          <input type="text" class="edit-form-input prop-identifier" value="${escapeAttr(d.identifier || '')}" placeholder="e.g. example.com or com.example.app" aria-label="Property identifier" maxlength="500">
           <select class="edit-form-input edit-select-sm prop-store" aria-label="App store">
             ${stores.map(s => `<option value="${s}" ${d.store === s ? 'selected' : ''}>${s || '(none)'}</option>`).join('')}
           </select>
-          <input type="text" class="edit-form-input edit-input-narrow prop-region" value="${escapeAttr(d.region || '')}" placeholder="e.g. US" aria-label="Region">
+          <input type="text" class="edit-form-input edit-input-narrow prop-region" value="${escapeAttr(d.region || '')}" placeholder="e.g. US" aria-label="Region" maxlength="10">
           <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
             <input type="checkbox" class="prop-primary" ${d.primary ? 'checked' : ''}> Primary
           </label>
@@ -2653,7 +2653,7 @@
             ${properties.map(prop => {
               const isWebsite = prop.type === 'website';
               const identifier = isWebsite
-                ? `<a href="https://${escapeHtml(prop.identifier)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(prop.identifier)}</a>`
+                ? (isSafeUrl(`https://${prop.identifier}`) ? `<a href="https://${escapeAttr(prop.identifier)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(prop.identifier)}</a>` : escapeHtml(prop.identifier))
                 : escapeHtml(prop.identifier);
               const region = prop.region ? ` (${escapeHtml(prop.region)})` : '';
               const store = prop.store ? ` [${escapeHtml(prop.store)}]` : '';
