@@ -1291,11 +1291,7 @@
                 <label class="edit-form-label" for="edit-brand-url">Brand URL</label>
                 <input type="url" id="edit-brand-url" class="edit-form-input" placeholder="https://example.com">
               </div>
-              <div class="edit-form-field edit-form-field--full">
-                <label class="edit-form-label">Collections</label>
-                <div id="edit-collections-container"></div>
-                <button type="button" onclick="addCollectionField()" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Collection</button>
-              </div>
+              <div id="edit-collections-container" class="hidden"></div>
             </div>
           </details>
 
@@ -1644,15 +1640,12 @@
         // Pre-fill additional
         document.getElementById('edit-target-audience').value = manifest.target_audience || '';
         document.getElementById('edit-brand-url').value = manifest.url || '';
-        document.getElementById('edit-collections-container').innerHTML = '';
-        (manifest.collections || []).forEach(c => addCollectionField(c));
-
         // Auto-open sections with existing data
         document.getElementById('edit-section-properties').open = !!(manifest.properties?.length);
         document.getElementById('edit-section-agents').open = !!(manifest.agents?.length);
         document.getElementById('edit-section-logos').open = !!(manifest.logos?.length);
         document.getElementById('edit-section-legal').open = !!(manifest.contact || manifest.privacy_policy_url || manifest.disclaimers?.length);
-        document.getElementById('edit-section-additional').open = !!(manifest.target_audience || manifest.url || manifest.collections?.length);
+        document.getElementById('edit-section-additional').open = !!(manifest.target_audience || manifest.url);
 
         // Update section counts and scroll into view
         updateSectionCounts();
@@ -1843,8 +1836,7 @@
           legal: document.querySelectorAll('#edit-disclaimers-container > div').length +
             (document.getElementById('edit-contact-name')?.value.trim() ? 1 : 0) +
             (document.getElementById('edit-privacy-url')?.value.trim() ? 1 : 0),
-          additional: document.querySelectorAll('#edit-collections-container > div').length +
-            (document.getElementById('edit-target-audience')?.value.trim() ? 1 : 0) +
+          additional: (document.getElementById('edit-target-audience')?.value.trim() ? 1 : 0) +
             (document.getElementById('edit-brand-url')?.value.trim() ? 1 : 0),
         };
         for (const [section, count] of Object.entries(counts)) {
@@ -1953,7 +1945,6 @@
           ['#edit-agents-container > div', 'agents', 'agents'],
           ['#edit-logos-container > div', 'logos', 'logos'],
           ['#edit-disclaimers-container > div', 'disclaimers', 'disclaimers'],
-          ['#edit-collections-container > div', 'collections', 'collections'],
         ];
 
         for (const [sel, key, label] of arrayFields) {
@@ -2154,22 +2145,7 @@
           body.brand_manifest.url = undefined;
         }
 
-        // Collect collections
-        const collections = [];
-        document.querySelectorAll('#edit-collections-container > div').forEach(row => {
-          const name = row.querySelector('.coll-name')?.value.trim();
-          if (name) {
-            const coll = { name };
-            const collId = row.querySelector('.coll-id')?.value.trim();
-            const role = row.querySelector('.coll-role')?.value.trim();
-            const sellerUrl = row.querySelector('.coll-seller')?.value.trim();
-            if (collId) coll.collection_id = collId;
-            if (role) coll.role = role;
-            if (sellerUrl) coll.seller_agent_url = sellerUrl;
-            collections.push(coll);
-          }
-        });
-        if (collections.length > 0 || manifest.collections?.length) body.brand_manifest.collections = collections;
+        // Collections are preserved from existing manifest (managed via catalog tools, not this form)
 
         // Clean undefined values from manifest
         Object.keys(body.brand_manifest).forEach(k => {
