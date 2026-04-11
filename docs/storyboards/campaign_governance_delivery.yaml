@@ -66,12 +66,18 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor delivery governance"
+            - plan_id: "gov_acme_delivery"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
-              reallocation_threshold: 0.20
+              objectives: "Acme Outdoor delivery governance — 20% drift threshold"
+              budget:
+                total: 100000
+                currency: "USD"
+                authority_level: "agent_full"
+                reallocation_threshold: 0.20
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
               conditions:
                 - "Re-evaluate governance if any line item drifts >20% from plan"
 

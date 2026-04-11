@@ -145,13 +145,18 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor Q2 Governance"
+            - plan_id: "gov_acme_q2_2026"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
-              per_transaction_threshold: 20000
-              escalation_path: "human_review"
+              objectives: "Acme Outdoor Q2 — agent-limited with human escalation"
+              budget:
+                total: 200000
+                currency: "USD"
+                authority_level: "agent_limited"
+                per_seller_max_pct: 60
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
               conditions:
                 - "Weekly reporting required for buys over $10K"
                 - "No single-seller concentration above 60% of total budget"
