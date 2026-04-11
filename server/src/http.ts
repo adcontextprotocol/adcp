@@ -421,6 +421,7 @@ async function getUserFromRequest(
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
+  private isWorker: boolean = false;
   private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
@@ -8187,27 +8188,40 @@ Disallow: /api/admin/
       logger.error({ err }, 'Cache pre-warming failed');
     });
 
-    // Start periodic property crawler for sales agents
-    const salesAgents = await this.agentService.listAgents("sales");
-    if (salesAgents.length > 0) {
-      logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-      this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
-    }
+    // Scheduled jobs and crawlers only run on the worker process.
+    // FLY_PROCESS_GROUP is set automatically by Fly.io; locally both roles run.
+    const processRole = process.env.FLY_PROCESS_GROUP || 'worker';
+    this.isWorker = processRole !== 'web';
+    const isWorker = this.isWorker;
+    logger.info({ flyProcessGroup: process.env.FLY_PROCESS_GROUP, processRole, isWorker }, 'Process role resolved');
 
-    // Crawl catalog domains for adagents.json (demand-driven queue)
-    this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+    if (isWorker) {
+      // Start periodic property crawler for sales agents
+      const salesAgents = await this.agentService.listAgents("sales");
+      if (salesAgents.length > 0) {
+        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
+        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
+      }
 
-    // Register and start all scheduled jobs
-    registerAllJobs();
+      // Crawl catalog domains for adagents.json (demand-driven queue)
+      this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
 
-    // Start all registered jobs
-    jobScheduler.startAll();
+      // Register and start all scheduled jobs
+      registerAllJobs();
 
-    // Stop jobs that require missing env vars
-    if (!process.env.LLMPULSE_API_KEY) {
-      jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
-      jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
-      jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
+      // Start all registered jobs
+      jobScheduler.startAll();
+
+      // Stop jobs that require missing env vars
+      if (!process.env.LLMPULSE_API_KEY) {
+        jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
+        jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
+        jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
+      }
+
+      logger.info('Worker process: scheduled jobs and crawlers started');
+    } else {
+      logger.info('Web process: skipping scheduled jobs and crawlers');
     }
 
     this.server = this.app.listen(port, () => {
@@ -8217,17 +8231,20 @@ Disallow: /api/admin/
         api: `http://localhost:${port}/api/agents`,
       }, 'AdCP Registry HTTP server running');
 
-      // Start seat request reminder scheduler
-      if (workos) {
-        import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
-          startSeatRequestReminders(workos!);
-        }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
-      }
+      // Periodic background tasks only run on the worker process
+      if (isWorker) {
+        // Start seat request reminder scheduler
+        if (workos) {
+          import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
+            startSeatRequestReminders(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+        }
 
-      // Start Luma calendar sync (catches events missed by webhooks)
-      import('./luma/sync.js').then(({ startLumaSync }) => {
-        startLumaSync();
-      }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
+        // Start Luma calendar sync (catches events missed by webhooks)
+        import('./luma/sync.js').then(({ startLumaSync }) => {
+          startLumaSync();
+        }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
+      }
     });
 
     // Setup graceful shutdown handlers
@@ -8267,18 +8284,18 @@ Disallow: /api/admin/
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
 
-    // Stop all scheduled jobs
-    jobScheduler.stopAll();
+    // Only stop background services that were started on this machine
+    if (this.isWorker) {
+      jobScheduler.stopAll();
 
-    // Stop seat request reminders
-    import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
-      stopSeatRequestReminders();
-    }).catch(() => {});
+      import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+        stopSeatRequestReminders();
+      }).catch(() => {});
 
-    // Stop Luma calendar sync
-    import('./luma/sync.js').then(({ stopLumaSync }) => {
-      stopLumaSync();
-    }).catch(() => {});
+      import('./luma/sync.js').then(({ stopLumaSync }) => {
+        stopLumaSync();
+      }).catch(() => {});
+    }
 
     // Close HTTP server
     if (this.server) {
