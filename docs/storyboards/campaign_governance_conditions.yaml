@@ -112,7 +112,7 @@ phases:
             key: "governance_context"
         expected: |
           Return an approved governance decision with conditions:
-          - decision: approved
+          - status: approved
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required for CTV line items"
           - governance_context: token the buyer passes to create_media_buy
@@ -140,7 +140,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "conditions"

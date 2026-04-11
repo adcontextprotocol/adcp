@@ -235,7 +235,7 @@ phases:
             key: "governance_context"
         expected: |
           Return a denied governance decision:
-          - decision: denied
+          - status: denied
           - findings: array with at least one must-severity finding
             - severity: must
             - code: SPENDING_AUTHORITY_EXCEEDED
@@ -266,7 +266,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "findings"
@@ -300,7 +300,7 @@ phases:
             key: "governance_context"
         expected: |
           Return an approved governance decision with conditions:
-          - decision: approved
+          - status: approved
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required"
             - e.g., "Human review required for any budget increase"
@@ -337,7 +337,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains an approved governance decision"
           - check: field_present
             path: "conditions"

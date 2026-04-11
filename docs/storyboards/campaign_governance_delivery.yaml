@@ -109,7 +109,7 @@ phases:
             key: "governance_context"
         expected: |
           Return an approved governance decision:
-          - decision: approved
+          - status: approved
           - governance_context: token for the media buy
           - monitoring: delivery phase governance is active
 
@@ -135,7 +135,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
 
   - id: delivery_monitoring
@@ -206,7 +206,7 @@ phases:
             key: "governance_context"
         expected: |
           Return a governance decision about the delivery drift:
-          - decision: approved (with rebalancing conditions) or denied (pause recommended)
+          - status: approved (with rebalancing conditions) or denied (pause recommended)
           - findings: should-severity findings noting the drift amounts
             - severity: should
             - code: BUDGET_DRIFT_EXCEEDED
@@ -233,7 +233,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "findings"
