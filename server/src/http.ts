@@ -1979,9 +1979,9 @@ export class HTTPServer {
           await Promise.race([
             queryPromise,
             new Promise((_, reject) => {
-              // Must exceed pool connectionTimeoutMillis (default 5000ms) to avoid
+              // Must exceed pool connectionTimeoutMillis (10s) to avoid
               // false negatives when all connections are busy but the DB is healthy.
-              timer = setTimeout(() => reject(new Error('db health timeout')), 10000);
+              timer = setTimeout(() => reject(new Error('db health timeout')), 12000);
             }),
           ]);
         } finally {

@@ -10,7 +10,6 @@ export interface DatabaseConfig {
   password?: string;
   ssl?: boolean | { rejectUnauthorized: boolean };
   maxPoolSize?: number;
-  idleTimeoutMillis?: number;
   connectionTimeoutMillis?: number;
 }
 
@@ -39,12 +38,9 @@ export function getDatabaseConfig(): DatabaseConfig | null {
     ssl,
     maxPoolSize: process.env.DATABASE_MAX_POOL_SIZE
       ? parseInt(process.env.DATABASE_MAX_POOL_SIZE, 10)
-      : 20,
-    idleTimeoutMillis: process.env.DATABASE_IDLE_TIMEOUT_MS
-      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS, 10)
-      : 30000,
+      : 10,
     connectionTimeoutMillis: process.env.DATABASE_CONNECTION_TIMEOUT_MS
       ? parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS, 10)
-      : 5000,
+      : 10000,
   };
 }
