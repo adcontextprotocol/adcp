@@ -1768,15 +1768,16 @@
         if (!thumb) return;
         const url = input.value.trim();
         if (url && isSafeUrl(url)) {
+          const safeUrl = encodeURI(url);
           if (thumb.tagName === 'IMG') {
-            thumb.src = url;
+            thumb.setAttribute('src', safeUrl);
             thumb.style.display = '';
           } else {
             const img = document.createElement('img');
-            img.src = url;
+            img.setAttribute('src', safeUrl);
             img.className = 'edit-logo-thumb';
             img.alt = 'Preview';
-            img.onerror = function() { this.style.display = 'none'; };
+            img.addEventListener('error', function() { this.style.display = 'none'; });
             thumb.replaceWith(img);
           }
         } else if (thumb.tagName === 'IMG') {
