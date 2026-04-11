@@ -68,12 +68,18 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor conditional governance"
+            - plan_id: "gov_acme_conditional"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
-              custom_policies:
+              objectives: "Acme Outdoor conditional governance — CTV and UGC policies"
+              budget:
+                total: 100000
+                currency: "USD"
+                authority_level: "agent_full"
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
+              conditions:
                 - "CTV buys require weekly delivery reporting"
                 - "UGC placements require brand safety review before go-live"
 
@@ -103,7 +109,7 @@ phases:
         stateful: true
         expected: |
           Return an approved governance decision with conditions:
-          - decision: approved
+          - status: approved
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required for CTV line items"
           - governance_context: token the buyer passes to create_media_buy
@@ -111,13 +117,16 @@ phases:
 
         sample_request:
           plan_id: "gov_acme_conditional"
-          binding:
-            type: "media_buy"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-            total_budget: 40000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 25000
@@ -128,7 +137,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "conditions"

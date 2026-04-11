@@ -316,3 +316,30 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
+
+      - id: report_build_outcome
+        title: "Report creative build outcome"
+        narrative: |
+          After the creative platform responds with a serving tag, the orchestrator
+          reports the outcome to the governance agent. This commits the creative
+          services cost against the plan budget.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "$context.governance_context"
+          purchase_type: "creative_services"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "tag_video_30s_trail_pro_vast"
+            committed_budget: 750
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
