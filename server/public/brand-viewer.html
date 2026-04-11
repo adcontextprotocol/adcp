@@ -1997,7 +1997,11 @@
 
         // Auto-generate edit summary
         const editSummary = generateEditSummary();
-        if (!editFormDirty || editSummary === 'No changes') return;
+        if (!editFormDirty || editSummary === 'No changes') {
+          saveBtn.textContent = 'No changes';
+          setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 1500);
+          return;
+        }
 
         const saveBtn = document.getElementById('save-edit-btn');
         saveBtn.disabled = true;
@@ -2188,12 +2192,19 @@
             return;
           }
 
-          // Reload page to show updated data
-          window.location.reload();
+          // Show success, then reload
+          editFormDirty = false;
+          saveBtn.textContent = 'Saved';
+          saveBtn.style.background = 'var(--color-success-600)';
+          setTimeout(() => window.location.reload(), 800);
         } catch (err) {
-          alert('Failed to save: ' + err.message);
+          saveBtn.style.background = 'var(--color-error-500)';
+          saveBtn.textContent = 'Failed to save';
           saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Changes';
+          setTimeout(() => {
+            saveBtn.textContent = 'Save Changes';
+            saveBtn.style.background = '';
+          }, 2000);
         }
       }
 
