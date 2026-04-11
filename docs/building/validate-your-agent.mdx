@@ -108,14 +108,32 @@ Comply operates in two modes depending on whether your agent implements the opti
 
 ## Validate through Addie
 
-Paste your agent URL in any [Addie](https://agenticadvertising.org) conversation. Addie will:
+[Addie](https://agenticadvertising.org) provides interactive testing without any CLI setup. Paste your agent URL in any conversation to get started.
 
-1. Connect to your agent and discover its tools
-2. Recommend applicable storyboards
-3. Run storyboards interactively with step-by-step coaching
-4. Explain failures and suggest fixes
+### Connectivity check
 
-This is the fastest way to iterate when you're building — no CLI setup needed.
+Ask Addie to check your agent. She'll verify it's online, list its advertised tools, and confirm the transport protocol (MCP or A2A). This is the quickest way to confirm your agent is reachable before running any tests.
+
+### Storyboard coaching
+
+Addie runs the same storyboards as the CLI but walks you through each step interactively. When a step fails, she explains what went wrong, shows the expected vs actual response, and suggests specific code changes. This is the fastest way to iterate when you're building.
+
+### RFP testing
+
+Share a real RFP or campaign brief with Addie. She'll parse it, call your agent's `get_products` with the buyer's actual requirements, and compare results against what your sales team would normally propose. This tests whether your agent can handle real buyer demand — not just synthetic briefs derived from your own inventory description.
+
+### IO execution testing
+
+Share an insertion order with Addie. She'll extract the line items, match them against your agent's product catalog, and test whether `create_media_buy` can execute the deal. The output shows line-by-line matching quality (exact, close, weak, unmapped) and rate comparisons so you can see exactly where execution would break down.
+
+### Recommended testing sequence
+
+1. **Connectivity** — Is the agent online?
+2. **Storyboards** — Does it pass protocol compliance?
+3. **RFP testing** — Can it respond to real buyer demand?
+4. **IO execution** — Can it close real deals?
+
+Each step builds confidence. Storyboards prove protocol compliance. RFP and IO testing prove business readiness.
 
 ## The build-validate-fix loop
 
@@ -131,6 +149,26 @@ The typical development workflow:
 <Info>
 For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
 </Info>
+
+## What changed from the old Comply
+
+If you used `comply()` or `compare_media_kit` before AdCP 3.0, here's what's different:
+
+| Before (2.x) | Now (3.0) |
+|---------------|-----------|
+| Comply selected tests based on `platform.type` (SSP, DSP, ad server, etc.) | Comply discovers your agent's tools via `tools/list` and selects matching **storyboards** automatically |
+| `compare_media_kit` generated synthetic briefs from your own inventory | `test_rfp_response` and `test_io_execution` test against **real buyer artifacts** (RFPs and IOs) |
+| Single pass/fail per platform type | Per-step results across multiple storyboards with specific failure messages |
+| No lifecycle testing (creative approval, budget depletion, etc.) | Optional [compliance test controller](/docs/building/implementation/comply-test-controller) enables deterministic lifecycle testing |
+| Testing required CLI setup | Addie provides interactive testing with no setup — paste a URL and go |
+
+### Do I still need Comply?
+
+Yes — `adcp comply` is the single command that runs all applicable storyboards for your agent. It's the same concept, but the underlying mechanism changed from platform-type matching to tool-based storyboard selection. If your agent exposes `get_products` and `create_media_buy`, comply will automatically run the media buy storyboards. If it exposes `sync_creatives`, it'll run the creative lifecycle storyboard. No configuration needed.
+
+### What about compare_media_kit?
+
+`compare_media_kit` is deprecated. It tested your agent against briefs derived from your own inventory description — the inputs came from the same source as the outputs, so passing didn't prove much. Use `test_rfp_response` (discovery testing against real RFPs) and `test_io_execution` (execution testing against real IOs) instead. Both are available through Addie.
 
 ## CLI reference
 
