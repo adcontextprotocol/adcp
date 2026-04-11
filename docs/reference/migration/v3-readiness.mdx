@@ -1,16 +1,16 @@
 ---
 title: "v3 readiness checklist"
 sidebarTitle: Readiness checklist
-description: "The 8 minimum requirements for seller agents to pass AdCP v3 integration testing. Comply testing will fail without these."
+description: "The 8 minimum requirements for seller agents to pass AdCP v3 storyboard testing."
 "og:title": "AdCP — v3 readiness checklist"
 ---
 
 # v3 readiness checklist
 
-AdCP comply testing requires v3 protocol support. Agents that only support v2 will fail. This page covers the minimum changes to unblock integration testing with v3 buyers — not the full migration. For the complete list, see the [migration guide](/docs/reference/migration).
+AdCP storyboard testing requires v3 protocol support. Agents that only support v2 will fail. This page covers the minimum changes to unblock integration testing with v3 buyers — not the full migration. For the complete list, see the [migration guide](/docs/reference/migration).
 
 <Warning>
-Comply testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/docs/reference/migration).
+Storyboard testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/docs/reference/migration).
 </Warning>
 
 ---
@@ -19,7 +19,7 @@ Comply testing will hard-fail any agent that does not declare v3 support. Comple
 
 v3 buyers call this task first to discover what your agent supports. Without it, buyers cannot determine your protocol version, supported channels, pricing models, or features.
 
-This is the single most important change — it's how buyers (and comply testing) distinguish v3 agents from v2.
+This is the single most important change — it's how buyers (and storyboard testing) distinguish v3 agents from v2.
 
 Return at minimum: `major_versions: [3]`, `supported_protocols`, and your `features` object.
 
@@ -157,6 +157,6 @@ v3 buyers establish billing relationships before placing buys. Your agent must a
 
 ## After these 8 items
 
-Once these are in place, run comply testing against your agent. The existing tracks (products, media buy, creative) validate v3 schemas in detail and will surface any remaining field-level issues.
+Once these are in place, run storyboard testing against your agent. The existing tracks (products, media buy, creative) validate v3 schemas in detail and will surface any remaining field-level issues.
 
 For the complete migration — including geo targeting, optimization goals, signals, audiences, and attribution — see the [full migration guide](/docs/reference/migration).

@@ -1,35 +1,26 @@
 ---
 title: Validate Your Agent
 sidebarTitle: Validate Your Agent
-description: "Test your AdCP agent with storyboards and compliance checks — from the CLI or through Addie."
+description: "Test your AdCP agent with storyboards — from the CLI or through Addie."
 "og:title": "AdCP — Validate Your Agent"
 ---
 
-Once your agent is running, validate it before going live. AdCP provides two complementary validation tools:
+Once your agent is running, validate it before going live. Storyboards exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
 
-- **Storyboards** exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
-- **Comply** runs all applicable storyboards at once and produces an overall compliance assessment.
-
-Both are available from the command line and interactively through [Addie](https://agenticadvertising.org).
+Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org).
 
 ## Setup
-
-Install the SDK, which includes the `adcp` CLI:
-
-```bash
-npm install @adcp/client
-```
 
 Save your agent as a named alias so you can reference it by name:
 
 ```bash
-adcp --save-auth my-agent http://localhost:3001/mcp
+npx adcp --save-auth my-agent http://localhost:3001/mcp
 ```
 
 This stores the alias in `~/.adcp/config.json`. You only need to do this once. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents — no setup needed.
 
 <Tip>
-You can also pass a URL directly instead of an alias: `adcp storyboard run http://localhost:3001/mcp media_buy_seller`
+You can also pass a URL directly instead of an alias: `npx adcp storyboard run http://localhost:3001/mcp media_buy_seller`
 </Tip>
 
 ## Run a storyboard
@@ -37,7 +28,7 @@ You can also pass a URL directly instead of an alias: `adcp storyboard run http:
 ### 1. List available storyboards
 
 ```bash
-adcp storyboard list
+npx adcp storyboard list
 ```
 
 Each storyboard targets a specific agent type. The [Build an Agent](/docs/building/build-an-agent) page maps skills to their matching storyboards.
@@ -45,7 +36,7 @@ Each storyboard targets a specific agent type. The [Build an Agent](/docs/buildi
 ### 2. Preview what a storyboard tests
 
 ```bash
-adcp storyboard show media_buy_seller
+npx adcp storyboard show media_buy_seller
 ```
 
 This shows the phases, steps, and validations without running anything.
@@ -53,7 +44,7 @@ This shows the phases, steps, and validations without running anything.
 ### 3. Run the storyboard
 
 ```bash
-adcp storyboard run my-agent media_buy_seller
+npx adcp storyboard run my-agent media_buy_seller
 ```
 
 Output shows each step with pass/fail:
@@ -79,27 +70,27 @@ Pass `--json` for machine-readable results. Pass `--debug` to see full request/r
 If a step fails, run it individually:
 
 ```bash
-adcp storyboard step my-agent media_buy_seller create_media_buy --json --debug
+npx adcp storyboard step my-agent media_buy_seller create_media_buy --json --debug
 ```
 
 Pass `--context` to provide state from earlier steps (account IDs, product IDs):
 
 ```bash
-adcp storyboard step my-agent media_buy_seller get_products \
+npx adcp storyboard step my-agent media_buy_seller get_products \
   --context '{"account_id":"acct-123"}' --json
 ```
 
-## Run a compliance check
+### 5. Run all storyboards
 
-Comply runs all applicable storyboards based on the tools your agent exposes:
+Run without a storyboard ID to test everything. The CLI discovers your agent's tools via `tools/list` and selects matching storyboards automatically:
 
 ```bash
-adcp comply my-agent
+npx adcp storyboard run my-agent
 ```
 
-This discovers your agent's tools via `tools/list`, selects matching storyboards, runs them, and reports results. Add `--json` for structured output.
+Add `--json` for structured output.
 
-Comply operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/implementation/comply-test-controller):
+The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/implementation/comply-test-controller):
 
 | Mode | When | What it tests |
 |------|------|---------------|
@@ -141,47 +132,26 @@ The typical development workflow:
 
 1. **Build** — Point a coding agent at a [skill file](/docs/building/build-an-agent) to generate your agent
 2. **Run** — Start the agent locally (`npx tsx agent.ts`)
-3. **Validate** — Run the matching storyboard (`adcp storyboard run my-agent media_buy_seller`)
+3. **Validate** — Run the matching storyboard (`npx adcp storyboard run my-agent media_buy_seller`)
 4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
 5. **Repeat** — Run the storyboard again until all steps pass
-6. **Comply** — Run `adcp comply my-agent` for a full assessment before going live
+6. **Full check** — Run `npx adcp storyboard run my-agent` (no storyboard ID) for a full assessment before going live
 
 <Info>
 For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
 </Info>
 
-## What changed from the old Comply
-
-If you used `comply()` or `compare_media_kit` before AdCP 3.0, here's what's different:
-
-| Before (2.x) | Now (3.0) |
-|---------------|-----------|
-| Comply selected tests based on `platform.type` (SSP, DSP, ad server, etc.) | Comply discovers your agent's tools via `tools/list` and selects matching **storyboards** automatically |
-| `compare_media_kit` generated synthetic briefs from your own inventory | `test_rfp_response` and `test_io_execution` test against **real buyer artifacts** (RFPs and IOs) |
-| Single pass/fail per platform type | Per-step results across multiple storyboards with specific failure messages |
-| No lifecycle testing (creative approval, budget depletion, etc.) | Optional [compliance test controller](/docs/building/implementation/comply-test-controller) enables deterministic lifecycle testing |
-| Testing required CLI setup | Addie provides interactive testing with no setup — paste a URL and go |
-
-### Do I still need Comply?
-
-Yes — `adcp comply` is the single command that runs all applicable storyboards for your agent. It's the same concept, but the underlying mechanism changed from platform-type matching to tool-based storyboard selection. If your agent exposes `get_products` and `create_media_buy`, comply will automatically run the media buy storyboards. If it exposes `sync_creatives`, it'll run the creative lifecycle storyboard. No configuration needed.
-
-### What about compare_media_kit?
-
-`compare_media_kit` is deprecated. It tested your agent against briefs derived from your own inventory description — the inputs came from the same source as the outputs, so passing didn't prove much. Use `test_rfp_response` (discovery testing against real RFPs) and `test_io_execution` (execution testing against real IOs) instead. Both are available through Addie.
-
 ## CLI reference
 
 | Command | Description |
 |---------|-------------|
-| `adcp storyboard list` | List all available storyboards |
-| `adcp storyboard show <id>` | Preview storyboard structure |
-| `adcp storyboard run <agent> <id>` | Run full storyboard |
-| `adcp storyboard step <agent> <id> <step>` | Run a single step |
-| `adcp comply <agent>` | Run compliance assessment |
-| `adcp <agent> [tool] [payload]` | Call any tool directly |
-| `adcp --save-auth <alias> <url>` | Save agent alias |
-| `adcp --list-agents` | List saved aliases |
+| `npx adcp storyboard list` | List all available storyboards |
+| `npx adcp storyboard show <id>` | Preview storyboard structure |
+| `npx adcp storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
+| `npx adcp storyboard step <agent> <id> <step>` | Run a single step |
+| `npx adcp <agent> [tool] [payload]` | Call any tool directly |
+| `npx adcp --save-auth <alias> <url>` | Save agent alias |
+| `npx adcp --list-agents` | List saved aliases |
 
 All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
 

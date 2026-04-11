@@ -2153,11 +2153,6 @@ export function createCertificationToolHandlers(
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-Install the SDK:
-\`\`\`
-npm install @adcp/client
-\`\`\`
-
 Tell ${codingTool}: "Build a buyer agent using @adcp/client that connects to the public test agent (test-mcp). It should discover products with get_products, create a media buy with create_media_buy, and sync creatives. Here is the campaign spec: ${learnerSpec}"
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
@@ -2173,7 +2168,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-adcp test-mcp get_products '{"brief":"<your campaign brief>"}'
+npx adcp test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
@@ -2229,11 +2224,11 @@ DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill
     if (phase === 'validate') {
       const storyboardNote = moduleId === 'B4'
         ? 'The storyboard for B4 is `media_buy_seller`.'
-        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`adcp storyboard list\` to see all options.`;
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx adcp storyboard list\` to see all options.`;
 
       const storyboardCmd = moduleId === 'B4'
-        ? 'adcp storyboard run my-agent media_buy_seller'
-        : 'adcp storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx adcp storyboard run my-agent media_buy_seller'
+        : 'npx adcp storyboard run my-agent <STORYBOARD_NAME>';
 
       const placeholderNote = moduleId !== 'B4'
         ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
@@ -2245,14 +2240,9 @@ ${storyboardNote}${placeholderNote}
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-Install the CLI if you haven't already:
-\`\`\`
-npm install @adcp/client
-\`\`\`
-
 Save your agent and run the storyboard:
 \`\`\`
-adcp --save-auth my-agent http://localhost:3001/mcp
+npx adcp --save-auth my-agent http://localhost:3001/mcp
 ${storyboardCmd}
 \`\`\`
 
@@ -2268,8 +2258,8 @@ DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JS
 
     if (phase === 'extend') {
       const extendCmd = moduleId === 'B4'
-        ? 'adcp storyboard run my-agent media_buy_seller'
-        : 'adcp storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx adcp storyboard run my-agent media_buy_seller'
+        : 'npx adcp storyboard run my-agent <STORYBOARD_NAME>';
       const extendNote = moduleId !== 'B4'
         ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
         : '';

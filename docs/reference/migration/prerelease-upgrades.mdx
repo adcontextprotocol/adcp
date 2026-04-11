@@ -16,7 +16,7 @@ If you adopted a prerelease version, review the relevant section below before up
 | Area | rc.3 | rc.4 | What to do |
 |---|---|---|---|
 | Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. See details below. |
-| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Buyers should check for it before running deterministic storyboard steps. |
+| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Storyboard runners check for it before running deterministic steps. |
 
 ### Media buy status migration
 
