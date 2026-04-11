@@ -2094,6 +2094,23 @@ export class HTTPServer {
       res.status(checks.database ? 200 : 503).json(body);
     });
 
+    // Job scheduler status — shows which jobs are executing, last run times,
+    // memory usage, and failure counts. Worker-only data but served on all
+    // machines so admins can hit any host.
+    this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
+      const mem = process.memoryUsage();
+      res.json({
+        processRole: (await import('./logger.js')).processRole,
+        uptime: Math.round(process.uptime()),
+        memory: {
+          rss: `${Math.round(mem.rss / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
+        },
+        jobs: jobScheduler.getStatus(),
+      });
+    });
+
     // Homepage route - serve different homepage based on host
     // agenticadvertising.org (beta): Org-focused homepage
     // agenticadvertising.org (production): Org-focused homepage
