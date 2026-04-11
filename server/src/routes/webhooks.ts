@@ -940,6 +940,13 @@ async function handleLumaGuestCreated(payload: LumaWebhookPayload): Promise<void
     luma_guest_id: guest.api_id,
   });
 
+  // Add to invite list so they appear in our admin UI and can access invite-only events
+  try {
+    await eventsDb.addInvites(event.id, [guest.user_email]);
+  } catch {
+    // Duplicate invite — safe to ignore
+  }
+
   logger.info({
     eventId: event.id,
     eventTitle: event.title,
@@ -1111,12 +1118,14 @@ export function createWebhooksRouter(): Router {
 
     // Verify webhook authenticity via signing secret
     const LUMA_WEBHOOK_SECRET = process.env.LUMA_WEBHOOK_SECRET;
-    if (LUMA_WEBHOOK_SECRET) {
-      const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
-      if (providedSecret !== LUMA_WEBHOOK_SECRET) {
-        logger.warn('Luma webhook rejected: invalid signing secret');
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+    if (!LUMA_WEBHOOK_SECRET) {
+      logger.warn('Luma webhook rejected: LUMA_WEBHOOK_SECRET not configured');
+      return res.status(503).json({ error: 'Webhook validation not configured' });
+    }
+    const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
+    if (providedSecret !== LUMA_WEBHOOK_SECRET) {
+      logger.warn('Luma webhook rejected: invalid signing secret');
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     try {

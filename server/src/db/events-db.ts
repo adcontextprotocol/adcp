@@ -289,9 +289,12 @@ export class EventsDatabase {
       : '';
 
     let sql = `
-      SELECT * FROM events
+      SELECT e.*,
+        (SELECT COUNT(*) FROM event_registrations er
+         WHERE er.event_id = e.id AND er.registration_status = 'registered')::int as registration_count
+      FROM events e
       ${whereClause}
-      ORDER BY start_time ASC
+      ORDER BY e.start_time ASC
     `;
 
     if (options.limit) {
@@ -367,6 +370,18 @@ export class EventsDatabase {
         [eventId, userEmail]
       );
       if (inviteResult.rows.length > 0) return true;
+    }
+
+    // Check if user is registered (or waitlisted) for this event
+    if (userEmail) {
+      const regResult = await query(
+        `SELECT 1 FROM event_registrations
+         WHERE event_id = $1 AND LOWER(email) = LOWER($2)
+           AND registration_status IN ('registered', 'waitlisted')
+         LIMIT 1`,
+        [eventId, userEmail]
+      );
+      if (regResult.rows.length > 0) return true;
     }
 
     // Load access_rules
@@ -1102,6 +1117,21 @@ export class EventsDatabase {
     );
 
     return result.rows.length > 0;
+  }
+
+  /**
+   * Move published events to completed after their end time has passed.
+   * Returns the list of events that were auto-completed.
+   */
+  async autoCompleteExpiredEvents(): Promise<Array<{ id: string; title: string }>> {
+    const result = await query<{ id: string; title: string }>(
+      `UPDATE events
+       SET status = 'completed', updated_at = NOW()
+       WHERE status = 'published'
+         AND end_time < NOW() - INTERVAL '2 hours'
+       RETURNING id, title`
+    );
+    return result.rows;
   }
 }
 
