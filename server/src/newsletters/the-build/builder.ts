@@ -432,8 +432,14 @@ async function buildEventsSection(): Promise<BuildEvent[]> {
       const hasRecap = !!row.recap_html;
       let recapExcerpt: string | undefined;
       if (hasRecap && row.recap_html) {
-        // Strip HTML tags for a plain text excerpt
-        recapExcerpt = row.recap_html.replace(/<[^>]+>/g, '').slice(0, 200).trim();
+        // Strip HTML tags iteratively for a plain text excerpt
+        let text = row.recap_html;
+        let prev = '';
+        while (text !== prev) {
+          prev = text;
+          text = text.replace(/<[^>]+>/g, '');
+        }
+        recapExcerpt = text.slice(0, 200).trim();
       }
       return {
         id: `event_${row.id}`,

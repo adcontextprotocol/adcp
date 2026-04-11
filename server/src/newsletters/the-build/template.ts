@@ -20,8 +20,9 @@ function markdownToHtml(md: string): string {
   return escapeHtml(md)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => {
-      const decoded = url.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-      if (!/^https?:\/\//i.test(decoded)) return text as string;
+      // After escapeHtml, "https://" stays as "https://" (no special chars).
+      // Reject anything that doesn't start with the escaped http(s) prefix.
+      if (!/^https?:\/\//i.test(url)) return text as string;
       return `<a href="${url}" style="color: ${BUILD_PALETTE.primary}; text-decoration: none;">${text}</a>`;
     })
     .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;">$1</code>')
