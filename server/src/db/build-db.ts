@@ -23,9 +23,26 @@ export interface BuildContent {
   coverImageUrl?: string;
   dateFlavor?: string;
   generatedAt: string;
+  /** Section keys to hide from rendering */
+  hiddenSections?: string[];
+  /** Admin-added custom sections */
+  customSections?: import('../newsletters/config.js').CustomSection[];
+  /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
+  pastedContent?: string;
+  /** Available content to cherry-pick from, keyed by section */
+  candidatePool?: {
+    decisions?: BuildDecision[];
+    whatShipped?: BuildRelease[];
+    helpNeeded?: BuildHelpItem[];
+    contributorSpotlight?: BuildContributor[];
+    events?: BuildEvent[];
+  };
+  /** IDs of items the editor dismissed (won't reappear on regenerate) */
+  dismissedIds?: string[];
 }
 
 export interface BuildDecision {
+  id: string;
   workingGroup: string;
   workingGroupId: string;
   title: string;
@@ -36,6 +53,7 @@ export interface BuildDecision {
 }
 
 export interface BuildRelease {
+  id: string;
   repo: string;
   version: string;
   releaseDate: string;
@@ -53,6 +71,7 @@ export interface BuildDeepDive {
 }
 
 export interface BuildHelpItem {
+  id: string;
   title: string;
   url: string;
   source: string;
@@ -61,10 +80,24 @@ export interface BuildHelpItem {
 }
 
 export interface BuildContributor {
+  id: string;
   name: string;
   handle?: string;
   contribution: string;
   url?: string;
+}
+
+export interface BuildEvent {
+  id: string;
+  title: string;
+  slug: string;
+  startTime: string;
+  endTime?: string;
+  status: 'upcoming' | 'completed';
+  hasRecap: boolean;
+  recapExcerpt?: string;
+  recapVideoUrl?: string;
+  previouslyIncluded?: boolean;
 }
 
 export interface BuildEditEntry {

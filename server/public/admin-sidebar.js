@@ -43,8 +43,8 @@
       {
         label: 'Newsletters',
         items: [
-          { href: '/admin/digest', label: 'The Prompt', icon: '📨' },
-          { href: '/admin/the-build', label: 'The Build', icon: '🔧' },
+          { href: '/admin/newsletters/the_prompt', label: 'The Prompt', icon: '📨' },
+          { href: '/admin/newsletters/the_build', label: 'The Build', icon: '🔧' },
           { href: '/admin/email', label: 'Email Settings', icon: '📧' },
         ]
       },
