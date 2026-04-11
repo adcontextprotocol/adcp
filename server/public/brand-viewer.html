@@ -1240,12 +1240,8 @@
             <button type="button" onclick="addPropertyField()" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Property</button>
           </details>
 
-          <!-- Agents -->
-          <details id="edit-section-agents" class="edit-section-group">
-            <summary>Agents</summary>
-            <div id="edit-agents-container"></div>
-            <button type="button" onclick="addAgentField()" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Agent</button>
-          </details>
+          <!-- Agents managed via member dashboard -->
+          <div id="edit-agents-container" class="hidden"></div>
 
           <!-- Logos -->
           <details id="edit-section-logos" class="edit-section-group">
@@ -1622,10 +1618,6 @@
         document.getElementById('edit-properties-container').innerHTML = '';
         (manifest.properties || []).forEach(p => addPropertyField(p));
 
-        // Pre-fill agents
-        document.getElementById('edit-agents-container').innerHTML = '';
-        (manifest.agents || []).forEach(a => addAgentField(a));
-
         // Pre-fill logos
         document.getElementById('edit-logos-container').innerHTML = '';
         (manifest.logos || []).forEach(l => addLogoField(l));
@@ -1642,7 +1634,6 @@
         document.getElementById('edit-brand-url').value = manifest.url || '';
         // Auto-open sections with existing data
         document.getElementById('edit-section-properties').open = !!(manifest.properties?.length);
-        document.getElementById('edit-section-agents').open = !!(manifest.agents?.length);
         document.getElementById('edit-section-logos').open = !!(manifest.logos?.length);
         document.getElementById('edit-section-legal').open = !!(manifest.contact || manifest.privacy_policy_url || manifest.disclaimers?.length);
         document.getElementById('edit-section-additional').open = !!(manifest.target_audience || manifest.url);
@@ -1831,7 +1822,6 @@
       function updateSectionCounts() {
         const counts = {
           properties: document.querySelectorAll('#edit-properties-container > div').length,
-          agents: document.querySelectorAll('#edit-agents-container > div').length,
           logos: document.querySelectorAll('#edit-logos-container > div').length,
           legal: document.querySelectorAll('#edit-disclaimers-container > div').length +
             (document.getElementById('edit-contact-name')?.value.trim() ? 1 : 0) +
@@ -1870,22 +1860,6 @@
             msg.textContent = 'Property needs both a type and identifier';
             row.appendChild(msg);
             errors.push(`Property ${i + 1}: missing ${!type ? 'type' : 'identifier'}`);
-          }
-        });
-
-        // Validate agents: need type + url + id
-        document.querySelectorAll('#edit-agents-container > div').forEach((row, i) => {
-          const type = row.querySelector('.agent-type')?.value;
-          const url = row.querySelector('.agent-url')?.value.trim();
-          const id = row.querySelector('.agent-id')?.value.trim();
-          if ((type || url || id) && !(type && url && id)) {
-            row.classList.add('edit-row-invalid');
-            const missing = [!type && 'type', !url && 'URL', !id && 'ID'].filter(Boolean).join(', ');
-            const msg = document.createElement('div');
-            msg.className = 'edit-row-error';
-            msg.textContent = `Agent needs type, URL, and ID — missing: ${missing}`;
-            row.appendChild(msg);
-            errors.push(`Agent ${i + 1}: missing ${missing}`);
           }
         });
 
@@ -1942,7 +1916,6 @@
         // Array fields
         const arrayFields = [
           ['#edit-properties-container > div', 'properties', 'properties'],
-          ['#edit-agents-container > div', 'agents', 'agents'],
           ['#edit-logos-container > div', 'logos', 'logos'],
           ['#edit-disclaimers-container > div', 'disclaimers', 'disclaimers'],
         ];
@@ -2063,20 +2036,7 @@
         });
         if (properties.length > 0 || manifest.properties?.length) body.brand_manifest.properties = properties;
 
-        // Collect agents
-        const agents = [];
-        document.querySelectorAll('#edit-agents-container > div').forEach(row => {
-          const type = row.querySelector('.agent-type')?.value;
-          const url = row.querySelector('.agent-url')?.value.trim();
-          const id = row.querySelector('.agent-id')?.value.trim();
-          if (type && url && id) {
-            const agent = { type, url, id };
-            const desc = row.querySelector('.agent-desc')?.value.trim();
-            if (desc) agent.description = desc;
-            agents.push(agent);
-          }
-        });
-        if (agents.length > 0 || manifest.agents?.length) body.brand_manifest.agents = agents;
+        // Agents are managed via the member dashboard, preserved from existing manifest
 
         // Collect logos
         const logos = [];
