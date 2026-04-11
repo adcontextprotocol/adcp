@@ -379,7 +379,29 @@ describe('organization-db', () => {
       })).toBe('company_standard');
     });
 
-    test('returns null when membership_tier is null and subscription is not active', async () => {
+    test('infers tier from past_due subscription when membership_tier is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'past_due',
+        subscription_amount: 25000,
+        subscription_interval: 'year',
+        is_personal: true,
+      })).toBe('individual_professional');
+    });
+
+    test('infers tier from trialing subscription when membership_tier is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'trialing',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('returns null when membership_tier is null and subscription is canceled', async () => {
       const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
       expect(resolveMembershipTier({
         membership_tier: null,
@@ -390,10 +412,115 @@ describe('organization-db', () => {
       })).toBeNull();
     });
 
+    test('returns null when membership_tier is null and subscription is incomplete_expired', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'incomplete_expired',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBeNull();
+    });
+
+    test('returns null when membership_tier is null and subscription is unpaid', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'unpaid',
+        subscription_amount: 25000,
+        subscription_interval: 'year',
+        is_personal: true,
+      })).toBeNull();
+    });
+
+    test('prefers stored lookup key over amount inference when membership_tier is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_price_lookup_key: 'aao_membership_professional_250',
+        subscription_status: 'active',
+        subscription_amount: 5000, // amount says Explorer, but lookup key says Professional
+        subscription_interval: 'year',
+        is_personal: true,
+      })).toBe('individual_professional');
+    });
+
+    test('falls back to amount inference when lookup key is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_price_lookup_key: null,
+        subscription_status: 'active',
+        subscription_amount: 25000,
+        subscription_interval: 'year',
+        is_personal: true,
+      })).toBe('individual_professional');
+    });
+
     test('returns null for null/undefined org', async () => {
       const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
       expect(resolveMembershipTier(null)).toBeNull();
       expect(resolveMembershipTier(undefined)).toBeNull();
+    });
+  });
+
+  describe('buildSubscriptionUpdate', () => {
+    const makeSubscription = (overrides: any = {}) => ({
+      status: 'active',
+      id: 'sub_123',
+      current_period_end: 1700000000,
+      canceled_at: null,
+      items: { data: [{ price: {
+        unit_amount: 25000,
+        currency: 'usd',
+        recurring: { interval: 'year' },
+        id: 'price_123',
+        product: { id: 'prod_123', name: 'Professional Membership' },
+        lookup_key: 'aao_membership_professional_250',
+      } }] },
+      ...overrides,
+    });
+
+    test('resolves tier from lookup key', async () => {
+      const { buildSubscriptionUpdate } = await import('../../server/src/db/organization-db.js');
+      const result = buildSubscriptionUpdate(makeSubscription(), true);
+      expect(result.membership_tier).toBe('individual_professional');
+      expect(result.subscription_price_lookup_key).toBe('aao_membership_professional_250');
+      expect(result.subscription_product_id).toBe('prod_123');
+      expect(result.subscription_product_name).toBe('Professional Membership');
+      expect(result.subscription_price_id).toBe('price_123');
+    });
+
+    test('falls back to amount inference when no lookup key', async () => {
+      const { buildSubscriptionUpdate } = await import('../../server/src/db/organization-db.js');
+      const sub = makeSubscription();
+      sub.items.data[0].price.lookup_key = null;
+      const result = buildSubscriptionUpdate(sub, true);
+      expect(result.membership_tier).toBe('individual_professional');
+      expect(result.subscription_price_lookup_key).toBeNull();
+    });
+
+    test('returns null tier for canceled subscription', async () => {
+      const { buildSubscriptionUpdate } = await import('../../server/src/db/organization-db.js');
+      const result = buildSubscriptionUpdate(makeSubscription({ status: 'canceled' }), true);
+      expect(result.membership_tier).toBeNull();
+      expect(result.subscription_status).toBe('canceled');
+    });
+
+    test('preserves tier for past_due subscription', async () => {
+      const { buildSubscriptionUpdate } = await import('../../server/src/db/organization-db.js');
+      const result = buildSubscriptionUpdate(makeSubscription({ status: 'past_due' }), true);
+      expect(result.membership_tier).toBe('individual_professional');
+    });
+
+    test('handles string product ref (unexpanded)', async () => {
+      const { buildSubscriptionUpdate } = await import('../../server/src/db/organization-db.js');
+      const sub = makeSubscription();
+      sub.items.data[0].price.product = 'prod_456';
+      const result = buildSubscriptionUpdate(sub, true);
+      expect(result.subscription_product_id).toBe('prod_456');
+      expect(result.subscription_product_name).toBeNull();
     });
   });
 

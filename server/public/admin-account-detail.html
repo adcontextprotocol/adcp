@@ -658,6 +658,7 @@
             <h1>
               <span id="accountName">Loading...</span>
               <span id="memberBadge" class="member-badge prospect">Prospect</span>
+              <span id="membershipTierBadge" class="member-badge" style="display: none; background: var(--color-gray-200); color: var(--color-text-heading);"></span>
               <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
             </h1>
             <div id="inheritedMembershipNotice" style="display: none; margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-brand); font-weight: 500;"></div>
@@ -1513,6 +1514,20 @@
           (a.effective_membership.hierarchy_chain?.length > 1
             ? ` <span style="color: var(--color-text-secondary); font-size: var(--text-xs);">(${a.effective_membership.hierarchy_chain.join(' → ')})</span>`
             : '');
+      }
+
+      // Membership tier badge
+      const tierBadge = document.getElementById('membershipTierBadge');
+      const TIER_LABELS = {
+        individual_professional: 'Professional',
+        individual_academic: 'Explorer',
+        company_standard: 'Builder',
+        company_icl: 'Partner',
+        company_leader: 'Leader',
+      };
+      if (a.membership_tier && TIER_LABELS[a.membership_tier]) {
+        tierBadge.textContent = TIER_LABELS[a.membership_tier];
+        tierBadge.style.display = '';
       }
 
       // Header subtitle (company type, revenue tier, employees, location)
