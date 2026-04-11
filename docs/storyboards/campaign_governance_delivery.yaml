@@ -66,12 +66,18 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor delivery governance"
+            - plan_id: "gov_acme_delivery"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
-              reallocation_threshold: 0.20
+              objectives: "Acme Outdoor delivery governance — 20% drift threshold"
+              budget:
+                total: 100000
+                currency: "USD"
+                authority_level: "agent_full"
+                reallocation_threshold: 0.20
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
               conditions:
                 - "Re-evaluate governance if any line item drifts >20% from plan"
 
@@ -100,19 +106,22 @@ phases:
         stateful: true
         expected: |
           Return an approved governance decision:
-          - decision: approved
+          - status: approved
           - governance_context: token for the media buy
           - monitoring: delivery phase governance is active
 
         sample_request:
           plan_id: "gov_acme_delivery"
-          binding:
-            type: "media_buy"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-            total_budget: 40000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 20000
@@ -123,7 +132,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
 
   - id: delivery_monitoring
@@ -191,7 +200,7 @@ phases:
         stateful: true
         expected: |
           Return a governance decision about the delivery drift:
-          - decision: approved (with rebalancing conditions) or denied (pause recommended)
+          - status: approved (with rebalancing conditions) or denied (pause recommended)
           - findings: should-severity findings noting the drift amounts
             - severity: should
             - code: BUDGET_DRIFT_EXCEEDED
@@ -200,31 +209,25 @@ phases:
 
         sample_request:
           plan_id: "gov_acme_delivery"
-          governance_phase: "delivery"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"
-          binding:
-            type: "media_buy"
-            account:
-              brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-            media_buy_id: "mb_acme_q2_2026"
-            delivery_evidence:
-              packages:
-                - product_id: "sports_ctv_q2"
-                  budget: 20000
-                  spend_to_date: 14000
-                  flight_progress: 0.50
-                - product_id: "outdoor_video_q2"
-                  budget: 20000
-                  spend_to_date: 6000
-                  flight_progress: 0.50
+          delivery_metrics:
+            reporting_period:
+              start: "2026-04-01T00:00:00Z"
+              end: "2026-05-15T23:59:59Z"
+            spend: 20000
+            cumulative_spend: 20000
+            impressions: 2500000
+            cumulative_impressions: 2500000
+            pacing: "ahead"
 
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "findings"

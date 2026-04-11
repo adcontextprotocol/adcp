@@ -629,6 +629,127 @@ components:
         - domain
         - authorized_agents
         - sales_agents_claiming
+    OperatorLookupResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: pubmatic.com
+        member:
+          type:
+            - object
+            - "null"
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+                enum:
+                  - creative
+                  - signals
+                  - sales
+                  - governance
+                  - si
+                  - buyer
+                  - unknown
+              authorized_by:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    publisher_domain:
+                      type: string
+                    authorized_for:
+                      type: string
+                    source:
+                      type: string
+                      enum:
+                        - adagents_json
+                        - agent_claim
+                  required:
+                    - publisher_domain
+                    - source
+            required:
+              - url
+              - name
+              - type
+              - authorized_by
+      required:
+        - domain
+        - member
+        - agents
+    PublisherLookupResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: voxmedia.com
+        member:
+          type:
+            - object
+            - "null"
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        adagents_valid:
+          type:
+            - boolean
+            - "null"
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              name:
+                type: string
+              identifiers:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyIdentifier"
+              tags:
+                type: array
+                items:
+                  type: string
+        authorized_agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              authorized_for:
+                type: string
+              source:
+                type: string
+                enum:
+                  - adagents_json
+                  - agent_claim
+            required:
+              - url
+              - source
+      required:
+        - domain
+        - member
+        - adagents_valid
+        - properties
+        - authorized_agents
     PublisherPropertySelector:
       type: object
       properties:
@@ -2079,6 +2200,60 @@ paths:
                   - agent_url
                   - domains
                   - count
+  /api/registry/operator:
+    get:
+      operationId: lookupOperator
+      summary: Operator lookup
+      description: Given a domain, returns the agents this entity operates and which publishers trust them.
+      tags:
+        - Lookups & Authorization
+      parameters:
+        - schema:
+            type: string
+            example: pubmatic.com
+          required: true
+          name: domain
+          in: query
+      responses:
+        "200":
+          description: Operator lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorLookupResult"
+        "400":
+          description: Missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/publisher:
+    get:
+      operationId: lookupPublisher
+      summary: Publisher lookup
+      description: Given a domain, returns the inventory this entity publishes and which agents it authorizes.
+      tags:
+        - Lookups & Authorization
+      parameters:
+        - schema:
+            type: string
+            example: voxmedia.com
+          required: true
+          name: domain
+          in: query
+      responses:
+        "200":
+          description: Publisher lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublisherLookupResult"
+        "400":
+          description: Missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -3400,6 +3575,74 @@ paths:
                     type: string
                     enum:
                       - Crawl request accepted
+                  domain:
+                    type: string
+                required:
+                  - message
+                  - domain
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
+  /api/registry/brand-crawl-request:
+    post:
+      operationId: requestBrandCrawl
+      summary: Request brand.json re-crawl
+      description: |-
+        Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: examplebrand.com
+                  description: Domain to re-crawl brand.json for
+              required:
+                - domain
+      responses:
+        "202":
+          description: Brand crawl request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Brand crawl request accepted
                   domain:
                     type: string
                 required:

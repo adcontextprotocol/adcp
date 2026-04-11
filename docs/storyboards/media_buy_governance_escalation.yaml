@@ -145,13 +145,18 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor Q2 Governance"
+            - plan_id: "gov_acme_q2_2026"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
-              per_transaction_threshold: 20000
-              escalation_path: "human_review"
+              objectives: "Acme Outdoor Q2 — agent-limited with human escalation"
+              budget:
+                total: 200000
+                currency: "USD"
+                authority_level: "agent_limited"
+                per_seller_max_pct: 60
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
               conditions:
                 - "Weekly reporting required for buys over $10K"
                 - "No single-seller concentration above 60% of total budget"
@@ -227,7 +232,7 @@ phases:
         stateful: true
         expected: |
           Return a denied governance decision:
-          - decision: denied
+          - status: denied
           - findings: array with at least one must-severity finding
             - severity: must
             - code: SPENDING_AUTHORITY_EXCEEDED
@@ -238,13 +243,16 @@ phases:
 
         sample_request:
           plan_id: "gov_acme_q2_2026"
-          binding:
-            type: "media_buy"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-            total_budget: 50000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
@@ -255,7 +263,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_present
             path: "findings"
@@ -286,7 +294,7 @@ phases:
         stateful: true
         expected: |
           Return an approved governance decision with conditions:
-          - decision: approved
+          - status: approved
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required"
             - e.g., "Human review required for any budget increase"
@@ -296,14 +304,17 @@ phases:
 
         sample_request:
           plan_id: "gov_acme_q2_2026"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
           governance_context: "gov_ctx_acme_q2_escalated"
-          binding:
-            type: "media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-            total_budget: 50000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
@@ -320,7 +331,7 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains an approved governance decision"
           - check: field_present
             path: "conditions"
@@ -394,8 +405,9 @@ phases:
         title: "Report media buy outcome to governance"
         narrative: |
           The buyer reports the media buy creation back to the governance agent,
-          linking the media_buy_id to the governance check. This enables the governance
-          agent to track what was actually purchased against what was approved.
+          linking the outcome to the governance check via governance_context. This
+          enables the governance agent to track what was actually purchased against
+          what was approved.
         task: report_plan_outcome
         schema_ref: "governance/report-plan-outcome-request.json"
         response_schema_ref: "governance/report-plan-outcome-response.json"
@@ -403,25 +415,19 @@ phases:
         comply_scenario: campaign_governance
         stateful: true
         expected: |
-          Acknowledge the outcome report:
-          - outcome_id: identifier for this outcome record
-          - plan_id: the governance plan
-          - media_buy_id: the buy that was created
-          - governance_context: the approval that authorized it
-          - status: recorded
+          Return outcome acceptance with updated plan budget summary.
 
         sample_request:
           plan_id: "gov_acme_q2_2026"
           governance_context: "gov_ctx_acme_q2_approved"
-          outcome:
-            type: "media_buy_created"
-            media_buy_id: "mb_acme_q2_2026"
-            total_budget: 50000
+          purchase_type: "media_buy"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "mb_acme_q2_2026"
+            committed_budget: 50000
             packages:
-              - product_id: "sports_ctv_q2"
-                budget: 30000
-              - product_id: "outdoor_video_q2"
-                budget: 20000
+              - budget: 30000
+              - budget: 20000
 
         validations:
           - check: response_schema
@@ -457,7 +463,7 @@ phases:
             3. Human escalation initiated
             4. Human approved with conditions (weekly reporting, budget increase review)
             5. Media buy created with governance approval
-            6. Outcome reported linking media_buy_id to governance context
+            6. Outcome reported via governance_context
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:

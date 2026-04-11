@@ -212,10 +212,11 @@ phases:
 
         sample_request:
           plan_id: "plan_acme_summer_2026"
-          governance_context: "{{governance_context from check}}"
+          governance_context: "$context.governance_context"
           purchase_type: "rights_license"
           outcome: "completed"
           seller_response:
+            seller_reference: "rg_acme_summer_2026"
             committed_budget: 2500
 
         validations:
@@ -249,7 +250,7 @@ phases:
           purchase_type: "rights_license"
           tool: "update_rights"
           phase: "modification"
-          governance_context: "{{governance_context from acquire check}}"
+          governance_context: "$context.governance_context"
           payload:
             rights_grant_id: "rg_acme_summer_2026"
             updates:

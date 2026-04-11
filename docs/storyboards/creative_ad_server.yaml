@@ -209,6 +209,33 @@ phases:
             path: "pricing_option_id"
             description: "Response includes pricing_option_id"
 
+      - id: report_build_outcome
+        title: "Report creative build outcome"
+        narrative: |
+          After the ad server responds with a serving tag, the orchestrator reports
+          the outcome to the governance agent. This commits the creative services
+          cost against the plan budget and closes the governance loop.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        expected: |
+          Return outcome acceptance with updated plan budget summary.
+
+        sample_request:
+          plan_id: "plan_acme_summer_2026"
+          governance_context: "$context.governance_context"
+          purchase_type: "creative_services"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "tag_campaign_hero_video"
+            committed_budget: 500
+
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
   - id: track_delivery
     title: "Track creative delivery"
     narrative: |

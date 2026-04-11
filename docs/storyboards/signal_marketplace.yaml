@@ -284,10 +284,11 @@ phases:
 
         sample_request:
           plan_id: "plan_nova_ev_launch_2026"
-          governance_context: "{{governance_context from check}}"
+          governance_context: "$context.governance_context"
           purchase_type: "signal_activation"
           outcome: "completed"
           seller_response:
+            seller_reference: "deploy_trident_ev_ttd"
             committed_budget: 1500
 
         validations:
