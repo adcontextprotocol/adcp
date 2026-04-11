@@ -1136,6 +1136,7 @@ export class HTTPServer {
       brandDb: this.brandDb,
       orgDb,
       invalidateMemberContextCache,
+      crawler: this.crawler,
     };
     const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
