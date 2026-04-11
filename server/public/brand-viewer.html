@@ -689,6 +689,102 @@
         color: var(--color-error-500);
       }
 
+      /* Collapsible edit sections */
+      .edit-section-group {
+        margin-top: var(--space-4);
+        border-top: var(--border-1) solid var(--color-border-light);
+        padding-top: var(--space-3);
+      }
+
+      .edit-section-group summary {
+        cursor: pointer;
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+        color: var(--color-text-secondary);
+        padding: var(--space-2) 0;
+        list-style: disclosure-closed;
+        user-select: none;
+      }
+
+      .edit-section-group[open] summary {
+        list-style: disclosure-open;
+        margin-bottom: var(--space-3);
+        color: var(--color-text-primary);
+      }
+
+      .edit-section-group .edit-form-grid {
+        margin-top: 0;
+      }
+
+      .edit-list-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: var(--space-2);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+      }
+
+      .edit-list-row .edit-form-input {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .edit-list-row select.edit-form-input {
+        min-width: 140px;
+        flex: 0 1 auto;
+      }
+
+      .edit-list-row .edit-list-label {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        width: 100%;
+        display: flex;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+      }
+
+      .edit-list-row .edit-list-label span {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .edit-list-remove {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: var(--text-lg);
+        padding: 0 4px;
+        line-height: 1;
+        transition: color var(--duration-normal) var(--ease-in-out);
+        align-self: center;
+        flex-shrink: 0;
+      }
+
+      .edit-list-remove:hover {
+        color: var(--color-error-500);
+      }
+
+      .edit-logo-thumb {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border-light);
+        flex-shrink: 0;
+        align-self: center;
+      }
+
+      .edit-section-hint {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
+      }
+
       /* Community brand info grid */
       .community-info-grid {
         display: grid;
@@ -767,6 +863,13 @@
         }
         .community-info-grid {
           grid-template-columns: 1fr;
+        }
+        .edit-list-row {
+          flex-direction: column;
+        }
+        .edit-list-row .edit-form-input,
+        .edit-list-row select.edit-form-input {
+          min-width: 100%;
         }
       }
 
@@ -922,6 +1025,7 @@
             <div style="display: flex; gap: var(--space-2); align-items: center;">
               <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full);">Community contributed</span>
               <button id="edit-brand-btn" class="hidden" onclick="showEditForm()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Edit</button>
+              <button id="upload-logo-hero-btn" class="hidden" onclick="showUploadModal()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: var(--border-1) solid var(--color-border-light); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Upload logo</button>
             </div>
           </div>
           <div id="community-brand-details"></div>
@@ -983,11 +1087,82 @@
               <div id="edit-colors-container"></div>
               <button type="button" onclick="addColorField('', '')" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Color</button>
             </div>
-            <div class="edit-form-field edit-form-field--full" style="margin-top: var(--space-2);">
+          </div>
+
+          <!-- Properties -->
+          <details id="edit-section-properties" class="edit-section-group">
+            <summary>Properties</summary>
+            <div id="edit-properties-container"></div>
+            <button type="button" onclick="addPropertyField()" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Property</button>
+          </details>
+
+          <!-- Agents -->
+          <details id="edit-section-agents" class="edit-section-group">
+            <summary>Agents</summary>
+            <div id="edit-agents-container"></div>
+            <button type="button" onclick="addAgentField()" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Agent</button>
+          </details>
+
+          <!-- Logos -->
+          <details id="edit-section-logos" class="edit-section-group">
+            <summary>Logos</summary>
+            <div id="edit-logos-container"></div>
+            <button type="button" onclick="addLogoField()" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Logo</button>
+            <p class="edit-section-hint">Add logo URLs here, or use the Upload Logo button to upload a file.</p>
+          </details>
+
+          <!-- Contact & Legal -->
+          <details id="edit-section-legal" class="edit-section-group">
+            <summary>Contact &amp; Legal</summary>
+            <div class="edit-form-grid">
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-contact-name">Contact name</label>
+                <input type="text" id="edit-contact-name" class="edit-form-input" placeholder="e.g. Brand Team">
+              </div>
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-contact-email">Contact email</label>
+                <input type="email" id="edit-contact-email" class="edit-form-input" placeholder="e.g. brand@example.com">
+              </div>
+              <div class="edit-form-field edit-form-field--full">
+                <label class="edit-form-label" for="edit-privacy-url">Privacy policy URL</label>
+                <input type="url" id="edit-privacy-url" class="edit-form-input" placeholder="https://example.com/privacy">
+              </div>
+              <div class="edit-form-field edit-form-field--full">
+                <label class="edit-form-label">Disclaimers</label>
+                <div id="edit-disclaimers-container"></div>
+                <button type="button" onclick="addDisclaimerField()" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Disclaimer</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Additional -->
+          <details id="edit-section-additional" class="edit-section-group">
+            <summary>Additional</summary>
+            <div class="edit-form-grid">
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-target-audience">Target audience</label>
+                <input type="text" id="edit-target-audience" class="edit-form-input" placeholder="e.g. Marketing professionals">
+              </div>
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-brand-url">Brand URL</label>
+                <input type="url" id="edit-brand-url" class="edit-form-input" placeholder="https://example.com">
+              </div>
+              <div class="edit-form-field edit-form-field--full">
+                <label class="edit-form-label">Collections</label>
+                <div id="edit-collections-container"></div>
+                <button type="button" onclick="addCollectionField()" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Collection</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Edit summary (always visible) -->
+          <div style="margin-top: var(--space-4); border-top: var(--border-1) solid var(--color-border-light); padding-top: var(--space-3);">
+            <div class="edit-form-field edit-form-field--full">
               <label class="edit-form-label" for="edit-summary">Edit summary <span style="color: var(--color-error-500);">*</span></label>
               <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Describe your changes (required)" required></textarea>
             </div>
           </div>
+
           <div class="edit-form-actions">
             <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
             <button class="btn btn-ghost" onclick="hideEditForm()">Cancel</button>
@@ -1152,6 +1327,8 @@
         if (user?.isMember) {
           const btn = document.getElementById('upload-logo-btn');
           if (btn) btn.classList.remove('hidden');
+          const heroBtn = document.getElementById('upload-logo-hero-btn');
+          if (heroBtn) heroBtn.classList.remove('hidden');
         }
 
         // Build tag picker
@@ -1282,6 +1459,7 @@
         const form = document.getElementById('edit-form-section');
         form.classList.remove('hidden');
         document.getElementById('edit-brand-btn').classList.add('hidden');
+        document.getElementById('upload-logo-hero-btn')?.classList.add('hidden');
 
         // Pre-fill form from currentEditStatus
         const manifest = currentEditStatus?.brand_manifest || {};
@@ -1304,6 +1482,38 @@
           });
         }
 
+        // Pre-fill properties
+        document.getElementById('edit-properties-container').innerHTML = '';
+        (manifest.properties || []).forEach(p => addPropertyField(p));
+
+        // Pre-fill agents
+        document.getElementById('edit-agents-container').innerHTML = '';
+        (manifest.agents || []).forEach(a => addAgentField(a));
+
+        // Pre-fill logos
+        document.getElementById('edit-logos-container').innerHTML = '';
+        (manifest.logos || []).forEach(l => addLogoField(l));
+
+        // Pre-fill contact & legal
+        document.getElementById('edit-contact-name').value = manifest.contact?.name || '';
+        document.getElementById('edit-contact-email').value = manifest.contact?.email || '';
+        document.getElementById('edit-privacy-url').value = manifest.privacy_policy_url || '';
+        document.getElementById('edit-disclaimers-container').innerHTML = '';
+        (manifest.disclaimers || []).forEach(d => addDisclaimerField(d));
+
+        // Pre-fill additional
+        document.getElementById('edit-target-audience').value = manifest.target_audience || '';
+        document.getElementById('edit-brand-url').value = manifest.url || '';
+        document.getElementById('edit-collections-container').innerHTML = '';
+        (manifest.collections || []).forEach(c => addCollectionField(c));
+
+        // Auto-open sections with existing data
+        document.getElementById('edit-section-properties').open = !!(manifest.properties?.length);
+        document.getElementById('edit-section-agents').open = !!(manifest.agents?.length);
+        document.getElementById('edit-section-logos').open = !!(manifest.logos?.length);
+        document.getElementById('edit-section-legal').open = !!(manifest.contact || manifest.privacy_policy_url || manifest.disclaimers?.length);
+        document.getElementById('edit-section-additional').open = !!(manifest.target_audience || manifest.url || manifest.collections?.length);
+
         // Scroll form into view
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -1311,6 +1521,8 @@
       function hideEditForm() {
         document.getElementById('edit-form-section').classList.add('hidden');
         document.getElementById('edit-brand-btn').classList.remove('hidden');
+        const user = window.__APP_CONFIG__?.user;
+        if (user?.isMember) document.getElementById('upload-logo-hero-btn')?.classList.remove('hidden');
       }
 
       function addColorField(name, hex) {
@@ -1330,6 +1542,151 @@
         textInput.addEventListener('input', () => {
           if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) colorInput.value = textInput.value;
         });
+        container.appendChild(row);
+      }
+
+      function addPropertyField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-properties-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        const types = ['website','mobile_app','ctv_app','desktop_app','dooh','podcast','radio','streaming_audio'];
+        const stores = ['','apple','google','amazon','roku','samsung','lg','other'];
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Type</span><span>Identifier</span><span>Store</span><span>Region</span>
+          </div>
+          <select class="edit-form-input prop-type">
+            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t.replace(/_/g, ' ')}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input prop-identifier" value="${escapeAttr(d.identifier || '')}" placeholder="e.g. example.com or com.example.app">
+          <select class="edit-form-input prop-store" style="min-width:100px;">
+            ${stores.map(s => `<option value="${s}" ${d.store === s ? 'selected' : ''}>${s || '(none)'}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input prop-region" value="${escapeAttr(d.region || '')}" placeholder="e.g. US" style="max-width:80px;">
+          <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
+            <input type="checkbox" class="prop-primary" ${d.primary ? 'checked' : ''}> Primary
+          </label>
+          <button type="button" onclick="this.parentElement.remove()" class="edit-list-remove" title="Remove">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function addAgentField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-agents-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        const types = ['brand','rights','measurement','governance','creative','buying','signals'];
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Type</span><span>URL</span><span>ID</span><span>Description</span>
+          </div>
+          <select class="edit-form-input agent-type">
+            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <input type="url" class="edit-form-input agent-url" value="${escapeAttr(d.url || '')}" placeholder="https://agent.example.com">
+          <input type="text" class="edit-form-input agent-id" value="${escapeAttr(d.id || '')}" placeholder="e.g. my_brand_agent" style="max-width:160px;" maxlength="100">
+          <input type="text" class="edit-form-input agent-desc" value="${escapeAttr(d.description || '')}" placeholder="Agent description (optional)" maxlength="500">
+          <button type="button" onclick="this.parentElement.remove()" class="edit-list-remove" title="Remove">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function addLogoField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-logos-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        const variants = ['','primary','secondary','icon','wordmark','full-lockup'];
+        const orientations = ['','square','horizontal','vertical','stacked'];
+        const backgrounds = ['','dark-bg','light-bg','transparent-bg'];
+        const thumbSrc = (d.url && isSafeUrl(d.url)) ? escapeAttr(d.url) : '';
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>URL</span><span>Variant</span><span>Orientation</span><span>Background</span><span>Usage</span>
+          </div>
+          ${thumbSrc ? `<img src="${thumbSrc}" class="edit-logo-thumb" alt="Preview">` : '<span class="edit-logo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--color-text-muted);font-size:10px;">?</span>'}
+          <input type="url" class="edit-form-input logo-url" value="${escapeAttr(d.url || '')}" placeholder="https://example.com/logo.svg">
+          <select class="edit-form-input logo-variant" style="min-width:110px;">
+            ${variants.map(v => `<option value="${v}" ${d.variant === v ? 'selected' : ''}>${v || '(none)'}</option>`).join('')}
+          </select>
+          <select class="edit-form-input logo-orientation" style="min-width:110px;">
+            ${orientations.map(o => `<option value="${o}" ${d.orientation === o ? 'selected' : ''}>${o || '(none)'}</option>`).join('')}
+          </select>
+          <select class="edit-form-input logo-bg" style="min-width:120px;">
+            ${backgrounds.map(b => `<option value="${b}" ${d.background === b ? 'selected' : ''}>${b || '(none)'}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input logo-usage" value="${escapeAttr(d.usage || '')}" placeholder="Usage (optional)" maxlength="500">
+          <button type="button" onclick="this.parentElement.remove()" class="edit-list-remove" title="Remove">&times;</button>
+        `;
+        const thumb = row.querySelector('.edit-logo-thumb');
+        if (thumb && thumb.tagName === 'IMG') {
+          thumb.addEventListener('error', function() { this.style.display = 'none'; });
+        }
+        const urlInput = row.querySelector('.logo-url');
+        if (urlInput) {
+          urlInput.addEventListener('blur', function() { updateLogoThumb(this); });
+        }
+        container.appendChild(row);
+      }
+
+      function updateLogoThumb(input) {
+        const row = input.closest('.edit-list-row');
+        const thumb = row.querySelector('.edit-logo-thumb');
+        if (!thumb) return;
+        const url = input.value.trim();
+        if (url && isSafeUrl(url)) {
+          if (thumb.tagName === 'IMG') {
+            thumb.src = url;
+            thumb.style.display = '';
+          } else {
+            const img = document.createElement('img');
+            img.src = url;
+            img.className = 'edit-logo-thumb';
+            img.alt = 'Preview';
+            img.onerror = function() { this.style.display = 'none'; };
+            thumb.replaceWith(img);
+          }
+        } else if (thumb.tagName === 'IMG') {
+          thumb.style.display = 'none';
+        }
+      }
+
+      function addDisclaimerField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-disclaimers-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Text</span><span>Context</span>
+          </div>
+          <textarea class="edit-form-input disclaimer-text" rows="2" placeholder="Disclaimer text" maxlength="2000">${escapeHtml(d.text || '')}</textarea>
+          <input type="text" class="edit-form-input disclaimer-context" value="${escapeAttr(d.context || '')}" placeholder="Context (optional)" style="max-width:200px;" maxlength="500">
+          <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
+            <input type="checkbox" class="disclaimer-required" ${d.required === true ? 'checked' : ''}> Required
+          </label>
+          <button type="button" onclick="this.parentElement.remove()" class="edit-list-remove" title="Remove">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function addCollectionField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-collections-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Name</span><span>Collection ID</span><span>Role</span><span>Seller agent URL</span>
+          </div>
+          <input type="text" class="edit-form-input coll-name" value="${escapeAttr(d.name || '')}" placeholder="Collection name">
+          <input type="text" class="edit-form-input coll-id" value="${escapeAttr(d.collection_id || '')}" placeholder="Collection ID" style="max-width:160px;">
+          <input type="text" class="edit-form-input coll-role" value="${escapeAttr(d.role || '')}" placeholder="Role (optional)" style="max-width:120px;">
+          <input type="url" class="edit-form-input coll-seller" value="${escapeAttr(d.seller_agent_url || '')}" placeholder="https://seller-agent.example.com">
+          <button type="button" onclick="this.parentElement.remove()" class="edit-list-remove" title="Remove">&times;</button>
+        `;
         container.appendChild(row);
       }
 
@@ -1387,6 +1744,142 @@
           ...(fontPrimary ? { primary: fontPrimary } : {}),
           ...(fontSecondary ? { secondary: fontSecondary } : {}),
         } : undefined;
+
+        // Collect properties
+        const properties = [];
+        document.querySelectorAll('#edit-properties-container > div').forEach(row => {
+          const type = row.querySelector('.prop-type')?.value;
+          const identifier = row.querySelector('.prop-identifier')?.value.trim();
+          if (type && identifier) {
+            const prop = { type, identifier };
+            const store = row.querySelector('.prop-store')?.value;
+            const region = row.querySelector('.prop-region')?.value.trim();
+            const primary = row.querySelector('.prop-primary')?.checked;
+            if (store) prop.store = store;
+            if (region) prop.region = region;
+            if (primary) prop.primary = true;
+            properties.push(prop);
+          }
+        });
+        // Include array if it has items, or if user cleared a section that previously had data
+        const manifest = currentEditStatus?.brand_manifest || {};
+
+        // Collect properties
+        const properties = [];
+        document.querySelectorAll('#edit-properties-container > div').forEach(row => {
+          const type = row.querySelector('.prop-type')?.value;
+          const identifier = row.querySelector('.prop-identifier')?.value.trim();
+          if (type && identifier) {
+            const prop = { type, identifier };
+            const store = row.querySelector('.prop-store')?.value;
+            const region = row.querySelector('.prop-region')?.value.trim();
+            const primary = row.querySelector('.prop-primary')?.checked;
+            if (store) prop.store = store;
+            if (region) prop.region = region;
+            if (primary) prop.primary = true;
+            properties.push(prop);
+          }
+        });
+        if (properties.length > 0 || manifest.properties?.length) body.brand_manifest.properties = properties;
+
+        // Collect agents
+        const agents = [];
+        document.querySelectorAll('#edit-agents-container > div').forEach(row => {
+          const type = row.querySelector('.agent-type')?.value;
+          const url = row.querySelector('.agent-url')?.value.trim();
+          const id = row.querySelector('.agent-id')?.value.trim();
+          if (type && url && id) {
+            const agent = { type, url, id };
+            const desc = row.querySelector('.agent-desc')?.value.trim();
+            if (desc) agent.description = desc;
+            agents.push(agent);
+          }
+        });
+        if (agents.length > 0 || manifest.agents?.length) body.brand_manifest.agents = agents;
+
+        // Collect logos
+        const logos = [];
+        document.querySelectorAll('#edit-logos-container > div').forEach(row => {
+          const url = row.querySelector('.logo-url')?.value.trim();
+          if (url) {
+            const logo = { url };
+            const variant = row.querySelector('.logo-variant')?.value;
+            const orientation = row.querySelector('.logo-orientation')?.value;
+            const background = row.querySelector('.logo-bg')?.value;
+            const usage = row.querySelector('.logo-usage')?.value.trim();
+            if (variant) logo.variant = variant;
+            if (orientation) logo.orientation = orientation;
+            if (background) logo.background = background;
+            if (usage) logo.usage = usage;
+            logos.push(logo);
+          }
+        });
+        if (logos.length > 0 || manifest.logos?.length) body.brand_manifest.logos = logos;
+
+        // Collect contact
+        const contactName = document.getElementById('edit-contact-name').value.trim();
+        const contactEmail = document.getElementById('edit-contact-email').value.trim();
+        if (contactName || contactEmail) {
+          body.brand_manifest.contact = {};
+          if (contactName) body.brand_manifest.contact.name = contactName;
+          if (contactEmail) body.brand_manifest.contact.email = contactEmail;
+        } else if (manifest.contact) {
+          body.brand_manifest.contact = undefined;
+        }
+
+        // Privacy policy
+        const privacyUrl = document.getElementById('edit-privacy-url').value.trim();
+        if (privacyUrl) {
+          body.brand_manifest.privacy_policy_url = privacyUrl;
+        } else if (manifest.privacy_policy_url) {
+          body.brand_manifest.privacy_policy_url = undefined;
+        }
+
+        // Collect disclaimers
+        const disclaimers = [];
+        document.querySelectorAll('#edit-disclaimers-container > div').forEach(row => {
+          const text = row.querySelector('.disclaimer-text')?.value.trim();
+          if (text) {
+            const disc = { text };
+            const context = row.querySelector('.disclaimer-context')?.value.trim();
+            const required = row.querySelector('.disclaimer-required')?.checked;
+            if (context) disc.context = context;
+            disc.required = !!required;
+            disclaimers.push(disc);
+          }
+        });
+        if (disclaimers.length > 0 || manifest.disclaimers?.length) body.brand_manifest.disclaimers = disclaimers;
+
+        // Additional fields
+        const targetAudience = document.getElementById('edit-target-audience').value.trim();
+        if (targetAudience) {
+          body.brand_manifest.target_audience = targetAudience;
+        } else if (manifest.target_audience) {
+          body.brand_manifest.target_audience = undefined;
+        }
+        const brandUrl = document.getElementById('edit-brand-url').value.trim();
+        if (brandUrl) {
+          body.brand_manifest.url = brandUrl;
+        } else if (manifest.url) {
+          body.brand_manifest.url = undefined;
+        }
+
+        // Collect collections
+        const collections = [];
+        document.querySelectorAll('#edit-collections-container > div').forEach(row => {
+          const name = row.querySelector('.coll-name')?.value.trim();
+          if (name) {
+            const coll = { name };
+            const collId = row.querySelector('.coll-id')?.value.trim();
+            const role = row.querySelector('.coll-role')?.value.trim();
+            const sellerUrl = row.querySelector('.coll-seller')?.value.trim();
+            if (collId) coll.collection_id = collId;
+            if (role) coll.role = role;
+            if (sellerUrl) coll.seller_agent_url = sellerUrl;
+            collections.push(coll);
+          }
+        });
+        if (collections.length > 0 || manifest.collections?.length) body.brand_manifest.collections = collections;
 
         // Clean undefined values from manifest
         Object.keys(body.brand_manifest).forEach(k => {
