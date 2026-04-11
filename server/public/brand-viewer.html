@@ -1299,14 +1299,8 @@
             </div>
           </details>
 
-          <!-- Edit summary (always visible) -->
-          <div style="margin-top: var(--space-4); border-top: var(--border-1) solid var(--color-border); padding-top: var(--space-3);">
-            <div class="edit-form-field edit-form-field--full">
-              <label class="edit-form-label" for="edit-summary">Edit summary</label>
-              <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Auto-generated from your changes, or type your own"></textarea>
-              <div class="edit-form-help">Leave blank to auto-generate from changes</div>
-            </div>
-          </div>
+          <!-- Hidden edit summary - auto-generated on save -->
+          <input type="hidden" id="edit-summary">
 
           <div class="edit-form-actions">
             <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
@@ -2001,13 +1995,9 @@
           return;
         }
 
-        // Auto-generate edit summary, allow user override
-        const summaryEl = document.getElementById('edit-summary');
-        const editSummary = summaryEl.value.trim() || generateEditSummary();
-        if (editSummary === 'No changes') {
-          alert('No changes detected');
-          return;
-        }
+        // Auto-generate edit summary
+        const editSummary = generateEditSummary();
+        if (!editFormDirty || editSummary === 'No changes') return;
 
         const saveBtn = document.getElementById('save-edit-btn');
         saveBtn.disabled = true;
