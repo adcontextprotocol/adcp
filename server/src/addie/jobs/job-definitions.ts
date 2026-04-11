@@ -512,18 +512,11 @@ export function registerAllJobs(): void {
     initialDelay: { value: 5, unit: 'minutes' },
     failureThreshold: 1,
     runner: async () => {
-      const result = await query(
-        `UPDATE events
-         SET status = 'completed', updated_at = NOW()
-         WHERE status = 'published'
-           AND end_time < NOW() - INTERVAL '2 hours'
-         RETURNING id, title`
-      );
-      const completed = result.rows.length;
-      if (completed > 0) {
-        logger.info({ completed, events: result.rows.map((r: { title: string }) => r.title) }, 'Auto-completed past events');
+      const completedEvents = await eventsDb.autoCompleteExpiredEvents();
+      if (completedEvents.length > 0) {
+        logger.info({ completed: completedEvents.length, events: completedEvents.map(e => e.title) }, 'Auto-completed past events');
       }
-      return { completed };
+      return { completed: completedEvents.length };
     },
     shouldLogResult: (r) => r.completed > 0,
   });
@@ -564,7 +557,7 @@ export function registerAllJobs(): void {
                 type: 'event_follow_up',
                 referenceId: event.id,
                 referenceType: 'event',
-                title: `Thanks for joining ${event.title}! A recap will be posted soon.`,
+                title: `${event.title} has wrapped up — a recap will be posted soon.`,
                 url: `/events/${event.slug}`,
               });
               followUpsSent++;
@@ -576,7 +569,7 @@ export function registerAllJobs(): void {
                 if (alreadySent) continue;
               }
               await sendDirectMessage(slackUser.slack_user_id, {
-                text: `Thanks for joining ${event.title}! A recap will be posted soon.\n<${baseUrl}/events/${event.slug}|View event>`,
+                text: `${event.title} has wrapped up — a recap will be posted soon.\n<${baseUrl}/events/${event.slug}|View event>`,
               });
               followUpsSent++;
             }

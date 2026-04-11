@@ -1118,6 +1118,21 @@ export class EventsDatabase {
 
     return result.rows.length > 0;
   }
+
+  /**
+   * Move published events to completed after their end time has passed.
+   * Returns the list of events that were auto-completed.
+   */
+  async autoCompleteExpiredEvents(): Promise<Array<{ id: string; title: string }>> {
+    const result = await query<{ id: string; title: string }>(
+      `UPDATE events
+       SET status = 'completed', updated_at = NOW()
+       WHERE status = 'published'
+         AND end_time < NOW() - INTERVAL '2 hours'
+       RETURNING id, title`
+    );
+    return result.rows;
+  }
 }
 
 // Export singleton instance

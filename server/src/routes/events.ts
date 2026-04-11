@@ -161,6 +161,7 @@ function mapLumaStatus(lumaStatus: string): RegistrationStatus {
 
 const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
+const slackDb = new SlackDatabase();
 
 const logger = createLogger("events-routes");
 
@@ -498,7 +499,6 @@ export function createEventsRouter(): {
       const significantChange = significantFields.some(field => (updates as Record<string, unknown>)[field] !== undefined);
       if (significantChange) {
         const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
-        const slackDb = new SlackDatabase();
         eventsDb.getEventRegistrations(id).then(async (registrations) => {
           for (const reg of registrations) {
             if (reg.registration_status !== 'registered') continue;
@@ -676,11 +676,10 @@ export function createEventsRouter(): {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const { regId } = req.params;
-        const { eventId } = req.params;
+        const { eventId, regId } = req.params;
         const registration = await eventsDb.updateRegistration(regId, { registration_status: 'registered' });
-        if (!registration) {
-          return res.status(404).json({ error: "Registration not found" });
+        if (!registration || registration.event_id !== eventId) {
+          return res.status(404).json({ error: "Registration not found for this event" });
         }
         logger.info({ registrationId: regId }, "Registration approved");
 
@@ -697,7 +696,6 @@ export function createEventsRouter(): {
               url: `/events/${event.slug}`,
             }).catch(err => logger.error({ err }, 'Failed to send waitlist promotion notification'));
           } else if (registration.email) {
-            const slackDb = new SlackDatabase();
             slackDb.findByEmail(registration.email).then(slackUser => {
               if (slackUser?.slack_user_id) {
                 const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
@@ -724,10 +722,10 @@ export function createEventsRouter(): {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const { regId } = req.params;
+        const { eventId, regId } = req.params;
         const registration = await eventsDb.cancelRegistration(regId);
-        if (!registration) {
-          return res.status(404).json({ error: "Registration not found" });
+        if (!registration || registration.event_id !== eventId) {
+          return res.status(404).json({ error: "Registration not found for this event" });
         }
         logger.info({ registrationId: regId }, "Registration cancelled by admin");
         res.json({ registration });
@@ -1559,10 +1557,11 @@ export function createEventsRouter(): {
         });
 
         const existingIds = new Set(events.map(e => e.id));
+        const userOrgId = await getUserOrgId(user.id) ?? undefined;
         for (const event of unlistedEvents) {
           if (existingIds.has(event.id)) continue;
           if (event.visibility !== 'invite_unlisted') continue;
-          const hasAccess = await eventsDb.checkUserAccess(event.id, user.email, await getUserOrgId(user.id) ?? undefined);
+          const hasAccess = await eventsDb.checkUserAccess(event.id, user.email, userOrgId);
           if (hasAccess) {
             events.push(event);
           }
