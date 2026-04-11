@@ -81,7 +81,7 @@ The publisher performs the join locally after both responses arrive. They can ap
 
 ### TMPX exposure tokens and structural separation
 
-The Identity Match response can include a `macros` field carrying a `TMPX` token — an HPKE-encrypted blob containing the user's resolved identity tokens. This token flows through creative tracking URLs to the buyer's impression pixel for per-user exposure tracking.
+The Identity Match response can include a `tmpx` field carrying a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. This token flows through creative tracking URLs to the buyer's impression pixel for per-user exposure tracking.
 
 This data flow bridges the identity and context paths: the TMPX token is produced by Identity Match and consumed via creative tracking URLs that originate from Context Match offers. However, the bridge happens **publisher-side** — the publisher joins the two responses locally and substitutes the TMPX value into tracking URLs during ad serving. The buyer's read replica produces the encrypted token. The buyer's impression pixel receives it. The publisher sees only an opaque blob and MUST NOT parse, log, or make decisions based on its value.
 

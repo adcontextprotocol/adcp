@@ -153,7 +153,7 @@ Because Identity Match runs across all publishers using TMP, a user who saw your
 
 ### How Buyers Learn About Exposures
 
-The `macros` field on the Identity Match response carries a `TMPX` token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your cluster master decrypts it, logs the exposure against the user, and replicates updated frequency state to read replicas. This gives you real-time per-user exposure signals without the publisher seeing user identity.
+The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your cluster master decrypts it, logs the exposure against the user, and replicates updated frequency state to read replicas. This gives you real-time per-user exposure signals without the publisher seeing user identity.
 
 See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure.
 

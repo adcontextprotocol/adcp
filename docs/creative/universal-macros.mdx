@@ -480,13 +480,13 @@ https://track.brand.com/imp?
 
 When a buyer responds to a [Context Match](/docs/trusted-match/specification#contextmatchrequest) request, the [Offer](/docs/trusted-match/specification#offer) can include a `macros` field — key-value pairs for dynamic creative rendering (e.g., sponsor labels, promo codes, landing page paths).
 
-When a buyer responds to an [Identity Match](/docs/trusted-match/specification#identitymatchresponse) request, the response can include a `macros` field with the `TMPX` key — an encrypted exposure token for per-user frequency tracking.
+When a buyer responds to an [Identity Match](/docs/trusted-match/specification#identitymatchresponse) request, the response can include a `tmpx` field — an encrypted exposure token for per-user frequency tracking.
 
 **End-to-end flow:**
 
 1. **Buyer sets macros.** Context Match offers carry rendering macros. Identity Match responses carry the TMPX exposure token.
 2. **Publisher joins responses.** The publisher intersects Context Match offers with Identity Match eligibility, collecting macros from both.
-3. **Sales agent substitutes macros into the creative.** When trafficking, the sales agent calls `build_creative` with `macro_values` populated from both Offer and Identity Match macros. Alternatively, the ad server substitutes macros natively at serve time.
+3. **Sales agent substitutes macros into the creative.** When trafficking, the sales agent calls `build_creative` with `macro_values` populated from Offer macros and the TMPX token. Alternatively, the ad server substitutes macros natively at serve time.
 4. **Ad server renders.** At impression time, remaining macros (platform-specific, like `%%CACHEBUSTER%%` in GAM) are replaced with actual values.
 5. **Buyer pixel fires.** The tracking URL carries both rendering values and the encrypted TMPX token. The buyer's impression pixel receives the TMPX, decrypts it, and logs the per-user exposure.
 

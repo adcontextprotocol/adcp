@@ -138,7 +138,7 @@ A buyer's response for a single package.
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
-| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering. In the GAM case, these flow as macro values at serve time. Distinct from Identity Match `macros` which carry encrypted exposure tokens (TMPX) for frequency tracking. |
+| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering. In the GAM case, these flow as macro values at serve time. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
 
 #### OfferPrice
 
@@ -189,9 +189,9 @@ Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
 | `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
-| `macros` | Map\<string, string\> | No | Key-value pairs for impression-time macro substitution. The `TMPX` macro carries an HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Publishers MUST treat these values as opaque pass-through data. |
+| `tmpx` | string | No | HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Wire format: `kid.base64url(ciphertext)`. Publishers MUST treat this value as opaque pass-through data. |
 
-The response includes eligible package IDs, a TTL, and optional macros. The `macros` field carries encrypted exposure tokens (TMPX) that flow through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+The response includes eligible package IDs, a TTL, and an optional `tmpx` field. The TMPX token is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
 
 The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds." The router caches the `eligible_package_ids` list and returns it for subsequent requests during the window — it does not track which packages have been served. The publisher enforces allocation rules (at most one ad per package, competitive separation, pod composition) using the cached eligibility as input. This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and the publisher allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
 
@@ -454,7 +454,9 @@ The 8-byte random nonce enables deduplication at the master. The master stores n
 
 ### Caching behavior
 
-The TMPX token is generated once per Identity Match evaluation and cached alongside the eligibility response for `ttl_sec` seconds. All impressions within the TTL window share the same TMPX value. The buyer's master MUST NOT deduplicate by TMPX value — each pixel fire is one impression.
+The TMPX token is generated once per Identity Match evaluation and cached alongside the eligibility response for `ttl_sec` seconds. All impressions within the TTL window share the same TMPX value (same nonce, same tokens).
+
+The buyer's master MUST NOT deduplicate by TMPX value or nonce within a TTL window — each pixel fire is one impression. Multiple ads served to the same user in a CTV pod or a web page with multiple ad units all produce distinct pixel fires with the same TMPX token. The nonce deduplication only prevents replay of the same TMPX token *after* the TTL window expires — if the same nonce appears outside its original TTL window, it is a replay and MUST be rejected.
 
 ### Publisher obligations
 

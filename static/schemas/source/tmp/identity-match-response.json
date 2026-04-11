@@ -27,12 +27,9 @@
       "minimum": 0,
       "maximum": 86400
     },
-    "macros": {
-      "type": "object",
-      "description": "Key-value pairs for impression-time macro substitution. The TMPX macro carries an HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Publishers MUST treat these values as opaque pass-through data. Buyer-supplied macro keys MUST NOT collide with universal macro names — platform-defined macros take precedence during substitution.",
-      "additionalProperties": {
-        "type": "string"
-      }
+    "tmpx": {
+      "type": "string",
+      "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url(ciphertext). Publishers MUST treat this value as opaque pass-through data."
     }
   },
   "required": [
