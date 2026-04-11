@@ -26,7 +26,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, inferMembershipTier, tierFromLookupKey, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -41,7 +41,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -1136,6 +1136,7 @@ export class HTTPServer {
       brandDb: this.brandDb,
       orgDb,
       invalidateMemberContextCache,
+      crawler: this.crawler,
     };
     const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
@@ -1581,6 +1582,7 @@ export class HTTPServer {
 
         res.json({
           global_unsubscribe: prefs.global_unsubscribe,
+          marketing_opt_in: prefs.marketing_opt_in ?? null,
           categories: categoryPrefs,
         });
       } catch (error) {
@@ -1614,6 +1616,34 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
         res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Record marketing communications opt-in choice (authenticated)
+    this.app.post('/api/email-preferences/marketing-opt-in', requireAuth, emailPrefsRateLimiter, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { opt_in } = req.body;
+
+        if (typeof opt_in !== 'boolean') {
+          return res.status(400).json({ error: 'opt_in must be a boolean' });
+        }
+
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: userId,
+          email: userEmail,
+          optIn: opt_in,
+        });
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId, opt_in }, 'User set marketing opt-in preference');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error setting marketing opt-in');
+        res.status(500).json({ error: 'Error setting marketing preference' });
       }
     });
 
@@ -3536,8 +3566,8 @@ export class HTTPServer {
                         if (adminEmails.length > 0) {
                           // Compute seat limits for the welcome message
                           const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeTier = tierFromLookupKey(firstItem?.price?.lookup_key) ?? inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
-                          const seatLimits = getSeatLimits(welcomeTier);
+                          const welcomeUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
+                          const seatLimits = getSeatLimits(welcomeUpdate.membership_tier);
 
                           await notifySubscriptionThankYou({
                             orgId: org.workos_organization_id,
@@ -3605,23 +3635,7 @@ export class HTTPServer {
             // This allows admin dashboard to display data without querying Stripe API
             try {
               if (org) {
-                // Calculate period end from subscription or invoice
-                let periodEnd: Date | null = null;
-
-                if (subscription.current_period_end) {
-                  periodEnd = new Date(subscription.current_period_end * 1000);
-                }
-
-                // Extract pricing details from subscription items
-                const priceData = subscription.items?.data?.[0]?.price;
-                const amount = priceData?.unit_amount ?? null;
-                const currency = priceData?.currency ?? null;
-                const interval = priceData?.recurring?.interval ?? null;
-
-                // Resolve membership tier: lookup key is authoritative, amount is fallback
-                const membershipTier = subscription.status === 'active'
-                  ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(amount, interval, org.is_personal))
-                  : null;
+                const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
                 // Capture current tier before update for change detection
                 const oldTierResult = await pool.query<{ membership_tier: string | null }>(
@@ -3638,27 +3652,33 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       subscription_canceled_at = $8,
-                       membership_tier = $9,
+                       subscription_canceled_at = $7,
+                       subscription_product_id = $8,
+                       subscription_product_name = COALESCE($9, subscription_product_name),
+                       subscription_price_id = $10,
+                       subscription_price_lookup_key = $11,
+                       membership_tier = $12,
                        updated_at = NOW()
-                   WHERE workos_organization_id = $7`,
+                   WHERE workos_organization_id = $13`,
                   [
-                    subscription.status,
-                    subscription.id,
-                    periodEnd,
-                    amount,
-                    currency,
-                    interval,
+                    subUpdate.subscription_status,
+                    subUpdate.stripe_subscription_id,
+                    subUpdate.subscription_current_period_end,
+                    subUpdate.subscription_amount,
+                    subUpdate.subscription_currency,
+                    subUpdate.subscription_interval,
+                    subUpdate.subscription_canceled_at,
+                    subUpdate.subscription_product_id,
+                    subUpdate.subscription_product_name,
+                    subUpdate.subscription_price_id,
+                    subUpdate.subscription_price_lookup_key,
+                    subUpdate.membership_tier,
                     org.workos_organization_id,
-                    subscription.canceled_at
-                      ? new Date(subscription.canceled_at * 1000)
-                      : null,
-                    membershipTier,
                   ]
                 );
 
                 // Detect tier change and notify admins
-                if (membershipTier && oldTier && membershipTier !== oldTier) {
+                if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
                   const { notifyTierChange } = await import('./slack/org-group-dm.js');
                   const { getOrgAdminEmails } = await import('./utils/org-admins.js');
@@ -3666,7 +3686,7 @@ export class HTTPServer {
                   (async () => {
                     try {
                       const oldLimits = getSeatLimits(oldTier);
-                      const newLimits = getSeatLimits(membershipTier);
+                      const newLimits = getSeatLimits(subUpdate.membership_tier);
                       const currentUsage = await getSeatUsage(org.workos_organization_id);
                       const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
 
@@ -3690,11 +3710,8 @@ export class HTTPServer {
                   orgId: org.workos_organization_id,
                   subscriptionId: subscription.id,
                   status: subscription.status,
-                  periodEnd: periodEnd?.toISOString(),
-                  amount,
-                  currency,
-                  interval,
-                  membershipTier,
+                  lookupKey: subUpdate.subscription_price_lookup_key,
+                  membershipTier: subUpdate.membership_tier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
@@ -4903,7 +4920,7 @@ export class HTTPServer {
 
               // Get the first active subscription (already has expanded items)
               const subscription = subscriptions.data[0];
-              if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
+              if (!subscription || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
                 continue;
               }
 
@@ -4913,12 +4930,16 @@ export class HTTPServer {
                 continue;
               }
 
-              const price = primaryItem.price;
-              const product = price?.product as Stripe.Product | undefined;
-              const amount = price?.unit_amount ?? 0;
-              const interval = price?.recurring?.interval ?? null;
+              // Look up the org to get is_personal for tier inference
+              const orgRow = await pool.query<{ is_personal: boolean }>(
+                'SELECT is_personal FROM organizations WHERE workos_organization_id = $1',
+                [workosOrgId]
+              );
+              const isPersonal = orgRow.rows[0]?.is_personal ?? true;
 
-              // Update organization with subscription details
+              const subUpdate = buildSubscriptionUpdate(subscription as any, isPersonal);
+
+              // Update organization with subscription details and tier
               await pool.query(
                 `UPDATE organizations
                  SET subscription_status = $1,
@@ -4930,24 +4951,28 @@ export class HTTPServer {
                      subscription_product_id = $7,
                      subscription_product_name = $8,
                      subscription_price_id = $9,
+                     subscription_price_lookup_key = $10,
+                     membership_tier = $11,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $10`,
+                 WHERE workos_organization_id = $12`,
                 [
-                  subscription.status,
-                  amount,
-                  interval,
-                  price?.currency || 'usd',
-                  subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
-                  subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
-                  product?.id || null,
-                  product?.name || null,
-                  price?.id || null,
+                  subUpdate.subscription_status,
+                  subUpdate.subscription_amount,
+                  subUpdate.subscription_interval,
+                  subUpdate.subscription_currency,
+                  subUpdate.subscription_current_period_end,
+                  subUpdate.subscription_canceled_at,
+                  subUpdate.subscription_product_id,
+                  subUpdate.subscription_product_name,
+                  subUpdate.subscription_price_id,
+                  subUpdate.subscription_price_lookup_key,
+                  subUpdate.membership_tier,
                   workosOrgId,
                 ]
               );
 
               subscriptionsSynced++;
-              logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
+              logger.debug({ workosOrgId, customerId, lookupKey: subUpdate.subscription_price_lookup_key, tier: subUpdate.membership_tier }, 'Synced subscription data');
             } catch (subError) {
               // Handle Stripe "resource_missing" errors (deleted customers) gracefully
               // Use Stripe's error type for better type safety

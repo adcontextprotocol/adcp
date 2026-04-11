@@ -19,7 +19,7 @@ import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { invalidateMemberContextCache } from '../member-context.js';
-import { OrganizationDatabase, inferMembershipTier } from '../../db/organization-db.js';
+import { OrganizationDatabase, resolveMembershipTier } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -2028,11 +2028,12 @@ export function createAdminToolHandlers(
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
-      const displayTier = org.membership_tier
-        || inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+      const displayTier = resolveMembershipTier(org);
       if (displayTier) {
-        const inferred = !org.membership_tier ? ' _(inferred from amount)_' : '';
-        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${inferred}\n`;
+        let tierSource = '';
+        if (!org.membership_tier && org.subscription_price_lookup_key) tierSource = ' _(from lookup key)_';
+        else if (!org.membership_tier) tierSource = ' _(inferred from amount)_';
+        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${tierSource}\n`;
       }
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;

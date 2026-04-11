@@ -38,6 +38,7 @@ import {
   notifyMemberSeatChanged,
 } from "../slack/org-group-dm.js";
 import { getOrgAdminEmails } from "../utils/org-admins.js";
+import { emailPrefsDb } from "../db/email-preferences-db.js";
 
 const logger = createLogger("organization-routes");
 
@@ -1038,7 +1039,7 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain, marketing_opt_in } = req.body;
 
       // Limit how many organizations a single user can own
       const pool = getPool();
@@ -1272,6 +1273,19 @@ export function createOrganizationsRouter(): Router {
             await client.query('COMMIT');
             client.release();
 
+            // Record marketing communications opt-in choice (best-effort, don't block signup)
+            if (typeof marketing_opt_in === 'boolean') {
+              try {
+                await emailPrefsDb.setMarketingOptIn({
+                  workos_user_id: user.id,
+                  email: user.email,
+                  optIn: marketing_opt_in,
+                });
+              } catch (err) {
+                logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
+              }
+            }
+
             return res.status(200).json({
               id: existingOrgId,
               name: existingOrgName,
@@ -1423,6 +1437,19 @@ export function createOrganizationsRouter(): Router {
           user_agent: req.headers['user-agent'] || 'unknown',
           workos_organization_id: workosOrgId,
         });
+      }
+
+      // Record marketing communications opt-in choice (best-effort, don't block signup)
+      if (typeof marketing_opt_in === 'boolean') {
+        try {
+          await emailPrefsDb.setMarketingOptIn({
+            workos_user_id: user.id,
+            email: user.email,
+            optIn: marketing_opt_in,
+          });
+        } catch (err) {
+          logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
+        }
       }
 
       res.json({

@@ -854,6 +854,19 @@ export function createWorkOSWebhooksRouter(): Router {
               await deleteSingleOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
             } else {
               await upsertOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+
+              // Enqueue verified domains for adagents.json discovery
+              if (event.event === 'organization_domain.verified') {
+                const pool = getPool();
+                pool.query(
+                  `INSERT INTO catalog_crawl_queue (identifier_type, identifier_value)
+                   VALUES ('domain', $1)
+                   ON CONFLICT (identifier_type, identifier_value) DO NOTHING`,
+                  [domainData.domain.toLowerCase().trim()]
+                ).catch(err => {
+                  logger.warn({ err, domain: domainData.domain }, 'Failed to enqueue domain for crawl');
+                });
+              }
             }
             break;
           }

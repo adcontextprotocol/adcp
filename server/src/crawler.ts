@@ -188,59 +188,59 @@ export class CrawlerService {
    * (setting domain_verified on hosted_brands) and upserts live authoritative
    * brand.json files into discovered_brands.
    */
+  /**
+   * Scan a single domain for brand.json and upsert discovered/verified brand data.
+   */
+  async scanBrandForDomain(domain: string): Promise<void> {
+    const result = await this.brandManager.validateDomain(domain, { skipCache: true });
+    if (!result.valid || !result.raw_data) return;
+
+    if (result.variant === 'authoritative_location') {
+      const data = result.raw_data as { authoritative_location: string };
+      try {
+        const url = new URL(data.authoritative_location);
+        if (url.hostname === AAO_HOST &&
+            url.pathname === `/brands/${domain}/brand.json`) {
+          const hosted = await this.brandDb.getHostedBrandByDomain(domain);
+          if (hosted && !hosted.domain_verified) {
+            await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
+            log.debug({ domain }, 'Brand verified');
+          }
+        }
+      } catch {
+        // Invalid URL in authoritative_location — skip
+      }
+    } else if (result.variant === 'house_portfolio' ||
+               result.variant === 'brand_agent' ||
+               result.variant === 'house_redirect') {
+      const brandName = this.extractBrandName(result.raw_data, domain);
+      await this.brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_name: brandName,
+        has_brand_manifest: result.variant === 'house_portfolio',
+        brand_manifest: result.variant === 'house_portfolio'
+          ? result.raw_data as Record<string, unknown>
+          : undefined,
+        source_type: 'brand_json',
+      });
+    }
+  }
+
   private async scanBrandsForDomains(domains: string[]): Promise<void> {
     const CONCURRENCY = 5;
     log.debug({ domainCount: domains.length }, 'Scanning brand.json');
-    let verified = 0;
-    let discovered = 0;
 
-    const scanOne = async (domain: string): Promise<void> => {
-      try {
-        const result = await this.brandManager.validateDomain(domain, { skipCache: true });
-        if (!result.valid || !result.raw_data) return;
-
-        if (result.variant === 'authoritative_location') {
-          const data = result.raw_data as { authoritative_location: string };
-          try {
-            const url = new URL(data.authoritative_location);
-            if (url.hostname === AAO_HOST &&
-                url.pathname === `/brands/${domain}/brand.json`) {
-              const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-              if (hosted && !hosted.domain_verified) {
-                await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
-                verified++;
-                log.debug({ domain }, 'Brand verified');
-              }
-            }
-          } catch {
-            // Invalid URL in authoritative_location — skip
-          }
-        } else if (result.variant === 'house_portfolio' ||
-                   result.variant === 'brand_agent' ||
-                   result.variant === 'house_redirect') {
-          const brandName = this.extractBrandName(result.raw_data, domain);
-          await this.brandDb.upsertDiscoveredBrand({
-            domain,
-            brand_name: brandName,
-            has_brand_manifest: result.variant === 'house_portfolio',
-            brand_manifest: result.variant === 'house_portfolio'
-              ? result.raw_data as Record<string, unknown>
-              : undefined,
-            source_type: 'brand_json',
-          });
-          discovered++;
-        }
-      } catch (err) {
-        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
-      }
-    };
-
-    // Process in batches of CONCURRENCY
     for (let i = 0; i < domains.length; i += CONCURRENCY) {
-      await Promise.all(domains.slice(i, i + CONCURRENCY).map(scanOne));
+      await Promise.all(domains.slice(i, i + CONCURRENCY).map(async (domain) => {
+        try {
+          await this.scanBrandForDomain(domain);
+        } catch (err) {
+          log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
+        }
+      }));
     }
 
-    log.info({ verified, discovered }, 'Brand scan complete');
+    log.info({ domainCount: domains.length }, 'Brand scan complete');
   }
 
   private extractBrandName(data: unknown, fallback: string): string {
@@ -751,6 +751,13 @@ export class CrawlerService {
           },
           actor: 'api:crawl-request',
         });
+      }
+
+      // Scan brand.json for this domain
+      try {
+        await this.scanBrandForDomain(domain);
+      } catch (err) {
+        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan during single domain crawl failed');
       }
 
       // Rebuild profiles for affected agents

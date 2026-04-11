@@ -93,6 +93,18 @@ export class MemberDatabase {
   }
 
   /**
+   * Get profile by primary brand domain
+   */
+  async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
+    const result = await query<MemberProfile>(
+      'SELECT * FROM member_profiles WHERE primary_brand_domain = $1',
+      [domain]
+    );
+
+    return result.rows[0] ? this.deserializeProfile(result.rows[0]) : null;
+  }
+
+  /**
    * Get profile by organization ID
    */
   async getProfileByOrgId(workos_organization_id: string): Promise<MemberProfile | null> {
