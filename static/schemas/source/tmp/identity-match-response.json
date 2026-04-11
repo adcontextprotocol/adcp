@@ -26,6 +26,13 @@
       "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
       "minimum": 0,
       "maximum": 86400
+    },
+    "macros": {
+      "type": "object",
+      "description": "Key-value pairs for impression-time macro substitution. The TMPX macro carries an HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Publishers MUST treat these values as opaque pass-through data. Buyer-supplied macro keys MUST NOT collide with universal macro names — platform-defined macros take precedence during substitution.",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   },
   "required": [

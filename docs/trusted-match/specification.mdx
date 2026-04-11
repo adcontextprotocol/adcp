@@ -138,7 +138,7 @@ A buyer's response for a single package.
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
-| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Attribution reconciliation happens via delivery reporting or clean room. |
+| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering. In the GAM case, these flow as macro values at serve time. Distinct from Identity Match `macros` which carry encrypted exposure tokens (TMPX) for frequency tracking. |
 
 #### OfferPrice
 
@@ -177,6 +177,7 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 | `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. Required for signature verification. See `uid-type` enum. |
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
+| `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
 
 ### IdentityMatchResponse
 
@@ -188,8 +189,9 @@ Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
 | `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
+| `macros` | Map\<string, string\> | No | Key-value pairs for impression-time macro substitution. The `TMPX` macro carries an HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Publishers MUST treat these values as opaque pass-through data. |
 
-The response is a flat list of eligible package IDs and a TTL. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+The response includes eligible package IDs, a TTL, and optional macros. The `macros` field carries encrypted exposure tokens (TMPX) that flow through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
 
 The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds." The router caches the `eligible_package_ids` list and returns it for subsequent requests during the window — it does not track which packages have been served. The publisher enforces allocation rules (at most one ad per package, competitive separation, pod composition) using the cached eligibility as input. This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and the publisher allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
 
@@ -247,6 +249,8 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 | `agent_url` | string (URI) | Yes | Provider's agent URL from the registry. Canonical identifier for this TMP provider. |
 | `context_match` | bool | No | Whether this provider handles context match for this product. Default: false. |
 | `identity_match` | bool | No | Whether this provider handles identity match for this product. Default: false. |
+| `countries` | List\<string\> | No | ISO 3166-1 alpha-2 country codes this provider serves. The router filters providers by the request's `country` field. Required when `identity_match` is true. |
+| `uid_types` | List\<string\> | No | Identity types this provider can resolve (from `uid-type` enum). The router filters providers whose `uid_types` includes the request's `uid_type`. Required when `identity_match` is true. |
 
 ## Privacy Requirements
 
@@ -363,6 +367,104 @@ Content type: `application/json`
 All TMP messages use JSON encoding. Field names and types follow the JSON Schema definitions in this specification. Implementations MUST support JSON.
 
 TMP messages are small (200-600 bytes per request/response). At these sizes, serialization format is less than 1% of total latency — the protocol's performance comes from smaller messages and structural separation, not encoding efficiency. JSON is universal, debuggable, and supported by every language and tool.
+
+## Country-Partitioned Identity
+
+Identity data is logically partitioned by country (ISO 3166-1 alpha-2). The protocol carries the country code on every Identity Match request and in every TMPX token (the buyer's read replica includes the country in the encrypted plaintext for data residency routing — this is buyer-internal and not visible to the publisher or router). How countries are physically grouped into database clusters is a deployment decision — the protocol does not constrain it.
+
+Publishers include a `country` field on Identity Match requests as a routing directive. The router uses it to select providers whose `countries` list includes that country code, then strips the field before forwarding. The buyer agent never sees the country — it is not an identity signal.
+
+Each provider entry declares which countries and identity types it serves via `countries` and `uid_types` fields. A multi-country buyer operates separate provider entries per cluster (e.g., one for US, one for EU countries). This enables buyers to comply with data residency requirements, subscribe publishers to only the countries they serve, and move countries between clusters without protocol changes.
+
+## TMPX Exposure Tokens
+
+TMP uses encrypted exposure tokens (TMPX) to close the frequency capping loop. The Identity Match read replica encrypts resolved identity tokens into an opaque TMPX macro that flows through creative tracking URLs. The buyer's impression pixel decrypts the token and logs per-user exposures.
+
+### Encryption
+
+TMPX uses HPKE (RFC 9180) with `mode_auth`:
+
+| Parameter | Value |
+|---|---|
+| Mode | `mode_auth` — sender (read replica) authenticates with its own keypair |
+| KEM | DHKEM(X25519, HKDF-SHA256) |
+| KDF | HKDF-SHA256 |
+| AEAD | ChaCha20-Poly1305 |
+
+The buyer's cluster master holds the recipient private key. Each read replica holds its own sender keypair for authentication. The master verifies the sender's public key during decryption, rejecting tokens not produced by an authorized replica.
+
+### Binary format
+
+The TMPX plaintext is a compact binary structure. The type ID implicitly defines the token length — no length prefix is needed.
+
+**Header (16 bytes):**
+
+| Field | Size | Description |
+|---|---|---|
+| Version | 1 byte | Format version (`0x01`) |
+| Timestamp | 4 bytes | uint32 Unix seconds — token creation time |
+| Country | 2 bytes | ISO 3166-1 alpha-2, ASCII — identity data residency |
+| Nonce | 8 bytes | Random — replay deduplication at the master |
+| Count | 1 byte | Number of identity entries |
+
+**Entries (repeated, buyer-configured priority order):**
+
+| Field | Size | Description |
+|---|---|---|
+| Type ID | 1 byte | Fixed integer, defines token binary size |
+| Token | N bytes | Raw binary identity token (size determined by Type ID) |
+
+**Type ID registry:**
+
+| ID | Token Type | Binary size |
+|---|---|---|
+| 1 | uid2 | 32 bytes |
+| 2 | euid | 32 bytes |
+| 3 | id5 | 32 bytes |
+| 4 | rampid | 32 bytes |
+| 5 | rampid_derived | 48 bytes |
+| 6 | maid | 16 bytes |
+| 7 | pairid | 32 bytes |
+| 8 | hashed_email | 32 bytes |
+| 9 | publisher_first_party | 32 bytes |
+
+Type IDs are stable — new types append, existing IDs never change. Tokens are stored in binary (UUIDs as 16 bytes, base64-encoded tokens decoded). RampID has two entries because maintained (XY, 32 bytes) and derived (Xi, 48 bytes) forms differ in size.
+
+If a parser encounters an unknown Type ID, it MUST stop parsing and treat the remaining entries as absent. The header Count field indicates total entries, but implementations MUST NOT assume all entries are parseable — forward compatibility requires graceful degradation when newer Type IDs are present.
+
+### Wire format
+
+The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The `kid` (key identifier, max 8 characters) is opaque — it MUST NOT encode geographic or deployment information. It maps to a cluster master private key internally.
+
+**Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably.
+
+### Key management
+
+Two keypair types per cluster:
+
+1. **Master keypair** — the cluster master holds the private key for decryption. The public key is published in `encryption_keys` on agent authorization entries in `adagents.json`.
+
+2. **Replica keypairs** — each read replica generates its own X25519 keypair for HPKE `mode_auth` sender authentication. The master maintains a registry of authorized replica public keys. Replica private keys never leave the replica.
+
+Key rotation follows the same pattern as TMP signing keys: 5-minute cache TTL, kid prefix for versioning, 30-day grace period for old master keys.
+
+### Replay protection
+
+The 8-byte random nonce enables deduplication at the master. The master stores nonces for a configurable window (recommended: 7 days) and rejects duplicates. The nonce is inside the AEAD-protected ciphertext — intermediaries cannot observe it.
+
+### Caching behavior
+
+The TMPX token is generated once per Identity Match evaluation and cached alongside the eligibility response for `ttl_sec` seconds. All impressions within the TTL window share the same TMPX value. The buyer's master MUST NOT deduplicate by TMPX value — each pixel fire is one impression.
+
+### Publisher obligations
+
+Publishers MUST NOT parse, decrypt, or make decisions based on TMPX values. The token is opaque pass-through data substituted into creative tracking URLs exactly like other macros. For DOOH inventory, the player MAY include the opaque TMPX value in play log records transmitted to the buyer for exposure reconciliation — the publisher MUST NOT retain TMPX values beyond the transmission window.
+
+### Inventory-specific behavior
+
+- **Web, mobile, CTV (SSAI), audio (DAI):** Standard impression pixel — `{TMPX}` substituted at serve time.
+- **CTV (client-side VAST):** Publisher substitutes `{TMPX}` before the VAST document reaches the player.
+- **DOOH:** Play-log-based — the TMPX token is logged by the DOOH player and included in play log records rather than pixel URLs.
 
 ## Transport
 

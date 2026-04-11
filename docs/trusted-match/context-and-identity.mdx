@@ -145,7 +145,10 @@ Note what is absent: no URL, no search query, no content signals, no topic IDs. 
   "type": "identity_match_response",
   "request_id": "id-9b2c",
   "eligible_package_ids": ["pkg-A", "pkg-B"],
-  "ttl_sec": 60
+  "ttl_sec": 60,
+  "macros": {
+    "TMPX": "k1.dG1weC1leGFtcGxlLWVuY3J5cHRlZC10b2tlbi4uLg"
+  }
 }
 ```
 
@@ -202,7 +205,7 @@ TMP's response model is the offer. An offer carries a `package_id` (required) an
 
 The creative manifest carries catalog items, text, images, and everything else needed for rendering. This reuses the existing CreativeManifest schema.
 
-Attribution tracking happens via delivery reporting or clean room integration, not via a real-time tracking token. The publisher reports which packages were delivered; attribution is reconciled out-of-band.
+Per-user exposure tracking flows through the TMPX macro — an encrypted token from Identity Match that the publisher substitutes into creative tracking URLs. The buyer's impression pixel decrypts the token and logs per-user exposures in real time. Aggregate delivery reporting via `get_media_buy_delivery` provides reconciliation and pacing data.
 
 ## Enrichment Signals
 

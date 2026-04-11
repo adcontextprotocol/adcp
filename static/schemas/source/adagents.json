@@ -242,6 +242,14 @@
                       "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -338,6 +346,14 @@
                     "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
                     "items": {
                       "$ref": "/schemas/core/agent-signing-key.json"
+                    },
+                    "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
                   }
@@ -438,6 +454,14 @@
                       "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -536,6 +560,14 @@
                       "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -582,6 +614,14 @@
                       "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -626,6 +666,14 @@
                     "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
                     "items": {
                       "$ref": "/schemas/core/agent-signing-key.json"
+                    },
+                    "minItems": 1
+                  },
+                  "encryption_keys": {
+                    "type": "array",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
                   }

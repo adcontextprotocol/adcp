@@ -164,13 +164,26 @@ For audio formats with content context:
 | `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
+### TMP Exposure Tracking
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{TMPX}` | TMP exposure token (HPKE-encrypted) | `k1.dG1weC1leGFtcGxl...` |
+
+The `{TMPX}` macro carries an encrypted exposure token from the [Identity Match](/docs/trusted-match/specification) response. It contains the user's resolved identity tokens encrypted via HPKE, enabling the buyer's impression pixel to log per-user exposures for real-time frequency capping. Publishers substitute `{TMPX}` into tracking URLs exactly like other macros. The token is opaque — publishers MUST NOT parse, log, or make decisions based on its value.
+
+See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and key management.
+
 ### AXE Integration (Legacy)
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{AXEM}` | AXE contextual metadata (encoded blob) | `eyJjb250ZXh0IjoiLi4uIn0=` |
 
-The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), contextual data is delivered through the creative manifest in the Context Match response rather than an encoded macro.
+The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), this is replaced by three mechanisms:
+- **Structured creative assets** move to the `creative_manifest` field on the [Offer](/docs/trusted-match/specification#offer).
+- **Dynamic key-value pairs** (for rendering) pass through the Offer [`macros`](/docs/trusted-match/specification#offer) field.
+- **Per-user exposure tracking** uses the [`{TMPX}`](#tmp-exposure-tracking) macro from Identity Match.
 
 ### Catalog Item Macros
 
@@ -365,6 +378,8 @@ Not all macros are available in all inventory types. Check format specifications
 | **Audio Content** | | | | | | | | | |
 | `{STATION_ID}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `{COLLECTION_NAME}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **TMP Exposure** | | | | | | | | | |
+| `{TMPX}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅§ | ✅ | ✅ | ✅ |
 
 **Legend**:
 - ✅ = Available
@@ -372,6 +387,7 @@ Not all macros are available in all inventory types. Check format specifications
 - ✅* = In-app only (not mobile web)
 - ✅† = When location permission granted
 - ✅‡ = Often restricted due to privacy regulations (may return empty or masked value)
+- ✅§ = DOOH uses play-log-based reporting rather than pixel URLs
 
 **Important Notes**:
 - Privacy macros (`{LIMIT_AD_TRACKING}`, `{DEVICE_ID}`) may return empty values based on user privacy settings
@@ -445,7 +461,9 @@ When you create a media buy via `create_media_buy`, the sales agent:
 
 3. **Inserts click trackers** automatically into clickable elements
 
-4. **Leaves VAST macros unchanged** (for video formats)
+4. **Substitutes TMP Offer macros** into the creative when present. Context Match [Offer](/docs/trusted-match/specification#offer) macros carry dynamic rendering values (e.g., sponsor labels, promo codes) that are known at trafficking time — the sales agent passes these via `build_creative`'s `macro_values` parameter. The `{TMPX}` exposure token from Identity Match is per-user and per-impression — it MUST be substituted at serve time by the ad server, not at trafficking time.
+
+5. **Leaves VAST macros unchanged** (for video formats)
 
 ### 4. Impression Time
 
@@ -457,6 +475,22 @@ https://track.brand.com/imp?
   device=ABC-123-DEF-456&
   cb=87654321
 ```
+
+### TMP Offer Macros and Creative Rendering
+
+When a buyer responds to a [Context Match](/docs/trusted-match/specification#contextmatchrequest) request, the [Offer](/docs/trusted-match/specification#offer) can include a `macros` field — key-value pairs for dynamic creative rendering (e.g., sponsor labels, promo codes, landing page paths).
+
+When a buyer responds to an [Identity Match](/docs/trusted-match/specification#identitymatchresponse) request, the response can include a `macros` field with the `TMPX` key — an encrypted exposure token for per-user frequency tracking.
+
+**End-to-end flow:**
+
+1. **Buyer sets macros.** Context Match offers carry rendering macros. Identity Match responses carry the TMPX exposure token.
+2. **Publisher joins responses.** The publisher intersects Context Match offers with Identity Match eligibility, collecting macros from both.
+3. **Sales agent substitutes macros into the creative.** When trafficking, the sales agent calls `build_creative` with `macro_values` populated from both Offer and Identity Match macros. Alternatively, the ad server substitutes macros natively at serve time.
+4. **Ad server renders.** At impression time, remaining macros (platform-specific, like `%%CACHEBUSTER%%` in GAM) are replaced with actual values.
+5. **Buyer pixel fires.** The tracking URL carries both rendering values and the encrypted TMPX token. The buyer's impression pixel receives the TMPX, decrypts it, and logs the per-user exposure.
+
+**Relationship to universal macros:** Offer macros and TMPX are buyer-defined values. Universal macros like `{MEDIA_BUY_ID}` are platform-defined and substituted by the ad server. `{TMPX}` is registered in the universal macro enum for discoverability via `list_creative_formats`. Both coexist in the same creative.
 
 ## Best Practices
 

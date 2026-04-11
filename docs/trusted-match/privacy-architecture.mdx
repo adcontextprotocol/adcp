@@ -79,6 +79,19 @@ The publisher has both context and identity. They are the first party: the user 
 
 The publisher performs the join locally after both responses arrive. They can apply consent logic, frequency management, and relevance ranking on their own infrastructure.
 
+### TMPX exposure tokens and structural separation
+
+The Identity Match response can include a `macros` field carrying a `TMPX` token — an HPKE-encrypted blob containing the user's resolved identity tokens. This token flows through creative tracking URLs to the buyer's impression pixel for per-user exposure tracking.
+
+This data flow bridges the identity and context paths: the TMPX token is produced by Identity Match and consumed via creative tracking URLs that originate from Context Match offers. However, the bridge happens **publisher-side** — the publisher joins the two responses locally and substitutes the TMPX value into tracking URLs during ad serving. The buyer's read replica produces the encrypted token. The buyer's impression pixel receives it. The publisher sees only an opaque blob and MUST NOT parse, log, or make decisions based on its value.
+
+The TMPX token does not violate structural separation because:
+
+- The router never sees the decrypted contents — it passes the opaque `macros` field through.
+- The publisher substitutes the value into tracking URLs without interpreting it.
+- Only the buyer's cluster master can decrypt the token (HPKE `mode_auth` with the master's private key).
+- The `country` routing directive on the Identity Match request is stripped by the router before forwarding — the buyer agent never sees which country the user is in.
+
 ## Package Set Decorrelation
 
 If the context path sent only the packages relevant to this page, and the identity path sent only those same packages, a buyer could compare the two sets and infer which page the identity request came from. TMP prevents this by requiring structurally different sets:

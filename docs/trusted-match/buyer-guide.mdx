@@ -151,6 +151,12 @@ Cross-publisher frequency capping is the primary use case for Identity Match. Yo
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
+### How Buyers Learn About Exposures
+
+The `macros` field on the Identity Match response carries a `TMPX` token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your cluster master decrypts it, logs the exposure against the user, and replicates updated frequency state to read replicas. This gives you real-time per-user exposure signals without the publisher seeing user identity.
+
+See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure.
+
 ## Provider Registration
 
 Provider registration is an out-of-band process. After establishing a media buy via `create_media_buy`, coordinate with the publisher to provide your TMP base URL. This typically involves a commercial agreement and may require legal review, since the publisher will be sending content signals and identity tokens to your endpoints. The publisher then configures your provider entry in their router (see [router deployment](/docs/trusted-match/router-architecture#deployment)).
@@ -210,7 +216,7 @@ The 30ms agent-side budget accounts for network overhead between the router and 
 
 The publisher reports delivery via `get_media_buy_delivery`. Your agent queries delivery data to reconcile impressions, track pacing, and update frequency state.
 
-TMP does not define an impression callback — the buyer learns about impressions through delivery reporting, not real-time pixel fires. Update your exposure store from delivery reports to keep cross-publisher frequency caps current.
+Buyers receive real-time per-user exposure signals via the `{TMPX}` macro. The Identity Match response includes an encrypted TMPX token that flows through creative tracking URLs to your impression pixel. Your cluster master decrypts the token and updates per-user frequency state in real time. `get_media_buy_delivery` provides aggregate delivery metrics for reconciliation and pacing — it is not the primary frequency input.
 
 ## What's Different from OpenRTB
 
