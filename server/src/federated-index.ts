@@ -222,9 +222,7 @@ export class FederatedIndexService {
    * Check whether a domain has a valid adagents.json (from cached crawl data).
    */
   async hasValidAdagents(domain: string): Promise<boolean | null> {
-    const publishers = await this.db.getSalesAgentsClaimingDomain(domain);
-    if (publishers.length === 0) return null;
-    return publishers.some(p => p.has_valid_adagents === true);
+    return this.db.hasValidAdagents(domain);
   }
 
   /**

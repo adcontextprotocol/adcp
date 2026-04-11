@@ -77,6 +77,12 @@ function extractDomain(raw: string): string {
   return d.toLowerCase();
 }
 
+const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+function isValidDomain(domain: string): boolean {
+  return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -3146,7 +3152,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
     try {
       const domain = extractDomain(rawDomain);
-      if (domain.length > 253 || !domain.includes(".")) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
       const memberDb = new MemberDatabase();
@@ -3157,15 +3163,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
-      const agentConfigs = (profile?.agents || []).filter(a => a.is_public);
+      const displayName = profile?.display_name || domain;
+      const agentConfigs = (profile?.agents || []).filter(a => a.is_public).slice(0, 20);
 
-      // One query per agent — acceptable while members have < ~10 agents.
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {
           const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
           return {
             url: ac.url,
-            name: ac.name || profile!.display_name,
+            name: ac.name || displayName,
             type: ac.type || "unknown",
             authorized_by: auths.map(a => ({
               publisher_domain: a.publisher_domain,
@@ -3191,7 +3197,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
     try {
       const domain = extractDomain(rawDomain);
-      if (domain.length > 253 || !domain.includes(".")) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
       const memberDb = new MemberDatabase();
