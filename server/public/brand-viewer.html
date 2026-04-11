@@ -1703,27 +1703,6 @@
         container.appendChild(row);
       }
 
-      function addAgentField(data) {
-        const d = data || {};
-        const container = document.getElementById('edit-agents-container');
-        const row = document.createElement('div');
-        row.className = 'edit-list-row';
-        const types = ['brand','rights','measurement','governance','creative','buying','signals'];
-        row.innerHTML = `
-          <div class="edit-list-label">
-            <span>Type</span><span>URL</span><span>ID</span><span>Description</span>
-          </div>
-          <select class="edit-form-input agent-type" aria-label="Agent type">
-            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t}</option>`).join('')}
-          </select>
-          <input type="url" class="edit-form-input agent-url" value="${escapeAttr(d.url || '')}" placeholder="https://agent.example.com" aria-label="Agent URL">
-          <input type="text" class="edit-form-input edit-input-medium agent-id" value="${escapeAttr(d.id || '')}" placeholder="e.g. my_brand_agent" maxlength="100" aria-label="Agent ID">
-          <input type="text" class="edit-form-input agent-desc" value="${escapeAttr(d.description || '')}" placeholder="Agent description (optional)" maxlength="500" aria-label="Agent description">
-          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
-        `;
-        container.appendChild(row);
-      }
-
       function addLogoField(data) {
         const d = data || {};
         const container = document.getElementById('edit-logos-container');
@@ -1799,24 +1778,6 @@
           <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
             <input type="checkbox" class="disclaimer-required" ${d.required === true ? 'checked' : ''}> Required
           </label>
-          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
-        `;
-        container.appendChild(row);
-      }
-
-      function addCollectionField(data) {
-        const d = data || {};
-        const container = document.getElementById('edit-collections-container');
-        const row = document.createElement('div');
-        row.className = 'edit-list-row';
-        row.innerHTML = `
-          <div class="edit-list-label">
-            <span>Name</span><span>Collection ID</span><span>Role</span><span>Seller agent URL</span>
-          </div>
-          <input type="text" class="edit-form-input coll-name" value="${escapeAttr(d.name || '')}" placeholder="Collection name" aria-label="Collection name">
-          <input type="text" class="edit-form-input edit-input-medium coll-id" value="${escapeAttr(d.collection_id || '')}" placeholder="Collection ID" aria-label="Collection ID">
-          <input type="text" class="edit-form-input edit-input-role coll-role" value="${escapeAttr(d.role || '')}" placeholder="Role (optional)" aria-label="Collection role">
-          <input type="url" class="edit-form-input coll-seller" value="${escapeAttr(d.seller_agent_url || '')}" placeholder="https://seller-agent.example.com" aria-label="Seller agent URL">
           <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
         `;
         container.appendChild(row);
