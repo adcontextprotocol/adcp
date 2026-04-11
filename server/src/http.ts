@@ -8241,11 +8241,12 @@ Disallow: /api/admin/
     });
 
     // Scheduled jobs and crawlers only run on the worker process.
-    // FLY_PROCESS_GROUP is set automatically by Fly.io; locally both roles run.
-    const processRole = process.env.FLY_PROCESS_GROUP || 'worker';
+    // processRole is resolved once in logger.ts from FLY_PROCESS_GROUP;
+    // locally it defaults to 'worker' so dev runs everything.
+    const { processRole } = await import('./logger.js');
     this.isWorker = processRole !== 'web';
     const isWorker = this.isWorker;
-    logger.info({ flyProcessGroup: process.env.FLY_PROCESS_GROUP, processRole, isWorker }, 'Process role resolved');
+    logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
       // Start periodic property crawler for sales agents
