@@ -1666,16 +1666,9 @@
       function renderLogos(logos) {
         const section = document.getElementById('logos-section');
         const grid = document.getElementById('logo-grid');
-        const user = window.__APP_CONFIG__?.user;
 
         if (!logos || logos.length === 0) {
-          if (user?.isMember) {
-            // Show empty section with upload button for members
-            section.classList.remove('hidden');
-            grid.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);">No logos yet. Be the first to contribute one.</p>';
-          } else {
-            section.classList.add('hidden');
-          }
+          section.classList.add('hidden');
           return;
         }
 
@@ -1748,6 +1741,7 @@
         if (!brand?.logos) return;
 
         brand.logos.forEach((logo, i) => {
+          if (!isSafeUrl(logo.url)) return;
           setTimeout(() => {
             const a = document.createElement('a');
             a.href = logo.url;
