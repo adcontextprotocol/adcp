@@ -1078,6 +1078,32 @@
     .modal.article-view-modal {
       position: relative;
     }
+    .article-view-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-top: var(--space-3);
+    }
+    .article-view-actions .btn {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-3);
+    }
+    .article-view-actions .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .article-view-actions .btn-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+    .article-view-hero {
+      width: 100%;
+      max-height: 300px;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+    }
   </style>
 </head>
 <body>
@@ -1341,7 +1367,22 @@
       <div class="article-view-header">
         <h1 id="articleViewTitle" class="article-view-title"></h1>
         <div id="articleViewMeta" class="article-view-meta"></div>
+        <div id="articleViewActions" class="article-view-actions" style="display:none;">
+          <button class="btn btn-secondary btn-icon" onclick="editCurrentArticle()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+          </button>
+          <button class="btn btn-secondary btn-icon" id="generateHeroBtn" onclick="generateHero()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span class="btn-label">Generate Hero</span>
+          </button>
+          <button class="btn btn-secondary btn-icon" style="color: var(--color-error, #dc2626);" onclick="deleteCurrentArticle()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete
+          </button>
+        </div>
       </div>
+      <img id="articleViewHero" class="article-view-hero" style="display:none;" alt="">
       <div id="articleViewContent" class="article-view-content"></div>
     </div>
   </div>
@@ -2328,9 +2369,13 @@
       }
     }
 
+    let currentArticleSlug = null;
+
     function openArticle(postSlug) {
       const post = postsData.find(p => p.slug === postSlug);
       if (!post) return;
+
+      currentArticleSlug = postSlug;
 
       // Update URL without reloading (use encodeURIComponent for safety)
       history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}#post-${encodeURIComponent(postSlug)}`);
@@ -2347,6 +2392,26 @@
       }
       document.getElementById('articleViewMeta').innerHTML = metaHtml;
 
+      // Show hero image if available (try featured_image_url, then generated card)
+      const heroImg = document.getElementById('articleViewHero');
+      const imageUrl = post.featured_image_url || `/api/perspectives/${encodeURIComponent(post.slug)}/card.png`;
+      heroImg.src = imageUrl;
+      heroImg.style.display = 'block';
+      heroImg.onerror = function() { this.style.display = 'none'; };
+
+      // Show admin/leader actions
+      const actionsEl = document.getElementById('articleViewActions');
+      actionsEl.style.display = (isLeader || isAdmin) ? 'flex' : 'none';
+
+      // Hero generation requires admin — hide for leaders who aren't admins
+      document.getElementById('generateHeroBtn').style.display = isAdmin ? '' : 'none';
+
+      // Update generate hero button text based on whether image exists
+      const heroBtnLabel = document.querySelector('#generateHeroBtn .btn-label');
+      if (heroBtnLabel) {
+        heroBtnLabel.textContent = post.featured_image_url ? 'Regenerate Hero' : 'Generate Hero';
+      }
+
       // Render markdown content
       const contentHtml = post.content ? marked.parse(post.content) : '<p><em>No content available.</em></p>';
       document.getElementById('articleViewContent').innerHTML = DOMPurify.sanitize(contentHtml);
@@ -2359,9 +2424,108 @@
     function closeArticleView() {
       document.getElementById('articleViewModal').style.display = 'none';
       document.body.style.overflow = '';
+      currentArticleSlug = null;
 
       // Update URL to remove anchor
       history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}`);
+    }
+
+    function editCurrentArticle() {
+      const post = postsData.find(p => p.slug === currentArticleSlug);
+      if (!post) return;
+
+      // Close article view
+      document.getElementById('articleViewModal').style.display = 'none';
+
+      // Pre-fill the post modal for editing
+      document.getElementById('modalTitle').textContent = 'Edit Post';
+      document.getElementById('postId').value = post.id;
+      document.getElementById('postTitle').value = post.title || '';
+      document.getElementById('postSlug').value = post.slug || '';
+      document.getElementById('postExcerpt').value = post.excerpt || '';
+      document.getElementById('postContent').value = post.content || '';
+      document.getElementById('postCategory').value = post.category || '';
+      document.getElementById('externalUrl').value = post.external_url || '';
+      document.getElementById('externalSiteName').value = post.external_site_name || '';
+
+      setContentType(post.content_type || 'article');
+      updateExcerptCount();
+
+      // Show visibility toggle for leaders
+      if (isLeader) {
+        document.getElementById('visibilityNote').style.display = 'none';
+        document.getElementById('visibilityRow').style.display = 'block';
+        document.getElementById('isMembersOnly').checked = post.is_members_only !== false;
+      } else {
+        document.getElementById('visibilityNote').style.display = 'block';
+        document.getElementById('visibilityRow').style.display = 'none';
+      }
+
+      document.getElementById('postModal').style.display = 'flex';
+    }
+
+    async function generateHero() {
+      const post = postsData.find(p => p.slug === currentArticleSlug);
+      if (!post) return;
+
+      const btn = document.getElementById('generateHeroBtn');
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+
+      try {
+        const res = await fetch(`/api/admin/illustrations/regenerate/${encodeURIComponent(post.slug)}`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          alert(data.error || 'Failed to generate hero image');
+          return;
+        }
+
+        // Reload posts to get updated featured_image_url
+        await loadPosts();
+
+        // Re-open the article to show the new image
+        openArticle(post.slug);
+      } catch (err) {
+        console.error('Generate hero error:', err);
+        alert('Failed to generate hero image');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span class="btn-label">Generate Hero</span>`;
+      }
+    }
+
+    async function deleteCurrentArticle() {
+      const post = postsData.find(p => p.slug === currentArticleSlug);
+      if (!post) return;
+
+      if (!confirm(`Delete "${post.title}"? This cannot be undone.`)) return;
+
+      try {
+        const url = isLeader
+          ? `/api/working-groups/${currentSlug}/manage/posts/${post.id}`
+          : `/api/working-groups/${currentSlug}/posts/${post.id}`;
+        const res = await fetch(url, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          closeArticleView();
+          await loadPosts();
+        } else {
+          const data = await res.json();
+          alert(data.error || data.message || 'Failed to delete post');
+        }
+      } catch (err) {
+        console.error('Delete error:', err);
+        alert('Failed to delete post');
+      }
     }
 
     // Event delegation for article links (safer than inline onclick)

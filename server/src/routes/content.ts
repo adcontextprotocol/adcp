@@ -1129,6 +1129,8 @@ export function createMyContentRouter(): Router {
         external_site_name,
         category,
         tags,
+        author_name,
+        status: requestedStatus,
       } = req.body;
       const pool = getPool();
 
@@ -1204,6 +1206,30 @@ export function createMyContentRouter(): Router {
       if (tags !== undefined) {
         updates.push(`tags = $${paramIndex++}`);
         values.push(tags);
+      }
+      if (author_name !== undefined) {
+        updates.push(`author_name = $${paramIndex++}`);
+        values.push(author_name);
+      }
+      // Allow status changes: members can resubmit rejected→pending_review, or draft↔pending_review
+      // Admins can set any status
+      if (requestedStatus !== undefined) {
+        const allowedStatuses = ['draft', 'pending_review', 'published', 'archived'];
+        if (allowedStatuses.includes(requestedStatus)) {
+          // Non-admins can only set draft or pending_review
+          if (!userIsAdmin && !['draft', 'pending_review'].includes(requestedStatus)) {
+            return res.status(403).json({
+              error: 'Permission denied',
+              message: 'Only admins can set this status',
+            });
+          }
+          updates.push(`status = $${paramIndex++}`);
+          values.push(requestedStatus);
+          // Auto-set published_at when publishing
+          if (requestedStatus === 'published') {
+            updates.push(`published_at = COALESCE(published_at, NOW())`);
+          }
+        }
       }
 
       if (updates.length === 0) {

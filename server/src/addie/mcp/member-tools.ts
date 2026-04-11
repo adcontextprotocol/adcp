@@ -2102,7 +2102,7 @@ export function createMemberToolHandlers(
     }
 
     if (coAuthorEmails && coAuthorEmails.length > 0) {
-      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${result.id}`;
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/dashboard/content`;
     }
 
     return response;
