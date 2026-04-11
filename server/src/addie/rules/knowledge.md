@@ -402,10 +402,10 @@ These libraries handle protocol details, authentication, and provide typed inter
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
 **CLI tools in @adcp/client:**
-The `adcp` CLI runs via `npx adcp`. Key commands:
-- `npx adcp <agent> [tool] [payload]` — Call any tool on an agent
-- `npx adcp storyboard list` — List all available storyboards
-- `npx adcp storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
-- `npx adcp --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
+The `adcp` CLI runs via `npx @adcp/client`. Key commands:
+- `npx @adcp/client <agent> [tool] [payload]` — Call any tool on an agent
+- `npx @adcp/client storyboard list` — List all available storyboards
+- `npx @adcp/client storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
+- `npx @adcp/client --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
 
 Built-in aliases: `test-mcp`, `test-a2a`, `test-no-auth`, `test-a2a-no-auth`, `creative`.

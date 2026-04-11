@@ -14,13 +14,13 @@ Storyboards are available from the command line and interactively through [Addie
 Save your agent as a named alias so you can reference it by name:
 
 ```bash
-npx adcp --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
 ```
 
 This stores the alias in `~/.adcp/config.json`. You only need to do this once. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents — no setup needed.
 
 <Tip>
-You can also pass a URL directly instead of an alias: `npx adcp storyboard run http://localhost:3001/mcp media_buy_seller`
+You can also pass a URL directly instead of an alias: `npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller`
 </Tip>
 
 ## Run a storyboard
@@ -28,7 +28,7 @@ You can also pass a URL directly instead of an alias: `npx adcp storyboard run h
 ### 1. List available storyboards
 
 ```bash
-npx adcp storyboard list
+npx @adcp/client storyboard list
 ```
 
 Each storyboard targets a specific agent type. The [Build an Agent](/docs/building/build-an-agent) page maps skills to their matching storyboards.
@@ -36,7 +36,7 @@ Each storyboard targets a specific agent type. The [Build an Agent](/docs/buildi
 ### 2. Preview what a storyboard tests
 
 ```bash
-npx adcp storyboard show media_buy_seller
+npx @adcp/client storyboard show media_buy_seller
 ```
 
 This shows the phases, steps, and validations without running anything.
@@ -44,7 +44,7 @@ This shows the phases, steps, and validations without running anything.
 ### 3. Run the storyboard
 
 ```bash
-npx adcp storyboard run my-agent media_buy_seller
+npx @adcp/client storyboard run my-agent media_buy_seller
 ```
 
 Output shows each step with pass/fail:
@@ -70,13 +70,13 @@ Pass `--json` for machine-readable results. Pass `--debug` to see full request/r
 If a step fails, run it individually:
 
 ```bash
-npx adcp storyboard step my-agent media_buy_seller create_media_buy --json --debug
+npx @adcp/client storyboard step my-agent media_buy_seller create_media_buy --json --debug
 ```
 
 Pass `--context` to provide state from earlier steps (account IDs, product IDs):
 
 ```bash
-npx adcp storyboard step my-agent media_buy_seller get_products \
+npx @adcp/client storyboard step my-agent media_buy_seller get_products \
   --context '{"account_id":"acct-123"}' --json
 ```
 
@@ -85,7 +85,7 @@ npx adcp storyboard step my-agent media_buy_seller get_products \
 Run without a storyboard ID to test everything. The CLI discovers your agent's tools via `tools/list` and selects matching storyboards automatically:
 
 ```bash
-npx adcp storyboard run my-agent
+npx @adcp/client storyboard run my-agent
 ```
 
 Add `--json` for structured output.
@@ -132,10 +132,10 @@ The typical development workflow:
 
 1. **Build** — Point a coding agent at a [skill file](/docs/building/build-an-agent) to generate your agent
 2. **Run** — Start the agent locally (`npx tsx agent.ts`)
-3. **Validate** — Run the matching storyboard (`npx adcp storyboard run my-agent media_buy_seller`)
+3. **Validate** — Run the matching storyboard (`npx @adcp/client storyboard run my-agent media_buy_seller`)
 4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
 5. **Repeat** — Run the storyboard again until all steps pass
-6. **Full check** — Run `npx adcp storyboard run my-agent` (no storyboard ID) for a full assessment before going live
+6. **Full check** — Run `npx @adcp/client storyboard run my-agent` (no storyboard ID) for a full assessment before going live
 
 <Info>
 For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
@@ -145,13 +145,13 @@ For [Practitioner certification](https://agenticadvertising.org/certification), 
 
 | Command | Description |
 |---------|-------------|
-| `npx adcp storyboard list` | List all available storyboards |
-| `npx adcp storyboard show <id>` | Preview storyboard structure |
-| `npx adcp storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
-| `npx adcp storyboard step <agent> <id> <step>` | Run a single step |
-| `npx adcp <agent> [tool] [payload]` | Call any tool directly |
-| `npx adcp --save-auth <alias> <url>` | Save agent alias |
-| `npx adcp --list-agents` | List saved aliases |
+| `npx @adcp/client storyboard list` | List all available storyboards |
+| `npx @adcp/client storyboard show <id>` | Preview storyboard structure |
+| `npx @adcp/client storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
+| `npx @adcp/client storyboard step <agent> <id> <step>` | Run a single step |
+| `npx @adcp/client <agent> [tool] [payload]` | Call any tool directly |
+| `npx @adcp/client --save-auth <alias> <url>` | Save agent alias |
+| `npx @adcp/client --list-agents` | List saved aliases |
 
 All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
 
