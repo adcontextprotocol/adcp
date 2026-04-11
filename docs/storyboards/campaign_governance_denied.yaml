@@ -101,9 +101,6 @@ phases:
         doc_ref: "/governance/campaign/tasks/check_governance"
         comply_scenario: campaign_governance_denied
         stateful: true
-        context_outputs:
-          - path: "governance_context"
-            key: "governance_context"
         expected: |
           Return a denied governance decision:
           - status: denied
