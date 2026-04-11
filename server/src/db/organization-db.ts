@@ -35,6 +35,12 @@ export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1
 export type MembershipTier = 'individual_professional' | 'individual_academic' | 'company_standard' | 'company_icl' | 'company_leader';
 export type SeatType = 'contributor' | 'community_only';
 
+/**
+ * Stripe subscription statuses that represent a paid relationship.
+ * Tier should be preserved during payment retries (past_due) and trials.
+ */
+export const TIER_PRESERVING_STATUSES = ['active', 'past_due', 'trialing'] as const;
+
 export interface SeatLimits {
   contributor: number;
   community: number; // -1 = unlimited
@@ -92,6 +98,7 @@ export interface Organization {
   subscription_product_id: string | null;
   subscription_product_name: string | null;
   subscription_price_id: string | null;
+  subscription_price_lookup_key: string | null;
   subscription_amount: number | null;
   subscription_currency: string | null;
   subscription_interval: string | null;
@@ -173,20 +180,22 @@ export function tierFromLookupKey(lookupKey: string | null | undefined): Members
 
 /**
  * Resolve the effective membership tier for an organization.
- * Uses explicit membership_tier if set, otherwise infers from active subscription data.
+ * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Only falls back for tier-preserving statuses (active, past_due, trialing).
  */
 export function resolveMembershipTier(org: {
   membership_tier: string | null;
+  subscription_price_lookup_key?: string | null;
   subscription_status: string | null;
   subscription_amount: number | null;
   subscription_interval: string | null;
   is_personal: boolean;
 } | null | undefined): MembershipTier | null {
   if (!org) return null;
-  return (org.membership_tier as MembershipTier)
-    ?? (org.subscription_status === 'active'
-      ? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal)
-      : null);
+  if (org.membership_tier) return org.membership_tier as MembershipTier;
+  if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
+  return tierFromLookupKey(org.subscription_price_lookup_key)
+    ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
 }
 
 /**
@@ -221,6 +230,77 @@ export function inferMembershipTier(
   if (annualCents >= 4900000) return 'company_leader';
   if (annualCents >= 700000) return 'company_icl';
   return 'company_standard';
+}
+
+/**
+ * Fields to write when syncing subscription data from Stripe.
+ * Built by `buildSubscriptionUpdate()` so all write paths store identical data.
+ */
+export interface SubscriptionUpdatePayload {
+  subscription_status: string;
+  stripe_subscription_id: string;
+  subscription_current_period_end: Date | null;
+  subscription_amount: number | null;
+  subscription_currency: string | null;
+  subscription_interval: string | null;
+  subscription_canceled_at: Date | null;
+  subscription_product_id: string | null;
+  subscription_product_name: string | null;
+  subscription_price_id: string | null;
+  subscription_price_lookup_key: string | null;
+  membership_tier: MembershipTier | null;
+}
+
+/**
+ * Extract subscription fields from a Stripe subscription object.
+ * Single source of truth for tier resolution — all write paths should use this.
+ */
+export function buildSubscriptionUpdate(
+  subscription: {
+    status: string;
+    id: string;
+    current_period_end: number | null;
+    canceled_at: number | null;
+    items: { data: Array<{ price: {
+      unit_amount: number | null;
+      currency: string;
+      recurring: { interval: string } | null;
+      id: string;
+      product: string | { id: string; name?: string };
+      lookup_key: string | null;
+    } }> };
+  },
+  isPersonal: boolean,
+): SubscriptionUpdatePayload {
+  const priceData = subscription.items?.data?.[0]?.price;
+  const amount = priceData?.unit_amount ?? null;
+  const currency = priceData?.currency ?? null;
+  const interval = priceData?.recurring?.interval ?? null;
+  const lookupKey = priceData?.lookup_key ?? null;
+  const productRef = priceData?.product;
+  const productId = typeof productRef === 'string' ? productRef : productRef?.id ?? null;
+  const productName = typeof productRef === 'object' ? productRef?.name ?? null : null;
+
+  const membershipTier = (TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)
+    ? (tierFromLookupKey(lookupKey) ?? inferMembershipTier(amount, interval, isPersonal))
+    : null;
+
+  return {
+    subscription_status: subscription.status,
+    stripe_subscription_id: subscription.id,
+    subscription_current_period_end: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000) : null,
+    subscription_amount: amount,
+    subscription_currency: currency,
+    subscription_interval: interval,
+    subscription_canceled_at: subscription.canceled_at
+      ? new Date(subscription.canceled_at * 1000) : null,
+    subscription_product_id: productId,
+    subscription_product_name: productName,
+    subscription_price_id: priceData?.id ?? null,
+    subscription_price_lookup_key: lookupKey,
+    membership_tier: membershipTier,
+  };
 }
 
 /**
@@ -266,12 +346,13 @@ export async function canAddSeat(
     // Lock the org row to serialize concurrent seat checks
     const orgResult = await client.query<{
       membership_tier: string | null;
+      subscription_price_lookup_key: string | null;
       subscription_amount: number | null;
       subscription_interval: string | null;
       subscription_status: string | null;
       is_personal: boolean;
     }>(
-      'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+      'SELECT membership_tier, subscription_price_lookup_key, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
       [orgId]
     );
     const org = orgResult.rows[0];
@@ -690,6 +771,7 @@ export class OrganizationDatabase {
       subscription_product_id: 'subscription_product_id',
       subscription_product_name: 'subscription_product_name',
       subscription_price_id: 'subscription_price_id',
+      subscription_price_lookup_key: 'subscription_price_lookup_key',
       subscription_amount: 'subscription_amount',
       subscription_currency: 'subscription_currency',
       subscription_interval: 'subscription_interval',
