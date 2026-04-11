@@ -603,7 +603,7 @@
       }
 
       .edit-form-input {
-        padding: 8px 12px;
+        padding: var(--space-2) var(--space-3);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-md);
         font-size: var(--text-sm);
@@ -648,7 +648,7 @@
       }
 
       .edit-colors-row input[type="text"] {
-        padding: 6px 10px;
+        padding: var(--space-1_5) var(--space-2_5);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-md);
         font-size: var(--text-sm);
@@ -680,13 +680,223 @@
         cursor: pointer;
         color: var(--color-text-muted);
         font-size: var(--text-lg);
-        padding: 0 4px;
+        padding: var(--space-1) var(--space-1);
         line-height: 1;
-        transition: color var(--duration-normal) var(--ease-in-out);
+        border-radius: var(--radius-sm);
+        transition: color var(--duration-normal) var(--ease-in-out),
+                    background-color var(--duration-normal) var(--ease-in-out);
       }
 
       .edit-color-remove:hover {
         color: var(--color-error-500);
+        background-color: var(--color-error-50);
+      }
+
+      /* Collapsible edit sections */
+      .edit-section-group {
+        margin-top: var(--space-4);
+        border-top: var(--border-1) solid var(--color-border);
+        padding-top: var(--space-3);
+      }
+
+      .edit-section-group summary {
+        cursor: pointer;
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+        color: var(--color-text-secondary);
+        padding: var(--space-2) 0;
+        list-style: none;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .edit-section-group summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .edit-section-group summary::before {
+        content: '\25B6';
+        font-size: var(--text-xs);
+        transition: transform var(--duration-normal) var(--ease-in-out);
+        flex-shrink: 0;
+      }
+
+      .edit-section-group summary:hover {
+        color: var(--color-text-heading);
+      }
+
+      .edit-section-group[open] summary {
+        margin-bottom: var(--space-3);
+        color: var(--color-text-heading);
+      }
+
+      .edit-section-group[open] summary::before {
+        transform: rotate(90deg);
+      }
+
+      .edit-section-group .edit-form-grid {
+        margin-top: 0;
+      }
+
+      .edit-list-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: var(--space-2);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+        position: relative;
+      }
+
+      .edit-list-row .edit-form-input {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .edit-list-row select.edit-form-input {
+        min-width: 140px;
+        flex: 0 1 auto;
+      }
+
+      .edit-list-row .edit-input-narrow {
+        max-width: 80px;
+      }
+
+      .edit-list-row .edit-input-medium {
+        max-width: 160px;
+      }
+
+      .edit-list-row .edit-select-sm {
+        min-width: 100px;
+      }
+
+      .edit-list-row .edit-select-md {
+        min-width: 110px;
+      }
+
+      .edit-list-row .edit-select-lg {
+        min-width: 120px;
+      }
+
+      .edit-list-row .edit-input-context {
+        max-width: 200px;
+      }
+
+      .edit-list-row .edit-input-role {
+        max-width: 120px;
+      }
+
+      .edit-list-row .edit-list-label {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        width: 100%;
+        display: flex;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+      }
+
+      .edit-list-row .edit-list-label span {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .edit-list-row:not(:first-child) .edit-list-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .edit-list-remove {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: var(--text-lg);
+        padding: var(--space-1) var(--space-1);
+        line-height: 1;
+        border-radius: var(--radius-sm);
+        transition: color var(--duration-normal) var(--ease-in-out),
+                    background-color var(--duration-normal) var(--ease-in-out);
+        align-self: center;
+        flex-shrink: 0;
+      }
+
+      .edit-list-remove:hover {
+        color: var(--color-error-500);
+        background-color: var(--color-error-50);
+      }
+
+      .edit-list-remove:focus-visible,
+      .edit-color-remove:focus-visible {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+      }
+
+      .edit-section-group summary:focus-visible {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+        border-radius: var(--radius-sm);
+      }
+
+      .edit-logo-thumb {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border);
+        flex-shrink: 0;
+        align-self: center;
+      }
+
+      .edit-section-hint {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--space-2);
+        line-height: var(--leading-relaxed);
+      }
+
+      .edit-section-count {
+        display: inline-block;
+        font-size: var(--text-xs);
+        font-weight: var(--font-normal);
+        color: var(--color-text-muted);
+        margin-left: var(--space-1);
+      }
+
+      .edit-section-empty {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        padding: var(--space-3);
+        text-align: center;
+      }
+
+      .edit-list-row.edit-row-invalid {
+        outline: 2px solid var(--color-error-500);
+        outline-offset: -2px;
+      }
+
+      .edit-row-error {
+        font-size: var(--text-xs);
+        color: var(--color-error-500);
+        width: 100%;
+        margin-top: var(--space-1);
+      }
+
+      .edit-form-help {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: 2px;
       }
 
       /* Community brand info grid */
@@ -767,6 +977,34 @@
         }
         .community-info-grid {
           grid-template-columns: 1fr;
+        }
+        .edit-list-row {
+          flex-direction: column;
+        }
+        .edit-list-row .edit-form-input,
+        .edit-list-row select.edit-form-input {
+          min-width: 100%;
+          max-width: 100%;
+          width: 100%;
+        }
+        .edit-list-row .edit-list-label {
+          flex-direction: column;
+          gap: 0;
+        }
+        .edit-list-row:not(:first-child) .edit-list-label {
+          position: static;
+          width: auto;
+          height: auto;
+          margin: 0;
+          overflow: visible;
+          clip: auto;
+          white-space: normal;
+        }
+        .edit-list-remove {
+          align-self: flex-end;
+        }
+        .edit-logo-thumb {
+          align-self: flex-start;
         }
       }
 
@@ -923,6 +1161,7 @@
             <div style="display: flex; gap: var(--space-2); align-items: center;">
               <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full);">Community contributed</span>
               <button id="edit-brand-btn" class="hidden" onclick="showEditForm()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Edit</button>
+              <button id="upload-logo-hero-btn" class="hidden" onclick="showUploadModal()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Upload logo</button>
             </div>
           </div>
           <div id="community-brand-details"></div>
@@ -968,15 +1207,16 @@
             <div class="edit-form-field">
               <label class="edit-form-label" for="edit-house-domain">House domain</label>
               <input type="text" id="edit-house-domain" class="edit-form-input" placeholder="e.g. parent-company.com">
+              <div class="edit-form-help">Parent company domain, if this brand is part of a larger portfolio</div>
             </div>
             <div class="edit-form-field">
               <label class="edit-form-label" for="edit-keller-type">Architecture</label>
               <select id="edit-keller-type" class="edit-form-input">
                 <option value="">(none)</option>
-                <option value="master">Master</option>
-                <option value="sub_brand">Sub-brand</option>
-                <option value="endorsed">Endorsed</option>
-                <option value="independent">Independent</option>
+                <option value="master">Master (primary brand)</option>
+                <option value="sub_brand">Sub-brand (carries parent name)</option>
+                <option value="endorsed">Endorsed (independent, backed by parent)</option>
+                <option value="independent">Independent (operates separately)</option>
               </select>
             </div>
             <div class="edit-form-field edit-form-field--full">
@@ -984,11 +1224,69 @@
               <div id="edit-colors-container"></div>
               <button type="button" onclick="addColorField('', '')" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Color</button>
             </div>
-            <div class="edit-form-field edit-form-field--full" style="margin-top: var(--space-2);">
-              <label class="edit-form-label" for="edit-summary">Edit summary <span style="color: var(--color-error-500);">*</span></label>
-              <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Describe your changes (required)" required></textarea>
-            </div>
           </div>
+
+          <!-- Properties -->
+          <details id="edit-section-properties" class="edit-section-group">
+            <summary>Properties</summary>
+            <div id="edit-properties-container"></div>
+            <button type="button" onclick="addPropertyField();editFormDirty=true;updateSectionCounts();" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Property</button>
+          </details>
+
+          <!-- Agents managed via member dashboard -->
+          <div id="edit-agents-container" class="hidden"></div>
+
+          <!-- Logos -->
+          <details id="edit-section-logos" class="edit-section-group">
+            <summary>Logos</summary>
+            <div id="edit-logos-container"></div>
+            <button type="button" onclick="addLogoField();editFormDirty=true;updateSectionCounts();" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Logo</button>
+            <p class="edit-section-hint">Add logo URLs here, or use the Upload Logo button to upload a file.</p>
+          </details>
+
+          <!-- Contact & Legal -->
+          <details id="edit-section-legal" class="edit-section-group">
+            <summary>Contact &amp; Legal</summary>
+            <div class="edit-form-grid">
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-contact-name">Contact name</label>
+                <input type="text" id="edit-contact-name" class="edit-form-input" placeholder="e.g. Brand Team" maxlength="255">
+              </div>
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-contact-email">Contact email</label>
+                <input type="email" id="edit-contact-email" class="edit-form-input" placeholder="e.g. brand@example.com">
+              </div>
+              <div class="edit-form-field edit-form-field--full">
+                <label class="edit-form-label" for="edit-privacy-url">Privacy policy URL</label>
+                <input type="url" id="edit-privacy-url" class="edit-form-input" placeholder="https://example.com/privacy" maxlength="2000">
+              </div>
+              <div class="edit-form-field edit-form-field--full">
+                <label class="edit-form-label">Disclaimers</label>
+                <div id="edit-disclaimers-container"></div>
+                <button type="button" onclick="addDisclaimerField();editFormDirty=true;updateSectionCounts();" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Disclaimer</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Additional -->
+          <details id="edit-section-additional" class="edit-section-group">
+            <summary>Additional</summary>
+            <div class="edit-form-grid">
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-target-audience">Target audience</label>
+                <input type="text" id="edit-target-audience" class="edit-form-input" placeholder="e.g. Marketing professionals" maxlength="500">
+              </div>
+              <div class="edit-form-field">
+                <label class="edit-form-label" for="edit-brand-url">Brand URL</label>
+                <input type="url" id="edit-brand-url" class="edit-form-input" placeholder="https://example.com" maxlength="2000">
+              </div>
+              <div id="edit-collections-container" class="hidden"></div>
+            </div>
+          </details>
+
+          <!-- Hidden edit summary - auto-generated on save -->
+          <input type="hidden" id="edit-summary">
+
           <div class="edit-form-actions">
             <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
             <button class="btn btn-ghost" onclick="hideEditForm()">Cancel</button>
@@ -1135,6 +1433,7 @@
 
     <script>
       // State
+      let editFormDirty = false;
       let brandData = null;
       let currentBrandId = null;
       let currentEditStatus = null;
@@ -1153,6 +1452,8 @@
         if (user?.isMember) {
           const btn = document.getElementById('upload-logo-btn');
           if (btn) btn.classList.remove('hidden');
+          const heroBtn = document.getElementById('upload-logo-hero-btn');
+          if (heroBtn) heroBtn.classList.remove('hidden');
         }
 
         // Build tag picker
@@ -1283,6 +1584,7 @@
         const form = document.getElementById('edit-form-section');
         form.classList.remove('hidden');
         document.getElementById('edit-brand-btn').classList.add('hidden');
+        document.getElementById('upload-logo-hero-btn')?.classList.add('hidden');
 
         // Pre-fill form from currentEditStatus
         const manifest = currentEditStatus?.brand_manifest || {};
@@ -1305,13 +1607,49 @@
           });
         }
 
-        // Scroll form into view
+        // Pre-fill properties
+        document.getElementById('edit-properties-container').innerHTML = '';
+        (manifest.properties || []).forEach(p => addPropertyField(p));
+
+        // Pre-fill logos
+        document.getElementById('edit-logos-container').innerHTML = '';
+        (manifest.logos || []).forEach(l => addLogoField(l));
+
+        // Pre-fill contact & legal
+        document.getElementById('edit-contact-name').value = manifest.contact?.name || '';
+        document.getElementById('edit-contact-email').value = manifest.contact?.email || '';
+        document.getElementById('edit-privacy-url').value = manifest.privacy_policy_url || '';
+        document.getElementById('edit-disclaimers-container').innerHTML = '';
+        (manifest.disclaimers || []).forEach(d => addDisclaimerField(d));
+
+        // Pre-fill additional
+        document.getElementById('edit-target-audience').value = manifest.target_audience || '';
+        document.getElementById('edit-brand-url').value = manifest.url || '';
+        // Auto-open sections with existing data
+        document.getElementById('edit-section-properties').open = !!(manifest.properties?.length);
+        document.getElementById('edit-section-logos').open = !!(manifest.logos?.length);
+        document.getElementById('edit-section-legal').open = !!(manifest.contact || manifest.privacy_policy_url || manifest.disclaimers?.length);
+        document.getElementById('edit-section-additional').open = !!(manifest.target_audience || manifest.url);
+
+        // Update section counts and scroll into view
+        updateSectionCounts();
+        editFormDirty = false;
+        if (!form._dirtyListenersAttached) {
+          const markDirty = () => { editFormDirty = true; };
+          form.addEventListener('input', markDirty);
+          form.addEventListener('change', markDirty);
+          form._dirtyListenersAttached = true;
+        }
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       function hideEditForm() {
+        if (editFormDirty && !confirm('You have unsaved changes. Discard them?')) return;
+        editFormDirty = false;
         document.getElementById('edit-form-section').classList.add('hidden');
         document.getElementById('edit-brand-btn').classList.remove('hidden');
+        const user = window.__APP_CONFIG__?.user;
+        if (user?.isMember) document.getElementById('upload-logo-hero-btn')?.classList.remove('hidden');
       }
 
       function addColorField(name, hex) {
@@ -1322,7 +1660,7 @@
           <input type="text" value="${escapeAttr(name || '')}" placeholder="Color name" style="flex: 1;" class="color-name-input">
           <input type="color" value="${(hex && /^#[0-9A-Fa-f]{6}$/.test(String(hex))) ? hex : '#000000'}" class="color-hex-input">
           <input type="text" value="${escapeAttr(hex || '')}" placeholder="#000000" style="width: 90px; font-family: var(--font-mono);" class="color-text-input">
-          <button type="button" onclick="this.parentElement.remove()" class="edit-color-remove" title="Remove color">&times;</button>
+          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;" class="edit-color-remove" title="Remove color">&times;</button>
         `;
         // Sync color picker with text input
         const colorInput = row.querySelector('.color-hex-input');
@@ -1334,14 +1672,264 @@
         container.appendChild(row);
       }
 
+      function addPropertyField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-properties-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        const types = ['','website','mobile_app','ctv_app','desktop_app','dooh','podcast','radio','streaming_audio'];
+        const stores = ['','apple','google','amazon','roku','samsung','lg','other'];
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Type</span><span>Identifier</span><span>Store</span><span>Region</span>
+          </div>
+          <select class="edit-form-input prop-type" aria-label="Property type">
+            ${types.map(t => `<option value="${t}" ${d.type === t ? 'selected' : ''}>${t ? t.replace(/_/g, ' ') : '(select type)'}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input prop-identifier" value="${escapeAttr(d.identifier || '')}" placeholder="e.g. example.com or com.example.app" aria-label="Property identifier" maxlength="500">
+          <select class="edit-form-input edit-select-sm prop-store" aria-label="App store">
+            ${stores.map(s => `<option value="${s}" ${d.store === s ? 'selected' : ''}>${s || '(none)'}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input edit-input-narrow prop-region" value="${escapeAttr(d.region || '')}" placeholder="e.g. US" aria-label="Region" maxlength="10">
+          <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
+            <input type="checkbox" class="prop-primary" ${d.primary ? 'checked' : ''}> Primary
+          </label>
+          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function addLogoField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-logos-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        const variants = ['','primary','secondary','icon','wordmark','full-lockup'];
+        const orientations = ['','square','horizontal','vertical','stacked'];
+        const backgrounds = ['','dark-bg','light-bg','transparent-bg'];
+        const thumbSrc = (d.url && isSafeUrl(d.url)) ? escapeAttr(d.url) : '';
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>URL</span><span>Variant</span><span>Orientation</span><span>Background</span><span>Usage</span>
+          </div>
+          ${thumbSrc ? `<img src="${thumbSrc}" class="edit-logo-thumb" alt="Preview">` : '<span class="edit-logo-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--color-text-muted);font-size:10px;">?</span>'}
+          <input type="url" class="edit-form-input logo-url" value="${escapeAttr(d.url || '')}" placeholder="https://example.com/logo.svg" aria-label="Logo URL">
+          <select class="edit-form-input edit-select-md logo-variant" aria-label="Logo variant">
+            ${variants.map(v => `<option value="${v}" ${d.variant === v ? 'selected' : ''}>${v || '(none)'}</option>`).join('')}
+          </select>
+          <select class="edit-form-input edit-select-md logo-orientation" aria-label="Logo orientation">
+            ${orientations.map(o => `<option value="${o}" ${d.orientation === o ? 'selected' : ''}>${o || '(none)'}</option>`).join('')}
+          </select>
+          <select class="edit-form-input edit-select-lg logo-bg" aria-label="Logo background">
+            ${backgrounds.map(b => `<option value="${b}" ${d.background === b ? 'selected' : ''}>${b || '(none)'}</option>`).join('')}
+          </select>
+          <input type="text" class="edit-form-input logo-usage" value="${escapeAttr(d.usage || '')}" placeholder="Usage (optional)" maxlength="500" aria-label="Logo usage">
+          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
+        `;
+        const thumb = row.querySelector('.edit-logo-thumb');
+        if (thumb && thumb.tagName === 'IMG') {
+          thumb.addEventListener('error', function() { this.style.display = 'none'; });
+        }
+        const urlInput = row.querySelector('.logo-url');
+        if (urlInput) {
+          urlInput.addEventListener('blur', function() { updateLogoThumb(this); });
+        }
+        container.appendChild(row);
+      }
+
+      function updateLogoThumb(input) {
+        const row = input.closest('.edit-list-row');
+        const thumb = row.querySelector('.edit-logo-thumb');
+        if (!thumb) return;
+        const url = input.value.trim();
+        if (url && isSafeUrl(url)) {
+          const safeUrl = encodeURI(url);
+          if (thumb.tagName === 'IMG') {
+            thumb.setAttribute('src', safeUrl);
+            thumb.style.display = '';
+          } else {
+            const img = document.createElement('img');
+            img.setAttribute('src', safeUrl);
+            img.className = 'edit-logo-thumb';
+            img.alt = 'Preview';
+            img.addEventListener('error', function() { this.style.display = 'none'; });
+            thumb.replaceWith(img);
+          }
+        } else if (thumb.tagName === 'IMG') {
+          thumb.style.display = 'none';
+        }
+      }
+
+      function addDisclaimerField(data) {
+        const d = data || {};
+        const container = document.getElementById('edit-disclaimers-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-row';
+        row.innerHTML = `
+          <div class="edit-list-label">
+            <span>Text</span><span>Context</span>
+          </div>
+          <textarea class="edit-form-input disclaimer-text" rows="2" placeholder="Disclaimer text" maxlength="2000" aria-label="Disclaimer text">${escapeHtml(d.text || '')}</textarea>
+          <input type="text" class="edit-form-input edit-input-context disclaimer-context" value="${escapeAttr(d.context || '')}" placeholder="Context (optional)" maxlength="500" aria-label="Disclaimer context">
+          <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;align-self:center;">
+            <input type="checkbox" class="disclaimer-required" ${d.required === true ? 'checked' : ''}> Required
+          </label>
+          <button type="button" onclick="this.parentElement.remove();editFormDirty=true;updateSectionCounts();" class="edit-list-remove" title="Remove" aria-label="Remove row">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      function updateSectionCounts() {
+        const counts = {
+          properties: document.querySelectorAll('#edit-properties-container > div').length,
+          logos: document.querySelectorAll('#edit-logos-container > div').length,
+          legal: document.querySelectorAll('#edit-disclaimers-container > div').length +
+            (document.getElementById('edit-contact-name')?.value.trim() ? 1 : 0) +
+            (document.getElementById('edit-contact-email')?.value.trim() ? 1 : 0) +
+            (document.getElementById('edit-privacy-url')?.value.trim() ? 1 : 0),
+          additional: (document.getElementById('edit-target-audience')?.value.trim() ? 1 : 0) +
+            (document.getElementById('edit-brand-url')?.value.trim() ? 1 : 0),
+        };
+        for (const [section, count] of Object.entries(counts)) {
+          let badge = document.querySelector(`#edit-section-${section} .edit-section-count`);
+          const summary = document.querySelector(`#edit-section-${section} summary`);
+          if (!summary) continue;
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'edit-section-count';
+            summary.appendChild(badge);
+          }
+          badge.textContent = count > 0 ? `(${count})` : '';
+        }
+      }
+
+      function validateEditRows() {
+        // Clear previous errors
+        document.querySelectorAll('.edit-row-invalid').forEach(el => el.classList.remove('edit-row-invalid'));
+        document.querySelectorAll('.edit-row-error').forEach(el => el.remove());
+
+        const errors = [];
+
+        // Validate properties: need type + identifier
+        document.querySelectorAll('#edit-properties-container > div').forEach((row, i) => {
+          const type = row.querySelector('.prop-type')?.value;
+          const identifier = row.querySelector('.prop-identifier')?.value.trim();
+          if ((type || identifier) && !(type && identifier)) {
+            row.classList.add('edit-row-invalid');
+            const msg = document.createElement('div');
+            msg.className = 'edit-row-error';
+            msg.textContent = 'Property needs both a type and identifier';
+            row.appendChild(msg);
+            errors.push(`Property ${i + 1}: missing ${!type ? 'type' : 'identifier'}`);
+          }
+        });
+
+        // Validate logos: need url
+        document.querySelectorAll('#edit-logos-container > div').forEach((row, i) => {
+          const url = row.querySelector('.logo-url')?.value.trim();
+          if (!url) {
+            const hasAnyData = row.querySelector('.logo-variant')?.value || row.querySelector('.logo-orientation')?.value;
+            if (hasAnyData) {
+              row.classList.add('edit-row-invalid');
+              const msg = document.createElement('div');
+              msg.className = 'edit-row-error';
+              msg.textContent = 'Logo needs a URL';
+              row.appendChild(msg);
+              errors.push(`Logo ${i + 1}: missing URL`);
+            }
+          }
+        });
+
+        return errors;
+      }
+
+      function generateEditSummary() {
+        const prev = currentEditStatus?.brand_manifest || {};
+        const changes = [];
+
+        // Identity fields
+        const fields = [
+          ['edit-brand-name', 'brand_name', 'name', () => currentEditStatus?.brand_name],
+          ['edit-description', 'description', 'description'],
+          ['edit-industry', 'industry', 'industry'],
+          ['edit-tagline', 'tagline', 'tagline'],
+          ['edit-tone', 'tone', 'tone', () => typeof prev.tone === 'string' ? prev.tone : prev.tone?.voice],
+          ['edit-font-primary', 'fonts.primary', 'primary font', () => prev.fonts?.primary],
+          ['edit-font-secondary', 'fonts.secondary', 'secondary font', () => prev.fonts?.secondary],
+          ['edit-house-domain', 'house_domain', 'house domain', () => currentEditStatus?.house_domain],
+          ['edit-keller-type', 'keller_type', 'architecture', () => currentEditStatus?.keller_type],
+          ['edit-contact-name', 'contact.name', 'contact name', () => prev.contact?.name],
+          ['edit-contact-email', 'contact.email', 'contact email', () => prev.contact?.email],
+          ['edit-privacy-url', 'privacy_policy_url', 'privacy policy URL'],
+          ['edit-target-audience', 'target_audience', 'target audience'],
+          ['edit-brand-url', 'url', 'brand URL'],
+        ];
+
+        for (const [id, key, label, getter] of fields) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          const newVal = el.value.trim();
+          const oldVal = (getter ? getter() : prev[key]) || '';
+          if (newVal !== String(oldVal || '')) {
+            changes.push(newVal ? `updated ${label}` : `removed ${label}`);
+          }
+        }
+
+        // Array fields
+        const arrayFields = [
+          ['#edit-properties-container > div', 'properties', 'properties'],
+          ['#edit-logos-container > div', 'logos', 'logos'],
+          ['#edit-disclaimers-container > div', 'disclaimers', 'disclaimers'],
+        ];
+
+        for (const [sel, key, label] of arrayFields) {
+          const newCount = document.querySelectorAll(sel).length;
+          const oldCount = (prev[key] || []).length;
+          if (newCount > oldCount) changes.push(`added ${newCount - oldCount} ${label}`);
+          else if (newCount < oldCount) changes.push(`removed ${oldCount - newCount} ${label}`);
+          else if (newCount > 0 && newCount === oldCount) {
+            // Check if content changed (rough check)
+          }
+        }
+
+        // Colors
+        const newColors = {};
+        document.querySelectorAll('#edit-colors-container > div').forEach(row => {
+          const name = row.querySelector('.color-name-input')?.value.trim();
+          const hex = row.querySelector('.color-text-input')?.value.trim();
+          if (name && hex) newColors[name] = hex;
+        });
+        const oldColors = prev.colors || {};
+        const addedColors = Object.keys(newColors).filter(k => !oldColors[k]);
+        const removedColors = Object.keys(oldColors).filter(k => !newColors[k]);
+        const changedColors = Object.keys(newColors).filter(k => oldColors[k] && oldColors[k] !== newColors[k]);
+        if (addedColors.length) changes.push(`added ${addedColors.length} colors`);
+        if (removedColors.length) changes.push(`removed ${removedColors.length} colors`);
+        if (changedColors.length) changes.push(`updated ${changedColors.length} colors`);
+
+        if (changes.length === 0) return 'No changes';
+        // Capitalize first change
+        changes[0] = changes[0].charAt(0).toUpperCase() + changes[0].slice(1);
+        return changes.join(', ');
+      }
+
       async function saveEdit() {
-        const editSummary = document.getElementById('edit-summary').value.trim();
-        if (!editSummary) {
-          alert('Edit summary is required');
+        const saveBtn = document.getElementById('save-edit-btn');
+
+        const validationErrors = validateEditRows();
+        if (validationErrors.length > 0) {
+          const firstInvalid = document.querySelector('.edit-row-invalid');
+          if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
 
-        const saveBtn = document.getElementById('save-edit-btn');
+        // Auto-generate edit summary — never block save on it
+        const editSummary = editFormDirty ? generateEditSummary() : 'No changes';
+        if (!editFormDirty) {
+          saveBtn.textContent = 'No changes';
+          setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 1500);
+          return;
+        }
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
 
@@ -1376,9 +1964,11 @@
           }
         };
 
-        // Only include colors if user added any
-        if (Object.keys(colors).length > 0) {
-          body.brand_manifest.colors = colors;
+        const manifest = currentEditStatus?.brand_manifest || {};
+
+        // Include colors if user has any, or clear if previously had some
+        if (Object.keys(colors).length > 0 || manifest.colors) {
+          body.brand_manifest.colors = Object.keys(colors).length > 0 ? colors : undefined;
         }
 
         // Always write fonts to allow clearing empty fields; undefined gets removed by cleanup below
@@ -1388,6 +1978,95 @@
           ...(fontPrimary ? { primary: fontPrimary } : {}),
           ...(fontSecondary ? { secondary: fontSecondary } : {}),
         } : undefined;
+
+        // Collect properties
+        const properties = [];
+        document.querySelectorAll('#edit-properties-container > div').forEach(row => {
+          const type = row.querySelector('.prop-type')?.value;
+          const identifier = row.querySelector('.prop-identifier')?.value.trim();
+          if (type && identifier) {
+            const prop = { type, identifier };
+            const store = row.querySelector('.prop-store')?.value;
+            const region = row.querySelector('.prop-region')?.value.trim();
+            const primary = row.querySelector('.prop-primary')?.checked;
+            if (store) prop.store = store;
+            if (region) prop.region = region;
+            if (primary) prop.primary = true;
+            properties.push(prop);
+          }
+        });
+        if (properties.length > 0 || manifest.properties?.length) body.brand_manifest.properties = properties;
+
+        // Agents are managed via the member dashboard, preserved from existing manifest
+
+        // Collect logos
+        const logos = [];
+        document.querySelectorAll('#edit-logos-container > div').forEach(row => {
+          const url = row.querySelector('.logo-url')?.value.trim();
+          if (url) {
+            const logo = { url };
+            const variant = row.querySelector('.logo-variant')?.value;
+            const orientation = row.querySelector('.logo-orientation')?.value;
+            const background = row.querySelector('.logo-bg')?.value;
+            const usage = row.querySelector('.logo-usage')?.value.trim();
+            if (variant) logo.variant = variant;
+            if (orientation) logo.orientation = orientation;
+            if (background) logo.background = background;
+            if (usage) logo.usage = usage;
+            logos.push(logo);
+          }
+        });
+        if (logos.length > 0 || manifest.logos?.length) body.brand_manifest.logos = logos;
+
+        // Collect contact
+        const contactName = document.getElementById('edit-contact-name').value.trim();
+        const contactEmail = document.getElementById('edit-contact-email').value.trim();
+        if (contactName || contactEmail) {
+          body.brand_manifest.contact = {};
+          if (contactName) body.brand_manifest.contact.name = contactName;
+          if (contactEmail) body.brand_manifest.contact.email = contactEmail;
+        } else if (manifest.contact) {
+          body.brand_manifest.contact = undefined;
+        }
+
+        // Privacy policy
+        const privacyUrl = document.getElementById('edit-privacy-url').value.trim();
+        if (privacyUrl) {
+          body.brand_manifest.privacy_policy_url = privacyUrl;
+        } else if (manifest.privacy_policy_url) {
+          body.brand_manifest.privacy_policy_url = undefined;
+        }
+
+        // Collect disclaimers
+        const disclaimers = [];
+        document.querySelectorAll('#edit-disclaimers-container > div').forEach(row => {
+          const text = row.querySelector('.disclaimer-text')?.value.trim();
+          if (text) {
+            const disc = { text };
+            const context = row.querySelector('.disclaimer-context')?.value.trim();
+            const required = row.querySelector('.disclaimer-required')?.checked;
+            if (context) disc.context = context;
+            disc.required = !!required;
+            disclaimers.push(disc);
+          }
+        });
+        if (disclaimers.length > 0 || manifest.disclaimers?.length) body.brand_manifest.disclaimers = disclaimers;
+
+        // Additional fields
+        const targetAudience = document.getElementById('edit-target-audience').value.trim();
+        if (targetAudience) {
+          body.brand_manifest.target_audience = targetAudience;
+        } else if (manifest.target_audience) {
+          body.brand_manifest.target_audience = undefined;
+        }
+        const brandUrl = document.getElementById('edit-brand-url').value.trim();
+        if (brandUrl) {
+          body.brand_manifest.url = brandUrl;
+        } else if (manifest.url) {
+          body.brand_manifest.url = undefined;
+        }
+
+        // Collections are preserved from existing manifest (managed via catalog tools, not this form)
 
         // Clean undefined values from manifest
         Object.keys(body.brand_manifest).forEach(k => {
@@ -1410,12 +2089,19 @@
             return;
           }
 
-          // Reload page to show updated data
-          window.location.reload();
+          // Show success, then reload
+          editFormDirty = false;
+          saveBtn.textContent = 'Saved';
+          saveBtn.style.background = 'var(--color-success-600)';
+          setTimeout(() => window.location.reload(), 800);
         } catch (err) {
-          alert('Failed to save: ' + err.message);
+          saveBtn.style.background = 'var(--color-error-500)';
+          saveBtn.textContent = 'Failed to save';
           saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Changes';
+          setTimeout(() => {
+            saveBtn.textContent = 'Save Changes';
+            saveBtn.style.background = '';
+          }, 2000);
         }
       }
 
@@ -1489,12 +2175,14 @@
                 `${escapeHtml(domain)} redirects to ${escapeHtml(houseDomain)}`,
                 `This domain's brand.json is a house redirect.`
               );
-              const link = document.createElement('a');
-              link.href = `/brand/view/${encodeURIComponent(houseDomain)}`;
-              link.className = 'btn btn-primary';
-              link.style.marginTop = 'var(--space-4)';
-              link.textContent = `View ${houseDomain} Brand`;
-              document.getElementById('error-state').appendChild(link);
+              if (houseDomain && houseDomain !== domain) {
+                const link = document.createElement('a');
+                link.href = `/brand/view/${encodeURIComponent(houseDomain)}`;
+                link.className = 'btn btn-primary';
+                link.style.marginTop = 'var(--space-4)';
+                link.textContent = `View ${houseDomain} Brand`;
+                document.getElementById('error-state').appendChild(link);
+              }
             } else if (result.variant === 'authoritative_location') {
               showError(
                 `${escapeHtml(domain)} redirects to another location`,
@@ -1710,16 +2398,9 @@
       function renderLogos(logos) {
         const section = document.getElementById('logos-section');
         const grid = document.getElementById('logo-grid');
-        const user = window.__APP_CONFIG__?.user;
 
         if (!logos || logos.length === 0) {
-          if (user?.isMember) {
-            // Show empty section with upload button for members
-            section.classList.remove('hidden');
-            grid.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);">No logos yet. Be the first to contribute one.</p>';
-          } else {
-            section.classList.add('hidden');
-          }
+          section.classList.add('hidden');
           return;
         }
 
@@ -1792,6 +2473,7 @@
         if (!brand?.logos) return;
 
         brand.logos.forEach((logo, i) => {
+          if (!isSafeUrl(logo.url)) return;
           setTimeout(() => {
             const a = document.createElement('a');
             a.href = logo.url;
@@ -2014,7 +2696,7 @@
             ${properties.map(prop => {
               const isWebsite = prop.type === 'website';
               const identifier = isWebsite
-                ? `<a href="https://${escapeHtml(prop.identifier)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(prop.identifier)}</a>`
+                ? (isSafeUrl(`https://${prop.identifier}`) ? `<a href="https://${escapeAttr(prop.identifier)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(prop.identifier)}</a>` : escapeHtml(prop.identifier))
                 : escapeHtml(prop.identifier);
               const region = prop.region ? ` (${escapeHtml(prop.region)})` : '';
               const store = prop.store ? ` [${escapeHtml(prop.store)}]` : '';
@@ -2248,7 +2930,7 @@
 
           if (revisions && revisions.length > 0) {
             list.innerHTML = revisions.map(rev => `
-              <div style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border-light);">
+              <div style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <strong>Revision ${rev.revision_number}</strong>
