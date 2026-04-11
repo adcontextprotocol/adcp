@@ -50,10 +50,11 @@ primary_region = 'iad'
 
 # Worker health check (no public traffic, just keeps Fly from killing it)
 [[checks]]
+  name = "worker-health"
   port = 8080
   type = "http"
   interval = "15s"
-  timeout = "15s"
+  timeout = "20s"
   grace_period = "60s"
   method = "GET"
   path = "/health"
