@@ -398,15 +398,14 @@ These libraries handle protocol details, authentication, and provide typed inter
 **Key documentation pages to reference:**
 - **Quickstart** (https://docs.adcontextprotocol.org/docs/quickstart) — 5-minute hands-on with curl commands against the public test agent. No signup required.
 - **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/client`, pick a skill, get a working agent in minutes.
-- **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/validate-your-agent) — The build-validate-fix loop. Storyboards and comply from the CLI or through Addie.
+- **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/validate-your-agent) — The build-validate-fix loop. Storyboards from the CLI or through Addie.
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
 **CLI tools in @adcp/client:**
-The `adcp` CLI is installed with `npm install @adcp/client` (or `npx @adcp/client`). Key commands:
-- `adcp <agent> [tool] [payload]` — Call any tool on an agent
-- `adcp storyboard list` — List all available storyboards
-- `adcp storyboard run <agent> <storyboard_id>` — Run a full storyboard
-- `adcp comply <agent>` — Run compliance assessment
-- `adcp --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
+The `adcp` CLI runs via `npx @adcp/client`. Key commands:
+- `npx @adcp/client <agent> [tool] [payload]` — Call any tool on an agent
+- `npx @adcp/client storyboard list` — List all available storyboards
+- `npx @adcp/client storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
+- `npx @adcp/client --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
 
 Built-in aliases: `test-mcp`, `test-a2a`, `test-no-auth`, `test-a2a-no-auth`, `creative`.
