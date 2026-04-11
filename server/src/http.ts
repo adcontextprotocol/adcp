@@ -26,7 +26,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, inferMembershipTier, tierFromLookupKey, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -41,7 +41,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -421,6 +421,7 @@ async function getUserFromRequest(
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
+  private isWorker: boolean = false;
   private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
@@ -799,6 +800,7 @@ export class HTTPServer {
         '/working-groups/': '/committees?type=working_group',
         '/brands': '/registry?tab=brands',
         '/publishers': '/registry?tab=properties',
+        '/my-content': '/dashboard/content',
       };
       const target = redirects[req.path];
       if (target && req.method === 'GET') {
@@ -1188,6 +1190,7 @@ export class HTTPServer {
       brandDb: this.brandDb,
       orgDb,
       invalidateMemberContextCache,
+      crawler: this.crawler,
     };
     const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
@@ -1633,6 +1636,7 @@ export class HTTPServer {
 
         res.json({
           global_unsubscribe: prefs.global_unsubscribe,
+          marketing_opt_in: prefs.marketing_opt_in ?? null,
           categories: categoryPrefs,
         });
       } catch (error) {
@@ -1666,6 +1670,34 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
         res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Record marketing communications opt-in choice (authenticated)
+    this.app.post('/api/email-preferences/marketing-opt-in', requireAuth, emailPrefsRateLimiter, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { opt_in } = req.body;
+
+        if (typeof opt_in !== 'boolean') {
+          return res.status(400).json({ error: 'opt_in must be a boolean' });
+        }
+
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: userId,
+          email: userEmail,
+          optIn: opt_in,
+        });
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId, opt_in }, 'User set marketing opt-in preference');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error setting marketing opt-in');
+        res.status(500).json({ error: 'Error setting marketing preference' });
       }
     });
 
@@ -1773,6 +1805,8 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
     this.app.get('/dashboard/agents', (req, res) => serveDashboardPage(req, res, 'dashboard-agents.html'));
+    this.app.get('/dashboard/content', (req, res) => serveDashboardPage(req, res, 'admin-content.html'));
+    this.app.get('/dashboard/editorial', (_req, res) => res.redirect(301, '/dashboard/content'));
     this.app.get('/dashboard/settings', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
@@ -1796,13 +1830,7 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
-    // My Content - unified CMS for all authenticated users
-    this.app.get('/my-content', async (req, res) => {
-      if (this.isAdcpDomain(req)) {
-        return res.redirect('https://agenticadvertising.org/my-content');
-      }
-      await this.serveHtmlWithConfig(req, res, 'my-content.html');
-    });
+    // My Content redirect is handled in pre-static middleware block above
 
     // API endpoints
 
@@ -2031,9 +2059,9 @@ export class HTTPServer {
           await Promise.race([
             queryPromise,
             new Promise((_, reject) => {
-              // Must exceed pool connectionTimeoutMillis (default 5000ms) to avoid
+              // Must exceed pool connectionTimeoutMillis (10s) to avoid
               // false negatives when all connections are busy but the DB is healthy.
-              timer = setTimeout(() => reject(new Error('db health timeout')), 10000);
+              timer = setTimeout(() => reject(new Error('db health timeout')), 12000);
             }),
           ]);
         } finally {
@@ -3588,8 +3616,8 @@ export class HTTPServer {
                         if (adminEmails.length > 0) {
                           // Compute seat limits for the welcome message
                           const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeTier = tierFromLookupKey(firstItem?.price?.lookup_key) ?? inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
-                          const seatLimits = getSeatLimits(welcomeTier);
+                          const welcomeUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
+                          const seatLimits = getSeatLimits(welcomeUpdate.membership_tier);
 
                           await notifySubscriptionThankYou({
                             orgId: org.workos_organization_id,
@@ -3657,23 +3685,7 @@ export class HTTPServer {
             // This allows admin dashboard to display data without querying Stripe API
             try {
               if (org) {
-                // Calculate period end from subscription or invoice
-                let periodEnd: Date | null = null;
-
-                if (subscription.current_period_end) {
-                  periodEnd = new Date(subscription.current_period_end * 1000);
-                }
-
-                // Extract pricing details from subscription items
-                const priceData = subscription.items?.data?.[0]?.price;
-                const amount = priceData?.unit_amount ?? null;
-                const currency = priceData?.currency ?? null;
-                const interval = priceData?.recurring?.interval ?? null;
-
-                // Resolve membership tier: lookup key is authoritative, amount is fallback
-                const membershipTier = subscription.status === 'active'
-                  ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(amount, interval, org.is_personal))
-                  : null;
+                const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
                 // Capture current tier before update for change detection
                 const oldTierResult = await pool.query<{ membership_tier: string | null }>(
@@ -3690,27 +3702,33 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
-                       subscription_canceled_at = $8,
-                       membership_tier = $9,
+                       subscription_canceled_at = $7,
+                       subscription_product_id = $8,
+                       subscription_product_name = COALESCE($9, subscription_product_name),
+                       subscription_price_id = $10,
+                       subscription_price_lookup_key = $11,
+                       membership_tier = $12,
                        updated_at = NOW()
-                   WHERE workos_organization_id = $7`,
+                   WHERE workos_organization_id = $13`,
                   [
-                    subscription.status,
-                    subscription.id,
-                    periodEnd,
-                    amount,
-                    currency,
-                    interval,
+                    subUpdate.subscription_status,
+                    subUpdate.stripe_subscription_id,
+                    subUpdate.subscription_current_period_end,
+                    subUpdate.subscription_amount,
+                    subUpdate.subscription_currency,
+                    subUpdate.subscription_interval,
+                    subUpdate.subscription_canceled_at,
+                    subUpdate.subscription_product_id,
+                    subUpdate.subscription_product_name,
+                    subUpdate.subscription_price_id,
+                    subUpdate.subscription_price_lookup_key,
+                    subUpdate.membership_tier,
                     org.workos_organization_id,
-                    subscription.canceled_at
-                      ? new Date(subscription.canceled_at * 1000)
-                      : null,
-                    membershipTier,
                   ]
                 );
 
                 // Detect tier change and notify admins
-                if (membershipTier && oldTier && membershipTier !== oldTier) {
+                if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
                   const { notifyTierChange } = await import('./slack/org-group-dm.js');
                   const { getOrgAdminEmails } = await import('./utils/org-admins.js');
@@ -3718,7 +3736,7 @@ export class HTTPServer {
                   (async () => {
                     try {
                       const oldLimits = getSeatLimits(oldTier);
-                      const newLimits = getSeatLimits(membershipTier);
+                      const newLimits = getSeatLimits(subUpdate.membership_tier);
                       const currentUsage = await getSeatUsage(org.workos_organization_id);
                       const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
 
@@ -3742,11 +3760,8 @@ export class HTTPServer {
                   orgId: org.workos_organization_id,
                   subscriptionId: subscription.id,
                   status: subscription.status,
-                  periodEnd: periodEnd?.toISOString(),
-                  amount,
-                  currency,
-                  interval,
-                  membershipTier,
+                  lookupKey: subUpdate.subscription_price_lookup_key,
+                  membershipTier: subUpdate.membership_tier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
@@ -4955,7 +4970,7 @@ export class HTTPServer {
 
               // Get the first active subscription (already has expanded items)
               const subscription = subscriptions.data[0];
-              if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
+              if (!subscription || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
                 continue;
               }
 
@@ -4965,12 +4980,16 @@ export class HTTPServer {
                 continue;
               }
 
-              const price = primaryItem.price;
-              const product = price?.product as Stripe.Product | undefined;
-              const amount = price?.unit_amount ?? 0;
-              const interval = price?.recurring?.interval ?? null;
+              // Look up the org to get is_personal for tier inference
+              const orgRow = await pool.query<{ is_personal: boolean }>(
+                'SELECT is_personal FROM organizations WHERE workos_organization_id = $1',
+                [workosOrgId]
+              );
+              const isPersonal = orgRow.rows[0]?.is_personal ?? true;
 
-              // Update organization with subscription details
+              const subUpdate = buildSubscriptionUpdate(subscription as any, isPersonal);
+
+              // Update organization with subscription details and tier
               await pool.query(
                 `UPDATE organizations
                  SET subscription_status = $1,
@@ -4982,24 +5001,28 @@ export class HTTPServer {
                      subscription_product_id = $7,
                      subscription_product_name = $8,
                      subscription_price_id = $9,
+                     subscription_price_lookup_key = $10,
+                     membership_tier = $11,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $10`,
+                 WHERE workos_organization_id = $12`,
                 [
-                  subscription.status,
-                  amount,
-                  interval,
-                  price?.currency || 'usd',
-                  subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
-                  subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
-                  product?.id || null,
-                  product?.name || null,
-                  price?.id || null,
+                  subUpdate.subscription_status,
+                  subUpdate.subscription_amount,
+                  subUpdate.subscription_interval,
+                  subUpdate.subscription_currency,
+                  subUpdate.subscription_current_period_end,
+                  subUpdate.subscription_canceled_at,
+                  subUpdate.subscription_product_id,
+                  subUpdate.subscription_product_name,
+                  subUpdate.subscription_price_id,
+                  subUpdate.subscription_price_lookup_key,
+                  subUpdate.membership_tier,
                   workosOrgId,
                 ]
               );
 
               subscriptionsSynced++;
-              logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
+              logger.debug({ workosOrgId, customerId, lookupKey: subUpdate.subscription_price_lookup_key, tier: subUpdate.membership_tier }, 'Synced subscription data');
             } catch (subError) {
               // Handle Stripe "resource_missing" errors (deleted customers) gracefully
               // Use Stripe's error type for better type safety
@@ -5509,9 +5532,9 @@ Disallow: /api/admin/
 
     // Note: /admin/billing is now served from billing.ts router
 
-    // Admin content management
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-content.html');
+    // Admin content management — now lives in dashboard
+    this.app.get('/admin/perspectives', (_req, res) => {
+      res.redirect(301, '/dashboard/content');
     });
 
     // GET /api/admin/content - List all perspectives for admin
@@ -5520,6 +5543,7 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
+                  p.tags,
                   p.external_url, p.author_name, p.author_title,
                   p.featured_image_url, p.status, p.published_at,
                   p.content_origin, p.source_type,
@@ -5539,6 +5563,7 @@ Disallow: /api/admin/
     this.app.put('/api/admin/content/:id/origin', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const { content_origin } = req.body;
         if (!content_origin || !['official', 'member', 'external'].includes(content_origin)) {
           return res.status(400).json({ error: 'content_origin must be official, member, or external' });
@@ -5552,6 +5577,89 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'PUT /api/admin/content/:id/origin error');
         res.status(500).json({ error: 'Failed to update content origin' });
+      }
+    });
+
+    const isValidUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    // DELETE /api/admin/content/:id - Delete any perspective (admin only)
+    this.app.delete('/api/admin/content/:id', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const pool = getPool();
+        const result = await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        logger.info({ contentId: id, title: result.rows[0].title }, 'Admin deleted content');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'DELETE /api/admin/content/:id error');
+        res.status(500).json({ error: 'Failed to delete content' });
+      }
+    });
+
+    // GET /api/admin/content/:id - Get single perspective with full content (admin only)
+    this.app.get('/api/admin/content/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT p.id, p.slug, p.content_type, p.title, p.subtitle, p.category,
+                  p.excerpt, p.content, p.tags,
+                  p.external_url, p.external_site_name,
+                  p.author_name, p.author_title,
+                  p.featured_image_url, p.status, p.published_at,
+                  p.content_origin, p.source_type, p.updated_at,
+                  wg.slug as committee_slug, wg.name as committee_name
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.id = $1`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'GET /api/admin/content/:id error');
+        res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // PUT /api/admin/content/:id/status - Update content status (admin only)
+    this.app.put('/api/admin/content/:id/status', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        const { status } = req.body;
+        if (!status || !['draft', 'pending_review', 'published', 'archived'].includes(status)) {
+          return res.status(400).json({ error: 'status must be draft, pending_review, published, or archived' });
+        }
+        const pool = getPool();
+        const updates: string[] = [`status = $1`];
+        const values: (string | null)[] = [status];
+        // Set published_at when publishing for the first time
+        if (status === 'published') {
+          updates.push(`published_at = COALESCE(published_at, NOW())`);
+        }
+        const result = await pool.query(
+          `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
+          [...values, id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        logger.info({ contentId: id, status }, 'Admin updated content status');
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'PUT /api/admin/content/:id/status error');
+        res.status(500).json({ error: 'Failed to update status' });
       }
     });
 
@@ -8132,27 +8240,40 @@ Disallow: /api/admin/
       logger.error({ err }, 'Cache pre-warming failed');
     });
 
-    // Start periodic property crawler for sales agents
-    const salesAgents = await this.agentService.listAgents("sales");
-    if (salesAgents.length > 0) {
-      logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-      this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
-    }
+    // Scheduled jobs and crawlers only run on the worker process.
+    // FLY_PROCESS_GROUP is set automatically by Fly.io; locally both roles run.
+    const processRole = process.env.FLY_PROCESS_GROUP || 'worker';
+    this.isWorker = processRole !== 'web';
+    const isWorker = this.isWorker;
+    logger.info({ flyProcessGroup: process.env.FLY_PROCESS_GROUP, processRole, isWorker }, 'Process role resolved');
 
-    // Crawl catalog domains for adagents.json (demand-driven queue)
-    this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+    if (isWorker) {
+      // Start periodic property crawler for sales agents
+      const salesAgents = await this.agentService.listAgents("sales");
+      if (salesAgents.length > 0) {
+        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
+        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
+      }
 
-    // Register and start all scheduled jobs
-    registerAllJobs();
+      // Crawl catalog domains for adagents.json (demand-driven queue)
+      this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
 
-    // Start all registered jobs
-    jobScheduler.startAll();
+      // Register and start all scheduled jobs
+      registerAllJobs();
 
-    // Stop jobs that require missing env vars
-    if (!process.env.LLMPULSE_API_KEY) {
-      jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
-      jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
-      jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
+      // Start all registered jobs
+      jobScheduler.startAll();
+
+      // Stop jobs that require missing env vars
+      if (!process.env.LLMPULSE_API_KEY) {
+        jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
+        jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
+        jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
+      }
+
+      logger.info('Worker process: scheduled jobs and crawlers started');
+    } else {
+      logger.info('Web process: skipping scheduled jobs and crawlers');
     }
 
     this.server = this.app.listen(port, () => {
@@ -8162,17 +8283,20 @@ Disallow: /api/admin/
         api: `http://localhost:${port}/api/agents`,
       }, 'AdCP Registry HTTP server running');
 
-      // Start seat request reminder scheduler
-      if (workos) {
-        import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
-          startSeatRequestReminders(workos!);
-        }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
-      }
+      // Periodic background tasks only run on the worker process
+      if (isWorker) {
+        // Start seat request reminder scheduler
+        if (workos) {
+          import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
+            startSeatRequestReminders(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+        }
 
-      // Start Luma calendar sync (catches events missed by webhooks)
-      import('./luma/sync.js').then(({ startLumaSync }) => {
-        startLumaSync();
-      }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
+        // Start Luma calendar sync (catches events missed by webhooks)
+        import('./luma/sync.js').then(({ startLumaSync }) => {
+          startLumaSync();
+        }).catch(err => logger.warn({ err }, 'Failed to start Luma calendar sync'));
+      }
     });
 
     // Setup graceful shutdown handlers
@@ -8212,18 +8336,18 @@ Disallow: /api/admin/
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
 
-    // Stop all scheduled jobs
-    jobScheduler.stopAll();
+    // Only stop background services that were started on this machine
+    if (this.isWorker) {
+      jobScheduler.stopAll();
 
-    // Stop seat request reminders
-    import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
-      stopSeatRequestReminders();
-    }).catch(() => {});
+      import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+        stopSeatRequestReminders();
+      }).catch(() => {});
 
-    // Stop Luma calendar sync
-    import('./luma/sync.js').then(({ stopLumaSync }) => {
-      stopLumaSync();
-    }).catch(() => {});
+      import('./luma/sync.js').then(({ stopLumaSync }) => {
+        stopLumaSync();
+      }).catch(() => {});
+    }
 
     // Close HTTP server
     if (this.server) {

@@ -3,242 +3,1391 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
-  <title>Admin - Content - AAO</title>
-  <script src="/nav.js"></script>
-  <script src="/admin-sidebar.js"></script>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Content — AgenticAdvertising.org</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
-    body {
-      background: var(--color-bg-page);
-      min-height: 100vh;
-    }
-    .container {
-      max-width: var(--container-lg);
-      margin: var(--space-8) auto;
-      padding: 0 var(--space-5);
-    }
-    .card {
-      background: var(--color-bg-card);
-      border-radius: var(--radius-md);
-      padding: var(--space-6);
-      margin-bottom: var(--space-5);
-      box-shadow: var(--shadow-xs);
-    }
-    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container { max-width: var(--container-lg); margin: var(--space-8) auto; padding: 0 var(--space-5); }
+    .dashboard-main .container { max-width: var(--container-lg); padding: var(--space-8) var(--space-5); }
+    .hidden { display: none !important; }
 
-    .filters {
-      display: flex;
-      gap: var(--space-3);
-      margin-bottom: var(--space-5);
-      flex-wrap: wrap;
-    }
-    .filters select {
-      padding: var(--space-2) var(--space-3);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      font-size: var(--text-sm);
-      background: var(--color-bg-card);
-    }
+    .page-header { margin-bottom: var(--space-4); }
+    .page-header h1 { color: var(--color-text-heading); margin-bottom: var(--space-1); }
+    .page-header .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); }
 
-    .content-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .content-table th {
-      text-align: left;
-      padding: var(--space-3) var(--space-4);
-      font-size: var(--text-xs);
-      font-weight: var(--font-semibold);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-wide);
-      color: var(--color-text-muted);
-      border-bottom: 2px solid var(--color-border);
-    }
-    .content-table td {
-      padding: var(--space-3) var(--space-4);
-      font-size: var(--text-sm);
-      border-bottom: 1px solid var(--color-border);
-      vertical-align: top;
-    }
-    .content-table tr:hover td {
-      background: var(--color-gray-50);
-    }
-    .content-title-cell {
-      max-width: 300px;
-    }
-    .content-title-cell a {
-      color: var(--color-text-heading);
-      font-weight: var(--font-semibold);
-      text-decoration: none;
-    }
-    .content-title-cell a:hover {
-      color: var(--color-brand);
-    }
+    /* Playbook */
+    .content-playbook { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary-50) 88%, white) 0%, white 100%); border: var(--border-1) solid color-mix(in srgb, var(--color-primary-200) 60%, var(--color-border)); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-5); position: relative; }
+    .content-playbook-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+    .content-playbook-header h2 { font-size: var(--text-lg); color: var(--color-text-heading); margin-bottom: var(--space-1); }
+    .content-playbook-header p { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 68ch; }
+    .content-playbook-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .playbook-dismiss { position: absolute; top: var(--space-3); right: var(--space-3); background: none; border: none; cursor: pointer; color: var(--color-text-muted); padding: var(--space-1); font-size: var(--text-lg); line-height: 1; }
+    .playbook-dismiss:hover { color: var(--color-text-heading); }
+    .content-playbook-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+    .content-playbook-step { background: rgba(255,255,255,0.88); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); }
+    .content-playbook-step strong { display: block; color: var(--color-text-heading); margin-bottom: var(--space-1); font-size: var(--text-sm); }
+    .content-playbook-step p { color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
 
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: var(--radius-full);
-      font-size: 0.6875rem;
-      font-weight: var(--font-semibold);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .badge-published { background: #ecfdf5; color: #047857; }
-    .badge-pending { background: #fffbeb; color: #b45309; }
-    .badge-draft { background: var(--color-gray-100); color: var(--color-text-muted); }
-    .badge-official { background: var(--color-primary-100); color: var(--color-brand); }
-    .badge-member { background: var(--color-gray-100); color: var(--color-text-secondary); }
+    /* Unified tabs (replaces scope toggle + old tabs) */
+    .tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-5); border-bottom: var(--border-2) solid var(--color-gray-200); }
+    .tab { padding: var(--space-3) var(--space-5); background: none; border: none; border-bottom: var(--border-2) solid transparent; color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); margin-bottom: -2px; }
+    .tab:hover { color: var(--color-text-heading); }
+    .tab.active { color: var(--color-brand); border-bottom-color: var(--color-brand); }
+    .tab .count { background: var(--color-gray-200); color: var(--color-text-secondary); padding: 2px var(--space-2); border-radius: var(--radius-full); font-size: var(--text-xs); }
+    .tab.active .count { background: var(--color-primary-100); color: var(--color-brand); }
+    .tab .count.alert { background: var(--color-warning-100); color: var(--color-warning-700); }
 
-    .origin-select {
-      padding: 2px 6px;
-      font-size: var(--text-xs);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      background: var(--color-bg-card);
-    }
+    /* Alert banner */
+    .alert-banner { background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5); display: flex; align-items: center; gap: var(--space-3); }
+    .alert-banner-content h3 { color: var(--color-warning-800); font-size: var(--text-sm); margin-bottom: var(--space-1); }
+    .alert-banner-content p { color: var(--color-warning-700); font-size: var(--text-sm); }
 
-    .empty-state {
-      text-align: center;
-      padding: var(--space-10);
-      color: var(--color-text-muted);
-    }
+    /* Filter bar */
+    .filter-bar { display: flex; gap: var(--space-2_5); margin-bottom: var(--space-5); flex-wrap: wrap; align-items: center; }
+    .filter-bar select, .filter-bar input { padding: var(--space-2) var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); background: white; }
+    .filter-bar input[type="search"] { min-width: 200px; }
+
+    .card { background: var(--color-bg-card); border-radius: var(--radius-md); padding: var(--space-6); margin-bottom: var(--space-5); box-shadow: var(--shadow-xs); }
+    .section-header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: var(--space-4); }
+
+    /* Content list (card-based) */
+    .content-list { display: grid; gap: var(--space-3); }
+    .content-item { border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); transition: var(--transition-all); }
+    .content-item:hover { border-color: var(--color-brand); }
+    .content-item.pending { border-left: var(--border-4) solid var(--color-warning-500); }
+    .content-info { flex: 1; min-width: 0; }
+    .content-info h3 { font-size: var(--text-base); margin-bottom: var(--space-1); color: var(--color-text-heading); }
+    .content-info h3[onclick] { cursor: pointer; }
+    .content-info h3[onclick]:hover { color: var(--color-primary); text-decoration: underline; }
+    .content-meta { font-size: var(--text-sm); color: var(--color-text-secondary); display: flex; gap: var(--space-2_5); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-2); }
+    .content-excerpt { font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .content-actions { display: flex; gap: var(--space-2); flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 200px; }
+    .content-helper-links { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+    .helper-link { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1_5) var(--space-3); border-radius: var(--radius-full); border: var(--border-1) solid var(--color-border); background: white; color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-xs); font-weight: var(--font-medium); }
+    .helper-link:hover { color: var(--color-brand); border-color: color-mix(in srgb, var(--color-brand) 30%, var(--color-border)); }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium); }
+    .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-published { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-pending_review { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-rejected { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-archived { background: color-mix(in srgb, var(--color-info-100) 50%, var(--color-gray-100)); color: var(--color-info-700); }
+    .badge-article { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-committee { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .badge-author { background: var(--color-info-50); color: var(--color-info-700); }
+    .badge-proposer { background: var(--color-warning-50); color: var(--color-warning-700); }
+    .badge-owner { background: var(--color-success-50); color: var(--color-success-700); }
+    .authors-list { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }
+    .author-tag { background: var(--color-gray-100); padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .proposer-info { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-2); }
+    .rejection-reason { background: var(--color-error-50); border: var(--border-1) solid var(--color-error-200); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-error-700); }
+
+    /* Buttons */
+    .btn { padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; transition: var(--transition-all); text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-1_5); }
+    .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-success { background: var(--color-success-500); color: white; }
+    .btn-success:hover { background: var(--color-success-600); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-outline { background: transparent; border: var(--border-1) solid var(--color-gray-300); color: var(--color-text-heading); }
+    .btn-outline:hover { background: var(--color-gray-100); }
+    .btn-warning { background: var(--color-warning-500); color: white; }
+    .btn-warning:hover { background: var(--color-warning-600); }
+
+    /* Admin table */
+    .content-table { width: 100%; border-collapse: collapse; }
+    .content-table th { text-align: left; padding: var(--space-3) var(--space-4); font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); cursor: pointer; user-select: none; white-space: nowrap; }
+    .content-table th:hover { color: var(--color-text-heading); }
+    .content-table th .sort-arrow { margin-left: 4px; opacity: 0.3; }
+    .content-table th.sorted .sort-arrow { opacity: 1; }
+    .content-table td { padding: var(--space-3) var(--space-4); font-size: var(--text-sm); border-bottom: 1px solid var(--color-border); vertical-align: top; }
+    .content-table tr { cursor: pointer; }
+    .content-table tr:hover td { background: var(--color-gray-50); }
+    .content-title-cell { max-width: 300px; color: var(--color-text-heading); font-weight: var(--font-semibold); }
+    .table-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary); }
+    .table-pagination button { padding: var(--space-1_5) var(--space-3); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius-md); background: white; cursor: pointer; font-size: var(--text-sm); }
+    .table-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .table-pagination button:hover:not(:disabled) { background: var(--color-gray-100); }
+
+    /* Modal styles */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-start; padding: var(--space-6) var(--space-4); overflow-y: auto; }
+    .modal { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-8); max-width: 900px; width: 100%; position: relative; margin: 0 auto; box-shadow: var(--shadow-lg); }
+    .modal h2 { margin-bottom: var(--space-5); color: var(--color-text-heading); }
+    .modal-close { position: absolute; top: var(--space-4); right: var(--space-4); background: none; border: none; cursor: pointer; padding: var(--space-2); color: var(--color-text-muted); }
+    .modal-close:hover { color: var(--color-text-heading); }
+    .modal-buttons { display: flex; gap: var(--space-2_5); justify-content: flex-end; margin-top: var(--space-6); padding-top: var(--space-5); border-top: var(--border-1) solid var(--color-gray-200); }
+    .form-group { margin-bottom: var(--space-5); }
+    .form-group label { display: block; margin-bottom: var(--space-1); font-weight: var(--font-semibold); color: var(--color-text-heading); font-size: var(--text-sm); }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: var(--space-2_5); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); font-family: inherit; box-sizing: border-box; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--color-brand); }
+    .form-group textarea { min-height: 120px; }
+    .form-group small { display: block; margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-xs); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+    .type-toggle { display: flex; gap: var(--space-2_5); margin-bottom: var(--space-6); }
+    .type-toggle button { padding: var(--space-3) var(--space-6); border: var(--border-2) solid var(--color-gray-200); border-radius: var(--radius-md); background: var(--color-bg-card); cursor: pointer; font-weight: var(--font-medium); font-size: var(--text-sm); }
+    .type-toggle button.active { border-color: var(--color-brand); background: var(--color-primary-50); color: var(--color-brand); }
+    .url-input-group { display: flex; gap: var(--space-2_5); }
+    .url-input-group input { flex: 1; }
+    .markdown-editor-container { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+    .markdown-editor-container textarea { min-height: 300px; font-family: var(--font-mono); }
+    .preview-pane { border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); background: var(--color-gray-50); min-height: 300px; max-height: 400px; overflow-y: auto; }
+    .preview-pane.empty { display: flex; align-items: center; justify-content: center; color: var(--color-gray-400); font-style: italic; }
+    .char-count { font-size: var(--text-xs); color: var(--color-text-secondary); text-align: right; margin-top: var(--space-1); }
+    .char-count.warning { color: var(--color-warning-600); }
+    .char-count.over { color: var(--color-error-600); }
+
+    /* Co-author management */
+    .coauthor-section { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-200); }
+    .coauthor-list { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+    .coauthor-tag { display: inline-flex; align-items: center; gap: var(--space-1); background: var(--color-gray-100); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-size: var(--text-xs); }
+    .coauthor-tag .remove { cursor: pointer; color: var(--color-text-muted); font-weight: bold; }
+    .coauthor-tag .remove:hover { color: var(--color-error-600); }
+    .coauthor-add { display: flex; gap: var(--space-2); }
+    .coauthor-add input { flex: 1; }
+
+    /* Tags input */
+    .tags-display { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+    .tag-chip { display: inline-flex; align-items: center; gap: var(--space-1); background: var(--color-primary-50); color: var(--color-primary-700); padding: 2px var(--space-2); border-radius: var(--radius-full); font-size: var(--text-xs); }
+
+    /* Image upload */
+    .image-upload-zone { border: 2px dashed var(--color-gray-300); border-radius: var(--radius-md); padding: var(--space-4); text-align: center; cursor: pointer; transition: var(--transition-all); margin-top: var(--space-2); }
+    .image-upload-zone:hover { border-color: var(--color-brand); background: var(--color-primary-50); }
+    .image-upload-zone img { max-width: 100%; max-height: 200px; object-fit: cover; border-radius: var(--radius-sm); }
+
+    /* Article detail modal */
+    .article-header { margin-bottom: var(--space-6); padding-bottom: var(--space-4); border-bottom: 1px solid var(--color-border); }
+    .article-title { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading); margin-bottom: var(--space-2); }
+    .article-meta { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-3); }
+    .article-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+    .article-actions .btn svg { width: 14px; height: 14px; }
+    .article-actions select { font-size: var(--text-xs); padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: white; }
+    .article-hero { width: 100%; max-height: 300px; object-fit: cover; border-radius: var(--radius-md); margin-bottom: var(--space-4); }
+    .article-content h2 { font-size: var(--text-xl); font-weight: var(--font-semibold); margin-top: var(--space-6); margin-bottom: var(--space-3); }
+    .article-content h3 { font-size: var(--text-lg); font-weight: var(--font-semibold); margin-top: var(--space-4); margin-bottom: var(--space-2); }
+    .article-content p { margin-bottom: var(--space-4); line-height: var(--leading-relaxed); }
+    .article-content ul, .article-content ol { margin: var(--space-4) 0; padding-left: var(--space-6); }
+    .article-content li { margin-bottom: var(--space-2); }
+    .article-content a { color: var(--color-brand); }
+    .article-content a:hover { text-decoration: underline; }
+    .article-content blockquote { border-left: 4px solid var(--color-brand); padding-left: var(--space-4); margin: var(--space-4) 0; color: var(--color-text-muted); font-style: italic; }
+    .article-content pre { background: var(--color-gray-100); padding: var(--space-4); border-radius: var(--radius-md); overflow-x: auto; margin: var(--space-4) 0; }
+    .article-content code { background: var(--color-gray-100); padding: 2px var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-sm); }
+    .article-content pre code { background: none; padding: 0; }
+
+    .empty-state { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
+    .empty-state h3 { color: var(--color-text-heading); margin-bottom: var(--space-2); }
+
+    /* Confirm dialog inline */
+    .confirm-inline { background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+
+    @media (max-width: 900px) { .content-playbook-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 768px) { .markdown-editor-container { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .content-item { flex-direction: column; } .content-actions { max-width: none; justify-content: flex-start; } }
   </style>
 </head>
 <body>
   <div id="adcp-nav"></div>
-  <div class="container">
-    <h1>Content Management</h1>
-    <p style="color: var(--color-text-secondary); margin-bottom: var(--space-6);">Manage all perspectives, reports, and articles across the site.</p>
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
 
-    <div class="filters">
-      <select id="filter-status">
-        <option value="all">All Statuses</option>
-        <option value="published" selected>Published</option>
-        <option value="pending_review">Pending Review</option>
-        <option value="draft">Draft</option>
-        <option value="archived">Archived</option>
-      </select>
-      <select id="filter-origin">
-        <option value="all">All Origins</option>
-        <option value="official">Official (AAO)</option>
-        <option value="member">Member</option>
-      </select>
-      <select id="filter-category">
-        <option value="all">All Categories</option>
-      </select>
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">Loading...</div>
+
+  <div id="mainContent" class="hidden">
+    <div class="container">
+      <div class="page-header">
+        <h1>Content</h1>
+        <p class="subtitle">Publish perspectives, share links, and manage your contributions.</p>
+      </div>
+
+      <!-- Dismissible playbook -->
+      <div id="playbook" class="content-playbook hidden">
+        <button class="playbook-dismiss" onclick="dismissPlaybook()" aria-label="Dismiss">&times;</button>
+        <div class="content-playbook-header">
+          <div>
+            <h2>Publishing workflow</h2>
+            <p>Start a perspective or external link, route it into the right collection, then promote published pieces.</p>
+          </div>
+          <div class="content-playbook-actions">
+            <a href="/chat?prompt=Help%20me%20brainstorm%20a%20perspective%20or%20article%20idea%20for%20AgenticAdvertising.org%20based%20on%20my%20current%20work." class="btn btn-secondary">Brainstorm with Addie</a>
+          </div>
+        </div>
+        <div class="content-playbook-grid">
+          <div class="content-playbook-step"><strong>1. Draft a clear point of view</strong><p>Start with a specific perspective, announcement, or external link.</p></div>
+          <div class="content-playbook-step"><strong>2. Use the right review path</strong><p>Some collections publish directly, others require review.</p></div>
+          <div class="content-playbook-step"><strong>3. Promote the finished piece</strong><p>Use share and post-drafting actions to turn one article into broader visibility.</p></div>
+        </div>
+      </div>
+
+      <!-- Alert banner for pending reviews -->
+      <div id="pendingAlert" class="alert-banner hidden">
+        <div class="alert-banner-content">
+          <h3>Content awaiting review</h3>
+          <p id="pendingAlertText"></p>
+        </div>
+        <button class="btn btn-small btn-primary" onclick="switchTab('review')">Review Now</button>
+      </div>
+
+      <!-- Unified tabs: My Content | All Content (admin) | Pending Review (leader/admin) -->
+      <div class="tabs" id="tabBar">
+        <button class="tab active" data-tab="mine" onclick="switchTab('mine')">
+          My Content <span class="count" id="myCount">0</span>
+        </button>
+        <!-- All Content tab: admin only, injected by JS -->
+        <!-- Pending Review tab: leader/admin only, injected by JS -->
+      </div>
+
+      <!-- Tab panels -->
+      <div id="panel-mine" class="tab-panel">
+        <div class="card">
+          <div class="section-header">
+            <button class="btn btn-primary" onclick="showCreateModal()">+ New Perspective</button>
+          </div>
+          <div class="filter-bar">
+            <select id="statusFilter" onchange="renderMyContent()">
+              <option value="">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="pending_review">Pending Review</option>
+              <option value="published">Published</option>
+              <option value="rejected">Rejected</option>
+              <option value="archived">Archived</option>
+            </select>
+            <select id="collectionFilter" onchange="renderMyContent()">
+              <option value="">All Collections</option>
+            </select>
+          </div>
+          <div id="myContentList" class="content-list">Loading...</div>
+        </div>
+      </div>
+
+      <div id="panel-all" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <button class="btn btn-primary" onclick="showCreateModal()">+ New Perspective</button>
+          </div>
+          <div class="filter-bar">
+            <input type="search" id="adminSearch" placeholder="Search titles..." oninput="renderAdminTable()">
+            <select id="adminStatusFilter" onchange="renderAdminTable()">
+              <option value="all">All Statuses</option>
+              <option value="published" selected>Published</option>
+              <option value="pending_review">Pending Review</option>
+              <option value="draft">Draft</option>
+              <option value="archived">Archived</option>
+            </select>
+            <select id="adminOriginFilter" onchange="renderAdminTable()">
+              <option value="all">All Sources</option>
+              <option value="official">Official</option>
+              <option value="member">Member</option>
+              <option value="external">External</option>
+            </select>
+            <select id="adminCategoryFilter" onchange="renderAdminTable()">
+              <option value="all">All Categories</option>
+            </select>
+            <select id="adminCommitteeFilter" onchange="renderAdminTable()">
+              <option value="all">All Committees</option>
+            </select>
+          </div>
+          <table class="content-table">
+            <thead><tr>
+              <th data-sort="title" onclick="sortAdminTable('title')">Title <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="content_origin" onclick="sortAdminTable('content_origin')">Source <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="category" onclick="sortAdminTable('category')">Category <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="author_name" onclick="sortAdminTable('author_name')">Author <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="committee_name" onclick="sortAdminTable('committee_name')">Committee <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="status" onclick="sortAdminTable('status')">Status <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="published_at" onclick="sortAdminTable('published_at')">Published <span class="sort-arrow">&#9660;</span></th>
+            </tr></thead>
+            <tbody id="adminTableBody"></tbody>
+          </table>
+          <div class="table-pagination" id="adminPagination"></div>
+        </div>
+      </div>
+
+      <div id="panel-review" class="tab-panel hidden">
+        <div class="card">
+          <div class="filter-bar">
+            <select id="reviewCommitteeFilter" onchange="renderPendingContent()">
+              <option value="">All Committees</option>
+            </select>
+          </div>
+          <div id="pendingList" class="content-list">Loading...</div>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <div class="card">
-      <table class="content-table">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Origin</th>
-            <th>Category</th>
-            <th>Author</th>
-            <th>Status</th>
-            <th>Published</th>
-            <th>Assets</th>
-          </tr>
-        </thead>
-        <tbody id="content-body">
-          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
-        </tbody>
-      </table>
+  <!-- Create/Edit Modal -->
+  <div id="contentModal" class="modal-overlay">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <h2 id="modalTitle">New Perspective</h2>
+      <div class="type-toggle">
+        <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">Article</button>
+        <button type="button" id="typeLink" onclick="setContentType('link')">External Link</button>
+      </div>
+      <form id="contentForm" onsubmit="saveContent(event)">
+        <input type="hidden" id="contentId">
+        <input type="hidden" id="contentTypeField" value="article">
+        <div class="form-group">
+          <label>Publish To</label>
+          <select id="collection" required></select>
+          <small id="collectionHint">Where this perspective will appear on the site</small>
+        </div>
+        <div id="linkFields" class="hidden">
+          <div class="form-group">
+            <label>URL</label>
+            <div class="url-input-group">
+              <input type="url" id="externalUrl" placeholder="https://...">
+              <button type="button" class="btn btn-secondary" id="fetchBtn" onclick="fetchUrlMetadata()">Fetch Info</button>
+            </div>
+            <small>Paste a URL and click "Fetch Info" to auto-fill</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="title" required placeholder="Enter title">
+        </div>
+        <div class="form-group">
+          <label>Excerpt / Summary</label>
+          <textarea id="excerpt" placeholder="Brief description (shown in previews and search)"></textarea>
+          <div class="char-count" id="excerptCount">0 / 160 characters</div>
+        </div>
+        <div id="articleFields">
+          <div class="form-group">
+            <label>Content (Markdown)</label>
+            <div class="markdown-editor-container">
+              <div><textarea id="articleContent" oninput="updatePreview()" placeholder="Write your perspective in Markdown..."></textarea></div>
+              <div><div id="contentPreview" class="preview-pane empty">Start typing to see preview...</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hero image upload -->
+        <div class="form-group" id="heroUploadGroup">
+          <label>Cover Image</label>
+          <div class="image-upload-zone" id="heroDropzone" onclick="document.getElementById('heroFileInput').click()">
+            <div id="heroPreview"><p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p></div>
+          </div>
+          <input type="file" id="heroFileInput" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="previewHeroImage(this)">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="category">
+              <option value="">None</option>
+              <option value="Op-Ed">Op-Ed</option>
+              <option value="Analysis">Analysis</option>
+              <option value="Research">Research</option>
+              <option value="Press Coverage">Press Coverage</option>
+              <option value="Interview">Interview</option>
+              <option value="Case Study">Case Study</option>
+              <option value="Announcement">Announcement</option>
+              <option value="Tutorial">Tutorial</option>
+              <option value="Opinion">Opinion</option>
+            </select>
+          </div>
+          <div class="form-group" id="statusGroup">
+            <label>Status</label>
+            <select id="statusSelect">
+              <option value="draft">Draft</option>
+              <option value="pending_review">Submit for Review</option>
+              <option value="published">Publish Now</option>
+            </select>
+            <small id="statusHint"></small>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="form-group">
+          <label>Tags</label>
+          <input type="text" id="tagsInput" placeholder="e.g., buy-side, protocol, agentic (comma-separated)">
+        </div>
+
+        <!-- Co-authors (shown when editing) -->
+        <div class="coauthor-section hidden" id="coauthorSection">
+          <label style="font-weight: var(--font-semibold); font-size: var(--text-sm); margin-bottom: var(--space-2); display: block;">Co-Authors</label>
+          <div class="coauthor-list" id="coauthorList"></div>
+          <div class="coauthor-add">
+            <input type="text" id="coauthorName" placeholder="Display name">
+            <button type="button" class="btn btn-small btn-secondary" onclick="addCoauthor()">Add</button>
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Article Detail Modal -->
+  <div id="articleModal" class="modal-overlay">
+    <div class="modal" style="max-width: 800px;">
+      <button class="modal-close" onclick="closeArticleModal()" aria-label="Close">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="article-header">
+        <h1 id="articleTitle" class="article-title"></h1>
+        <div id="articleMeta" class="article-meta"></div>
+        <div class="article-actions">
+          <button class="btn btn-small btn-secondary" onclick="editFromDetailModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+          </button>
+          <button class="btn btn-small btn-secondary" id="heroBtn" onclick="generateHero()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span id="heroBtnLabel">Generate Hero</span>
+          </button>
+          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Status:</label>
+          <select id="detailStatusSelect" onchange="confirmAdminStatusChange(this)">
+            <option value="draft">Draft</option>
+            <option value="pending_review">Pending Review</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </select>
+          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Source:</label>
+          <select id="detailOriginSelect" onchange="updateAdminOrigin(this.value)">
+            <option value="official">Official</option>
+            <option value="member">Member</option>
+            <option value="external">External</option>
+          </select>
+          <button class="btn btn-small btn-danger" onclick="deleteArticle()">Delete</button>
+        </div>
+      </div>
+      <img id="articleHero" class="article-hero" style="display:none;" alt="">
+      <div id="articleDetailContent" class="article-content"></div>
+    </div>
+  </div>
+
+  <!-- Review Modal -->
+  <div id="reviewModal" class="modal-overlay">
+    <div class="modal" style="max-width: 800px;">
+      <button class="modal-close" onclick="closeReviewModal()" aria-label="Close">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <h2>Review Content</h2>
+      <div id="reviewContent">
+        <h3 id="reviewTitle"></h3>
+        <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0; font-style: italic;"></p>
+        <div id="reviewDetails" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></div>
+        <div id="reviewArticleContent" class="article-content" style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);"></div>
+      </div>
+      <div class="modal-buttons" id="reviewButtons">
+        <button type="button" class="btn btn-secondary" onclick="closeReviewModal()">Cancel</button>
+        <button type="button" class="btn btn-warning" onclick="showRejectForm()">Request Revisions</button>
+        <button type="button" class="btn btn-success" onclick="approveContent()">Approve & Publish</button>
+      </div>
+      <!-- Rejection form (hidden until Request Revisions clicked) -->
+      <div id="rejectForm" class="hidden" style="margin-top: var(--space-4);">
+        <div class="form-group">
+          <label>What needs to change?</label>
+          <textarea id="rejectionReason" placeholder="Explain what revisions are needed..."></textarea>
+        </div>
+        <div style="display: flex; gap: var(--space-2); justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="hideRejectForm()">Cancel</button>
+          <button type="button" class="btn btn-danger" onclick="rejectContent()">Send for Revisions</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
-    const BASE = window.__CONFIG__?.baseUrl || '';
+    // State
+    let currentUser = null;
+    let isAdmin = false;
+    let canReview = false;
+    let currentTab = 'mine';
+    let myContent = [];
+    let adminContent = [];
+    let pendingContent = [];
+    let collections = [];
+    let editingContent = null;
+    let reviewingContent = null;
+    let currentDetailItem = null;
+    let adminSortField = 'published_at';
+    let adminSortDir = 'desc';
+    let adminPage = 0;
+    const PAGE_SIZE = 50;
 
-    async function loadContent() {
-      const statusFilter = document.getElementById('filter-status').value;
-      const originFilter = document.getElementById('filter-origin').value;
-      const categoryFilter = document.getElementById('filter-category').value;
+    // Init
+    async function init() {
+      try {
+        const meRes = await fetch('/api/me', { credentials: 'include' });
+        if (!meRes.ok) {
+          window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        currentUser = await meRes.json();
+        isAdmin = currentUser.is_admin;
 
-      const res = await fetch(`${BASE}/api/admin/content`);
-      if (!res.ok) return;
-      const data = await res.json();
-      let items = data.items || [];
+        if (typeof DashboardNav !== 'undefined') {
+          const orgs = currentUser.organizations || [];
+          const resolved = DashboardNav.resolveOrg(orgs);
+          DashboardNav.init({
+            showOrgSwitcher: false,
+            currentOrgName: resolved.org?.name || 'Organization',
+            isPersonal: resolved.org?.is_personal || false,
+            isSubscribed: false,
+            showAdmin: isAdmin,
+          });
+        }
 
-      // Populate category filter
-      const categories = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
-      const catSelect = document.getElementById('filter-category');
-      const currentCat = catSelect.value;
-      catSelect.innerHTML = '<option value="all">All Categories</option>';
-      categories.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        if (c === currentCat) opt.selected = true;
-        catSelect.appendChild(opt);
+        await loadCollections();
+
+        const reviewable = collections.filter(c => c.canPublishDirectly);
+        canReview = isAdmin || reviewable.length > 0;
+
+        // Build dynamic tabs
+        const tabBar = document.getElementById('tabBar');
+        if (isAdmin) {
+          const allTab = document.createElement('button');
+          allTab.className = 'tab';
+          allTab.dataset.tab = 'all';
+          allTab.onclick = () => switchTab('all');
+          allTab.innerHTML = 'All Content';
+          tabBar.appendChild(allTab);
+        }
+        if (canReview) {
+          const reviewTab = document.createElement('button');
+          reviewTab.className = 'tab';
+          reviewTab.dataset.tab = 'review';
+          reviewTab.onclick = () => switchTab('review');
+          reviewTab.innerHTML = 'Pending Review <span class="count alert" id="pendingCount">0</span>';
+          tabBar.appendChild(reviewTab);
+          await loadPendingContent();
+        }
+
+        await loadMyContent();
+
+        // Show playbook if not dismissed and user has few items
+        const dismissed = localStorage.getItem('aao_playbook_dismissed');
+        if (!dismissed) {
+          document.getElementById('playbook').classList.remove('hidden');
+        }
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('mainContent').classList.remove('hidden');
+      } catch (err) {
+        console.error('Init error:', err);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load. <a href="/auth/login">Try logging in</a></p>';
+      }
+    }
+
+    function dismissPlaybook() {
+      localStorage.setItem('aao_playbook_dismissed', '1');
+      document.getElementById('playbook').classList.add('hidden');
+    }
+
+    // Collections
+    async function loadCollections() {
+      try {
+        const res = await fetch('/api/content/collections', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        collections = (data.collections || []).map(c => ({
+          slug: c.slug, name: c.name, type: c.type, canPublishDirectly: c.can_publish_directly
+        }));
+        populateCollectionDropdowns();
+      } catch (e) { console.error('Failed to load collections:', e); }
+    }
+
+    function populateCollectionDropdowns() {
+      const collectionSelect = document.getElementById('collection');
+      const collectionFilter = document.getElementById('collectionFilter');
+      const reviewFilter = document.getElementById('reviewCommitteeFilter');
+
+      collectionSelect.innerHTML = '';
+      collectionFilter.innerHTML = '<option value="">All Collections</option>';
+
+      const publicCols = collections.filter(c => c.type === 'public');
+      const committeeCols = collections.filter(c => c.type === 'committee');
+
+      if (publicCols.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Site-wide';
+        publicCols.forEach(c => { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.name; group.appendChild(o); });
+        collectionSelect.appendChild(group);
+      }
+      if (committeeCols.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Your Committees';
+        committeeCols.forEach(c => { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.name; group.appendChild(o); });
+        collectionSelect.appendChild(group);
+      }
+
+      collections.forEach(c => {
+        const o = document.createElement('option'); o.value = c.slug; o.textContent = c.name;
+        collectionFilter.appendChild(o);
       });
 
-      // Apply filters
-      if (statusFilter !== 'all') items = items.filter(i => i.status === statusFilter);
-      if (originFilter !== 'all') items = items.filter(i => i.content_origin === originFilter);
-      if (categoryFilter !== 'all') items = items.filter(i => i.category === categoryFilter);
+      const reviewable = collections.filter(c => c.canPublishDirectly);
+      reviewable.forEach(c => {
+        const o = document.createElement('option'); o.value = c.slug; o.textContent = c.name;
+        reviewFilter.appendChild(o);
+      });
+    }
 
-      const tbody = document.getElementById('content-body');
-      if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No content matches the filters.</td></tr>';
+    // Data loading
+    async function loadMyContent() {
+      try {
+        const res = await fetch('/api/me/content', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        myContent = data.items || [];
+        document.getElementById('myCount').textContent = myContent.length;
+        if (currentTab === 'mine') renderMyContent();
+      } catch (e) {
+        console.error('Failed to load content:', e);
+        document.getElementById('myContentList').innerHTML = '<div class="empty-state"><p>Failed to load content</p></div>';
+      }
+    }
+
+    async function loadAdminContent() {
+      try {
+        const res = await fetch('/api/admin/content', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        adminContent = data.items || [];
+        populateAdminFilters();
+        renderAdminTable();
+      } catch (e) { console.error('Failed to load admin content:', e); }
+    }
+
+    async function loadPendingContent() {
+      try {
+        const res = await fetch('/api/content/pending', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        pendingContent = data.items || [];
+        const countEl = document.getElementById('pendingCount');
+        if (countEl) countEl.textContent = pendingContent.length;
+        if (pendingContent.length > 0) {
+          document.getElementById('pendingAlert').classList.remove('hidden');
+          document.getElementById('pendingAlertText').textContent =
+            `${pendingContent.length} item${pendingContent.length > 1 ? 's' : ''} need${pendingContent.length === 1 ? 's' : ''} your review.`;
+        }
+        renderPendingContent();
+      } catch (e) { console.error('Failed to load pending:', e); }
+    }
+
+    // Tab switching
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      document.getElementById('panel-mine').classList.toggle('hidden', tab !== 'mine');
+      document.getElementById('panel-all').classList.toggle('hidden', tab !== 'all');
+      document.getElementById('panel-review').classList.toggle('hidden', tab !== 'review');
+
+      // Show playbook only in My Content tab
+      const pb = document.getElementById('playbook');
+      const dismissed = localStorage.getItem('aao_playbook_dismissed');
+      pb.classList.toggle('hidden', tab !== 'mine' || !!dismissed);
+
+      if (tab === 'all' && adminContent.length === 0) loadAdminContent();
+    }
+
+    // Render My Content (cards)
+    function renderMyContent() {
+      const list = document.getElementById('myContentList');
+      const statusFilter = document.getElementById('statusFilter').value;
+      const collectionFilter = document.getElementById('collectionFilter').value;
+
+      let filtered = myContent;
+      if (statusFilter) filtered = filtered.filter(c => c.status === statusFilter);
+      if (collectionFilter) filtered = filtered.filter(c => c.collection?.committee_slug === collectionFilter || c.collection?.slug === collectionFilter);
+
+      if (filtered.length === 0) {
+        const hasAny = myContent.length > 0;
+        list.innerHTML = hasAny
+          ? '<div class="empty-state"><h3>No matches</h3><p>Try adjusting your filters.</p></div>'
+          : '<div class="empty-state"><h3>Nothing here yet</h3><p>Write your first perspective or share a link to get started.</p><button class="btn btn-primary" onclick="showCreateModal()" style="margin-top: var(--space-4);">+ New Perspective</button></div>';
+        return;
+      }
+      list.innerHTML = filtered.map(item => renderContentItem(item, false)).join('');
+    }
+
+    function renderPendingContent() {
+      const list = document.getElementById('pendingList');
+      const colFilter = document.getElementById('reviewCommitteeFilter').value;
+      let filtered = pendingContent;
+      if (colFilter) filtered = filtered.filter(c => c.collection?.committee_slug === colFilter);
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="empty-state"><h3>All caught up</h3><p>No perspectives pending review.</p></div>';
+        return;
+      }
+      list.innerHTML = filtered.map(item => renderContentItem(item, true)).join('');
+    }
+
+    function renderContentItem(item, isPendingView) {
+      const statusBadge = `<span class="badge badge-${esc(item.status)}">${formatStatus(item.status)}</span>`;
+      const typeBadge = `<span class="badge badge-${esc(item.content_type)}">${esc(item.content_type)}</span>`;
+      const collectionName = item.collection?.committee_name || item.collection?.name || '';
+      const collectionBadge = collectionName ? `<span class="badge badge-committee">${esc(collectionName)}</span>` : '';
+      const publishedUrl = item.slug ? `${window.location.origin}/perspectives/${item.slug}` : null;
+
+      const linkedInShareUrl = publishedUrl ? `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(publishedUrl)}` : null;
+      const xShareUrl = publishedUrl ? `https://twitter.com/intent/tweet?url=${encodeURIComponent(publishedUrl)}&text=${encodeURIComponent(item.title)}` : null;
+      const addieSocialPrompt = publishedUrl
+        ? `/chat?prompt=${encodeURIComponent(`Help me turn my published article "${item.title}" into a strong LinkedIn post first, then suggest a shorter optional X version. Here is the article URL: ${publishedUrl}`)}`
+        : `/chat?prompt=${encodeURIComponent(`Help me tighten the argument and title for my draft "${item.title}".`)}`;
+
+      const relationships = (item.relationships || []).map(r => `<span class="badge badge-${esc(r)}">${esc(r)}</span>`).join('');
+      const authors = (item.authors || []).map(a => `<span class="author-tag">${esc(a.display_name)}</span>`).join('');
+      const proposerInfo = item.proposer ? `<div class="proposer-info">Proposed by ${esc(item.proposer.name)} on ${formatDate(item.proposed_at)}</div>` : '';
+      const rejectionInfo = item.status === 'rejected' && item.rejection_reason ? `<div class="rejection-reason"><strong>Feedback:</strong> ${esc(item.rejection_reason)}</div>` : '';
+
+      const pageviews30d = Number(item.performance?.pageviews_last_30d || 0);
+      const pvText = pageviews30d > 0 ? formatMetricCount(pageviews30d) : null;
+
+      let actions = '';
+      if (isPendingView) {
+        actions = `<button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>`;
+      } else {
+        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
+        const isRejected = item.status === 'rejected';
+        actions = `
+          ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
+          ${isRejected && canEdit ? `<button class="btn btn-small btn-primary" onclick="resubmitContent('${safeId(item.id)}')">Resubmit</button>` : ''}
+          ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${safeId(item.id)}')">View</button>` : ''}
+          <a class="btn btn-small btn-outline" href="${addieSocialPrompt}">${item.status === 'published' ? 'Draft social post' : 'Sharpen with Addie'}</a>
+        `;
+      }
+
+      // Helper links for published items only — no duplicates
+      const helperLinks = !isPendingView && item.status === 'published' && publishedUrl ? `
+        <div class="content-helper-links">
+          <a class="helper-link" href="${publishedUrl}" target="_blank" rel="noopener">Open article</a>
+          <button class="helper-link" onclick="copyLink('${esc(publishedUrl)}', this)">Copy link</button>
+          ${linkedInShareUrl ? `<a class="helper-link" href="${linkedInShareUrl}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
+          ${xShareUrl ? `<a class="helper-link" href="${xShareUrl}" target="_blank" rel="noopener">X</a>` : ''}
+          <a class="helper-link" href="${addieSocialPrompt}">Draft with Addie</a>
+        </div>
+      ` : '';
+
+      const titleAction = isPendingView ? '' : (item.status === 'published' && item.slug ? `onclick="viewContent('${safeId(item.id)}')"` : `onclick="editContent('${safeId(item.id)}')"`);
+
+      return `
+        <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}">
+          <div class="content-info">
+            <h3 ${titleAction}>${esc(item.title)}</h3>
+            <div class="content-meta">
+              ${statusBadge} ${typeBadge} ${collectionBadge} ${!isPendingView ? relationships : ''}
+              ${pvText ? `<span>${pvText} views (30d)</span>` : ''}
+            </div>
+            ${authors ? `<div class="authors-list">${authors}</div>` : ''}
+            ${item.excerpt ? `<div class="content-excerpt">${esc(item.excerpt)}</div>` : ''}
+            ${proposerInfo} ${rejectionInfo} ${helperLinks}
+          </div>
+          <div class="content-actions">${actions}</div>
+        </div>
+      `;
+    }
+
+    function copyLink(url, btn) {
+      navigator.clipboard.writeText(url).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
+    // Admin table
+    function populateAdminFilters() {
+      const cats = [...new Set(adminContent.map(i => i.category).filter(Boolean))].sort();
+      const catSel = document.getElementById('adminCategoryFilter');
+      catSel.innerHTML = '<option value="all">All Categories</option>';
+      cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
+
+      const coms = [...new Set(adminContent.map(i => i.committee_name).filter(Boolean))].sort();
+      const comSel = document.getElementById('adminCommitteeFilter');
+      comSel.innerHTML = '<option value="all">All Committees</option>';
+      coms.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; comSel.appendChild(o); });
+    }
+
+    function sortAdminTable(field) {
+      if (adminSortField === field) {
+        adminSortDir = adminSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        adminSortField = field;
+        adminSortDir = field === 'published_at' ? 'desc' : 'asc';
+      }
+      // Update sort indicators
+      document.querySelectorAll('.content-table th').forEach(th => {
+        th.classList.toggle('sorted', th.dataset.sort === field);
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.innerHTML = th.dataset.sort === field ? (adminSortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;';
+      });
+      adminPage = 0;
+      renderAdminTable();
+    }
+
+    function renderAdminTable() {
+      const status = document.getElementById('adminStatusFilter').value;
+      const origin = document.getElementById('adminOriginFilter').value;
+      const category = document.getElementById('adminCategoryFilter').value;
+      const committee = document.getElementById('adminCommitteeFilter').value;
+      const search = document.getElementById('adminSearch').value.toLowerCase().trim();
+
+      let items = adminContent.filter(item => {
+        if (status !== 'all' && item.status !== status) return false;
+        if (origin !== 'all' && item.content_origin !== origin) return false;
+        if (category !== 'all' && item.category !== category) return false;
+        if (committee !== 'all' && item.committee_name !== committee) return false;
+        if (search && !item.title.toLowerCase().includes(search)) return false;
+        return true;
+      });
+
+      // Sort
+      items.sort((a, b) => {
+        let va = a[adminSortField] || '';
+        let vb = b[adminSortField] || '';
+        if (adminSortField === 'published_at') { va = va ? new Date(va).getTime() : 0; vb = vb ? new Date(vb).getTime() : 0; }
+        else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+        if (va < vb) return adminSortDir === 'asc' ? -1 : 1;
+        if (va > vb) return adminSortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      // Pagination
+      const total = items.length;
+      const totalPages = Math.ceil(total / PAGE_SIZE);
+      if (adminPage >= totalPages) adminPage = Math.max(0, totalPages - 1);
+      const pageItems = items.slice(adminPage * PAGE_SIZE, (adminPage + 1) * PAGE_SIZE);
+
+      const tbody = document.getElementById('adminTableBody');
+      if (pageItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No perspectives match filters.</td></tr>';
+        document.getElementById('adminPagination').innerHTML = '';
         return;
       }
 
-      tbody.innerHTML = items.map(item => {
-        const statusClass = item.status === 'published' ? 'badge-published'
-          : item.status === 'pending_review' ? 'badge-pending'
-          : 'badge-draft';
+      tbody.innerHTML = pageItems.map(item => {
+        const statusClass = 'badge-' + esc(item.status || 'draft');
         const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
-        const rawHref = item.content_type === 'link' ? item.external_url : `/perspectives/${item.slug}`;
-        const safeHref = (rawHref || '').toLowerCase().startsWith('javascript') ? '#' : esc(rawHref || '#');
-        const hasImage = item.featured_image_url ? 'Y' : '-';
-
-        return `<tr>
-          <td class="content-title-cell"><a href="${safeHref}" target="_blank">${esc(item.title)}</a></td>
-          <td>
-            <select class="origin-select" data-id="${esc(item.id)}" onchange="updateOrigin(this)">
-              <option value="official"${item.content_origin === 'official' ? ' selected' : ''}>Official</option>
-              <option value="member"${item.content_origin === 'member' ? ' selected' : ''}>Member</option>
-              <option value="external"${item.content_origin === 'external' ? ' selected' : ''}>External</option>
-            </select>
-          </td>
+        return `<tr onclick="openDetailModal('${safeId(item.id)}')">
+          <td class="content-title-cell">${esc(item.title)}</td>
+          <td>${esc(item.content_origin || '-')}</td>
           <td>${esc(item.category || '-')}</td>
           <td>${esc(item.author_name || '-')}</td>
-          <td><span class="badge ${esc(statusClass)}">${esc(item.status)}</span></td>
+          <td>${esc(item.committee_name || '-')}</td>
+          <td><span class="badge ${statusClass}">${formatStatus(item.status)}</span></td>
           <td>${esc(date)}</td>
-          <td>${hasImage}</td>
         </tr>`;
       }).join('');
+
+      // Pagination controls
+      const pagEl = document.getElementById('adminPagination');
+      if (totalPages <= 1) { pagEl.innerHTML = `<span>${total} perspectives</span><span></span>`; return; }
+      pagEl.innerHTML = `
+        <span>Showing ${adminPage * PAGE_SIZE + 1}-${Math.min((adminPage + 1) * PAGE_SIZE, total)} of ${total}</span>
+        <span>
+          <button onclick="adminPage = 0; renderAdminTable()" ${adminPage === 0 ? 'disabled' : ''}>First</button>
+          <button onclick="adminPage--; renderAdminTable()" ${adminPage === 0 ? 'disabled' : ''}>Prev</button>
+          <button onclick="adminPage++; renderAdminTable()" ${adminPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
+          <button onclick="adminPage = ${totalPages - 1}; renderAdminTable()" ${adminPage >= totalPages - 1 ? 'disabled' : ''}>Last</button>
+        </span>
+      `;
     }
 
-    function esc(str) {
-      const d = document.createElement('div');
-      d.textContent = str || '';
-      return d.innerHTML;
+    // Admin detail modal
+    async function openDetailModal(id) {
+      const item = adminContent.find(i => String(i.id) === String(id));
+      if (!item) return;
+
+      try {
+        const res = await fetch(`/api/admin/content/${encodeURIComponent(item.id)}`, { credentials: 'include' });
+        if (res.ok) { const full = await res.json(); item.content = full.content; item.tags = full.tags; }
+      } catch (e) { console.error('Failed to load full content:', e); }
+
+      currentDetailItem = item;
+      document.getElementById('articleTitle').textContent = item.title;
+
+      let meta = '';
+      if (item.published_at) meta += `<span>${new Date(item.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>`;
+      if (item.author_name) meta += `<span>by ${esc(item.author_name)}</span>`;
+      if (item.category) meta += `<span>${esc(item.category)}</span>`;
+      if (item.committee_name) meta += `<span>${esc(item.committee_name)}</span>`;
+      document.getElementById('articleMeta').innerHTML = meta;
+
+      document.getElementById('detailStatusSelect').value = item.status || 'draft';
+      document.getElementById('detailOriginSelect').value = item.content_origin || 'member';
+
+      const heroImg = document.getElementById('articleHero');
+      const imageUrl = item.featured_image_url || `/api/perspectives/${encodeURIComponent(item.slug)}/card.png`;
+      heroImg.src = imageUrl;
+      heroImg.style.display = 'block';
+      heroImg.onerror = function() { this.style.display = 'none'; };
+
+      document.getElementById('heroBtnLabel').textContent = item.featured_image_url ? 'Regenerate Hero' : 'Generate Hero';
+
+      const html = item.content ? marked.parse(item.content) : '<p><em>No content available.</em></p>';
+      document.getElementById('articleDetailContent').innerHTML = DOMPurify.sanitize(html);
+
+      document.getElementById('articleModal').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
     }
 
-    async function updateOrigin(select) {
-      const id = select.dataset.id;
-      const origin = select.value;
-      const res = await fetch(`${BASE}/api/admin/content/${id}/origin`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_origin: origin }),
-      });
-      if (!res.ok) {
-        alert('Failed to update origin');
-        loadContent();
+    function closeArticleModal() {
+      document.getElementById('articleModal').style.display = 'none';
+      document.body.style.overflow = '';
+      currentDetailItem = null;
+    }
+
+    function editFromDetailModal() {
+      if (!currentDetailItem) return;
+      closeArticleModal();
+      editingContent = currentDetailItem;
+      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('contentId').value = currentDetailItem.id;
+      document.getElementById('title').value = currentDetailItem.title || '';
+      document.getElementById('excerpt').value = currentDetailItem.excerpt || '';
+      document.getElementById('articleContent').value = currentDetailItem.content || '';
+      document.getElementById('externalUrl').value = currentDetailItem.external_url || '';
+      document.getElementById('category').value = currentDetailItem.category || '';
+      document.getElementById('tagsInput').value = (currentDetailItem.tags || []).join(', ');
+
+      // Map actual status to edit options
+      const st = currentDetailItem.status;
+      if (st === 'published') document.getElementById('statusSelect').value = 'published';
+      else if (st === 'pending_review') document.getElementById('statusSelect').value = 'pending_review';
+      else document.getElementById('statusSelect').value = 'draft';
+
+      const colSlug = currentDetailItem.committee_slug || currentDetailItem.collection?.committee_slug;
+      if (colSlug) document.getElementById('collection').value = colSlug;
+      setContentType(currentDetailItem.content_type || 'article');
+      updatePreview();
+      updateExcerptCount();
+      updateStatusHint();
+      // Show co-author section when editing
+      document.getElementById('coauthorSection').classList.remove('hidden');
+      loadCoauthors(currentDetailItem.id);
+      document.getElementById('contentModal').style.display = 'flex';
+    }
+
+    // Status change with confirmation for dangerous transitions
+    let previousStatus = '';
+    function confirmAdminStatusChange(select) {
+      const newVal = select.value;
+      const oldVal = currentDetailItem?.status;
+      if (oldVal === 'published' && newVal !== 'published') {
+        if (!confirm(`This will unpublish "${currentDetailItem.title}". Continue?`)) {
+          select.value = oldVal;
+          return;
+        }
+      }
+      updateAdminStatus(newVal);
+    }
+
+    async function updateAdminStatus(value) {
+      if (!currentDetailItem) return;
+      try {
+        const res = await fetch(`/api/admin/content/${currentDetailItem.id}/status`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ status: value }),
+        });
+        if (res.ok) { currentDetailItem.status = value; await loadAdminContent(); }
+        else { alert('Failed to update status'); document.getElementById('detailStatusSelect').value = currentDetailItem.status; }
+      } catch (e) { alert('Failed to update status'); }
+    }
+
+    async function updateAdminOrigin(value) {
+      if (!currentDetailItem) return;
+      try {
+        const res = await fetch(`/api/admin/content/${currentDetailItem.id}/origin`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ content_origin: value }),
+        });
+        if (res.ok) { currentDetailItem.content_origin = value; await loadAdminContent(); }
+        else { alert('Failed to update source'); document.getElementById('detailOriginSelect').value = currentDetailItem.content_origin; }
+      } catch (e) { alert('Failed to update source'); }
+    }
+
+    async function generateHero() {
+      if (!currentDetailItem) return;
+      const btn = document.getElementById('heroBtn');
+      btn.disabled = true;
+      document.getElementById('heroBtnLabel').textContent = 'Generating...';
+      try {
+        const res = await fetch(`/api/admin/illustrations/regenerate/${encodeURIComponent(currentDetailItem.slug)}`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed to generate hero'); return; }
+        await loadAdminContent();
+        openDetailModal(currentDetailItem.id);
+      } catch (e) { alert('Failed to generate hero'); }
+      finally { btn.disabled = false; document.getElementById('heroBtnLabel').textContent = 'Generate Hero'; }
+    }
+
+    async function deleteArticle() {
+      if (!currentDetailItem) return;
+      if (!confirm(`Delete "${currentDetailItem.title}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/admin/content/${currentDetailItem.id}`, { method: 'DELETE', credentials: 'include' });
+        if (res.ok) { closeArticleModal(); await loadAdminContent(); }
+        else { const d = await res.json(); alert(d.error || 'Failed to delete'); }
+      } catch (e) { alert('Failed to delete'); }
+    }
+
+    // Create/Edit modal
+    function showCreateModal() {
+      editingContent = null;
+      document.getElementById('modalTitle').textContent = 'New Perspective';
+      document.getElementById('contentForm').reset();
+      document.getElementById('contentId').value = '';
+      document.getElementById('tagsInput').value = '';
+      setContentType('article');
+      updateExcerptCount();
+      updateStatusHint();
+      document.getElementById('coauthorSection').classList.add('hidden');
+      document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p>';
+      document.getElementById('contentModal').style.display = 'flex';
+    }
+
+    function editContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      editingContent = item;
+      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('contentId').value = item.id;
+      document.getElementById('title').value = item.title || '';
+      document.getElementById('excerpt').value = item.excerpt || '';
+      document.getElementById('externalUrl').value = item.external_url || '';
+      document.getElementById('articleContent').value = item.content || '';
+      document.getElementById('category').value = item.category || '';
+      document.getElementById('tagsInput').value = (item.tags || []).join(', ');
+
+      // Map status correctly
+      const st = item.status;
+      if (st === 'published') document.getElementById('statusSelect').value = 'published';
+      else if (st === 'pending_review') document.getElementById('statusSelect').value = 'pending_review';
+      else document.getElementById('statusSelect').value = 'draft';
+
+      const colSlug = item.collection?.committee_slug || item.collection?.slug;
+      if (colSlug) document.getElementById('collection').value = colSlug;
+      setContentType(item.content_type || 'article');
+      updatePreview();
+      updateExcerptCount();
+      updateStatusHint();
+      // Show co-authors when editing
+      document.getElementById('coauthorSection').classList.remove('hidden');
+      loadCoauthors(item.id);
+      document.getElementById('contentModal').style.display = 'flex';
+    }
+
+    function viewContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      window.open(`/perspectives/${item.slug}`, '_blank');
+    }
+
+    async function resubmitContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      if (!confirm(`Resubmit "${item.title}" for review?`)) return;
+      try {
+        const res = await fetch(`/api/me/content/${id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ status: 'pending_review' }),
+        });
+        if (res.ok) { await loadMyContent(); }
+        else { const d = await res.json(); alert(d.message || 'Failed to resubmit'); }
+      } catch (e) { alert('Failed to resubmit'); }
+    }
+
+    function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
+
+    function setContentType(type) {
+      document.getElementById('contentTypeField').value = type;
+      document.getElementById('typeArticle').classList.toggle('active', type === 'article');
+      document.getElementById('typeLink').classList.toggle('active', type === 'link');
+      document.getElementById('articleFields').classList.toggle('hidden', type !== 'article');
+      document.getElementById('linkFields').classList.toggle('hidden', type !== 'link');
+    }
+
+    function updateExcerptCount() {
+      const count = document.getElementById('excerpt').value.length;
+      const el = document.getElementById('excerptCount');
+      el.textContent = `${count} / 160 characters`;
+      el.className = 'char-count' + (count > 200 ? ' over' : count > 160 ? ' warning' : '');
+    }
+
+    function updatePreview() {
+      const text = document.getElementById('articleContent').value;
+      const preview = document.getElementById('contentPreview');
+      if (!text.trim()) { preview.classList.add('empty'); preview.innerHTML = 'Start typing to see preview...'; return; }
+      preview.classList.remove('empty');
+      preview.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    }
+
+    function updateStatusHint() {
+      const slug = document.getElementById('collection').value;
+      const hint = document.getElementById('statusHint');
+      const sel = document.getElementById('statusSelect');
+      const colHint = document.getElementById('collectionHint');
+      const col = collections.find(c => c.slug === slug);
+
+      if (col?.canPublishDirectly || isAdmin) {
+        hint.textContent = col?.type === 'committee' ? 'As a lead, you can publish directly.' : '';
+        sel.disabled = false;
+        colHint.textContent = 'Where this perspective will appear on the site';
+      } else {
+        hint.textContent = 'Will be submitted for review when saved.';
+        sel.value = 'draft';
+        sel.disabled = true;
+        colHint.textContent = col ? `Submissions to ${col.name} require review before publishing` : 'Where this perspective will appear on the site';
+      }
+
+      // Update save button text
+      updateSaveButtonText();
+    }
+
+    function updateSaveButtonText() {
+      const btn = document.getElementById('saveBtn');
+      const slug = document.getElementById('collection').value;
+      const col = collections.find(c => c.slug === slug);
+      const statusVal = document.getElementById('statusSelect').value;
+      const isEditing = !!document.getElementById('contentId').value;
+
+      if (isEditing) {
+        btn.textContent = 'Save Changes';
+      } else if (statusVal === 'published') {
+        btn.textContent = 'Publish';
+      } else if (!col?.canPublishDirectly && !isAdmin) {
+        btn.textContent = 'Submit for Review';
+      } else {
+        btn.textContent = 'Save Draft';
       }
     }
 
-    document.getElementById('filter-status').addEventListener('change', loadContent);
-    document.getElementById('filter-origin').addEventListener('change', loadContent);
-    document.getElementById('filter-category').addEventListener('change', loadContent);
+    async function fetchUrlMetadata() {
+      const url = document.getElementById('externalUrl').value.trim();
+      if (!url) return;
+      const btn = document.getElementById('fetchBtn');
+      btn.disabled = true; btn.textContent = 'Fetching...';
+      try {
+        const res = await fetch('/api/content/fetch-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url }) });
+        if (res.ok) { const d = await res.json(); if (d.title) document.getElementById('title').value = d.title; if (d.excerpt) document.getElementById('excerpt').value = d.excerpt; updateExcerptCount(); }
+      } catch (e) { console.error('Fetch error:', e); }
+      btn.disabled = false; btn.textContent = 'Fetch Info';
+    }
 
-    loadContent();
+    // Hero image preview
+    function previewHeroImage(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('heroPreview').innerHTML = `<img src="${e.target.result}" alt="Cover preview">`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function uploadHeroImage(contentId, slug) {
+      const input = document.getElementById('heroFileInput');
+      if (!input.files || !input.files[0]) return;
+      const formData = new FormData();
+      formData.append('file', input.files[0]);
+      formData.append('asset_type', 'cover_image');
+      try {
+        await fetch(`/api/content/${slug}/assets`, { method: 'POST', credentials: 'include', body: formData });
+      } catch (e) { console.error('Hero upload failed:', e); }
+    }
+
+    async function saveContent(event) {
+      event.preventDefault();
+      const id = document.getElementById('contentId').value;
+      const tagsStr = document.getElementById('tagsInput').value.trim();
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+      const data = {
+        title: document.getElementById('title').value.trim(),
+        content: document.getElementById('articleContent').value || null,
+        content_type: document.getElementById('contentTypeField').value,
+        external_url: document.getElementById('externalUrl').value.trim() || null,
+        excerpt: document.getElementById('excerpt').value.trim() || null,
+        category: document.getElementById('category').value || null,
+        tags,
+        collection: { slug: document.getElementById('collection').value },
+      };
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true; const origText = btn.textContent; btn.textContent = 'Saving...';
+      try {
+        let res;
+        if (id) {
+          const statusValue = document.getElementById('statusSelect').value;
+          res = await fetch(`/api/me/content/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...data, status: statusValue }) });
+        } else {
+          res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+        }
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed to save'); }
+
+        // Upload hero image if selected
+        const heroInput = document.getElementById('heroFileInput');
+        if (heroInput.files && heroInput.files[0]) {
+          const result = id ? { id } : await res.json();
+          const slug = editingContent?.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          await uploadHeroImage(result.id, slug);
+        }
+
+        closeModal();
+        await loadMyContent();
+        if (canReview) await loadPendingContent();
+        if (currentTab === 'all') await loadAdminContent();
+      } catch (e) { alert('Failed to save: ' + e.message); }
+      btn.disabled = false; btn.textContent = origText;
+    }
+
+    // Co-author management
+    let currentCoauthors = [];
+
+    async function loadCoauthors(contentId) {
+      currentCoauthors = editingContent?.authors || [];
+      renderCoauthors();
+    }
+
+    function renderCoauthors() {
+      const list = document.getElementById('coauthorList');
+      if (currentCoauthors.length === 0) {
+        list.innerHTML = '<span style="font-size: var(--text-xs); color: var(--color-text-muted);">No co-authors yet</span>';
+        return;
+      }
+      list.innerHTML = currentCoauthors.map((a, i) => `
+        <span class="coauthor-tag">
+          ${esc(a.display_name)}
+          <span class="remove" onclick="removeCoauthor(${i})">&times;</span>
+        </span>
+      `).join('');
+    }
+
+    async function addCoauthor() {
+      const nameInput = document.getElementById('coauthorName');
+      const name = nameInput.value.trim();
+      if (!name) return;
+      const contentId = document.getElementById('contentId').value;
+      if (!contentId) {
+        currentCoauthors.push({ display_name: name });
+        renderCoauthors();
+        nameInput.value = '';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/me/content/${contentId}/authors`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ display_name: name }),
+        });
+        if (res.ok) {
+          const author = await res.json();
+          currentCoauthors.push(author);
+          renderCoauthors();
+          nameInput.value = '';
+        } else { const d = await res.json(); alert(d.message || 'Failed to add co-author'); }
+      } catch (e) { alert('Failed to add co-author'); }
+    }
+
+    async function removeCoauthor(index) {
+      const author = currentCoauthors[index];
+      if (!author) return;
+      const contentId = document.getElementById('contentId').value;
+      if (contentId && author.user_id) {
+        try {
+          await fetch(`/api/me/content/${contentId}/authors/${author.user_id}`, { method: 'DELETE', credentials: 'include' });
+        } catch (e) { console.error('Failed to remove co-author:', e); return; }
+      }
+      currentCoauthors.splice(index, 1);
+      renderCoauthors();
+    }
+
+    // Review modal
+    function showReviewModal(id) {
+      const item = pendingContent.find(c => c.id === id);
+      if (!item) return;
+      reviewingContent = item;
+      document.getElementById('reviewTitle').textContent = item.title;
+      document.getElementById('reviewExcerpt').textContent = item.excerpt || '';
+      document.getElementById('reviewDetails').innerHTML = DOMPurify.sanitize(`
+        <p><strong>Type:</strong> ${item.content_type} <strong>Collection:</strong> ${item.collection?.committee_name || 'Personal'}</p>
+        <p><strong>Proposed by:</strong> ${item.proposer?.name || 'Unknown'} on ${formatDate(item.proposed_at)}</p>
+      `);
+      const el = document.getElementById('reviewArticleContent');
+      if (item.content) { el.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false })); el.style.display = ''; }
+      else { el.innerHTML = ''; el.style.display = 'none'; }
+      document.getElementById('rejectionReason').value = '';
+      document.getElementById('reviewButtons').classList.remove('hidden');
+      document.getElementById('rejectForm').classList.add('hidden');
+      document.getElementById('reviewModal').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeReviewModal() {
+      document.getElementById('reviewModal').style.display = 'none';
+      document.body.style.overflow = '';
+      reviewingContent = null;
+    }
+
+    function showRejectForm() {
+      document.getElementById('reviewButtons').classList.add('hidden');
+      document.getElementById('rejectForm').classList.remove('hidden');
+      document.getElementById('rejectionReason').focus();
+    }
+
+    function hideRejectForm() {
+      document.getElementById('rejectForm').classList.add('hidden');
+      document.getElementById('reviewButtons').classList.remove('hidden');
+    }
+
+    async function approveContent() {
+      if (!reviewingContent) return;
+      try {
+        const res = await fetch(`/api/content/${reviewingContent.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ publish_immediately: true }) });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Failed'); }
+        closeReviewModal(); await loadPendingContent(); await loadMyContent();
+        if (currentTab === 'all') await loadAdminContent();
+      } catch (e) { alert('Failed to approve: ' + e.message); }
+    }
+
+    async function rejectContent() {
+      if (!reviewingContent) return;
+      const reason = document.getElementById('rejectionReason').value.trim();
+      if (!reason) { alert('Please explain what needs to change'); return; }
+      try {
+        const res = await fetch(`/api/content/${reviewingContent.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason }) });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Failed'); }
+        closeReviewModal(); await loadPendingContent();
+      } catch (e) { alert('Failed to send back: ' + e.message); }
+    }
+
+    // Helpers
+    function formatStatus(s) { return { draft: 'Draft', pending_review: 'Pending Review', published: 'Published', rejected: 'Needs Revisions', archived: 'Archived' }[s] || esc(s); }
+    function formatDate(d) { return d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''; }
+    function formatMetricCount(v) { if (typeof v !== 'number' || !Number.isFinite(v)) return null; return new Intl.NumberFormat('en-US', { notation: v >= 1000 ? 'compact' : 'standard' }).format(v); }
+    function safeId(id) { return typeof id === 'string' && /^[a-f0-9-]+$/i.test(id) ? id : ''; }
+    function esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML.replace(/'/g, '&#39;'); }
+
+    // Event listeners
+    document.getElementById('collection').addEventListener('change', updateStatusHint);
+    document.getElementById('statusSelect').addEventListener('change', updateSaveButtonText);
+    document.getElementById('excerpt').addEventListener('input', updateExcerptCount);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeArticleModal(); closeReviewModal(); closeModal(); }
+    });
+    document.getElementById('articleModal').addEventListener('click', (e) => { if (e.target.id === 'articleModal') closeArticleModal(); });
+    document.getElementById('reviewModal').addEventListener('click', (e) => { if (e.target.id === 'reviewModal') closeReviewModal(); });
+    document.getElementById('contentModal').addEventListener('click', (e) => { if (e.target.id === 'contentModal') closeModal(); });
+
+    init();
   </script>
 </body>
 </html>

@@ -478,6 +478,24 @@
       margin-bottom: var(--space-1);
     }
 
+    /* Marketing opt-in prompt */
+    .marketing-optin-banner {
+      background: var(--color-primary-50);
+      border: 1px solid var(--color-primary-200);
+      border-radius: calc(var(--card-radius) + 2px);
+      padding: var(--space-5) var(--space-6);
+      margin-bottom: var(--space-5);
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .marketing-optin-banner .milestone-body { flex: 1; }
+    .marketing-optin-banner .milestone-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
     .milestone-detail {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -1390,10 +1408,58 @@
           latestPerspectives: Array.isArray(perspectivesData) ? perspectivesData : [],
           journey: journeyData,
         });
+
+        // Check marketing opt-in status (non-blocking)
+        checkMarketingOptIn();
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
           '<p>Failed to load member hub. <a href="/member-hub">Try again</a></p>';
+      }
+    }
+
+    async function checkMarketingOptIn() {
+      try {
+        const res = await fetch('/api/email-preferences', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.marketing_opt_in !== null && data.marketing_opt_in !== undefined) return;
+
+        // User has never been asked — show the banner
+        const slot = document.getElementById('marketing-optin-slot');
+        if (!slot) return;
+        slot.innerHTML = `
+          <div class="marketing-optin-banner" id="marketing-optin-banner">
+            <div class="milestone-icon">📬</div>
+            <div class="milestone-body">
+              <div class="milestone-title">Stay in the loop?</div>
+              <div class="milestone-detail">Get updates on news, events, and workshops from AgenticAdvertising.org.</div>
+              <div class="milestone-actions">
+                <button class="btn btn-primary btn-sm" onclick="setMarketingOptIn(true)">Yes, keep me updated</button>
+                <button class="btn btn-ghost btn-sm" onclick="setMarketingOptIn(false)">No thanks</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        // Silently ignore — this is a non-critical prompt
+      }
+    }
+
+    async function setMarketingOptIn(optIn) {
+      try {
+        const res = await fetch('/api/email-preferences/marketing-opt-in', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opt_in: optIn }),
+        });
+        if (!res.ok) throw new Error('Request failed');
+        const banner = document.getElementById('marketing-optin-banner');
+        if (banner) banner.remove();
+      } catch (e) {
+        // Leave banner visible so user can retry
+        console.error('Failed to save marketing preference:', e);
       }
     }
 
@@ -1514,6 +1580,8 @@
 
         ${renderMilestoneBanner(journey?.recent_milestone)}
         ${renderWhatChanged(journey?.what_changed)}
+
+        <div id="marketing-optin-slot"></div>
 
         <div class="hub-action-grid">
           ${renderQuickActions(current_group_count, contentItems, seatType)}

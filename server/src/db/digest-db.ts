@@ -18,6 +18,12 @@ export interface DigestContent {
   coverImageUrl?: string;
   dateFlavor?: string;
   generatedAt: string;
+  /** Section keys to hide from rendering */
+  hiddenSections?: string[];
+  /** Admin-added custom sections */
+  customSections?: import('../newsletters/config.js').CustomSection[];
+  /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
+  pastedContent?: string;
 }
 
 export interface DigestShipment {

@@ -768,6 +768,7 @@ export function setupAccountRoutes(
 
           // Status (derived, not stored)
           member_status: memberStatus,
+          membership_tier: org.membership_tier,
           is_disqualified: isDisqualified,
           disqualification_reason: org.disqualification_reason,
 

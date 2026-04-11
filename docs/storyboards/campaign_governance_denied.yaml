@@ -64,13 +64,17 @@ phases:
 
         sample_request:
           plans:
-            - plan_name: "Acme Outdoor strict governance"
+            - plan_id: "gov_acme_strict"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
-              per_transaction_threshold: 10000
-              escalation_path: "none"
+              objectives: "Acme Outdoor strict governance — agent denied above threshold"
+              budget:
+                total: 100000
+                currency: "USD"
+                authority_level: "agent_limited"
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
 
         validations:
           - check: response_schema
@@ -99,7 +103,7 @@ phases:
         stateful: true
         expected: |
           Return a denied governance decision:
-          - decision: denied
+          - status: denied
           - findings: array with at least one must-severity finding
             - severity: must
             - code: SPENDING_AUTHORITY_EXCEEDED
@@ -108,13 +112,16 @@ phases:
 
         sample_request:
           plan_id: "gov_acme_strict"
-          binding:
-            type: "media_buy"
+          caller: "https://buying.pinnacle-agency.example"
+          purchase_type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-            total_budget: 50000
+            start_time: "2026-04-01T00:00:00Z"
+            end_time: "2026-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
@@ -125,10 +132,10 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "decision"
+            path: "status"
             description: "Response contains a governance decision"
           - check: field_value
-            path: "decision"
+            path: "status"
             value: "denied"
             description: "Decision is denied"
           - check: field_present

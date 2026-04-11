@@ -21,6 +21,7 @@ import { comply, complianceResultToDbInput } from "../addie/services/compliance-
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
+import { validateCrawlDomain } from "../utils/url-security.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -40,6 +41,8 @@ import {
   PolicySchema,
   PolicySummarySchema,
   PolicyHistorySchema,
+  OperatorLookupResultSchema,
+  PublisherLookupResultSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -75,6 +78,12 @@ function extractDomain(raw: string): string {
   return d.toLowerCase();
 }
 
+const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+function isValidDomain(domain: string): boolean {
+  return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -83,7 +92,7 @@ export interface RegistryApiConfig {
   propertyDb: PropertyDatabase;
   adagentsManager: AdAgentsManager;
   healthChecker: HealthChecker;
-  crawler: CrawlerService & { crawlSingleDomain?: (domain: string) => Promise<void> };
+  crawler: CrawlerService;
   capabilityDiscovery: CapabilityDiscovery;
   registryRequestsDb: {
     trackRequest(type: string, domain: string): Promise<void>;
@@ -591,6 +600,42 @@ registry.registerPath({
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
     200: { description: "Domains for the agent", content: { "application/json": { schema: z.object({ agent_url: z.string(), domains: z.array(z.string()), count: z.number().int() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/operator",
+  operationId: "lookupOperator",
+  summary: "Operator lookup",
+  description: "Given a domain, returns the agents this entity operates and which publishers trust them.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "pubmatic.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Operator lookup result", content: { "application/json": { schema: OperatorLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/publisher",
+  operationId: "lookupPublisher",
+  summary: "Publisher lookup",
+  description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "voxmedia.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -1130,6 +1175,54 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             message: z.literal("Crawl request accepted"),
+            domain: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/brand-crawl-request",
+  operationId: "requestBrandCrawl",
+  summary: "Request brand.json re-crawl",
+  description:
+    "Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).",
+  tags: ["Brand Discovery"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "examplebrand.com", description: "Domain to re-crawl brand.json for" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Brand crawl request accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            message: z.literal("Brand crawl request accepted"),
             domain: z.string(),
           }),
         },
@@ -3100,6 +3193,99 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Lookups & Authorization ───────────────────────────────────
 
+  router.get("/registry/operator", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const profile = await memberDb.getProfileByDomain(domain);
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      const displayName = profile?.display_name || domain;
+      const agentConfigs = (profile?.agents || []).filter(a => a.is_public).slice(0, 20);
+
+      const agents = await Promise.all(
+        agentConfigs.map(async (ac) => {
+          const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
+          return {
+            url: ac.url,
+            name: ac.name || displayName,
+            type: ac.type || "unknown",
+            authorized_by: auths.map(a => ({
+              publisher_domain: a.publisher_domain,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            })),
+          };
+        })
+      );
+
+      res.json({ domain, member, agents });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Operator lookup failed");
+      res.status(500).json({ error: "Operator lookup failed" });
+    }
+  });
+
+  router.get("/registry/publisher", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const [profile, properties, authorizations, adagentsValid] = await Promise.all([
+        memberDb.getProfileByDomain(domain),
+        federatedIndex.getPropertiesForDomain(domain),
+        federatedIndex.getAuthorizationsForDomain(domain),
+        federatedIndex.hasValidAdagents(domain),
+      ]);
+
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      res.json({
+        domain,
+        member,
+        adagents_valid: adagentsValid,
+        properties: properties.map(p => ({
+          id: p.property_id,
+          type: p.property_type,
+          name: p.name,
+          identifiers: p.identifiers,
+          tags: p.tags,
+        })),
+        authorized_agents: authorizations.map(a => ({
+          url: a.agent_url,
+          authorized_for: a.authorized_for,
+          source: a.source,
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Publisher lookup failed");
+      res.status(500).json({ error: "Publisher lookup failed" });
+    }
+  });
+
   router.get("/registry/lookup/domain/:domain", async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
@@ -3932,8 +4118,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const CRAWL_RATE_LIMIT_MS = 5 * 60 * 1000;  // 5 minutes per domain
   const MEMBER_CRAWL_LIMIT = 30;               // 30 requests per member per hour
   const MEMBER_CRAWL_WINDOW_MS = 60 * 60 * 1000;
-  const DOMAIN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
-
   // Periodic cleanup of stale rate limit entries to prevent memory growth
   const rateLimitCleanupInterval = setInterval(() => {
     const now = Date.now();
@@ -3946,84 +4130,90 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit
 
+  /**
+   * Validate domain and apply rate limits for crawl requests.
+   * Returns the normalized domain on success, or sends an error response.
+   */
+  async function validateAndRateLimitCrawl(
+    req: import('express').Request,
+    res: import('express').Response,
+    rateLimitKey: string,
+  ): Promise<string | null> {
+    const { domain } = req.body;
+    if (!domain || typeof domain !== 'string') {
+      res.status(400).json({ error: "domain is required" });
+      return null;
+    }
+
+    let normalizedDomain: string;
+    try {
+      normalizedDomain = await validateCrawlDomain(domain);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid domain';
+      res.status(400).json({ error: message });
+      return null;
+    }
+
+    const memberId = req.user?.id || 'anonymous';
+
+    // Per-domain rate limit (shared key space for all crawl types on same domain)
+    const lastCrawl = crawlRequestRateLimits.get(rateLimitKey);
+    if (lastCrawl && Date.now() - lastCrawl < CRAWL_RATE_LIMIT_MS) {
+      const retryAfter = Math.ceil((CRAWL_RATE_LIMIT_MS - (Date.now() - lastCrawl)) / 1000);
+      res.status(429).json({ error: "Rate limit exceeded for this domain", retry_after: retryAfter });
+      return null;
+    }
+
+    // Per-member hourly rate limit
+    const memberState = memberCrawlCounts.get(memberId);
+    const now = Date.now();
+    if (memberState && now - memberState.windowStart < MEMBER_CRAWL_WINDOW_MS) {
+      if (memberState.count >= MEMBER_CRAWL_LIMIT) {
+        res.status(429).json({
+          error: "Hourly crawl request limit exceeded",
+          retry_after: Math.ceil((MEMBER_CRAWL_WINDOW_MS - (now - memberState.windowStart)) / 1000),
+        });
+        return null;
+      }
+      memberState.count++;
+    } else {
+      memberCrawlCounts.set(memberId, { count: 1, windowStart: now });
+    }
+
+    crawlRequestRateLimits.set(rateLimitKey, now);
+    return normalizedDomain;
+  }
+
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
     try {
-      const { domain } = req.body;
-      if (!domain || typeof domain !== 'string') {
-        return res.status(400).json({ error: "domain is required" });
-      }
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      if (!normalizedDomain) return;
 
-      const normalizedDomain = domain.toLowerCase().trim();
-
-      // Validate domain format to prevent SSRF via internal hostnames
-      if (!DOMAIN_RE.test(normalizedDomain)) {
-        return res.status(400).json({ error: "Invalid domain format" });
-      }
-
-      // DNS resolution check — reject domains resolving to private/reserved IPs
-      // Force IPv4 to avoid IPv6 SSRF bypass (::1, fc00::/7, etc.)
-      try {
-        const { lookup } = await import('node:dns/promises');
-        const { address } = await lookup(normalizedDomain, { family: 4 });
-        const parts = address.split('.').map(Number);
-        const isPrivate =
-          parts[0] === 10 ||
-          parts[0] === 127 ||
-          (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-          (parts[0] === 192 && parts[1] === 168) ||
-          (parts[0] === 169 && parts[1] === 254) ||
-          address === '0.0.0.0';
-        if (isPrivate) {
-          return res.status(400).json({ error: "Domain resolves to a private/reserved IP address" });
-        }
-      } catch {
-        return res.status(400).json({ error: "Domain could not be resolved" });
-      }
-
-      const memberId = req.user?.id || 'anonymous';
-
-      // Per-domain rate limit
-      const lastCrawl = crawlRequestRateLimits.get(normalizedDomain);
-      if (lastCrawl && Date.now() - lastCrawl < CRAWL_RATE_LIMIT_MS) {
-        const retryAfter = Math.ceil((CRAWL_RATE_LIMIT_MS - (Date.now() - lastCrawl)) / 1000);
-        return res.status(429).json({
-          error: "Rate limit exceeded for this domain",
-          retry_after: retryAfter,
-        });
-      }
-
-      // Per-member hourly rate limit
-      const memberState = memberCrawlCounts.get(memberId);
-      const now = Date.now();
-      if (memberState && now - memberState.windowStart < MEMBER_CRAWL_WINDOW_MS) {
-        if (memberState.count >= MEMBER_CRAWL_LIMIT) {
-          return res.status(429).json({
-            error: "Hourly crawl request limit exceeded",
-            retry_after: Math.ceil((MEMBER_CRAWL_WINDOW_MS - (now - memberState.windowStart)) / 1000),
-          });
-        }
-        memberState.count++;
-      } else {
-        memberCrawlCounts.set(memberId, { count: 1, windowStart: now });
-      }
-
-      crawlRequestRateLimits.set(normalizedDomain, now);
-
-      // Trigger crawl asynchronously — don't wait for completion
-      if (crawler.crawlSingleDomain) {
-        crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
-          logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
-        });
-      }
-
-      return res.status(202).json({
-        message: "Crawl request accepted",
-        domain: normalizedDomain,
+      crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
+        logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
       });
+
+      return res.status(202).json({ message: "Crawl request accepted", domain: normalizedDomain });
     } catch (error) {
       logger.error({ error }, "Failed to process crawl request");
       return res.status(500).json({ error: "Failed to process crawl request" });
+    }
+  });
+
+  router.post("/registry/brand-crawl-request", authMiddleware, async (req, res) => {
+    try {
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      if (!normalizedDomain) return;
+
+      crawler.scanBrandForDomain(normalizedDomain).catch((err: Error) => {
+        logger.error({ err, domain: normalizedDomain }, "Brand crawl request failed");
+      });
+
+      return res.status(202).json({ message: "Brand crawl request accepted", domain: normalizedDomain });
+    } catch (error) {
+      logger.error({ error }, "Failed to process brand crawl request");
+      return res.status(500).json({ error: "Failed to process brand crawl request" });
     }
   });
 

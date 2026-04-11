@@ -723,6 +723,12 @@
               I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
             </label>
           </div>
+          <div class="agreements-checkbox" onclick="document.getElementById('marketingOptIn').click(); event.stopPropagation();">
+            <input type="checkbox" id="marketingOptIn" onclick="event.stopPropagation();">
+            <label for="marketingOptIn" onclick="event.stopPropagation();">
+              Keep me updated on news, events, and workshops (optional)
+            </label>
+          </div>
           <button type="submit" class="btn" id="createBtn">Register Company</button>
         </form>
       </div>
@@ -781,6 +787,12 @@
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
           <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
             I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+          </label>
+        </div>
+        <div class="agreements-checkbox" onclick="document.getElementById('marketingOptInIndividual').click(); event.stopPropagation();">
+          <input type="checkbox" id="marketingOptInIndividual" onclick="event.stopPropagation();">
+          <label for="marketingOptInIndividual" onclick="event.stopPropagation();">
+            Keep me updated on news, events, and workshops (optional)
           </label>
         </div>
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
@@ -1338,6 +1350,7 @@
       var revenueTier = document.querySelector('input[name="revenueTier"]:checked');
       var companyTier = document.querySelector('input[name="companyTier"]:checked');
       var tosAgree = document.getElementById('tosAgree').checked;
+      var marketingOptIn = document.getElementById('marketingOptIn').checked;
       var createBtn = document.getElementById('createBtn');
 
       if (!orgName) {
@@ -1370,7 +1383,8 @@
         organization_name: orgName,
         company_type: companyType.value,
         revenue_tier: revenueTier.value,
-        corporate_domain: corporateDomain
+        corporate_domain: corporateDomain,
+        marketing_opt_in: marketingOptIn
       };
       // Only include membership_tier if a paid tier was selected
       if (companyTier && companyTier.value) {
@@ -1402,6 +1416,7 @@
     // Create individual workspace
     async function createIndividualWorkspace() {
       var tosAgree = document.getElementById('tosAgreeIndividual').checked;
+      var marketingOptIn = document.getElementById('marketingOptInIndividual').checked;
       var membershipTier = document.querySelector('input[name="individualTier"]:checked');
       var btn = document.getElementById('individualBtn');
 
@@ -1433,6 +1448,7 @@
         var body = {
           organization_name: workspaceName,
           is_personal: true,
+          marketing_opt_in: marketingOptIn
         };
         // Only include membership_tier if a paid tier was selected
         if (membershipTier && membershipTier.value) {

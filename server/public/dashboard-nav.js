@@ -79,6 +79,12 @@
         ]
       },
       {
+        label: 'Content',
+        items: [
+          { href: '/dashboard/content', label: 'Perspectives', icon: '📝' },
+        ]
+      },
+      {
         label: 'Account',
         items: [
           { href: '/account', label: 'Account settings', icon: '⚙️' },
@@ -590,7 +596,11 @@
       ? ACCOUNT_NAV_SECTIONS
       : NAV_CONFIG.sections;
 
-    const sectionsHTML = navSections.map(section => {
+    const sectionsHTML = navSections.filter(section => {
+      // Hide admin-only sections unless showAdmin is true
+      if (section.adminOnly && !showAdmin) return false;
+      return true;
+    }).map(section => {
 
       const itemsHTML = section.items.map(item => {
         // Hide Team, Directory listing, and Agents for personal workspaces

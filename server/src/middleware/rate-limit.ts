@@ -221,6 +221,56 @@ export const bulkResolveRateLimiter = rateLimit({
   },
 });
 
+export const emailPrefsRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('emailprefs:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for email preferences');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for admin content write operations (delete, status change)
+ * Limits: 30 writes per 15 minutes per user
+ */
+export const adminContentWriteRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('admin-content:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for admin content writes');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Admin content write rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil(15 * 60),
+    });
+  },
+});
+
 /**
  * Rate limiter for logo uploads
  * Limits: 10 uploads per hour per user
