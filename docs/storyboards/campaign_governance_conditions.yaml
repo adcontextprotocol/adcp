@@ -107,6 +107,9 @@ phases:
         doc_ref: "/governance/campaign/tasks/check_governance"
         comply_scenario: campaign_governance_conditions
         stateful: true
+        context_outputs:
+          - path: "governance_context"
+            key: "governance_context"
         expected: |
           Return an approved governance decision with conditions:
           - decision: approved

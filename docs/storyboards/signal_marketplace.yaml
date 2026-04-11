@@ -204,6 +204,9 @@ phases:
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
         stateful: true
+        context_outputs:
+          - path: "governance_context"
+            key: "governance_context"
         expected: |
           Return governance decision:
           - status: approved, denied, or conditions
@@ -284,7 +287,7 @@ phases:
 
         sample_request:
           plan_id: "plan_nova_ev_launch_2026"
-          governance_context: "{{governance_context from check}}"
+          governance_context: "$context.governance_context"
           purchase_type: "signal_activation"
           outcome: "completed"
           seller_response:
@@ -318,6 +321,9 @@ phases:
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
         stateful: true
+        context_outputs:
+          - path: "governance_context"
+            key: "governance_context"
         expected: |
           Return governance decision with governance_context.
 

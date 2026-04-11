@@ -104,6 +104,9 @@ phases:
         doc_ref: "/governance/campaign/tasks/check_governance"
         comply_scenario: campaign_governance_delivery
         stateful: true
+        context_outputs:
+          - path: "governance_context"
+            key: "governance_context"
         expected: |
           Return an approved governance decision:
           - decision: approved
@@ -198,6 +201,9 @@ phases:
         doc_ref: "/governance/campaign/tasks/check_governance"
         comply_scenario: campaign_governance_delivery
         stateful: true
+        context_outputs:
+          - path: "governance_context"
+            key: "governance_context"
         expected: |
           Return a governance decision about the delivery drift:
           - decision: approved (with rebalancing conditions) or denied (pause recommended)
