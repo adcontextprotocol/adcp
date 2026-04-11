@@ -1302,8 +1302,9 @@
           <!-- Edit summary (always visible) -->
           <div style="margin-top: var(--space-4); border-top: var(--border-1) solid var(--color-border); padding-top: var(--space-3);">
             <div class="edit-form-field edit-form-field--full">
-              <label class="edit-form-label" for="edit-summary">Edit summary <span style="color: var(--color-error-500);">*</span></label>
-              <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Describe your changes (required)" required></textarea>
+              <label class="edit-form-label" for="edit-summary">Edit summary</label>
+              <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Auto-generated from your changes, or type your own"></textarea>
+              <div class="edit-form-help">Leave blank to auto-generate from changes</div>
             </div>
           </div>
 
@@ -1921,17 +1922,90 @@
         return errors;
       }
 
-      async function saveEdit() {
-        const editSummary = document.getElementById('edit-summary').value.trim();
-        if (!editSummary) {
-          alert('Edit summary is required');
-          return;
+      function generateEditSummary() {
+        const prev = currentEditStatus?.brand_manifest || {};
+        const changes = [];
+
+        // Identity fields
+        const fields = [
+          ['edit-brand-name', 'brand_name', 'name', () => currentEditStatus?.brand_name],
+          ['edit-description', 'description', 'description'],
+          ['edit-industry', 'industry', 'industry'],
+          ['edit-tagline', 'tagline', 'tagline'],
+          ['edit-tone', 'tone', 'tone', () => typeof prev.tone === 'string' ? prev.tone : prev.tone?.voice],
+          ['edit-font-primary', 'fonts.primary', 'primary font', () => prev.fonts?.primary],
+          ['edit-font-secondary', 'fonts.secondary', 'secondary font', () => prev.fonts?.secondary],
+          ['edit-house-domain', 'house_domain', 'house domain', () => currentEditStatus?.house_domain],
+          ['edit-contact-name', 'contact.name', 'contact name', () => prev.contact?.name],
+          ['edit-contact-email', 'contact.email', 'contact email', () => prev.contact?.email],
+          ['edit-privacy-url', 'privacy_policy_url', 'privacy policy URL'],
+          ['edit-target-audience', 'target_audience', 'target audience'],
+          ['edit-brand-url', 'url', 'brand URL'],
+        ];
+
+        for (const [id, key, label, getter] of fields) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          const newVal = el.value.trim();
+          const oldVal = (getter ? getter() : prev[key]) || '';
+          if (newVal !== String(oldVal || '')) {
+            changes.push(newVal ? `updated ${label}` : `removed ${label}`);
+          }
         }
 
+        // Array fields
+        const arrayFields = [
+          ['#edit-properties-container > div', 'properties', 'properties'],
+          ['#edit-agents-container > div', 'agents', 'agents'],
+          ['#edit-logos-container > div', 'logos', 'logos'],
+          ['#edit-disclaimers-container > div', 'disclaimers', 'disclaimers'],
+          ['#edit-collections-container > div', 'collections', 'collections'],
+        ];
+
+        for (const [sel, key, label] of arrayFields) {
+          const newCount = document.querySelectorAll(sel).length;
+          const oldCount = (prev[key] || []).length;
+          if (newCount > oldCount) changes.push(`added ${newCount - oldCount} ${label}`);
+          else if (newCount < oldCount) changes.push(`removed ${oldCount - newCount} ${label}`);
+          else if (newCount > 0 && newCount === oldCount) {
+            // Check if content changed (rough check)
+          }
+        }
+
+        // Colors
+        const newColors = {};
+        document.querySelectorAll('#edit-colors-container > div').forEach(row => {
+          const name = row.querySelector('.color-name-input')?.value.trim();
+          const hex = row.querySelector('.color-text-input')?.value.trim();
+          if (name && hex) newColors[name] = hex;
+        });
+        const oldColors = prev.colors || {};
+        const addedColors = Object.keys(newColors).filter(k => !oldColors[k]);
+        const removedColors = Object.keys(oldColors).filter(k => !newColors[k]);
+        const changedColors = Object.keys(newColors).filter(k => oldColors[k] && oldColors[k] !== newColors[k]);
+        if (addedColors.length) changes.push(`added ${addedColors.length} colors`);
+        if (removedColors.length) changes.push(`removed ${removedColors.length} colors`);
+        if (changedColors.length) changes.push(`updated ${changedColors.length} colors`);
+
+        if (changes.length === 0) return 'No changes';
+        // Capitalize first change
+        changes[0] = changes[0].charAt(0).toUpperCase() + changes[0].slice(1);
+        return changes.join(', ');
+      }
+
+      async function saveEdit() {
         const validationErrors = validateEditRows();
         if (validationErrors.length > 0) {
           const firstInvalid = document.querySelector('.edit-row-invalid');
           if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+
+        // Auto-generate edit summary, allow user override
+        const summaryEl = document.getElementById('edit-summary');
+        const editSummary = summaryEl.value.trim() || generateEditSummary();
+        if (editSummary === 'No changes') {
+          alert('No changes detected');
           return;
         }
 
