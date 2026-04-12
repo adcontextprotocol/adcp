@@ -606,6 +606,12 @@ export interface MemberBrandInfo {
   logos?: BrandLogo[];
   brand_color?: string;
   verified: boolean;
+  // Extended fields resolved from brand.json
+  name?: string;
+  description?: string;
+  contact?: { name?: string; email?: string; domain?: string };
+  agent_types?: string[];
+  property_count?: number;
 }
 
 export interface MemberProfile {

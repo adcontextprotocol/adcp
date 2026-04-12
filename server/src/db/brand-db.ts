@@ -42,6 +42,35 @@ export function resolveBrandFromJson(
   const darkLogo = typedLogos?.find(l => l.background === 'dark-bg')
     ?? typedLogos?.find(l => l.background === 'transparent-bg');
 
+  // Resolve name from house or first brand
+  const house = brandJson.house as Record<string, unknown> | undefined;
+  const namesList = (primaryBrand?.names as Array<Record<string, string>> | undefined);
+  const firstLocalizedName = namesList?.[0] ? Object.values(namesList[0])[0] : undefined;
+  const brandName = (house?.name as string)
+    || firstLocalizedName
+    || (brandJson.name as string)
+    || domain;
+
+  // Resolve description
+  const brandDescription = (primaryBrand?.description as string) || (brandJson.description as string);
+
+  // Resolve contact
+  const rawContact = (brandJson.contact || primaryBrand?.contact) as Record<string, unknown> | undefined;
+  const contact = rawContact ? {
+    name: rawContact.name as string | undefined,
+    email: rawContact.email as string | undefined,
+    domain: rawContact.domain as string | undefined,
+  } : undefined;
+
+  // Collect agent types from all levels
+  const houseAgents = Array.isArray(house?.agents) ? house.agents as Array<{ type?: string }> : [];
+  const brandAgents = Array.isArray(primaryBrand?.agents) ? primaryBrand.agents as Array<{ type?: string }> : [];
+  const topAgents = Array.isArray(brandJson.agents) ? brandJson.agents as Array<{ type?: string }> : [];
+  const allAgentTypes = [...new Set([...houseAgents, ...brandAgents, ...topAgents].map(a => a.type).filter(Boolean))] as string[];
+
+  // Count properties
+  const properties = (primaryBrand?.properties || brandJson.properties) as Array<unknown> | undefined;
+
   return {
     domain,
     logo_url: lightLogo?.url,
@@ -49,6 +78,11 @@ export function resolveBrandFromJson(
     logos: typedLogos,
     brand_color: colors?.primary as string | undefined,
     verified,
+    name: brandName,
+    description: brandDescription,
+    contact: contact && (contact.name || contact.email) ? contact : undefined,
+    agent_types: allAgentTypes.length > 0 ? allAgentTypes : undefined,
+    property_count: properties?.length,
   };
 }
 
