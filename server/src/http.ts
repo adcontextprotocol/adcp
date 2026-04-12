@@ -1003,67 +1003,18 @@ export class HTTPServer {
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
     this.app.use('/api/registry', catalogApiRouter);
 
-    // Look up public agents from the member profile for a domain.
-    // Maps member AgentConfig types to brand.json agent types.
-    const AGENT_TYPE_MAP: Record<string, string> = {
-      creative: 'creative',
-      signals: 'signals',
-      sales: 'buying',
-      governance: 'governance',
-      buyer: 'buying',
-    };
-
-    async function getPublicAgentsForDomain(domain: string): Promise<Array<{ type: string; url: string; id: string; description?: string }>> {
-      try {
-        const pool = getPool();
-        const orgResult = await pool.query<{ workos_organization_id: string }>(
-          'SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = $1 LIMIT 1',
-          [domain.toLowerCase()]
-        );
-        if (orgResult.rows.length === 0) return [];
-
-        const memberDb = new MemberDatabase();
-        const profile = await memberDb.getProfileByOrgId(orgResult.rows[0].workos_organization_id);
-        if (!profile?.agents?.length) return [];
-
-        return profile.agents
-          .filter(a => a.is_public && a.url)
-          .map(a => {
-            const entry: { type: string; url: string; id: string; description?: string } = {
-              type: AGENT_TYPE_MAP[a.type || ''] || a.type || 'brand',
-              url: a.url,
-              id: a.name || a.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
-            };
-            if (a.name) entry.description = a.name;
-            return entry;
-          });
-      } catch {
-        return [];
-      }
-    }
-
     // Public brand.json hosting — stable URL for authoritative_location pointer files.
     // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
+    // Serves what's in the brand tables directly. Agents are managed via the member dashboard
+    // "publish to brand.json" flow, which writes them into the brand manifest.
     this.app.get('/brands/:domain/brand.json', async (req, res) => {
       const domain = req.params.domain.toLowerCase();
       try {
-        // Look up member-managed agents for this domain
-        const memberAgents = await getPublicAgentsForDomain(domain);
-
         const hosted = await this.brandDb.getHostedBrandByDomain(domain);
         if (hosted && hosted.is_public) {
-          const brandJson = hosted.brand_json as Record<string, unknown>;
-          // Merge member agents into hosted brand.json (member dashboard is source of truth)
-          if (memberAgents.length > 0) {
-            const existingAgents = Array.isArray(brandJson.agents) ? brandJson.agents as Array<{ type: string }> : [];
-            const memberTypes = new Set(memberAgents.map(a => a.type));
-            // Keep existing agents whose types aren't overridden by member agents
-            const merged = existingAgents.filter(a => !memberTypes.has(a.type));
-            brandJson.agents = [...merged, ...memberAgents];
-          }
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.json(brandJson);
+          return res.json(hosted.brand_json);
         }
         const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (discovered) {
@@ -1071,7 +1022,7 @@ export class HTTPServer {
           const manifest = discovered.brand_manifest as Record<string, unknown> | null;
           if (manifest?.logos) brandJson.logos = manifest.logos;
           if (manifest?.colors) brandJson.colors = manifest.colors;
-          if (memberAgents.length > 0) brandJson.agents = memberAgents;
+          if (manifest?.agents) brandJson.agents = manifest.agents;
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'public, max-age=300');
           return res.json(brandJson);
