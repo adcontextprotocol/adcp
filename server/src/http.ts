@@ -2105,7 +2105,10 @@ export class HTTPServer {
           heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
           heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
         },
-        jobs: jobScheduler.getStatus(),
+        jobs: jobScheduler.getStatus().map(j => ({
+          ...j,
+          lastError: j.lastError ? j.lastError.substring(0, 200) : null,
+        })),
       };
     };
 
@@ -2137,7 +2140,11 @@ export class HTTPServer {
         if (!workerRes.ok) {
           throw new Error(`Worker responded ${workerRes.status}`);
         }
-        return res.json(await workerRes.json());
+        const text = await workerRes.text();
+        if (text.length > 64_000) {
+          throw new Error('Worker response too large');
+        }
+        return res.json(JSON.parse(text));
       } catch {
         return res.json({ ...getJobStatusPayload(), jobs: [], workerUnreachable: true });
       }
