@@ -26,15 +26,33 @@ const offeringLabels = {
  */
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
+  const brand = member.resolved_brand;
+
+  // Name: prefer brand.json, fallback to profile
+  const displayName = brand?.name || member.display_name;
 
   const taglineText = member.tagline || '';
-  const truncatedDesc = member.description
-    ? (member.description.length > 200 ? member.description.substring(0, 200) + '...' : member.description)
-    : '';
+  // Description: prefer brand.json, fallback to profile
+  const rawDesc = brand?.description || member.description || '';
+  const truncatedDesc = rawDesc.length > 200 ? rawDesc.substring(0, 200) + '...' : rawDesc;
 
-  const offeringsHtml = (member.offerings || [])
+  // Agent types from brand.json (what they operate)
+  const agentTypes = brand?.agent_types || [];
+  const agentTypeLabelsForCard = {
+    brand: 'Brand', rights: 'Rights', measurement: 'Measurement',
+    governance: 'Governance', creative: 'Creative', buying: 'Buying', signals: 'Signals'
+  };
+  const operatesHtml = agentTypes
+    .map(t => `<span class="offering-tag operates-tag">${agentTypeLabelsForCard[t] || t} Agent</span>`)
+    .join('');
+
+  // Services from member profile (what they offer to others)
+  const servicesHtml = (member.offerings || [])
+    .filter(o => !['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'governance_agent', 'publisher'].includes(o))
     .map(o => `<span class="offering-tag">${offeringLabels[o] || o}</span>`)
     .join('');
+
+  const offeringsHtml = operatesHtml + servicesHtml;
 
   const clickHandler = isPreview ? '' : `onclick="viewMember('${member.slug}')"`;
   const viewBtn = isPreview
@@ -49,19 +67,19 @@ function renderMemberCard(member, options = {}) {
       : '<span class="visibility-badge private"><span class="dot"></span> Private</span>';
   }
 
-  // Agent count badge - show if member has registered agents
-  const agentCount = (member.agents || []).length;
+  // Agent count from brand.json agent_types
+  const agentCount = agentTypes.length;
   const agentBadge = agentCount > 0
     ? `<span class="agent-badge">${agentCount} Agent${agentCount > 1 ? 's' : ''}</span>`
     : '';
 
-  // Publisher count badge - show if member has registered publishers
-  const publisherCount = (member.publishers || []).length;
-  const publisherBadge = publisherCount > 0
-    ? `<span class="publisher-badge">${publisherCount} Publisher${publisherCount > 1 ? 's' : ''}</span>`
+  // Property count from brand.json
+  const propertyCount = brand?.property_count || 0;
+  const publisherBadge = propertyCount > 0
+    ? `<span class="publisher-badge">${propertyCount} Propert${propertyCount > 1 ? 'ies' : 'y'}</span>`
     : '';
 
-  // Data provider count badge - show if member has registered data providers
+  // Data provider badge (keep from profile for now — not derivable from brand.json)
   const dataProviderCount = (member.data_providers || []).length;
   const dataProviderBadge = dataProviderCount > 0
     ? `<span class="data-provider-badge">${dataProviderCount} Data Provider${dataProviderCount > 1 ? 's' : ''}</span>`
@@ -91,13 +109,13 @@ function renderMemberCard(member, options = {}) {
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
-        ${member.resolved_brand?.logo_url
-          ? `<img src="${escapeHtmlSafe(member.resolved_brand.logo_url)}" alt="${escapeHtmlSafe(member.display_name)}" class="member-logo">`
-          : `<div class="member-logo-placeholder">${escapeHtmlSafe(member.display_name.charAt(0))}</div>`
+        ${brand?.logo_url
+          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo">`
+          : `<div class="member-logo-placeholder">${escapeHtmlSafe(displayName.charAt(0))}</div>`
         }
         <div class="member-info">
           <div class="member-name-row">
-            <div class="member-name">${escapeHtmlSafe(member.display_name)}</div>
+            <div class="member-name">${escapeHtmlSafe(displayName)}</div>
             ${foundingBadge}
             ${credentialBadges}
             ${agentBadge}
@@ -115,7 +133,7 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-footer">
         <div class="member-contact">
-          ${member.contact_website ? `<a href="${member.contact_website}" target="_blank" onclick="event.stopPropagation()">Website</a>` : ''}
+          ${member.contact_website || (brand?.contact?.domain ? `https://${brand.contact.domain}` : '') ? `<a href="${member.contact_website || `https://${brand?.contact?.domain}`}" target="_blank" onclick="event.stopPropagation()">Website</a>` : ''}
           ${member.linkedin_url ? `<a href="${member.linkedin_url}" target="_blank" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
         </div>
         ${viewBtn}
