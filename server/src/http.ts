@@ -2094,13 +2094,12 @@ export class HTTPServer {
       res.status(checks.database ? 200 : 503).json(body);
     });
 
-    // Job scheduler status — shows which jobs are executing, last run times,
-    // memory usage, and failure counts. Worker-only data but served on all
-    // machines so admins can hit any host.
-    this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
+    // Build job status response for the local machine
+    const getJobStatusPayload = async () => {
+      const { processRole } = await import('./logger.js');
       const mem = process.memoryUsage();
-      res.json({
-        processRole: (await import('./logger.js')).processRole,
+      return {
+        processRole,
         uptime: Math.round(process.uptime()),
         memory: {
           rss: `${Math.round(mem.rss / 1024 / 1024)}MB`,
@@ -2108,7 +2107,41 @@ export class HTTPServer {
           heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
         },
         jobs: jobScheduler.getStatus(),
-      });
+      };
+    };
+
+    // Internal endpoint — no auth, only served on worker machines.
+    // The worker's port is not publicly routable (no http_service).
+    // Web machines proxy to this over Fly's private WireGuard network.
+    this.app.get("/internal/jobs", async (req, res) => {
+      const { processRole } = await import('./logger.js');
+      if (processRole === 'web') {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      res.json(await getJobStatusPayload());
+    });
+
+    // Public admin endpoint — requires auth. On web machines, proxies to the
+    // worker over Fly's internal DNS so admins always see worker data.
+    this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
+      const { processRole } = await import('./logger.js');
+
+      if (processRole !== 'web') {
+        return res.json(await getJobStatusPayload());
+      }
+
+      // Web machine: proxy to worker over Fly internal network
+      try {
+        const workerUrl = 'http://worker.process.adcp-docs.internal:8080/internal/jobs';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const workerRes = await fetch(workerUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        return res.json(await workerRes.json());
+      } catch {
+        const data = await getJobStatusPayload();
+        return res.json({ ...data, jobs: [], workerUnreachable: true });
+      }
     });
 
     // Homepage route - serve different homepage based on host
