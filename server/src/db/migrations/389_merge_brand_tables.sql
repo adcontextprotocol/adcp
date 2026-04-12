@@ -37,7 +37,11 @@ SELECT
   h.is_public
 FROM hosted_brands h
 ON CONFLICT (domain) DO UPDATE SET
-  brand_manifest = COALESCE(EXCLUDED.brand_manifest, discovered_brands.brand_manifest),
+  -- Preserve authoritative manifest (crawled from domain), only overwrite community/enriched
+  brand_manifest = CASE
+    WHEN discovered_brands.source_type = 'brand_json' THEN discovered_brands.brand_manifest
+    ELSE COALESCE(EXCLUDED.brand_manifest, discovered_brands.brand_manifest)
+  END,
   workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, discovered_brands.workos_organization_id),
   created_by_user_id = COALESCE(EXCLUDED.created_by_user_id, discovered_brands.created_by_user_id),
   created_by_email = COALESCE(EXCLUDED.created_by_email, discovered_brands.created_by_email),

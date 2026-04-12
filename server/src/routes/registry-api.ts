@@ -1435,7 +1435,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       // Serve from DB — single brands table
       const brand = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (brand) {
+      if (brand && brand.is_public !== false) {
         const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
         const data = { name: brand.brand_name || domain, ...manifest };
 

@@ -1009,7 +1009,7 @@ export class HTTPServer {
       const domain = req.params.domain.toLowerCase();
       try {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
-        if (!brand) return res.status(404).json({ error: 'Brand not found' });
+        if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
         const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
         const brandJson: Record<string, unknown> = {
