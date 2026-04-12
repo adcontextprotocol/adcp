@@ -1144,6 +1144,7 @@
     let currentProfile = null;
     let tags = [];
     let agents = []; // Array of {url: string, is_public: boolean}
+    let brandHostingType = null; // 'community' | 'self-hosted' | null
     let currentResolvedBrand = null; // Resolved brand from registry for member card preview
     let agentInfo = {}; // Cache of discovered agent info by URL
     let publishers = []; // Array of {domain: string, is_public: boolean}
@@ -1756,8 +1757,21 @@
         renderTags();
       }
 
-      // Set agents
+      // Set agents and determine brand hosting type
       agents = profile.agents ? [...profile.agents] : [];
+      brandHostingType = null;
+      if (profile.primary_brand_domain) {
+        // Check if community-hosted or self-hosted
+        try {
+          const editResp = await fetch(`/api/brands/discovered/${encodeURIComponent(profile.primary_brand_domain)}/edit-status`, { credentials: 'include' });
+          if (editResp.ok) {
+            const editStatus = await editResp.json();
+            brandHostingType = editStatus.source_type === 'brand_json' ? 'self-hosted' : 'community';
+          } else {
+            brandHostingType = 'community'; // No discovered brand yet, will be created on first publish
+          }
+        } catch { brandHostingType = 'community'; }
+      }
       renderAgents();
       // Discover info for each agent
       agents.forEach(agent => discoverAgentInfo(agent.url));
@@ -2363,15 +2377,66 @@
           isPublic: agent.is_public,
           index: index,
           showRemoveButton: true,
-          showStatus: true
+          showStatus: true,
+          brandHostingType: brandHostingType,
         });
       }).join('');
     }
 
-    function toggleAgentVisibility(index, isPublic) {
-      if (agents[index]) {
-        agents[index].is_public = isPublic;
+    async function publishAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
+          method: 'POST', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to publish'); return; }
+
+        if (data.action === 'snippet') {
+          // Self-hosted — show the snippet to copy
+          const snippet = JSON.stringify(data.snippet, null, 2);
+          prompt('Add this to the agents array in your brand.json:', snippet);
+        }
+
+        agents[index].is_public = true;
         renderAgents();
+      } catch (err) {
+        alert('Failed to publish agent: ' + err.message);
+      }
+    }
+
+    async function unpublishAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
+          method: 'DELETE', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to unpublish'); return; }
+
+        agents[index].is_public = false;
+        renderAgents();
+      } catch (err) {
+        alert('Failed to unpublish agent: ' + err.message);
+      }
+    }
+
+    async function checkAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/check`, {
+          method: 'POST', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to check'); return; }
+
+        agents[index].is_public = data.found;
+        renderAgents();
+
+        if (data.found) {
+          alert('Agent found in your brand.json');
+        } else {
+          alert('Agent not found in your brand.json. Make sure you added the snippet to your agents array.');
+        }
+      } catch (err) {
+        alert('Failed to check: ' + err.message);
       }
     }
 

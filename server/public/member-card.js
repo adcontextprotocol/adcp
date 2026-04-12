@@ -418,7 +418,8 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     index = 0,
     showRemoveButton = false,
     showStatus = true,
-    compact = false
+    compact = false,
+    brandHostingType = null,
   } = options;
 
   // Handle error state
@@ -481,23 +482,34 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     `;
   }
 
-  // Visibility badge (for list views)
+  // Visibility badge
   const visibilityBadge = showVisibilityToggle
     ? (isPublic
-        ? '<span class="agent-visibility-badge public">Public</span>'
+        ? '<span class="agent-visibility-badge public">Published</span>'
         : '<span class="agent-visibility-badge private">Private</span>')
     : '';
 
-  // Visibility toggle (for edit mode)
-  const visibilityToggle = showVisibilityToggle ? `
-    <div class="agent-card-visibility">
-      <label>
-        <input type="checkbox" ${isPublic ? 'checked' : ''} onchange="toggleAgentVisibility(${index}, this.checked)">
-        <span class="toggle"></span>
-        Show in member directory
-      </label>
-    </div>
-  ` : '';
+  // Publish/unpublish controls (replaces old toggle)
+  let visibilityToggle = '';
+  if (showVisibilityToggle && brandHostingType) {
+    if (brandHostingType === 'community') {
+      visibilityToggle = isPublic
+        ? `<div class="agent-card-visibility">
+            <button type="button" class="btn btn-sm btn-ghost" onclick="unpublishAgent(${index})" style="color:var(--color-error-500);">Remove from brand.json</button>
+          </div>`
+        : `<div class="agent-card-visibility">
+            <button type="button" class="btn btn-sm btn-primary" onclick="publishAgent(${index})">Publish to brand.json</button>
+          </div>`;
+    } else if (brandHostingType === 'self-hosted') {
+      visibilityToggle = `<div class="agent-card-visibility">
+        <button type="button" class="btn btn-sm ${isPublic ? 'btn-ghost' : 'btn-primary'}" onclick="${isPublic ? `checkAgent(${index})` : `publishAgent(${index})`}">${isPublic ? 'Re-check brand.json' : 'Show snippet'}</button>
+      </div>`;
+    }
+  } else if (showVisibilityToggle && !brandHostingType) {
+    visibilityToggle = `<div class="agent-card-visibility" style="font-size:var(--text-xs);color:var(--color-text-muted);">
+      Set a primary brand domain to publish
+    </div>`;
+  }
 
   // Status badge
   const statusHtml = showStatus ? `
