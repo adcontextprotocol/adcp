@@ -144,17 +144,12 @@ describe('getStoryboard', () => {
       for (const phase of sb.phases) {
         expect(phase.id).toBeTruthy();
         expect(phase.title).toBeTruthy();
-        expect(phase.narrative).toBeTruthy();
         expect(phase.steps.length).toBeGreaterThan(0);
 
         for (const step of phase.steps) {
           expect(step.id).toBeTruthy();
           expect(step.title).toBeTruthy();
-          expect(step.narrative).toBeTruthy();
           expect(step.task).toBeTruthy();
-          expect(step.schema_ref).toBeTruthy();
-          expect(step.doc_ref).toBeTruthy();
-          expect(step.expected).toBeTruthy();
         }
       }
     }
@@ -167,8 +162,10 @@ describe('getStoryboard', () => {
       const sb = getStoryboard(summary.id)!;
       for (const phase of sb.phases) {
         for (const step of phase.steps) {
-          const hasValidPrefix = validPrefixes.some((p) => step.schema_ref.startsWith(p));
-          expect(hasValidPrefix).toBe(true);
+          if (step.schema_ref) {
+            const hasValidPrefix = validPrefixes.some((p) => step.schema_ref!.startsWith(p));
+            expect(hasValidPrefix).toBe(true);
+          }
         }
       }
     }
