@@ -1761,16 +1761,14 @@
       agents = profile.agents ? [...profile.agents] : [];
       brandHostingType = null;
       if (profile.primary_brand_domain) {
-        // Check if community-hosted or self-hosted
-        try {
-          const editResp = await fetch(`/api/brands/discovered/${encodeURIComponent(profile.primary_brand_domain)}/edit-status`, { credentials: 'include' });
-          if (editResp.ok) {
-            const editStatus = await editResp.json();
-            brandHostingType = editStatus.source_type === 'brand_json' ? 'self-hosted' : 'community';
-          } else {
-            brandHostingType = 'community'; // No discovered brand yet, will be created on first publish
-          }
-        } catch { brandHostingType = 'community'; }
+        // Fetch brand hosting type asynchronously, re-render when done
+        fetch(`/api/brands/discovered/${encodeURIComponent(profile.primary_brand_domain)}/edit-status`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : null)
+          .then(editStatus => {
+            brandHostingType = editStatus?.source_type === 'brand_json' ? 'self-hosted' : 'community';
+            renderAgents(); // Re-render with hosting type known
+          })
+          .catch(() => { brandHostingType = 'community'; renderAgents(); });
       }
       renderAgents();
       // Discover info for each agent

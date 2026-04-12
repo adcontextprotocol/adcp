@@ -559,7 +559,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = userRow.rows[0]?.primary_organization_id;
       if (!orgId) return res.status(400).json({ error: 'No organization associated' });
 
-      const memberDb = new MemberDatabase();
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
       if (!profile.primary_brand_domain) {
@@ -581,7 +580,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const domain = profile.primary_brand_domain;
-      const brandDb = new BrandDatabase();
 
       // Check if brand is self-hosted (has authoritative brand.json)
       const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
@@ -651,7 +649,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = userRow.rows[0]?.primary_organization_id;
       if (!orgId) return res.status(400).json({ error: 'No organization associated' });
 
-      const memberDb = new MemberDatabase();
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
       if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
@@ -661,7 +658,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const agent = agents[index];
 
       const domain = profile.primary_brand_domain;
-      const brandDb = new BrandDatabase();
       const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
 
       if (discovered && discovered.source_type !== 'brand_json') {
@@ -702,7 +698,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = userRow.rows[0]?.primary_organization_id;
       if (!orgId) return res.status(400).json({ error: 'No organization associated' });
 
-      const memberDb = new MemberDatabase();
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
       if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
