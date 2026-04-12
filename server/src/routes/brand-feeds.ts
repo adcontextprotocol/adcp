@@ -8,11 +8,14 @@
 import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { query } from '../db/client.js';
+import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
 import { fetchFeed, detectFeedType, slugify, suggestProduct } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
+
+const MAX_PROPERTIES = 500;
+const MAX_COLLECTIONS = 200;
 
 const logger = createLogger('brand-feeds');
 
@@ -100,39 +103,47 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         last_synced_at: new Date().toISOString(),
       };
 
-      // Merge into brand manifest collections
-      const manifest = (brand!.brand_manifest as Record<string, unknown>) || {};
-      const collections = Array.isArray(manifest.collections)
-        ? manifest.collections as CollectionFromFeed[]
-        : [];
-
-      // Dedup by collection_id or feed_url
-      const filtered = collections.filter(c => c.collection_id !== collectionId && c.feed_url !== url);
-      filtered.push(collection);
-      manifest.collections = filtered;
-
-      // Auto-create a property for this feed (a collection IS a property you own)
-      const feedTypeToPropertyType: Record<string, string> = {
-        rss: 'podcast',
-        youtube: 'website',
-        spotify: 'podcast',
-      };
-      const propertyType = feedTypeToPropertyType[feedType] || 'website';
+      // Lock row, merge, write — prevents concurrent overwrites
+      const pool = getPool();
+      const client = await pool.connect();
       try {
-        const feedHost = new URL(url).hostname;
-        const properties = Array.isArray(manifest.properties)
-          ? manifest.properties as Array<{ identifier: string; [k: string]: unknown }>
-          : [];
-        if (!properties.some(p => p.identifier === feedHost)) {
-          properties.push({ type: propertyType, identifier: feedHost, feed_url: url });
-          manifest.properties = properties;
-        }
-      } catch { /* invalid URL — skip property creation */ }
+        await client.query('BEGIN');
+        const locked = await client.query<{ brand_manifest: Record<string, unknown> }>(
+          'SELECT brand_manifest FROM brands WHERE domain = $1 FOR UPDATE',
+          [domain]
+        );
+        const manifest = (locked.rows[0]?.brand_manifest as Record<string, unknown>) || {};
 
-      await query(
-        'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
-        [JSON.stringify(manifest), domain]
-      );
+        // Merge collections
+        const collections = Array.isArray(manifest.collections) ? manifest.collections as CollectionFromFeed[] : [];
+        const filtered = collections.filter(c => c.collection_id !== collectionId && c.feed_url !== url);
+        filtered.push(collection);
+        manifest.collections = filtered;
+
+        // Auto-create a property for this feed (a collection IS a property you own)
+        const feedTypeToPropertyType: Record<string, string> = { rss: 'podcast', youtube: 'website', spotify: 'podcast' };
+        try {
+          const feedHost = new URL(url).hostname;
+          const properties = Array.isArray(manifest.properties)
+            ? manifest.properties as Array<{ identifier: string; [k: string]: unknown }>
+            : [];
+          if (!properties.some(p => p.identifier === feedHost)) {
+            properties.push({ type: feedTypeToPropertyType[feedType] || 'website', identifier: feedHost, feed_url: url });
+            manifest.properties = properties;
+          }
+        } catch { /* invalid URL — skip property creation */ }
+
+        await client.query(
+          'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
+          [JSON.stringify(manifest), domain]
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
 
       // Suggest a default product for this collection
       const product_suggestion = suggestProduct(collection);
@@ -263,6 +274,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const domain = req.params.domain.toLowerCase();
       const { properties } = req.body;
       if (!Array.isArray(properties)) return res.status(400).json({ error: 'properties array required' });
+      if (properties.length > MAX_PROPERTIES) return res.status(400).json({ error: `Maximum ${MAX_PROPERTIES} properties per request` });
 
       const check = await getBrandForEdit(domain, req.user!.id);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
@@ -315,6 +327,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const domain = req.params.domain.toLowerCase();
       const { collections } = req.body;
       if (!Array.isArray(collections)) return res.status(400).json({ error: 'collections array required' });
+      if (collections.length > MAX_COLLECTIONS) return res.status(400).json({ error: `Maximum ${MAX_COLLECTIONS} collections per request` });
 
       const check = await getBrandForEdit(domain, req.user!.id);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });

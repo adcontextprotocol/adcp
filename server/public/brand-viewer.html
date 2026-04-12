@@ -1973,7 +1973,8 @@
             status.innerHTML += `<br><span style="font-size:var(--text-xs);color:var(--color-text-muted);">Product suggestion: ${escapeHtml(data.product_suggestion.name)} (${data.product_suggestion.placement}, ${data.product_suggestion.pricing_model})</span>`;
           }
 
-          editFormDirty = true;
+          // Feed import writes directly to DB — don't mark form dirty
+          // (saving the form with stale data would overwrite the import)
           loadFeeds();
         } catch (err) {
           status.textContent = 'Failed: ' + err.message;

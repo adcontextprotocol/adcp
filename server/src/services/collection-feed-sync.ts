@@ -136,7 +136,7 @@ export function detectFeedType(url: string): 'youtube' | 'spotify' | 'rss' {
 // ─── Topic extraction ────────────────────────────────────────────────
 
 const TOPIC_KEYWORDS: Record<string, string[]> = {
-  'Technology': ['tech', 'ai', 'artificial intelligence', 'software', 'crypto', 'blockchain', 'startup', 'silicon valley', 'app', 'algorithm', 'data', 'robot', 'machine learning'],
+  'Technology': ['tech', 'artificial intelligence', 'software', 'crypto', 'blockchain', 'startup', 'silicon valley', 'algorithm', 'robot', 'machine learning', 'cybersecurity'],
   'Politics': ['election', 'congress', 'senate', 'president', 'democrat', 'republican', 'vote', 'policy', 'legislation', 'campaign', 'political', 'white house', 'government'],
   'Business': ['economy', 'market', 'stock', 'inflation', 'recession', 'ceo', 'ipo', 'startup', 'revenue', 'profit', 'wall street', 'trade', 'gdp', 'fed', 'interest rate'],
   'Health': ['health', 'medical', 'covid', 'vaccine', 'mental health', 'doctor', 'hospital', 'disease', 'fitness', 'wellness', 'diet', 'therapy'],
@@ -152,7 +152,10 @@ export function extractTopics(title: string, description?: string): string[] {
   const text = `${title} ${description || ''}`.toLowerCase();
   const topics = new Set<string>();
   for (const [topic, keywords] of Object.entries(TOPIC_KEYWORDS)) {
-    if (keywords.some(kw => text.includes(kw))) {
+    if (keywords.some(kw => {
+      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+    })) {
       topics.add(topic);
     }
   }
