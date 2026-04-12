@@ -71,6 +71,18 @@ async function loadMigrations(): Promise<Migration[]> {
     }
   }
 
+  // Detect duplicate version numbers (concurrent PRs picking the same number)
+  const seen = new Map<number, string>();
+  for (const m of migrations) {
+    const existing = seen.get(m.version);
+    if (existing) {
+      errors.push(
+        `Duplicate migration version ${m.version}: ${existing} and ${m.filename}`
+      );
+    }
+    seen.set(m.version, m.filename);
+  }
+
   if (errors.length > 0) {
     throw new Error(`Migration filename validation failed:\n${errors.join("\n")}`);
   }
@@ -94,16 +106,16 @@ async function createMigrationsTable(): Promise<void> {
 }
 
 /**
- * Get list of applied migrations
+ * Get list of applied migrations with filenames
  */
-async function getAppliedMigrations(): Promise<number[]> {
+async function getAppliedMigrations(): Promise<Array<{ version: number; filename: string }>> {
   const pool = getPool();
 
-  const result = await pool.query<{ version: number }>(
-    "SELECT version FROM schema_migrations ORDER BY version"
+  const result = await pool.query<{ version: number; filename: string }>(
+    "SELECT version, filename FROM schema_migrations ORDER BY version"
   );
 
-  return result.rows.map((row) => row.version);
+  return result.rows;
 }
 
 /**
@@ -152,11 +164,31 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
 
   // Load all migrations
   const migrations = await loadMigrations();
-  const appliedVersions = await getAppliedMigrations();
+  const appliedMigrations = await getAppliedMigrations();
+  const appliedVersions = new Set(appliedMigrations.map((m) => m.version));
+
+  // Detect filename mismatches — a sign that a migration version was
+  // claimed by a different file (numbering collision from concurrent PRs)
+  const appliedByVersion = new Map(appliedMigrations.map((m) => [m.version, m.filename]));
+  const mismatches: string[] = [];
+  for (const m of migrations) {
+    const appliedFilename = appliedByVersion.get(m.version);
+    if (appliedFilename && appliedFilename !== m.filename) {
+      mismatches.push(
+        `Migration ${m.version} on disk is "${m.filename}" but was applied as "${appliedFilename}"`
+      );
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Migration filename mismatches detected (possible numbering collision):\n${mismatches.join("\n")}\n` +
+      `Renumber the colliding migration(s) and redeploy.`
+    );
+  }
 
   // Find pending migrations
   const pendingMigrations = migrations.filter(
-    (m) => !appliedVersions.includes(m.version)
+    (m) => !appliedVersions.has(m.version)
   );
 
   if (pendingMigrations.length === 0) {

@@ -1,6 +1,6 @@
--- Per-storyboard compliance status, materialized from compliance runs.
--- One row per (agent_url, storyboard_id). Upserted atomically inside
--- recordComplianceRun() so storyboard status stays consistent with run data.
+-- Migration 384 was supposed to create this table but a numbering collision
+-- caused marketing_opt_in to be applied as 384 instead, so the storyboard
+-- table was silently skipped. Re-create it here.
 
 CREATE TABLE IF NOT EXISTS agent_storyboard_status (
   agent_url       TEXT NOT NULL,

@@ -1,4 +1,4 @@
--- Migration: 384_marketing_opt_in.sql
+-- Marketing opt-in tracking for GDPR compliance.
 -- Add explicit marketing opt-in tracking for GDPR compliance.
 -- NULL means the user signed up before this checkbox existed.
 
