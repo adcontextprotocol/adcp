@@ -2,13 +2,19 @@
 -- discovered_brands has more columns, so we extend it and merge hosted data in.
 -- Backward-compat views let existing code keep working during transition.
 
--- Step 1: Add hosted_brands columns to discovered_brands
+-- Step 1: Add hosted_brands columns and standardize timestamps on discovered_brands
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS workos_organization_id VARCHAR(255);
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(255);
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS created_by_email VARCHAR(255);
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS domain_verified BOOLEAN DEFAULT FALSE;
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS verification_token TEXT;
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+-- Add standard timestamp columns (discovered_brands used discovered_at/last_validated)
+ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- Backfill from existing timestamp columns
+UPDATE discovered_brands SET created_at = COALESCE(discovered_at, NOW()), updated_at = COALESCE(last_validated, discovered_at, NOW())
+WHERE created_at = NOW();
 
 -- Step 2: Merge hosted_brands data into discovered_brands
 -- On conflict (same domain), hosted data takes priority for ownership/verification
@@ -58,7 +64,10 @@ CREATE INDEX IF NOT EXISTS idx_brands_public ON brands(is_public) WHERE is_publi
 -- Step 5: Update brand_revisions FK (it references domain, which is now on brands)
 -- brand_revisions.domain is a text column, not a FK — no ALTER needed, just works
 
--- Step 6: Create backward-compat views
+-- Step 6: Drop the old hosted_brands table (data already merged into brands)
+DROP TABLE IF EXISTS hosted_brands;
+
+-- Step 7: Create backward-compat views
 -- These let existing code referencing the old table names keep working
 
 CREATE OR REPLACE VIEW discovered_brands AS
@@ -78,9 +87,6 @@ SELECT
   created_at,
   updated_at
 FROM brands;
-
--- Step 7: Drop the old hosted_brands table (data already merged)
-DROP TABLE IF EXISTS hosted_brands;
 
 -- Step 8: Make hosted_brands view writable with INSTEAD OF triggers
 -- This lets all existing INSERT/UPDATE/DELETE code keep working unchanged.

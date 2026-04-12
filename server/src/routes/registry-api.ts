@@ -1433,35 +1433,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Live fetch failed — fall through to DB cache
       }
 
-      // Serve from DB (same source as /brands/:domain/brand.json)
-      const hosted = await brandDb.getHostedBrandByDomain(domain);
-      if (hosted && hosted.is_public) {
-        return res.json({
-          domain,
-          url: `https://agenticadvertising.org/brands/${domain}/brand.json`,
-          variant: "house_portfolio",
-          data: hosted.brand_json,
-        });
-      }
+      // Serve from DB — single brands table
+      const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (brand) {
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const data = { name: brand.brand_name || domain, ...manifest };
 
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (discovered) {
-        const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
-        const data = { name: discovered.brand_name || domain, ...manifest };
+        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const url = brand.source_type === "brand_json"
+          ? `https://${domain}/.well-known/brand.json`
+          : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        // Determine variant from source
-        const variant = discovered.source_type === "brand_json"
-          ? "house_portfolio"
-          : undefined;
-
-        return res.json({
-          domain,
-          url: discovered.source_type === "brand_json"
-            ? `https://${domain}/.well-known/brand.json`
-            : `https://agenticadvertising.org/brands/${domain}/brand.json`,
-          variant,
-          data,
-        });
+        return res.json({ domain, url, variant, data });
       }
 
       // Nothing in DB — try live fetch as last resort
