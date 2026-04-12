@@ -188,13 +188,11 @@ describe("Database Migrations", () => {
   });
 
   describe("collision detection", () => {
-    it("should warn on filename mismatch between disk and database", async () => {
+    it("should throw on filename mismatch between disk and database", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([
         "001_storyboard_status.sql",
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
-
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       mockPool.query
         .mockResolvedValueOnce({}) // CREATE migrations table
@@ -202,13 +200,12 @@ describe("Database Migrations", () => {
           rows: [{ version: 1, filename: "001_marketing_opt_in.sql" }],
         });
 
-      await runMigrations();
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Migration 1 on disk is \"001_storyboard_status.sql\" but was applied as \"001_marketing_opt_in.sql\"")
+      await expect(runMigrations()).rejects.toThrow(
+        /Migration 1 on disk is "001_storyboard_status.sql" but was applied as "001_marketing_opt_in.sql"/
       );
 
-      consoleSpy.mockRestore();
+      // The mismatched migration should NOT be re-applied
+      expect(mockPool.connect).not.toHaveBeenCalled();
     });
   });
 

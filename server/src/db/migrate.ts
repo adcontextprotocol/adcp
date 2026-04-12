@@ -180,8 +180,9 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
     }
   }
   if (mismatches.length > 0) {
-    console.error(
-      `⚠ Migration filename mismatches detected (possible numbering collision):\n${mismatches.join("\n")}`
+    throw new Error(
+      `Migration filename mismatches detected (possible numbering collision):\n${mismatches.join("\n")}\n` +
+      `Renumber the colliding migration(s) and redeploy.`
     );
   }
 
