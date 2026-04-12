@@ -288,6 +288,34 @@ When a collection list's resolved collections change (new programs matched, rati
 
 Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the `signature` before processing.
 
+## Live sports
+
+Live sports is one of the largest CTV brand safety concerns. Collection lists handle it through the `event_series` kind:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/create-collection-list-request.json",
+  "name": "Acme Outdoor — Excluded Sports Events",
+  "base_collections": [
+    {
+      "selection_type": "distribution_ids",
+      "identifiers": [
+        { "type": "gracenote_id", "value": "SP000001" },
+        { "type": "gracenote_id", "value": "SP000002" }
+      ]
+    }
+  ],
+  "filters": {
+    "kinds": ["event_series"],
+    "genres_exclude": ["combat_sports"],
+    "genre_taxonomy": "gracenote"
+  },
+  "brand": { "domain": "acmeoutdoor.com" }
+}
+```
+
+This excludes specific sports programs by Gracenote ID (SP-prefixed for sports) and structurally excludes all combat sports event series. The `event_series` kind filter ensures the list targets live event programming, not documentary series about sports.
+
 ## Sharing collection lists with sellers
 
 The pattern matches [property list sharing](/docs/governance/property/index#sharing-property-lists-with-sellers):
