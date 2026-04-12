@@ -13,7 +13,7 @@ import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp
 import { HealthChecker } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
-import { createLogger } from "./logger.js";
+import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
@@ -2095,8 +2095,7 @@ export class HTTPServer {
     });
 
     // Build job status response for the local machine
-    const getJobStatusPayload = async () => {
-      const { processRole } = await import('./logger.js');
+    const getJobStatusPayload = () => {
       const mem = process.memoryUsage();
       return {
         processRole,
@@ -2113,34 +2112,34 @@ export class HTTPServer {
     // Internal endpoint — no auth, only served on worker machines.
     // The worker's port is not publicly routable (no http_service).
     // Web machines proxy to this over Fly's private WireGuard network.
-    this.app.get("/internal/jobs", async (req, res) => {
-      const { processRole } = await import('./logger.js');
+    this.app.get("/internal/jobs", (_req, res) => {
       if (processRole === 'web') {
         return res.status(404).json({ error: 'Not found' });
       }
-      res.json(await getJobStatusPayload());
+      res.json(getJobStatusPayload());
     });
 
     // Public admin endpoint — requires auth. On web machines, proxies to the
     // worker over Fly's internal DNS so admins always see worker data.
     this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
-      const { processRole } = await import('./logger.js');
-
       if (processRole !== 'web') {
-        return res.json(await getJobStatusPayload());
+        return res.json(getJobStatusPayload());
       }
 
       // Web machine: proxy to worker over Fly internal network
       try {
-        const workerUrl = 'http://worker.process.adcp-docs.internal:8080/internal/jobs';
+        const appName = process.env.FLY_APP_NAME || 'adcp-docs';
+        const workerUrl = `http://worker.process.${appName}.internal:8080/internal/jobs`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
         const workerRes = await fetch(workerUrl, { signal: controller.signal });
         clearTimeout(timeout);
+        if (!workerRes.ok) {
+          throw new Error(`Worker responded ${workerRes.status}`);
+        }
         return res.json(await workerRes.json());
       } catch {
-        const data = await getJobStatusPayload();
-        return res.json({ ...data, jobs: [], workerUnreachable: true });
+        return res.json({ ...getJobStatusPayload(), jobs: [], workerUnreachable: true });
       }
     });
 
@@ -8293,7 +8292,6 @@ Disallow: /api/admin/
     // Scheduled jobs and crawlers only run on the worker process.
     // processRole is resolved once in logger.ts from FLY_PROCESS_GROUP;
     // locally it defaults to 'worker' so dev runs everything.
-    const { processRole } = await import('./logger.js');
     this.isWorker = processRole !== 'web';
     const isWorker = this.isWorker;
     logger.info({ isWorker }, 'Process role resolved');
