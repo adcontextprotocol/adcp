@@ -3,8 +3,17 @@
  * Single source of truth for member card display
  */
 
-// Offering labels - shared across all pages
+// Service labels - what members offer to others
+// Agent capabilities (buying, creative, etc.) are derived from brand.json
 const offeringLabels = {
+  // New service types
+  agent_development: 'Agent Development',
+  system_integration: 'System Integration',
+  consulting: 'Consulting',
+  data_services: 'Data Services',
+  publisher_services: 'Publisher Services',
+  other: 'Other',
+  // Legacy types (still in DB, shown until migrated)
   buyer_agent: 'Buyer Agent',
   sales_agent: 'Sales Agent',
   creative_agent: 'Creative Agent',
@@ -12,8 +21,7 @@ const offeringLabels = {
   si_agent: 'SI Agent',
   governance_agent: 'Governance Agent',
   data_provider: 'Data Provider',
-  consulting: 'Consulting',
-  other: 'Other'
+  publisher: 'Publisher',
 };
 
 /**

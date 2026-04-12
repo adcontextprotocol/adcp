@@ -315,39 +315,37 @@ export interface WorkOSUser {
 
 // Member Profile Types
 
-export type MemberOffering =
-  | 'buyer_agent'
-  | 'sales_agent'
-  | 'creative_agent'
-  | 'signals_agent'
-  | 'si_agent'
-  | 'governance_agent'
-  | 'publisher'
-  | 'data_provider'
+/**
+ * Services a member offers to others (not derivable from their brand.json).
+ * Agent-related capabilities (buying, creative, signals, etc.) are derived
+ * from the agents array in brand.json — they don't need to be declared here.
+ */
+export type MemberService =
+  | 'agent_development'
+  | 'system_integration'
   | 'consulting'
+  | 'data_services'
+  | 'publisher_services'
   | 'other';
 
-/**
- * Valid member offering values for runtime validation
- */
-export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
-  'buyer_agent',
-  'sales_agent',
-  'creative_agent',
-  'signals_agent',
-  'si_agent',
-  'governance_agent',
-  'publisher',
-  'data_provider',
+export const VALID_MEMBER_SERVICES: readonly MemberService[] = [
+  'agent_development',
+  'system_integration',
   'consulting',
+  'data_services',
+  'publisher_services',
   'other',
 ] as const;
 
-/**
- * Type guard to check if a string is a valid MemberOffering
- */
-export function isValidMemberOffering(value: string | undefined | null): value is MemberOffering {
-  return typeof value === 'string' && VALID_MEMBER_OFFERINGS.includes(value as MemberOffering);
+export function isValidMemberService(value: string | undefined | null): value is MemberService {
+  return typeof value === 'string' && VALID_MEMBER_SERVICES.includes(value as MemberService);
+}
+
+/** @deprecated Use MemberService instead */
+export type MemberOffering = MemberService | 'buyer_agent' | 'sales_agent' | 'creative_agent' | 'signals_agent' | 'si_agent' | 'governance_agent' | 'publisher' | 'data_provider';
+export const VALID_MEMBER_OFFERINGS = [...VALID_MEMBER_SERVICES, 'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'data_provider'] as const;
+export function isValidMemberOffering(value: string | undefined | null): boolean {
+  return typeof value === 'string' && (VALID_MEMBER_OFFERINGS as readonly string[]).includes(value);
 }
 
 /**
