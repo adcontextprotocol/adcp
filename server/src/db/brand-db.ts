@@ -557,7 +557,7 @@ export class BrandDatabase {
         COALESCE(brand_json->>'name', brand_json->'house'->>'name', brand_domain) as brand_name,
         'hosted' as source,
         true as has_manifest,
-        domain_verified as verified,
+        hosted_brands.domain_verified as verified,
         db.house_domain,
         COALESCE(db.keller_type, 'master') as keller_type,
         COALESCE(brand_json->'logos'->0->>'url', brand_json->'brands'->0->'logos'->0->>'url') as logo_url,
