@@ -2373,8 +2373,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         });
       }
 
-      // Include public storyboard summary counts
-      const sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+      // Storyboard counts are supplementary — don't fail the whole response
+      // if the table hasn't been migrated yet
+      let sbCounts = { passing: 0, total: 0 };
+      try {
+        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Storyboard status query failed");
+      }
 
       res.json({
         agent_url: agentUrl,
