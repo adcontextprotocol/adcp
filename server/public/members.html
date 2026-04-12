@@ -2042,7 +2042,7 @@
         }
 
         // If this is a sales agent, fetch products and publishers
-        if (agentType === 'sales') {
+        if (agentType === 'buying') {
           loadAgentProducts(url);
           loadAgentPublishers(url);
         }
@@ -2313,7 +2313,7 @@
 
       // Check for sales agent tools
       if (toolNames.some(n => n.includes('product') || n.includes('media_buy') || n.includes('inventory'))) {
-        return 'sales';
+        return 'buying';
       }
       // Check for creative agent tools
       if (toolNames.some(n => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
@@ -2335,7 +2335,7 @@
       let html = '';
 
       // For sales agents, show a summary stats section
-      if (agentType === 'sales') {
+      if (agentType === 'buying') {
         html += `
           <div class="agent-modal-section">
             <h3>Overview</h3>
@@ -2436,7 +2436,7 @@
       }
 
       // Tools section (collapsed for sales agents since it's less interesting)
-      if (tools.length > 0 && agentType !== 'sales') {
+      if (tools.length > 0 && agentType !== 'buying') {
         html += `
           <div class="agent-modal-section">
             <h3>Available Tools</h3>

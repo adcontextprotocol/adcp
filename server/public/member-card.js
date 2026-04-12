@@ -377,16 +377,24 @@ function injectMemberCardStyles() {
 // ============================================
 
 const agentTypeLabels = {
+  brand: 'Brand Agent',
+  rights: 'Rights Agent',
+  measurement: 'Measurement Agent',
+  governance: 'Governance Agent',
   creative: 'Creative Agent',
-  sales: 'Sales Agent',
+  buying: 'Buying Agent',
   signals: 'Signals Agent',
   unknown: 'Agent'
 };
 
 const agentTypeColors = {
+  brand: { bg: '#ede9fe', color: '#6d28d9' },
+  rights: { bg: '#fce7f3', color: '#be185d' },
+  measurement: { bg: '#e0f2fe', color: '#0369a1' },
+  governance: { bg: '#fef3c7', color: '#b45309' },
   creative: { bg: '#dbeafe', color: '#1d4ed8' },
-  sales: { bg: '#dcfce7', color: '#15803d' },
-  signals: { bg: '#fef3c7', color: '#b45309' },
+  buying: { bg: '#dcfce7', color: '#15803d' },
+  signals: { bg: '#fef9c3', color: '#a16207' },
   unknown: { bg: '#f3f4f6', color: '#6b7280' }
 };
 
@@ -463,7 +471,7 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
   if (agentType === 'creative') {
     const count = agentInfo.stats?.format_count ?? 0;
     statsHtml = `<span class="agent-stat">${count} format${count !== 1 ? 's' : ''}</span>`;
-  } else if (agentType === 'sales') {
+  } else if (agentType === 'buying') {
     const productCount = agentInfo.stats?.product_count ?? 0;
     const publisherCount = agentInfo.stats?.publisher_count ?? 0;
     statsHtml = `

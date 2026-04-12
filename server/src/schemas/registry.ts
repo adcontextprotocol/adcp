@@ -231,11 +231,13 @@ export const FederatedAgentWithDetailsSchema = z
     url: z.string(),
     name: z.string(),
     type: z.enum([
-      "creative",
-      "signals",
-      "sales",
+      "brand",
+      "rights",
+      "measurement",
       "governance",
-      "si",
+      "creative",
+      "buying",
+      "signals",
       "unknown",
     ]),
     protocol: z.enum(["mcp", "a2a"]).optional(),
@@ -407,7 +409,7 @@ const AgentAuthorizationSummarySchema = z.object({
 const OperatorAgentSchema = z.object({
   url: z.string(),
   name: z.string(),
-  type: z.enum(["creative", "signals", "sales", "governance", "si", "buyer", "unknown"]),
+  type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]),
   authorized_by: z.array(AgentAuthorizationSummarySchema),
 });
 

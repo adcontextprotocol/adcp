@@ -1952,7 +1952,7 @@ export class HTTPServer {
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.agentService.listAgents("sales");
+      const agents = await this.agentService.listAgents("buying");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -1966,7 +1966,7 @@ export class HTTPServer {
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
-        sales: agents.filter((a) => a.type === "sales").length,
+        buying: agents.filter((a) => a.type === "buying").length,
       };
 
       res.json({
@@ -2032,7 +2032,7 @@ export class HTTPServer {
         by_type: {
           creative: agents.filter(a => a.type === "creative").length,
           signals: agents.filter(a => a.type === "signals").length,
-          sales: agents.filter(a => a.type === "sales").length,
+          buying: agents.filter(a => a.type === "buying").length,
         }
       });
     });
@@ -7999,11 +7999,11 @@ Disallow: /api/admin/
         const tools = agentInfo.tools || [];
 
         // Detect agent type from tools
-        // Check for sales first since sales agents may also expose creative tools
+        // Check for buying first since buying agents may also expose creative tools
         let agentType = 'unknown';
         const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
         if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
-          agentType = 'sales';
+          agentType = 'buying';
         } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
           agentType = 'signals';
         } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
@@ -8050,8 +8050,8 @@ Disallow: /api/admin/
             logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
             stats.format_count = 0;
           }
-        } else if (agentType === 'sales') {
-          // Always show product and publisher counts for sales agents
+        } else if (agentType === 'buying') {
+          // Always show product and publisher counts for buying agents
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
@@ -8248,11 +8248,11 @@ Disallow: /api/admin/
     logger.info({ flyProcessGroup: process.env.FLY_PROCESS_GROUP, processRole, isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for sales agents
-      const salesAgents = await this.agentService.listAgents("sales");
-      if (salesAgents.length > 0) {
-        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
+      // Start periodic property crawler for buying agents
+      const buyingAgents = await this.agentService.listAgents("buying");
+      if (buyingAgents.length > 0) {
+        logger.debug({ buyingAgentCount: buyingAgents.length }, 'Starting property crawler');
+        this.crawler.startPeriodicCrawl(buyingAgents, 360); // Crawl every 6 hours
       }
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
@@ -8392,7 +8392,7 @@ Disallow: /api/admin/
           ]);
 
           // Warm type-specific caches
-          if (agent.type === "sales") {
+          if (agent.type === "buying") {
             await this.propertiesService.getPropertiesForAgent(agent);
           }
         } catch (error) {

@@ -214,15 +214,15 @@ export class CapabilityDiscovery {
 
   /**
    * Infer agent type from discovered tools.
-   * Sales agents have: get_products, create_media_buy, list_authorized_properties
+   * Buying agents have: get_products, create_media_buy, list_authorized_properties
    * Creative agents have: list_creative_formats, build_creative, validate_creative
    * Signals agents have: get_signals, match_audience, activate_signal
    */
-  private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
+  private inferAgentType(tools: ToolCapability[]): 'buying' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Priority: sales > creative > signals (sales is the primary commerce type)
-    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'sales';
+    // Priority: buying > creative > signals (buying is the primary commerce type)
+    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'buying';
     if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) return 'creative';
     if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) return 'signals';
 
@@ -297,8 +297,8 @@ export class CapabilityDiscovery {
    * Infer agent type from a capability profile.
    * Use this to avoid duplicating the type inference logic.
    */
-  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'unknown' {
-    if (profile.standard_operations) return 'sales';
+  inferTypeFromProfile(profile: AgentCapabilityProfile): 'buying' | 'creative' | 'signals' | 'unknown' {
+    if (profile.standard_operations) return 'buying';
     if (profile.creative_capabilities) return 'creative';
     if (profile.signals_capabilities) return 'signals';
     return 'unknown';
