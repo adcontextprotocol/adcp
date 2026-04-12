@@ -132,6 +132,7 @@ export async function safeFetch(
   // Construct a clean URL string from validated components
   const safeUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}${parsedUrl.search}`;
 
+  // codeql[js/request-forgery] - URL is validated by validateFetchUrl above; safeUrl is reconstructed from validated components
   let response = await fetch(safeUrl, { headers, redirect: 'manual' });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
