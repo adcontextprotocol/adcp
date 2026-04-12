@@ -933,12 +933,15 @@ export class CommunityDatabase {
     const userMatch = userEmail
       ? `(er.workos_user_id = $1 OR LOWER(er.email) = LOWER($2))`
       : `er.workos_user_id = $1`;
+    const excludeSelf = userEmail
+      ? `AND er2.workos_user_id != $1 AND LOWER(er2.email) != LOWER($2)`
+      : `AND er2.workos_user_id != $1`;
     const params = userEmail ? [userId, userEmail] : [userId];
 
     const result = await query<{ id: string; title: string; start_time: string; co_attendee_count: number }>(
       `SELECT DISTINCT e.id, e.title, e.start_time,
               (SELECT COUNT(*) FROM event_registrations er2
-               WHERE er2.event_id = e.id AND er2.workos_user_id != $1
+               WHERE er2.event_id = e.id ${excludeSelf}
                  AND er2.registration_status IN ('registered', 'waitlisted')) as co_attendee_count
        FROM events e
        JOIN event_registrations er ON er.event_id = e.id

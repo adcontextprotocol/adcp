@@ -67,7 +67,7 @@ function inferCityFromTitle(title: string): string | null {
 /**
  * Map Luma guest approval_status to AAO registration_status.
  */
-function mapLumaApprovalStatus(approvalStatus: string): 'registered' | 'waitlisted' | 'cancelled' {
+export function mapLumaApprovalStatus(approvalStatus: string): 'registered' | 'waitlisted' | 'cancelled' {
   switch (approvalStatus?.toLowerCase()) {
     case 'approved':
       return 'registered';

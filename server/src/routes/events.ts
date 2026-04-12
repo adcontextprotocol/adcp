@@ -17,7 +17,7 @@ import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
 import { getEventBySlug as getLumaEventBySlug, extractLumaSlug, getEventGuests, isLumaEnabled } from "../luma/client.js";
-import { createEventFromLuma } from "../luma/sync.js";
+import { createEventFromLuma, mapLumaApprovalStatus } from "../luma/sync.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import {
   createCheckoutSession,
@@ -33,7 +33,6 @@ import type {
   EventStatus,
   EventType,
   EventFormat,
-  RegistrationStatus,
 } from "../types.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
@@ -140,24 +139,7 @@ function parseDate(dateStr: string | undefined): Date | undefined {
   return date;
 }
 
-/**
- * Map Luma approval_status to our registration_status
- */
-function mapLumaStatus(lumaStatus: string): RegistrationStatus {
-  switch (lumaStatus.toLowerCase()) {
-    case 'approved':
-      return 'registered';
-    case 'pending_approval':
-      return 'waitlisted';
-    case 'waitlist':
-      return 'waitlisted';
-    case 'declined':
-    case 'cancelled':
-      return 'cancelled';
-    default:
-      return 'registered';
-  }
-}
+// Luma status mapping is shared — see mapLumaApprovalStatus in luma/sync.ts
 
 const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
@@ -935,7 +917,7 @@ export function createEventsRouter(): {
             }
 
             const name = row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim();
-            const registrationStatus = mapLumaStatus(row.approval_status);
+            const registrationStatus = mapLumaApprovalStatus(row.approval_status);
             const checkedInAt = parseDate(row.checked_in_at);
             const attended = !!checkedInAt;
 
