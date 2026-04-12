@@ -41,7 +41,8 @@ import {
   isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
 import {
-  EVENT_TOOLS,
+  EVENT_READONLY_TOOLS,
+  EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
 } from "../addie/mcp/event-tools.js";
 import {
@@ -247,14 +248,23 @@ async function buildVoiceRequestTools(
     workingGroupDb.getCommitteesLedByUser(userId),
   ]);
 
+  // Event tools: readonly for all users, admin tools for admins only
+  const eventHandlers = createEventToolHandlers(memberContext);
+  allTools.push(...EVENT_READONLY_TOOLS);
+  for (const tool of EVENT_READONLY_TOOLS) {
+    const handler = eventHandlers.get(tool.name);
+    if (handler) combinedHandlers.set(tool.name, handler);
+  }
+
   if (userIsAdmin) {
     allTools.push(...ADMIN_TOOLS);
     for (const [name, handler] of createAdminToolHandlers(memberContext)) {
       combinedHandlers.set(name, handler);
     }
-    allTools.push(...EVENT_TOOLS);
-    for (const [name, handler] of createEventToolHandlers(memberContext)) {
-      combinedHandlers.set(name, handler);
+    allTools.push(...EVENT_ADMIN_TOOLS);
+    for (const tool of EVENT_ADMIN_TOOLS) {
+      const handler = eventHandlers.get(tool.name);
+      if (handler) combinedHandlers.set(tool.name, handler);
     }
   }
 

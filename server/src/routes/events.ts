@@ -148,7 +148,7 @@ function mapLumaStatus(lumaStatus: string): RegistrationStatus {
     case 'approved':
       return 'registered';
     case 'pending_approval':
-      return 'registered'; // Treat pending as registered for historical imports
+      return 'waitlisted';
     case 'waitlist':
       return 'waitlisted';
     case 'declined':
