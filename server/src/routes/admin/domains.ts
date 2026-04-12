@@ -1578,7 +1578,7 @@ export function setupDomainRoutes(
 
     if (emailDomainLabels.length > 0) {
       const houseResult = await pool.query<{ domain: string; house_domain: string }>(
-        `SELECT domain, house_domain FROM discovered_brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
+        `SELECT domain, house_domain FROM brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
         [emailDomainLabels]
       );
       for (const row of houseResult.rows) {
@@ -1586,7 +1586,7 @@ export function setupDomainRoutes(
       }
 
       const subResult = await pool.query<{ house_domain: string; sub_count: string }>(
-        `SELECT house_domain, COUNT(*) as sub_count FROM discovered_brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
+        `SELECT house_domain, COUNT(*) as sub_count FROM brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
         [emailDomainLabels]
       );
       for (const row of subResult.rows) {
@@ -1756,7 +1756,7 @@ Respond with ONLY a JSON array, one entry per cluster:
             UNION
             SELECT LOWER(brand_domain) FROM brand_domain_aliases
             UNION
-            SELECT LOWER(db.domain) FROM discovered_brands db
+            SELECT LOWER(db.domain) FROM brands db
               JOIN organizations o ON o.email_domain = db.house_domain
               WHERE db.house_domain IS NOT NULL
           ),
@@ -1938,7 +1938,7 @@ Respond with ONLY a JSON array, one entry per cluster:
 
         // 6. Related domains - find organizations with domains that share a root domain
         // e.g., yahooinc.com and advertising.yahoo.com should be grouped together
-        // 6a. Brand hierarchy matches: orgs sharing a house_domain in discovered_brands
+        // 6a. Brand hierarchy matches: orgs sharing a house_domain in brands
         const brandHierarchyResult = await pool.query(`
           WITH house_groups AS (
             SELECT
@@ -1950,7 +1950,7 @@ Respond with ONLY a JSON array, one entry per cluster:
                 'subscription_status', o.subscription_status,
                 'domains', ARRAY[o.email_domain]
               )) AS organizations
-            FROM discovered_brands db
+            FROM brands db
             JOIN organizations o ON o.email_domain = db.domain OR o.email_domain = db.house_domain
             WHERE db.house_domain IS NOT NULL
               AND o.is_personal = false

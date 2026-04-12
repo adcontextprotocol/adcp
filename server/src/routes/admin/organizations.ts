@@ -42,9 +42,9 @@ export function setupOrganizationRoutes(
             o.*,
             p.name as parent_name,
             p.email_domain as parent_domain,
-            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
+            (SELECT COUNT(*) FROM organizations child JOIN brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
           FROM organizations o
-          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN brands db_parent ON o.email_domain = db_parent.domain
           LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
           WHERE o.workos_organization_id = $1
         `,

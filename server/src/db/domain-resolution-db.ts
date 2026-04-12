@@ -3,8 +3,8 @@
  *
  * Checks multiple sources in priority order:
  *   1. organization_domains / organizations.email_domain  (exact)
- *   2. brand_domain_aliases → discovered_brands → org     (brand registry alias)
- *   3. discovered_brands.house_domain → org               (sub-brand → parent)
+ *   2. brand_domain_aliases → brands → org     (brand registry alias)
+ *   3. brands.house_domain → org               (sub-brand → parent)
  *   4. HTTP redirect check → re-resolve with target       (arcspan.ai → arcspan.com)
  *
  * Every caller that needs to answer "does this domain already belong to someone?"
@@ -110,7 +110,7 @@ export async function resolveOrgsByDomains(domains: string[]): Promise<Map<strin
               'sub_brand' AS method,
               3 AS priority
        FROM inputs i
-       JOIN discovered_brands db ON db.domain = i.domain
+       JOIN brands db ON db.domain = i.domain
          AND db.house_domain IS NOT NULL
          AND db.house_domain != i.domain
        JOIN organizations o ON o.email_domain = db.house_domain
@@ -186,7 +186,7 @@ async function resolveFromDatabase(normalized: string): Promise<DomainResolution
   //    e.g. instagram.com → house_domain=meta.com → Meta org
   const subBrand = await pool.query<{ workos_organization_id: string; house_domain: string }>(
     `SELECT o.workos_organization_id, db.house_domain
-     FROM discovered_brands db
+     FROM brands db
      JOIN organizations o ON o.email_domain = db.house_domain
      WHERE db.domain = $1
        AND db.house_domain IS NOT NULL

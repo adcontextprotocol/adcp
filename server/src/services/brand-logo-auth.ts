@@ -3,7 +3,7 @@
  *
  * Two paths:
  * 1. Registry moderators (brand-registry-moderators working group) — can review any brand
- * 2. Verified brand owners (hosted_brands with domain_verified) — can review their own brand
+ * 2. Verified brand owners (brands with domain_verified) — can review their own brand
  */
 
 import { WorkingGroupDatabase } from '../db/working-group-db.js';

@@ -141,6 +141,11 @@ export interface ListBrandsOptions {
   offset?: number;
 }
 
+// Column list for queries returning HostedBrand (aliases brands columns to match the interface)
+const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
+  domain AS brand_domain, brand_manifest AS brand_json,
+  domain_verified, verification_token, is_public, created_at, updated_at`;
+
 /**
  * Database operations for brands
  */
@@ -188,7 +193,7 @@ export class BrandDatabase {
    */
   async getHostedBrandById(id: string): Promise<HostedBrand | null> {
     const result = await query<HostedBrand>(
-      'SELECT * FROM hosted_brands WHERE id = $1',
+      `SELECT ${HOSTED_BRAND_COLUMNS} FROM brands WHERE id = $1`,
       [id]
     );
     return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
@@ -199,7 +204,7 @@ export class BrandDatabase {
    */
   async getHostedBrandByDomain(domain: string): Promise<HostedBrand | null> {
     const result = await query<HostedBrand>(
-      'SELECT * FROM hosted_brands WHERE brand_domain = $1',
+      `SELECT ${HOSTED_BRAND_COLUMNS} FROM brands WHERE domain = $1`,
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
@@ -210,7 +215,7 @@ export class BrandDatabase {
    */
   async listHostedBrandsByOrg(orgId: string): Promise<HostedBrand[]> {
     const result = await query<HostedBrand>(
-      'SELECT * FROM hosted_brands WHERE workos_organization_id = $1 ORDER BY brand_domain',
+      `SELECT ${HOSTED_BRAND_COLUMNS} FROM brands WHERE workos_organization_id = $1 ORDER BY domain`,
       [orgId]
     );
     return result.rows.map((row) => this.deserializeHostedBrand(row));
@@ -221,7 +226,7 @@ export class BrandDatabase {
    */
   async listHostedBrandsByEmail(email: string): Promise<HostedBrand[]> {
     const result = await query<HostedBrand>(
-      'SELECT * FROM hosted_brands WHERE created_by_email = $1 ORDER BY brand_domain',
+      `SELECT ${HOSTED_BRAND_COLUMNS} FROM brands WHERE created_by_email = $1 ORDER BY domain`,
       [email.toLowerCase()]
     );
     return result.rows.map((row) => this.deserializeHostedBrand(row));
@@ -235,7 +240,7 @@ export class BrandDatabase {
     const values: unknown[] = [];
     let paramIndex = 1;
 
-    // Map hosted_brands column names to brands table columns
+    // Alias brands columns to match HostedBrand interface
     if (input.brand_json !== undefined) {
       updates.push(`brand_manifest = $${paramIndex++}`);
       values.push(JSON.stringify(input.brand_json));
@@ -356,7 +361,7 @@ export class BrandDatabase {
    */
   async getDiscoveredBrandByDomain(domain: string): Promise<DiscoveredBrand | null> {
     const result = await query<DiscoveredBrand>(
-      'SELECT * FROM discovered_brands WHERE domain = $1',
+      'SELECT * FROM brands WHERE domain = $1',
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
@@ -372,7 +377,7 @@ export class BrandDatabase {
       return this.getDiscoveredBrandByDomain(domain);
     }
     const result = await query<DiscoveredBrand>(
-      'SELECT * FROM discovered_brands WHERE domain = $1 AND brand_id = $2',
+      'SELECT * FROM brands WHERE domain = $1 AND brand_id = $2',
       [domain.toLowerCase(), brandId]
     );
     if (result.rows[0]) {
@@ -380,7 +385,7 @@ export class BrandDatabase {
     }
     // Fall back to house domain lookup (brand_id might be under the house)
     const houseResult = await query<DiscoveredBrand>(
-      'SELECT * FROM discovered_brands WHERE house_domain = $1 AND brand_id = $2',
+      'SELECT * FROM brands WHERE house_domain = $1 AND brand_id = $2',
       [domain.toLowerCase(), brandId]
     );
     return houseResult.rows[0] ? this.deserializeDiscoveredBrand(houseResult.rows[0]) : null;
@@ -420,7 +425,7 @@ export class BrandDatabase {
     if (options.offset) values.push(options.offset);
 
     const result = await query<DiscoveredBrand>(
-      `SELECT * FROM discovered_brands ${whereClause} ORDER BY brand_name, domain ${limitClause} ${offsetClause}`,
+      `SELECT * FROM brands ${whereClause} ORDER BY brand_name, domain ${limitClause} ${offsetClause}`,
       values
     );
     return result.rows.map((row) => this.deserializeDiscoveredBrand(row));
@@ -430,7 +435,7 @@ export class BrandDatabase {
    * Delete a discovered brand
    */
   async deleteDiscoveredBrand(domain: string): Promise<boolean> {
-    const result = await query('DELETE FROM discovered_brands WHERE domain = $1', [domain.toLowerCase()]);
+    const result = await query('DELETE FROM brands WHERE domain = $1', [domain.toLowerCase()]);
     return result.rowCount !== null && result.rowCount > 0;
   }
 
@@ -438,7 +443,7 @@ export class BrandDatabase {
    * Delete expired discovered brands
    */
   async deleteExpiredBrands(): Promise<number> {
-    const result = await query('DELETE FROM discovered_brands WHERE expires_at < NOW()');
+    const result = await query('DELETE FROM brands WHERE expires_at < NOW()');
     return result.rowCount || 0;
   }
 
@@ -481,7 +486,7 @@ export class BrandDatabase {
         parent_brand,
         brand_agent_url,
         source_type
-      FROM discovered_brands
+      FROM brands
       WHERE
         brand_name ILIKE $1
         OR domain ILIKE $1
@@ -553,43 +558,23 @@ export class BrandDatabase {
     }>(
       `
       SELECT
-        brand_domain as domain,
-        COALESCE(brand_json->>'name', brand_json->'house'->>'name', brand_domain) as brand_name,
-        'hosted' as source,
-        true as has_manifest,
-        hosted_brands.domain_verified as verified,
-        db.house_domain,
-        COALESCE(db.keller_type, 'master') as keller_type,
-        COALESCE(brand_json->'logos'->0->>'url', brand_json->'brands'->0->'logos'->0->>'url') as logo_url,
-        COALESCE(brand_json->'colors'->>'primary', brand_json->'brands'->0->'colors'->>'primary') as primary_color,
-        COALESCE(brand_json->'company'->'industries', brand_json->'brands'->0->'industries', '[]'::jsonb) as industries,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
-        COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
-      FROM hosted_brands
-      LEFT JOIN discovered_brands db ON db.domain = hosted_brands.brand_domain
-      WHERE is_public = true
-        AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1 OR brand_json->'house'->>'name' ILIKE $1)
-
-      UNION ALL
-
-      SELECT
         domain,
-        COALESCE(brand_name, domain) as brand_name,
-        source_type as source,
-        has_brand_manifest as has_manifest,
-        true as verified,
+        COALESCE(brand_name, brand_manifest->>'name', brand_manifest->'house'->>'name', domain) as brand_name,
+        CASE WHEN is_public = true THEN 'hosted' ELSE source_type END as source,
+        CASE WHEN is_public = true THEN true ELSE has_brand_manifest END as has_manifest,
+        CASE WHEN is_public = true THEN domain_verified ELSE true END as verified,
         house_domain,
-        keller_type,
-        brand_manifest->'logos'->0->>'url' as logo_url,
-        brand_manifest->'colors'->>'primary' as primary_color,
-        COALESCE(brand_manifest->'company'->'industries', '[]'::jsonb) as industries,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count,
-        COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\d+$' THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
-      FROM discovered_brands
-      WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
-        AND (review_status IS NULL OR review_status = 'approved')
-        AND domain NOT IN (SELECT brand_domain FROM hosted_brands WHERE is_public = true)
-
+        COALESCE(keller_type, 'master') as keller_type,
+        COALESCE(brand_manifest->'logos'->0->>'url', brand_manifest->'brands'->0->'logos'->0->>'url') as logo_url,
+        COALESCE(brand_manifest->'colors'->>'primary', brand_manifest->'brands'->0->'colors'->>'primary') as primary_color,
+        COALESCE(brand_manifest->'company'->'industries', brand_manifest->'brands'->0->'industries', '[]'::jsonb) as industries,
+        (SELECT COUNT(*)::int FROM brands sub WHERE sub.house_domain = brands.domain) as sub_brand_count,
+        COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\\d+$'
+          THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
+      FROM brands
+      WHERE (is_public = true OR review_status IS NULL OR review_status = 'approved')
+        AND ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1
+             OR brand_manifest->>'name' ILIKE $1 OR brand_manifest->'house'->>'name' ILIKE $1)
       ORDER BY employee_count DESC, brand_name, domain
       ${limitClause}
       OFFSET $2
@@ -614,7 +599,7 @@ export class BrandDatabase {
       await client.query('BEGIN');
 
       const insertResult = await client.query<DiscoveredBrand>(
-        `INSERT INTO discovered_brands (
+        `INSERT INTO brands (
           domain, canonical_domain, house_domain, brand_name, brand_names,
           keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
           has_brand_manifest, brand_manifest, source_type, review_status, last_validated, expires_at
@@ -669,7 +654,7 @@ export class BrandDatabase {
    */
   async approveBrand(domain: string): Promise<boolean> {
     const result = await query(
-      `UPDATE discovered_brands SET review_status = 'approved' WHERE domain = $1`,
+      `UPDATE brands SET review_status = 'approved' WHERE domain = $1`,
       [domain.toLowerCase()]
     );
     return result.rowCount !== null && result.rowCount > 0;
@@ -688,14 +673,14 @@ export class BrandDatabase {
     try {
       await client.query('BEGIN');
       const result = await client.query<DiscoveredBrand>(
-        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
         [domain.toLowerCase()]
       );
 
       if (result.rows.length === 0) {
         // Create a minimal brand entry if it doesn't exist
         await client.query(
-          `INSERT INTO discovered_brands (domain, brand_name, source_type, brand_manifest, review_status)
+          `INSERT INTO brands (domain, brand_name, source_type, brand_manifest, review_status)
            VALUES ($1, $1, 'community', $2::jsonb, 'approved')`,
           [domain.toLowerCase(), JSON.stringify({ agents })]
         );
@@ -721,7 +706,7 @@ export class BrandDatabase {
         );
 
         await client.query(
-          'UPDATE discovered_brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
+          'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
           [JSON.stringify(manifest), domain.toLowerCase()]
         );
       }
@@ -764,7 +749,7 @@ export class BrandDatabase {
 
       // Lock the row
       const lockResult = await client.query<DiscoveredBrand>(
-        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
         [domain.toLowerCase()]
       );
       if (lockResult.rows.length === 0) {
@@ -857,7 +842,7 @@ export class BrandDatabase {
 
       values.push(domain.toLowerCase());
       const updateResult = await client.query<DiscoveredBrand>(
-        `UPDATE discovered_brands SET ${updates.join(', ')} WHERE domain = $${paramIndex} RETURNING *`,
+        `UPDATE brands SET ${updates.join(', ')} WHERE domain = $${paramIndex} RETURNING *`,
         values
       );
 
@@ -901,7 +886,7 @@ export class BrandDatabase {
 
       // Lock current row and get current state for the new revision snapshot
       const currentResult = await client.query<DiscoveredBrand>(
-        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
         [domain.toLowerCase()]
       );
       if (currentResult.rows.length === 0) {
@@ -936,7 +921,7 @@ export class BrandDatabase {
 
       // Restore from snapshot
       const updateResult = await client.query<DiscoveredBrand>(
-        `UPDATE discovered_brands SET
+        `UPDATE brands SET
           canonical_domain = $2,
           house_domain = $3,
           brand_name = $4,

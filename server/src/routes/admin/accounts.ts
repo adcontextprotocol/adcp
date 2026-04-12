@@ -281,7 +281,7 @@ export function setupAccountRoutes(
             WHERE o.is_personal = false
               AND o.email_domain IS NOT NULL
               AND NOT EXISTS (
-                SELECT 1 FROM discovered_brands db
+                SELECT 1 FROM brands db
                 WHERE db.domain = o.email_domain
               )
               AND NOT EXISTS (
@@ -335,7 +335,7 @@ export function setupAccountRoutes(
             p.name as parent_name,
             p.email_domain as parent_domain,
             p.workos_organization_id as parent_org_id,
-            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain AND child.email_domain != db_child.house_domain) as subsidiary_count,
+            (SELECT COUNT(*) FROM organizations child JOIN brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain AND child.email_domain != db_child.house_domain) as subsidiary_count,
             (db_parent.domain IS NOT NULL) as brand_mapped,
             db_parent.brand_name as brand_registry_name,
             db_parent.keller_type as brand_keller_type,
@@ -344,7 +344,7 @@ export function setupAccountRoutes(
           FROM organizations o
           LEFT JOIN LATERAL (
             SELECT db.domain, db.brand_name, db.keller_type, db.house_domain, db.source_type
-            FROM discovered_brands db
+            FROM brands db
             WHERE db.domain = o.email_domain
                OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             ORDER BY (db.domain = o.email_domain) DESC
@@ -628,7 +628,7 @@ export function setupAccountRoutes(
                 SELECT o.workos_organization_id, o.name, o.email_domain, o.subscription_status,
                        o.subscription_product_name
                 FROM organizations o
-                JOIN discovered_brands db ON o.email_domain = db.domain
+                JOIN brands db ON o.email_domain = db.domain
                 WHERE db.house_domain = $1
                   AND o.workos_organization_id != $2
                 ORDER BY o.name
@@ -665,8 +665,8 @@ export function setupAccountRoutes(
           const hierarchyMatches = await pool.query(`
             SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
                    'brand_hierarchy' AS match_source, db2.house_domain AS match_domain
-            FROM discovered_brands db1
-            JOIN discovered_brands db2 ON db2.house_domain = db1.house_domain
+            FROM brands db1
+            JOIN brands db2 ON db2.house_domain = db1.house_domain
             JOIN organizations o ON o.email_domain = db2.domain
             WHERE db1.domain = $1
               AND db1.house_domain IS NOT NULL
@@ -676,7 +676,7 @@ export function setupAccountRoutes(
             -- Reverse: this org is the house and sub-brands belong to other orgs
             SELECT DISTINCT o.workos_organization_id AS org_id, o.name, o.subscription_status,
                    'brand_hierarchy' AS match_source, db.house_domain AS match_domain
-            FROM discovered_brands db
+            FROM brands db
             JOIN organizations o ON o.email_domain = db.domain
             WHERE db.house_domain = $1
               AND o.workos_organization_id != $2
@@ -960,15 +960,15 @@ export function setupAccountRoutes(
         LEFT JOIN LATERAL (
           SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
                  db.keller_type as brand_keller_type, db.source_type as brand_source
-          FROM discovered_brands db
+          FROM brands db
           WHERE db.domain = o.email_domain
           UNION ALL
           SELECT db.domain, db.house_domain, db.brand_name as brand_registry_name,
                  db.keller_type as brand_keller_type, db.source_type as brand_source
           FROM brand_domain_aliases bda
-          JOIN discovered_brands db ON db.domain = bda.brand_domain
+          JOIN brands db ON db.domain = bda.brand_domain
           WHERE bda.alias_domain = o.email_domain
-            AND NOT EXISTS (SELECT 1 FROM discovered_brands d2 WHERE d2.domain = o.email_domain)
+            AND NOT EXISTS (SELECT 1 FROM brands d2 WHERE d2.domain = o.email_domain)
           LIMIT 1
         ) db_hier ON true
         LEFT JOIN LATERAL (
@@ -1471,7 +1471,7 @@ export function setupAccountRoutes(
                 `
             SELECT db.house_domain, COUNT(*) as count
             FROM organizations child
-            JOIN discovered_brands db ON child.email_domain = db.domain
+            JOIN brands db ON child.email_domain = db.domain
             WHERE db.house_domain = ANY($1)
               AND child.email_domain != db.house_domain
             GROUP BY db.house_domain

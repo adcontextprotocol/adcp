@@ -207,13 +207,13 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
 
         UNION ALL
 
-        -- Walk up: join through discovered_brands.house_domain
+        -- Walk up: join through brands.house_domain
         SELECT parent_o.workos_organization_id, parent_o.email_domain, parent_o.name,
                parent_o.subscription_status, parent_o.subscription_canceled_at,
                parent_o.membership_tier, oc.depth + 1,
                oc.visited || parent_o.email_domain
         FROM org_chain oc
-        JOIN discovered_brands db ON db.domain = oc.email_domain
+        JOIN brands db ON db.domain = oc.email_domain
         JOIN organizations parent_o ON parent_o.email_domain = db.house_domain
         WHERE db.house_domain IS NOT NULL
           AND oc.depth < 5
