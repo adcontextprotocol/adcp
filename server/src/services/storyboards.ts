@@ -13,7 +13,6 @@ import YAML from 'yaml';
 import {
   loadBundledStoryboards,
   getStoryboardById,
-  listStoryboards as clientListStoryboards,
   extractScenariosFromStoryboard,
 } from '@adcp/client/testing';
 import type { Storyboard } from '@adcp/client/testing';
