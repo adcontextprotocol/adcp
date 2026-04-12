@@ -255,7 +255,14 @@ Broadcast TV measurement works differently from digital. Measurement data is not
 
 Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against. Note that the measurement vendor (VideoAmp, Nielsen, Comscore) adds processing time on top of the accumulation period — C7 raw data accumulates over 7 days, but vendor-certified C7 numbers may arrive ~15 days after broadcast.
 
-Broadcast sellers set `expected_delay_minutes` on their products to reflect the longest measurement pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines via `expected_availability_days`. When using webhooks, the seller sends delivery data tagged with the applicable measurement window. Buyers should expect the most recent 8 days of a flight to lack final C7 numbers.
+Broadcast sellers set `expected_delay_minutes` on their products to reflect the longest measurement pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines via `expected_availability_days`.
+
+Delivery data for products with measurement windows includes two fields on each package:
+
+- **`is_final`** — `true` when the seller considers this data closed for the reporting period. `false` when the data will be updated (wider window, more processing). Absent when the seller doesn't distinguish provisional from final.
+- **`measurement_window`** — which window this data represents (e.g., `"c3"`). References a `window_id` from the product's `measurement_windows`. Absent for standard digital reporting without windowed maturation.
+
+When a buyer receives `is_final: false` with `measurement_window: "c3"`, it means: "these are C3 numbers and they will be superseded by C7 numbers later." When `is_final: true` with `measurement_window: "c7"`, this is the data to reconcile against.
 
 For broadcast reconciliation timing and the `measurement_window` field on billing measurement terms, see [Accountability](/docs/media-buy/advanced-topics/accountability).
 

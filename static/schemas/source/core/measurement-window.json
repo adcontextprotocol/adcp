@@ -8,10 +8,9 @@
     "window_id": {
       "type": "string",
       "maxLength": 50,
-      "description": "Identifier for this measurement window. Standard values: 'live' (real-time viewers only), 'lsd' (live + same day), 'c3' (live + 3 days time-shifted), 'c7' (live + 7 days time-shifted). Sellers may define custom windows.",
+      "description": "Identifier for this measurement window. Standard values: 'live' (real-time viewers only), 'c3' (live + 3 days time-shifted), 'c7' (live + 7 days time-shifted). Sellers may define custom windows for other accumulation periods.",
       "examples": [
         "live",
-        "lsd",
         "c3",
         "c7"
       ]

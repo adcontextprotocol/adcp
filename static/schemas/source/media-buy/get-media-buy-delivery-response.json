@@ -261,6 +261,16 @@
                       "type": "boolean",
                       "description": "Whether this package is currently paused by the buyer"
                     },
+                    "is_final": {
+                      "type": "boolean",
+                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period. Absent means the seller does not distinguish provisional from final data."
+                    },
+                    "measurement_window": {
+                      "type": "string",
+                      "maxLength": 50,
+                      "description": "Which measurement window this data represents, referencing a window_id from the product's reporting_capabilities.measurement_windows. For broadcast: 'live', 'c3', 'c7'. When absent, the data is not windowed (standard digital reporting). When present with is_final: false, a later report for the same period will provide a wider window or more complete data.",
+                      "examples": ["live", "c3", "c7"]
+                    },
                     "by_catalog_item": {
                       "type": "array",
                       "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",

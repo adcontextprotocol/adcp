@@ -101,6 +101,12 @@ Broadcast formats deliberately exclude assets that exist in CTV and digital vide
 - No `overlay_html` — no interactive overlay capability
 - No `companion_image` — no companion banner slot
 
+### Third-party tracker support
+
+Whether a creative format supports third-party tracking is determined by whether the format defines a tracker asset slot. Broadcast formats have no `impression_tracker` or `tracker_pixel` asset — a buyer agent inspecting the format's `assets` array can confirm this. Digital and CTV formats include optional tracker slots; broadcast formats do not.
+
+A buyer agent that requires third-party measurement (DoubleVerify viewability, IAS brand safety) should check the format's assets before assigning creatives. If no tracker slot exists, those measurement vendors cannot instrument the creative. Measurement for broadcast comes from panel and set-top box data through the measurement vendor declared in `billing_measurement`, not from creative-level pixels.
+
 ## Ad-ID integration
 
 [Ad-ID](https://www.ad-id.org/) is the industry standard for identifying advertising assets. It replaced ISCI codes and is required for broadcast buying. An Ad-ID is a 12-character alphanumeric code (4-character company prefix + 8-character unique identifier).
@@ -191,7 +197,6 @@ Broadcast measurement matures over time as time-shifted (DVR) viewing accumulate
 | Window | Duration | Description |
 |---|---|---|
 | `live` | 0 days | Real-time viewers only |
-| `lsd` | 0 days (same day) | Live + same-day DVR playback |
 | `c3` | 3 days | Live + 3 days of time-shifted viewing |
 | `c7` | 7 days | Live + 7 days of time-shifted viewing |
 

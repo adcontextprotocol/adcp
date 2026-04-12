@@ -1509,10 +1509,6 @@
         }
       }
     ],
-    "supported_macros": [
-      "MEDIA_BUY_ID",
-      "CREATIVE_ID"
-    ],
     "assets_required": [
       {
         "asset_id": "video_file",
@@ -1599,10 +1595,6 @@
         }
       }
     ],
-    "supported_macros": [
-      "MEDIA_BUY_ID",
-      "CREATIVE_ID"
-    ],
     "assets_required": [
       {
         "asset_id": "video_file",
@@ -1688,10 +1680,6 @@
           "description": "Closed captions file (SRT or WebVTT)"
         }
       }
-    ],
-    "supported_macros": [
-      "MEDIA_BUY_ID",
-      "CREATIVE_ID"
     ],
     "assets_required": [
       {
