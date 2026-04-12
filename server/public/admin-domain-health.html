@@ -439,11 +439,16 @@
 
           <!-- Domain Sync Issues -->
           <div style="padding: var(--space-5) 0; border-bottom: 1px solid var(--color-border);">
-            <div class="review-subsection-title">
-              Domain Sync Issues
-              <span class="section-badge neutral" id="syncBadge">0</span>
+            <div style="display: flex; align-items: center; gap: var(--space-4);">
+              <div style="flex: 1;">
+                <div class="review-subsection-title">
+                  Domain Sync Issues
+                  <span class="section-badge neutral" id="syncBadge">0</span>
+                </div>
+                <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with email_domain set but not in the organization_domains table.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="syncAllDomainsBtn" style="display: none;">Sync All</button>
             </div>
-            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with email_domain set but not in the organization_domains table.</p>
             <div id="domainSyncContent"></div>
           </div>
 
@@ -1155,9 +1160,14 @@
 
       // Domain Sync Issues
       const syncContent = document.getElementById('domainSyncContent');
+      const syncAllBtn = document.getElementById('syncAllDomainsBtn');
       if (syncCount === 0) {
         syncContent.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No sync issues found.</div>';
+        syncAllBtn.style.display = 'none';
       } else {
+        syncAllBtn.style.display = 'block';
+        syncAllBtn.textContent = `Sync All (${syncCount})`;
+        syncAllBtn.onclick = () => syncAllDomains(syncAllBtn);
         syncContent.innerHTML = `
           <table class="issue-table">
             <thead>
@@ -1554,6 +1564,44 @@
       linkAllBtn.classList.add('btn-success');
       linkAllBtn.textContent = `Linked ${completed} domains`;
       setTimeout(() => { loadDomainHealth(); }, 1500);
+    }
+
+    async function syncAllDomains(button) {
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Syncing...';
+
+      try {
+        const response = await fetch('/api/admin/domain-health/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Sync failed');
+        }
+
+        const result = await response.json();
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        button.textContent = `Synced ${result.synced || 0} domains`;
+        setTimeout(() => { loadDomainHealth(); }, 1500);
+      } catch (error) {
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-primary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
     }
 
     // ─── Merge Modal ────────────────────────────────────────────────────────
