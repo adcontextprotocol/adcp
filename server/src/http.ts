@@ -103,7 +103,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
-import { TRAINING_AGENT_HOSTNAMES } from "./training-agent/config.js";
+import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1246,6 +1246,10 @@ export class HTTPServer {
 
     // Host-based routing: serve embedded agents at root for legacy standalone URLs
     this.app.use((req, res, next) => {
+      if (req.hostname === TRAINING_AGENT_HOSTNAME_DEPRECATED) {
+        logger.info({ path: req.path, ua: req.headers['user-agent'] }, 'deprecated testing hostname hit');
+        return res.redirect(301, 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent');
+      }
       if (TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return trainingAgentRouter(req, res, next);
       }
