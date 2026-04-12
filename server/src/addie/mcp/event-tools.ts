@@ -351,9 +351,79 @@ function formatTime(date: Date, timezone = 'America/New_York'): string {
 }
 
 /**
- * Event tool definitions
+ * Read-only event tools available to all authenticated users.
+ * These let any member check their registrations and browse upcoming events.
  */
-export const EVENT_TOOLS: AddieTool[] = [
+export const EVENT_READONLY_TOOLS: AddieTool[] = [
+  {
+    name: 'list_events',
+    description: `List AAO events personalized for the user. Shows:
+- Events the user is already registered for
+- Events in regional chapters they're a member of
+- Events at industry gatherings they've indicated interest in (CES, Cannes Lions, etc.)
+- Major global summits (open to all members)
+
+Does NOT include virtual webinars (those are educational content).
+
+When asked about past events, set include_past=true.
+When asked about upcoming events or what's happening soon, use the defaults.
+
+If the user isn't in any regional chapters or hasn't indicated interest in any industry events,
+the response will suggest they share their location or join industry gathering groups.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_type: {
+          type: 'string',
+          enum: ['summit', 'meetup', 'workshop', 'conference', 'other'],
+          description: 'Filter by event type (webinar excluded)',
+        },
+        include_past: {
+          type: 'boolean',
+          description: 'Include past/completed events (default: false, only shows upcoming)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of events to return (default: 10)',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_event_details',
+    description: `Get details about a specific event including registration count and waitlist. Use this when someone asks about a specific event.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug (URL identifier) or event ID',
+        },
+      },
+      required: ['event_slug'],
+    },
+  },
+  {
+    name: 'register_event_interest',
+    description: `Register the current user's interest in an event. Use when someone asks to be notified about an event, added to a waitlist, or wants to express interest without formally registering.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug or ID',
+        },
+      },
+      required: ['event_slug'],
+    },
+  },
+];
+
+/**
+ * Admin/committee-lead event tools for creating and managing events.
+ * Gated behind canCreateEvents() permission check.
+ */
+export const EVENT_ADMIN_TOOLS: AddieTool[] = [
   {
     name: 'create_event',
     description: `Create a new AAO event. Use this when someone asks to create a meetup, webinar, summit, or workshop.
@@ -436,54 +506,6 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
     },
   },
   {
-    name: 'list_events',
-    description: `List AAO events personalized for the user. Shows:
-- Events the user is already registered for
-- Events in regional chapters they're a member of
-- Events at industry gatherings they've indicated interest in (CES, Cannes Lions, etc.)
-- Major global summits (open to all members)
-
-Does NOT include virtual webinars (those are educational content).
-
-When asked about past events, set include_past=true.
-When asked about upcoming events or what's happening soon, use the defaults.
-
-If the user isn't in any regional chapters or hasn't indicated interest in any industry events,
-the response will suggest they share their location or join industry gathering groups.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        event_type: {
-          type: 'string',
-          enum: ['summit', 'meetup', 'workshop', 'conference', 'other'],
-          description: 'Filter by event type (webinar excluded)',
-        },
-        include_past: {
-          type: 'boolean',
-          description: 'Include past/completed events (default: false, only shows upcoming)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of events to return (default: 10)',
-        },
-      },
-    },
-  },
-  {
-    name: 'get_event_details',
-    description: `Get details about a specific event including registration count and waitlist. Use this when someone asks about a specific event.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        event_slug: {
-          type: 'string',
-          description: 'Event slug (URL identifier) or event ID',
-        },
-      },
-      required: ['event_slug'],
-    },
-  },
-  {
     name: 'manage_event_registrations',
     description: `Manage event registrations - view registrations, approve waitlisted attendees, or export attendee list.`,
     input_schema: {
@@ -554,20 +576,6 @@ the response will suggest they share their location or join industry gathering g
     },
   },
   {
-    name: 'register_event_interest',
-    description: `Register the current user's interest in an event. Use when someone asks to be notified about an event, added to a waitlist, or wants to express interest without formally registering.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        event_slug: {
-          type: 'string',
-          description: 'Event slug or ID',
-        },
-      },
-      required: ['event_slug'],
-    },
-  },
-  {
     name: 'check_person_event_status',
     description: `Look up a specific person's status at an event. Use when someone asks "Is [person] invited to [event]?", "Did [person] attend [event]?", "What's [person]'s RSVP status?", etc.
 
@@ -620,6 +628,11 @@ The invitation is recorded immediately; the outreach message is a draft for the 
     },
   },
 ];
+
+/**
+ * All event tools combined (for backward compatibility).
+ */
+export const EVENT_TOOLS: AddieTool[] = [...EVENT_READONLY_TOOLS, ...EVENT_ADMIN_TOOLS];
 
 /**
  * Event tool handler implementations
@@ -907,6 +920,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
+    // Non-admin users can only see published/completed events
+    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
+    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
     const registrations = await eventsDb.getEventRegistrations(event.id);
     const registered = registrations.filter(r => r.registration_status === 'registered').length;
     const waitlisted = registrations.filter(r => r.registration_status === 'waitlisted').length;
@@ -1162,6 +1181,12 @@ export function createEventToolHandlers(
       event = await eventsDb.getEventById(eventSlug);
     }
     if (!event) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
+    // Non-admin users can only register interest in published events
+    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
+    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
