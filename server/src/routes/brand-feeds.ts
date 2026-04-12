@@ -10,7 +10,8 @@ import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { fetchFeed, detectFeedType, slugify } from '../services/collection-feed-sync.js';
+import { validateFetchUrl } from '../utils/url-security.js';
+import { fetchFeed, detectFeedType, slugify, suggestProduct } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
 
 const logger = createLogger('brand-feeds');
@@ -22,11 +23,36 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   const router = Router();
   const { brandDb } = config;
 
-  // Helper: get brand and validate ownership
+  // Helper: get brand and validate the user's org owns it
   async function getBrandForEdit(domain: string, userId: string) {
     const brand = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!brand) return { error: 'Brand not found', status: 404 };
     if (brand.source_type === 'brand_json') return { error: 'Cannot edit self-hosted brand', status: 409 };
+
+    // Verify the user's org owns this brand (via primary_brand_domain or organization_domains)
+    const userOrg = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [userId]
+    );
+    const orgId = userOrg.rows[0]?.primary_organization_id;
+    if (orgId) {
+      const orgDomains = await query<{ domain: string }>(
+        'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      const memberProfile = await query<{ primary_brand_domain: string | null }>(
+        'SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      const ownedDomains = new Set([
+        ...orgDomains.rows.map(r => r.domain.toLowerCase()),
+        ...(memberProfile.rows[0]?.primary_brand_domain ? [memberProfile.rows[0].primary_brand_domain.toLowerCase()] : []),
+      ]);
+      if (!ownedDomains.has(domain.toLowerCase())) {
+        return { error: 'You do not own this brand domain', status: 403 };
+      }
+    }
+
     return { brand };
   }
 
@@ -39,9 +65,16 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const { url } = req.body;
       if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
-      const result = getBrandForEdit(domain, req.user!.id);
-      if ('error' in (await result)) { const r = await result; return res.status(r.status!).json({ error: r.error }); }
-      const { brand } = await result;
+      // SSRF protection — validate URL before fetching
+      try {
+        await validateFetchUrl(new URL(url));
+      } catch (err) {
+        return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid feed URL' });
+      }
+
+      const check = await getBrandForEdit(domain, req.user!.id);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
+      const { brand } = check;
 
       // Fetch and parse the feed
       const { result: feedResult, feedType } = await fetchFeed(url);
@@ -57,6 +90,10 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         description: feedResult.description,
         artwork_url: feedResult.artwork_url,
         cadence: feedResult.cadence,
+        language: feedResult.language,
+        genre: feedResult.genre,
+        content_rating: feedResult.content_rating,
+        talent: feedResult.talent,
         installments: feedResult.installments,
         last_synced_at: new Date().toISOString(),
       };
@@ -77,12 +114,20 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         [JSON.stringify(manifest), domain]
       );
 
+      // Suggest a default product for this collection
+      const product_suggestion = suggestProduct(collection);
+
       return res.json({
         collection_id: collectionId,
         name: feedResult.title,
         feed_type: feedType,
         installment_count: feedResult.installments.length,
+        genre: feedResult.genre,
+        content_rating: feedResult.content_rating,
+        language: feedResult.language,
+        talent: feedResult.talent,
         collection,
+        product_suggestion,
       });
     } catch (err) {
       logger.error({ err }, 'Failed to import feed');

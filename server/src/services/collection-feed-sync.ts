@@ -33,6 +33,11 @@ export interface FeedResult {
   description?: string;
   artwork_url?: string;
   cadence?: string;
+  language?: string;
+  genre?: string[];
+  genre_taxonomy?: string;
+  content_rating?: { system: string; rating: string };
+  talent?: Array<{ name: string; role?: string }>;
   installments: Installment[];
 }
 
@@ -45,8 +50,69 @@ export interface CollectionFromFeed {
   description?: string;
   artwork_url?: string;
   cadence?: string;
+  language?: string;
+  genre?: string[];
+  genre_taxonomy?: string;
+  content_rating?: { system: string; rating: string };
+  talent?: Array<{ name: string; role?: string }>;
   installments: Installment[];
   last_synced_at: string;
+}
+
+// ─── iTunes category → IAB Content Taxonomy mapping ──────────────────
+
+const ITUNES_TO_IAB: Record<string, string> = {
+  'arts': 'Arts & Entertainment',
+  'business': 'Business',
+  'comedy': 'Arts & Entertainment',
+  'education': 'Education',
+  'fiction': 'Arts & Entertainment',
+  'government': 'News & Politics',
+  'health & fitness': 'Health & Fitness',
+  'history': 'Education',
+  'kids & family': 'Family & Parenting',
+  'leisure': 'Hobbies & Interests',
+  'music': 'Music & Audio',
+  'news': 'News & Politics',
+  'religion & spirituality': 'Religion & Spirituality',
+  'science': 'Science',
+  'society & culture': 'Society',
+  'sports': 'Sports',
+  'technology': 'Technology & Computing',
+  'true crime': 'News & Politics',
+  'tv & film': 'Arts & Entertainment',
+};
+
+function mapItunesCategories(categories: string[]): string[] {
+  const genres = new Set<string>();
+  for (const cat of categories) {
+    const mapped = ITUNES_TO_IAB[cat.toLowerCase()];
+    if (mapped) genres.add(mapped);
+  }
+  return [...genres];
+}
+
+// ─── Product template suggestion ─────────────────────────────────────
+
+export interface ProductSuggestion {
+  name: string;
+  description: string;
+  collections: Array<{ collection_id: string }>;
+  placement: string;
+  pricing_model: string;
+}
+
+export function suggestProduct(collection: CollectionFromFeed): ProductSuggestion {
+  const isAudio = collection.feed_type === 'rss' || collection.feed_type === 'spotify';
+  const isVideo = collection.feed_type === 'youtube';
+
+  return {
+    name: `${collection.name} — Run of Show`,
+    description: `Advertising across all episodes of ${collection.name}`,
+    collections: [{ collection_id: collection.collection_id }],
+    placement: isAudio ? 'mid-roll' : isVideo ? 'pre-roll' : 'run-of-show',
+    pricing_model: 'cpm',
+  };
 }
 
 // ─── Feed type detection ─────────────────────────────────────────────
@@ -87,11 +153,17 @@ export function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 }
 
+const MAX_INSTALLMENTS = 500;
+
 export async function fetchRssFeed(url: string): Promise<FeedResult> {
+  // Use safeFetch to prevent SSRF, then parse the response body
+  const { validateFetchUrl } = await import('../utils/url-security.js');
+  await validateFetchUrl(new URL(url));
+
   const feed = await rssParser.parseURL(url);
 
-  const installments: Installment[] = (feed.items || []).map((item, i) => ({
-    id: item.guid || slugify(item.title || `episode-${i}`),
+  const installments: Installment[] = (feed.items || []).slice(0, MAX_INSTALLMENTS).map((item, i) => ({
+    id: item.guid || `${slugify(item.title || 'episode')}-${i}`,
     name: item.title || `Episode ${i + 1}`,
     description: item.contentSnippet?.slice(0, 500),
     published_at: item.isoDate || item.pubDate || undefined,
@@ -101,10 +173,31 @@ export async function fetchRssFeed(url: string): Promise<FeedResult> {
     episode_number: (item.itunes as Record<string, string>)?.episode ? parseInt((item.itunes as Record<string, string>).episode) : undefined,
   }));
 
+  // Extract rich metadata from iTunes/podcast fields
+  const itunesMeta = feed.itunes as Record<string, unknown> | undefined;
+  const itunesCategories = Array.isArray(itunesMeta?.categories)
+    ? (itunesMeta.categories as string[])
+    : typeof itunesMeta?.category === 'string' ? [itunesMeta.category] : [];
+
+  const explicitFlag = (itunesMeta?.explicit as string)?.toLowerCase();
+  const contentRating = explicitFlag
+    ? { system: 'podcast' as const, rating: explicitFlag === 'yes' || explicitFlag === 'true' || explicitFlag === 'explicit' ? 'explicit' : 'clean' }
+    : undefined;
+
+  const author = itunesMeta?.author as string || feed.creator || undefined;
+  const talent = author ? [{ name: author, role: 'host' }] : undefined;
+
+  const language = feed.language || undefined;
+  const genre = itunesCategories.length > 0 ? mapItunesCategories(itunesCategories) : undefined;
+
   return {
     title: feed.title || 'Untitled Feed',
     description: feed.description?.slice(0, 1000),
-    artwork_url: feed.image?.url || (feed.itunes as Record<string, string>)?.image,
+    artwork_url: feed.image?.url || (itunesMeta?.image as string),
+    language,
+    genre: genre?.length ? genre : undefined,
+    content_rating: contentRating,
+    talent,
     installments,
   };
 }
@@ -139,6 +232,7 @@ export async function fetchYouTubeChannel(url: string): Promise<FeedResult> {
     const searchResp = await fetch(
       `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&forHandle=${channelRef.slice(1)}&key=${apiKey}`
     );
+    if (!searchResp.ok) throw new Error(`YouTube API error: ${searchResp.status} ${searchResp.statusText}`);
     const searchData = await searchResp.json() as { items?: Array<{ id: string }> };
     if (!searchData.items?.length) throw new Error(`YouTube channel not found: ${channelRef}`);
     channelId = searchData.items[0].id;
@@ -148,6 +242,7 @@ export async function fetchYouTubeChannel(url: string): Promise<FeedResult> {
   const channelResp = await fetch(
     `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&id=${channelId}&key=${apiKey}`
   );
+  if (!channelResp.ok) throw new Error(`YouTube API error: ${channelResp.status} ${channelResp.statusText}`);
   const channelData = await channelResp.json() as {
     items?: Array<{
       snippet: { title: string; description: string; thumbnails: Record<string, { url: string }> };
@@ -324,6 +419,9 @@ export async function fetchFeed(url: string): Promise<{ result: FeedResult; feed
  * Sync all brand collections that have feed_url set.
  * Called by the periodic job scheduler.
  */
+const SYNC_CONCURRENCY = 3;
+const SYNC_DELAY_MS = 500;
+
 export async function syncAllFeeds(brandDb: BrandDatabase): Promise<{ synced: number; errors: number }> {
   // Find all brands with collections that have feed_url
   const result = await query<{ domain: string; brand_manifest: Record<string, unknown> }>(
@@ -336,50 +434,68 @@ export async function syncAllFeeds(brandDb: BrandDatabase): Promise<{ synced: nu
   let synced = 0;
   let errors = 0;
 
-  for (const row of result.rows) {
-    const manifest = row.brand_manifest || {};
-    const collections = Array.isArray(manifest.collections) ? manifest.collections as CollectionFromFeed[] : [];
-    const feedCollections = collections.filter(c => c.feed_url);
-
-    if (feedCollections.length === 0) continue;
-
-    let changed = false;
-    for (const collection of feedCollections) {
-      try {
-        const { result: feedResult } = await fetchFeed(collection.feed_url);
-
-        // Merge installments — update existing by ID, append new
-        const existingById = new Map((collection.installments || []).map(i => [i.id, i]));
-        for (const installment of feedResult.installments) {
-          existingById.set(installment.id, { ...existingById.get(installment.id), ...installment });
-        }
-        collection.installments = Array.from(existingById.values())
-          .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
-
-        collection.last_synced_at = new Date().toISOString();
-        if (feedResult.artwork_url && !collection.artwork_url) {
-          collection.artwork_url = feedResult.artwork_url;
-        }
-        changed = true;
-        synced++;
-      } catch (err) {
-        logger.warn({ domain: row.domain, feed_url: collection.feed_url, err: err instanceof Error ? err.message : err }, 'Feed sync failed');
-        errors++;
-      }
+  // Process brands in batches to avoid overwhelming external APIs
+  for (let i = 0; i < result.rows.length; i += SYNC_CONCURRENCY) {
+    const batch = result.rows.slice(i, i + SYNC_CONCURRENCY);
+    await Promise.all(batch.map(row => syncBrandFeeds(row).then(r => {
+      synced += r.synced;
+      errors += r.errors;
+    })));
+    // Delay between batches to respect rate limits
+    if (i + SYNC_CONCURRENCY < result.rows.length) {
+      await new Promise(r => setTimeout(r, SYNC_DELAY_MS));
     }
+  }
 
-    if (changed) {
-      // Write updated collections back to manifest
-      const updatedManifest = { ...manifest, collections };
-      try {
-        await query(
-          'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
-          [JSON.stringify(updatedManifest), row.domain]
-        );
-      } catch (err) {
-        logger.error({ domain: row.domain, err: err instanceof Error ? err.message : err }, 'Failed to write synced collections');
-        errors++;
+  return { synced, errors };
+}
+
+async function syncBrandFeeds(row: { domain: string; brand_manifest: Record<string, unknown> }): Promise<{ synced: number; errors: number }> {
+  let synced = 0;
+  let errors = 0;
+
+  const manifest = row.brand_manifest || {};
+  const collections = Array.isArray(manifest.collections) ? manifest.collections as CollectionFromFeed[] : [];
+  const feedCollections = collections.filter(c => c.feed_url);
+
+  if (feedCollections.length === 0) return { synced, errors };
+
+  let changed = false;
+  for (const collection of feedCollections) {
+    try {
+      const { result: feedResult } = await fetchFeed(collection.feed_url);
+
+      // Merge installments — update existing by ID, append new, cap total
+      const existingById = new Map((collection.installments || []).map(i => [i.id, i]));
+      for (const installment of feedResult.installments) {
+        existingById.set(installment.id, { ...existingById.get(installment.id), ...installment });
       }
+      collection.installments = Array.from(existingById.values())
+        .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
+        .slice(0, MAX_INSTALLMENTS);
+
+      collection.last_synced_at = new Date().toISOString();
+      if (feedResult.artwork_url && !collection.artwork_url) {
+        collection.artwork_url = feedResult.artwork_url;
+      }
+      changed = true;
+      synced++;
+    } catch (err) {
+      logger.warn({ domain: row.domain, feed_url: collection.feed_url, err: err instanceof Error ? err.message : err }, 'Feed sync failed');
+      errors++;
+    }
+  }
+
+  if (changed) {
+    const updatedManifest = { ...manifest, collections };
+    try {
+      await query(
+        'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
+        [JSON.stringify(updatedManifest), row.domain]
+      );
+    } catch (err) {
+      logger.error({ domain: row.domain, err: err instanceof Error ? err.message : err }, 'Failed to write synced collections');
+      errors++;
     }
   }
 
