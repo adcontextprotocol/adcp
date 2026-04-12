@@ -48,6 +48,7 @@ import {
 import type { BrandManager } from "../brand-manager.js";
 import type { BrandDatabase } from "../db/brand-db.js";
 import type { PropertyDatabase } from "../db/property-db.js";
+import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
@@ -1261,6 +1262,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     requireAuth: authMiddleware,
   } = config;
 
+  const catalogDb = new CatalogDatabase();
+
+  // Source mapping: catalog sources → legacy source labels for API consumers
+  const CATALOG_SOURCE_MAP: Record<string, string> = {
+    authoritative: 'adagents_json',
+    contributed: 'community',
+    enriched: 'enriched',
+  };
+
   // ── API Discovery ─────────────────────────────────────────────
 
   router.get("/", (_req, res) => {
@@ -1645,13 +1655,34 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const limit = Math.min(parseInt(req.query.limit as string) || 100, 5000);
       const offset = parseInt(req.query.offset as string) || 0;
       const search = req.query.search as string;
+      const source = req.query.source as string | undefined;
 
-      const [properties, stats] = await Promise.all([
-        propertyDb.getAllPropertiesForRegistry({ search, limit, offset }),
-        propertyDb.getPropertyRegistryStats(search),
+      // Map legacy source filter to catalog source
+      const catalogSource = source === 'adagents_json' ? 'authoritative'
+        : source === 'community' ? 'contributed'
+        : source === 'enriched' ? 'enriched'
+        : undefined;
+
+      const [properties, catalogStats] = await Promise.all([
+        catalogDb.getPropertiesForRegistry({ search, limit, offset, source: catalogSource }),
+        catalogDb.getRegistryStats(search),
       ]);
 
-      return res.json({ properties, stats });
+      // Map catalog stats to legacy labels
+      const stats = {
+        total: catalogStats.total,
+        community: (catalogStats.contributed || 0) + (catalogStats.enriched || 0),
+        adagents_json: catalogStats.authoritative || 0,
+        hosted: 0,
+      };
+
+      return res.json({
+        properties: properties.map(p => ({
+          ...p,
+          source: CATALOG_SOURCE_MAP[p.source] || p.source,
+        })),
+        stats,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to list properties");
       return res.status(500).json({ error: "Failed to list properties" });
@@ -2122,7 +2153,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     try {
       const [brands, properties, members] = await Promise.all([
         brandDb.getAllBrandsForRegistry({ search: q, limit: 5 }),
-        propertyDb.getAllPropertiesForRegistry({ search: q, limit: 5 }),
+        catalogDb.getPropertiesForRegistry({ search: q, limit: 5 }),
         new MemberDatabase().getPublicProfiles({}),
       ]);
 
