@@ -2351,6 +2351,9 @@
                       ${escapeHtml(o.subscription_status || 'prospect')}
                     </span>
                   </span>
+                  <button class="btn btn-sm btn-secondary" onclick="openMergeModal('${escapeHtml(accountData.workos_organization_id)}', '${escapeHtml(o.org_id)}')">
+                    Merge
+                  </button>
                 </li>
               `).join('')}
             </ul>

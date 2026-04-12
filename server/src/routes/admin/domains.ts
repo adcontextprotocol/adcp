@@ -2012,6 +2012,8 @@ Respond with ONLY a JSON array, one entry per cluster:
             FROM org_domains
             WHERE domain IS NOT NULL
               AND LOWER(SUBSTRING(domain FROM '([^.]+\\.[^.]+)$')) NOT IN (${freeEmailPlaceholders})
+              -- Exclude country-code TLDs that produce false matches
+              AND SUBSTRING(domain FROM '([^.]+\\.[^.]+)$') !~ '^(co|com|net|org|ac|gov|edu)\\.[a-z]{2}$'
           ),
           root_groups AS (
             SELECT
@@ -2056,15 +2058,19 @@ Respond with ONLY a JSON array, one entry per cluster:
             relatedDomainsRows.push(row);
           }
         }
-        // Only include heuristic matches for domains not already covered by brand registry
+        // Only include heuristic matches for domains not already covered by brand registry or domain conflicts
         const brandOrgIds = new Set<string>();
         for (const row of [...brandHierarchyResult.rows, ...brandAliasResult.rows]) {
           for (const org of row.organizations) {
             brandOrgIds.add(org.org_id);
           }
         }
+        // Domains already surfaced in domain_conflicts — don't duplicate them in related_domains
+        const conflictDomains = new Set<string>(
+          conflictResult.rows.map((r: { email_domain: string }) => r.email_domain.toLowerCase())
+        );
         for (const row of rootHeuristicResult.rows) {
-          if (!seenGroupKeys.has(row.group_key)) {
+          if (!seenGroupKeys.has(row.group_key) && !conflictDomains.has(row.group_key.toLowerCase())) {
             // Skip heuristic groups where all orgs are already covered by brand matches
             const hasUncoveredOrg = row.organizations.some(
               (org: { org_id: string }) => !brandOrgIds.has(org.org_id)
@@ -2111,11 +2117,11 @@ Respond with ONLY a JSON array, one entry per cluster:
                 OR o1.normalized_name LIKE '%' || o2.normalized_name
                 OR o2.normalized_name LIKE o1.normalized_name || '%'
                 OR o2.normalized_name LIKE '%' || o1.normalized_name
-                -- Or high trigram similarity (0.4+ catches typos and variations)
-                OR similarity(o1.normalized_name, o2.normalized_name) >= 0.4
+                -- Trigram similarity: require 0.6+ to avoid noise on short names
+                OR similarity(o1.normalized_name, o2.normalized_name) >= 0.6
               )
-            WHERE LENGTH(o1.normalized_name) >= 3
-              AND LENGTH(o2.normalized_name) >= 3
+            WHERE LENGTH(o1.normalized_name) >= 5
+              AND LENGTH(o2.normalized_name) >= 5
             GROUP BY o1.normalized_name
             HAVING COUNT(DISTINCT o1.workos_organization_id) > 1
           )
@@ -2335,10 +2341,7 @@ Respond with ONLY a JSON array, one entry per cluster:
               AND o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [org_id];
@@ -2352,10 +2355,7 @@ Respond with ONLY a JSON array, one entry per cluster:
             WHERE o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [];
