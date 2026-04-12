@@ -1184,6 +1184,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
+    // Non-admin users can only register interest in published events
+    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
+    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
     const email = memberContext?.workos_user?.email ?? memberContext?.slack_user?.email ?? null;
     if (!email) {
       return `I don't have your email address on file. Could you share it so I can add you to the interest list?`;
