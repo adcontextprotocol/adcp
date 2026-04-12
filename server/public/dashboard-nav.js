@@ -76,6 +76,7 @@
           { href: '/organization', label: 'Overview', icon: '📊' },
           { href: '/dashboard/team', label: 'Team', icon: '👥' },
           { href: '/dashboard/agents', label: 'Agents', icon: '🤖' },
+          { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
         ]
       },
       {
@@ -604,7 +605,7 @@
 
       const itemsHTML = section.items.map(item => {
         // Hide Team, Directory listing, and Agents for personal workspaces
-        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents')) {
+        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents' || item.label === 'API keys')) {
           return '';
         }
 
