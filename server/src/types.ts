@@ -480,6 +480,13 @@ export interface DiscoveredBrand {
   discovered_at: Date;
   last_validated?: Date;
   expires_at?: Date;
+  // Merged from hosted_brands
+  workos_organization_id?: string;
+  created_by_user_id?: string;
+  created_by_email?: string;
+  domain_verified?: boolean;
+  verification_token?: string;
+  is_public?: boolean;
 }
 
 /**

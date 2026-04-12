@@ -1003,31 +1003,22 @@ export class HTTPServer {
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
     this.app.use('/api/registry', catalogApiRouter);
 
-    // Public brand.json hosting — stable URL for authoritative_location pointer files.
+    // Public brand.json serving — single source of truth from the brands table.
     // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
-    // Serves what's in the brand tables directly. Agents are managed via the member dashboard
-    // "publish to brand.json" flow, which writes them into the brand manifest.
     this.app.get('/brands/:domain/brand.json', async (req, res) => {
       const domain = req.params.domain.toLowerCase();
       try {
-        const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-        if (hosted && hosted.is_public) {
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.json(hosted.brand_json);
-        }
-        const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
-        if (discovered) {
-          const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
-          const brandJson: Record<string, unknown> = {
-            name: discovered.brand_name || domain,
-            ...manifest,
-          };
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.json(brandJson);
-        }
-        return res.status(404).json({ error: 'Brand not found' });
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const brandJson: Record<string, unknown> = {
+          name: brand.brand_name || domain,
+          ...manifest,
+        };
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(brandJson);
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
         return res.status(500).json({ error: 'Failed to retrieve brand' });
@@ -7636,14 +7627,13 @@ Disallow: /api/admin/
         // Resolve brand data and credentials in parallel for all profiles
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
-            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-            if (hosted) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-            } else {
-              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered?.brand_manifest) {
-                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-              }
+            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (brand?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(
+                profile.primary_brand_domain,
+                brand.brand_manifest as Record<string, unknown>,
+                brand.domain_verified ?? false
+              );
             }
           }
           // Add earned credentials for org members
@@ -7671,14 +7661,13 @@ Disallow: /api/admin/
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
-            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-            if (hosted) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-            } else {
-              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered?.brand_manifest) {
-                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-              }
+            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (brand?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(
+                profile.primary_brand_domain,
+                brand.brand_manifest as Record<string, unknown>,
+                brand.domain_verified ?? false
+              );
             }
           }
         }));
@@ -7780,14 +7769,13 @@ Disallow: /api/admin/
 
         // Resolve brand data from registry if linked
         if (profile.primary_brand_domain) {
-          const hostedBrand = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-          if (hostedBrand) {
-            profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hostedBrand.brand_json as Record<string, unknown>, hostedBrand.domain_verified);
-          } else {
-            const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-            if (discovered?.brand_manifest) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-            }
+          const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+          if (brand?.brand_manifest) {
+            profile.resolved_brand = resolveBrandFromJson(
+              profile.primary_brand_domain,
+              brand.brand_manifest as Record<string, unknown>,
+              brand.domain_verified ?? false
+            );
           }
         }
 
