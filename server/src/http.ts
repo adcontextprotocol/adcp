@@ -1018,11 +1018,11 @@ export class HTTPServer {
         }
         const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (discovered) {
-          const brandJson: Record<string, unknown> = { name: discovered.brand_name || domain };
-          const manifest = discovered.brand_manifest as Record<string, unknown> | null;
-          if (manifest?.logos) brandJson.logos = manifest.logos;
-          if (manifest?.colors) brandJson.colors = manifest.colors;
-          if (manifest?.agents) brandJson.agents = manifest.agents;
+          const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
+          const brandJson: Record<string, unknown> = {
+            name: discovered.brand_name || domain,
+            ...manifest,
+          };
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'public, max-age=300');
           return res.json(brandJson);
