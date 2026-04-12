@@ -1226,11 +1226,22 @@
             </div>
           </div>
 
-          <!-- Properties -->
+          <!-- Properties & Collections -->
           <details id="edit-section-properties" class="edit-section-group">
             <summary>Properties</summary>
             <div id="edit-properties-container"></div>
             <button type="button" onclick="addPropertyField();editFormDirty=true;updateSectionCounts();" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Property</button>
+
+            <div style="margin-top:var(--space-4);border-top:var(--border-1) solid var(--color-border-light);padding-top:var(--space-3);">
+              <div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Import from feed</div>
+              <p class="edit-section-hint" style="margin-bottom:var(--space-2);">Paste a podcast RSS feed, YouTube channel, or Spotify show URL to import episodes as a collection.</p>
+              <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-2);">
+                <input type="url" id="feed-url-input" class="edit-form-input" placeholder="Paste RSS, YouTube, or Spotify URL" style="flex:1;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="importFeed()" id="import-feed-btn">Import</button>
+              </div>
+              <div id="feed-import-status" style="font-size:var(--text-sm);margin-bottom:var(--space-2);"></div>
+              <div id="feeds-list"></div>
+            </div>
           </details>
 
           <!-- Agents managed via member dashboard -->
@@ -1284,17 +1295,7 @@
             </div>
           </details>
 
-          <!-- Feed Import -->
-          <details id="edit-section-feeds" class="edit-section-group">
-            <summary>Content Feeds</summary>
-            <p class="edit-section-hint">Import your podcast, YouTube channel, or Spotify show. We'll pull in all episodes and keep them synced.</p>
-            <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);">
-              <input type="url" id="feed-url-input" class="edit-form-input" placeholder="Paste RSS feed, YouTube channel, or Spotify show URL" style="flex:1;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="importFeed()" id="import-feed-btn">Import</button>
-            </div>
-            <div id="feed-import-status" style="font-size:var(--text-sm);margin-bottom:var(--space-2);"></div>
-            <div id="feeds-list"></div>
-          </details>
+          <!-- Feed import is now inside properties section -->
 
           <!-- Hidden edit summary - auto-generated on save -->
           <input type="hidden" id="edit-summary">

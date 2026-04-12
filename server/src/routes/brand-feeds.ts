@@ -35,22 +35,24 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       [userId]
     );
     const orgId = userOrg.rows[0]?.primary_organization_id;
-    if (orgId) {
-      const orgDomains = await query<{ domain: string }>(
-        'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
-        [orgId]
-      );
-      const memberProfile = await query<{ primary_brand_domain: string | null }>(
-        'SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1',
-        [orgId]
-      );
-      const ownedDomains = new Set([
-        ...orgDomains.rows.map(r => r.domain.toLowerCase()),
-        ...(memberProfile.rows[0]?.primary_brand_domain ? [memberProfile.rows[0].primary_brand_domain.toLowerCase()] : []),
-      ]);
-      if (!ownedDomains.has(domain.toLowerCase())) {
-        return { error: 'You do not own this brand domain', status: 403 };
-      }
+    if (!orgId) {
+      return { error: 'No organization associated with your account', status: 403 };
+    }
+
+    const orgDomains = await query<{ domain: string }>(
+      'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
+      [orgId]
+    );
+    const memberProfile = await query<{ primary_brand_domain: string | null }>(
+      'SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1',
+      [orgId]
+    );
+    const ownedDomains = new Set([
+      ...orgDomains.rows.map(r => r.domain.toLowerCase()),
+      ...(memberProfile.rows[0]?.primary_brand_domain ? [memberProfile.rows[0].primary_brand_domain.toLowerCase()] : []),
+    ]);
+    if (!ownedDomains.has(domain.toLowerCase())) {
+      return { error: 'You do not own this brand domain', status: 403 };
     }
 
     return { brand };
@@ -109,6 +111,24 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       filtered.push(collection);
       manifest.collections = filtered;
 
+      // Auto-create a property for this feed (a collection IS a property you own)
+      const feedTypeToPropertyType: Record<string, string> = {
+        rss: 'podcast',
+        youtube: 'website',
+        spotify: 'podcast',
+      };
+      const propertyType = feedTypeToPropertyType[feedType] || 'website';
+      try {
+        const feedHost = new URL(url).hostname;
+        const properties = Array.isArray(manifest.properties)
+          ? manifest.properties as Array<{ identifier: string; [k: string]: unknown }>
+          : [];
+        if (!properties.some(p => p.identifier === feedHost)) {
+          properties.push({ type: propertyType, identifier: feedHost, feed_url: url });
+          manifest.properties = properties;
+        }
+      } catch { /* invalid URL — skip property creation */ }
+
       await query(
         'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
         [JSON.stringify(manifest), domain]
@@ -131,7 +151,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       });
     } catch (err) {
       logger.error({ err }, 'Failed to import feed');
-      return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to import feed' });
+      return res.status(500).json({ error: 'Failed to import feed' });
     }
   });
 
@@ -205,7 +225,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       });
     } catch (err) {
       logger.error({ err }, 'Failed to sync feed');
-      return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to sync feed' });
+      return res.status(500).json({ error: 'Failed to sync feed' });
     }
   });
 

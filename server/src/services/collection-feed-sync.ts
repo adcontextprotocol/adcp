@@ -186,11 +186,18 @@ export function slugify(text: string): string {
 const MAX_INSTALLMENTS = 500;
 
 export async function fetchRssFeed(url: string): Promise<FeedResult> {
-  // Use safeFetch to prevent SSRF, then parse the response body
-  const { validateFetchUrl } = await import('../utils/url-security.js');
-  await validateFetchUrl(new URL(url));
-
-  const feed = await rssParser.parseURL(url);
+  // Use safeFetch to prevent SSRF — validates URL AND all redirect hops
+  const { safeFetch } = await import('../utils/url-security.js');
+  const response = await safeFetch(url, {
+    headers: {
+      'User-Agent': 'AAO-FeedSync/1.0 (AgenticAdvertising.org)',
+      Accept: 'application/rss+xml, application/xml, text/xml, */*',
+    },
+  });
+  if (!response.ok) throw new Error(`Feed fetch failed: ${response.status}`);
+  const xml = await response.text();
+  if (xml.length > 10_000_000) throw new Error('Feed too large (max 10MB)');
+  const feed = await rssParser.parseString(xml);
 
   const installments: Installment[] = (feed.items || []).slice(0, MAX_INSTALLMENTS).map((item, i) => ({
     id: item.guid || `${slugify(item.title || 'episode')}-${i}`,
@@ -396,7 +403,7 @@ export async function fetchSpotifyPodcast(url: string): Promise<FeedResult> {
 
   // Fetch more episodes if available (up to 200 total)
   let nextUrl = showData.episodes.next;
-  while (nextUrl && installments.length < 200) {
+  while (nextUrl && installments.length < 200 && nextUrl.startsWith('https://api.spotify.com/')) {
     const nextResp = await fetch(nextUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
