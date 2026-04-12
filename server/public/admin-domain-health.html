@@ -1587,7 +1587,7 @@
         const result = await response.json();
         button.classList.remove('btn-primary');
         button.classList.add('btn-success');
-        button.textContent = `Synced ${result.synced || 0} domains`;
+        button.textContent = `Synced ${result.synced_count || 0} domains`;
         setTimeout(() => { loadDomainHealth(); }, 1500);
       } catch (error) {
         button.classList.remove('btn-primary');

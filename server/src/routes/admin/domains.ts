@@ -2341,10 +2341,7 @@ Respond with ONLY a JSON array, one entry per cluster:
               AND o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [org_id];
@@ -2358,10 +2355,7 @@ Respond with ONLY a JSON array, one entry per cluster:
             WHERE o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [];
