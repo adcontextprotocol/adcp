@@ -1824,10 +1824,7 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}#notifications`);
     });
-    this.app.get('/dashboard/api-keys', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#agents`);
-    });
+    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content redirect is handled in pre-static middleware block above
