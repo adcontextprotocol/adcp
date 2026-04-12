@@ -116,7 +116,8 @@
     "audio_codecs": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "enum": ["aac", "pcm", "ac3", "eac3", "mp3", "opus", "vorbis", "flac"]
       },
       "description": "Accepted audio codecs (e.g., ['aac', 'pcm', 'ac3'])"
     },
