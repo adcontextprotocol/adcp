@@ -162,6 +162,8 @@ When agreed `performance_standards` specify a vendor, creatives assigned to that
 
 For example, if the agreed terms include DoubleVerify for viewability, every creative on the package must carry DV tags so viewability can be measured.
 
+**Formats without tracker support**: Not all formats accept third-party tracking assets. Broadcast TV spots, for instance, have no tracker slot — there is no pixel to fire on a television. Buyer agents should check the format's `assets` array for tracker slots before proposing performance standards that require creative-level verification. When a format does not support trackers, measurement comes from the vendor declared in `billing_measurement` (panel data, set-top box telemetry) rather than creative-embedded pixels. See [Format definitions](/docs/creative/formats#third-party-tracker-support) for details.
+
 ### 7. Breach and Resolution
 
 When a performance standard or billing measurement variance is breached, the seller proposes a remedy from the agreed `makegood_policy`:
