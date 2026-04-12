@@ -37,7 +37,8 @@ import {
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
 import {
-  EVENT_TOOLS,
+  EVENT_READONLY_TOOLS,
+  EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
@@ -354,15 +355,22 @@ async function createUserScopedTools(
     logger.debug('Addie: Admin tools enabled for this user');
   }
 
-  // Add event tools if user can create events (admin or committee lead)
+  // Event tools: readonly for all users, admin tools gated behind canCreateEvents
+  const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
+  allTools.push(...EVENT_READONLY_TOOLS);
+  for (const tool of EVENT_READONLY_TOOLS) {
+    const handler = eventHandlers.get(tool.name);
+    if (handler) allHandlers.set(tool.name, handler);
+  }
+
   const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
   if (canCreate) {
-    const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
-    allTools.push(...EVENT_TOOLS);
-    for (const [name, handler] of eventHandlers) {
-      allHandlers.set(name, handler);
+    allTools.push(...EVENT_ADMIN_TOOLS);
+    for (const tool of EVENT_ADMIN_TOOLS) {
+      const handler = eventHandlers.get(tool.name);
+      if (handler) allHandlers.set(tool.name, handler);
     }
-    logger.debug('Addie: Event tools enabled for this user');
+    logger.debug('Addie: Event admin tools enabled for this user');
   }
 
   // Add meeting tools if user can schedule meetings (admin or committee leader)

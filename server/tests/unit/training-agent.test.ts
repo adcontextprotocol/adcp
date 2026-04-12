@@ -3921,7 +3921,7 @@ describe('get_adcp_capabilities handler', () => {
 
     const mediaBuy = result.media_buy as Record<string, unknown>;
     const portfolio = mediaBuy.portfolio as Record<string, unknown>;
-    const channels = portfolio.channels as string[];
+    const channels = portfolio.primary_channels as string[];
 
     // Channels should match what publishers actually offer
     const publisherChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
@@ -4884,5 +4884,685 @@ describe('proposal lifecycle', () => {
     const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;
     const refinedIds = refinedProposals?.map(p => p.proposal_id) || [];
     expect(refinedIds).not.toContain(firstId);
+  });
+});
+
+// ── Governance generalization ────────────────────────────────────
+
+describe('governance purchase_type and allocations', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_WITH_ALLOCATIONS = {
+    plan_id: 'plan-multi',
+    brand: { name: 'Acme' },
+    objectives: 'multi-type campaign',
+    budget: {
+      total: 200000,
+      currency: 'USD',
+      authority_level: 'agent_full',
+      allocations: {
+        media_buy: { amount: 150000 },
+        rights_license: { amount: 30000 },
+        signal_activation: { max_pct: 15 },
+      },
+    },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    countries: ['US', 'GB'],
+  };
+
+  it('approves rights_license within allocation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 20000 },
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('denies rights_license exceeding allocation amount', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 35000 },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => (f.explanation as string).includes('rights_license'))).toBe(true);
+  });
+
+  it('denies signal_activation exceeding max_pct allocation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    // 15% of $200K = $30K max; request $35K
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: { budget: 35000 },
+    });
+
+    expect(result.status).toBe('denied');
+  });
+
+  it('tracks committedByType across outcomes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    // Commit $25K to rights_license
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-multi',
+      outcome: 'completed',
+      purchase_type: 'rights_license',
+      governance_context: 'ctx_rights_1',
+      seller_response: { committed_budget: 25000 },
+    });
+
+    // Now $5K remaining in rights_license allocation — $10K should be denied
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 10000 },
+    });
+
+    expect(result.status).toBe('denied');
+
+    // But media_buy allocation ($150K) is unaffected
+    const { result: mbResult } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { total_budget: 100000 },
+    });
+
+    expect(mbResult.status).toBe('approved');
+  });
+
+  it('rejects invalid purchase_type', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'invalid_type',
+    });
+
+    expect(isError).toBe(true);
+  });
+
+  it('rejects invalid allocation keys in sync_plans', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_WITH_ALLOCATIONS,
+        budget: {
+          ...PLAN_WITH_ALLOCATIONS.budget,
+          allocations: { media_buys: { amount: 100000 } }, // typo: media_buys not media_buy
+        },
+      }],
+    });
+
+    expect(isError).toBe(true);
+  });
+});
+
+describe('governance rights payload extraction', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN = {
+    plan_id: 'plan-rights',
+    brand: { name: 'Acme' },
+    objectives: 'rights test',
+    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    countries: ['US', 'GB'],
+  };
+
+  it('extracts geo from campaign.countries and denies unauthorized market', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { countries: ['US', 'DE'] },
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'geo_compliance')).toBe(true);
+  });
+
+  it('approves when campaign.countries within plan', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { countries: ['US'] },
+      },
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('extracts flight from campaign.start_date/end_date', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { start_date: '2026-01-01', end_date: '2027-06-30' },
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'flight_compliance')).toBe(true);
+  });
+});
+
+describe('governance audit logs by governance_context', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('groups governed_actions by governance_context with purchase_type', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-audit',
+      brand: { name: 'Acme' },
+      objectives: 'audit test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Media buy check
+    const { result: mbCheck } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-audit',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { total_budget: 30000 },
+    });
+    const mbCtx = mbCheck.governance_context as string;
+
+    // Rights check
+    const { result: rCheck } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-audit',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+    });
+    const rCtx = rCheck.governance_context as string;
+
+    // Report outcomes
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-audit',
+      outcome: 'completed',
+      purchase_type: 'media_buy',
+      governance_context: mbCtx,
+      seller_response: { committed_budget: 30000 },
+    });
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-audit',
+      outcome: 'completed',
+      purchase_type: 'rights_license',
+      governance_context: rCtx,
+      seller_response: { committed_budget: 5000 },
+    });
+
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-audit'],
+    });
+
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const actions = plans[0].governed_actions as Array<Record<string, unknown>>;
+    expect(actions.length).toBe(2);
+    expect(actions.some(a => a.purchase_type === 'media_buy' && a.committed === 30000)).toBe(true);
+    expect(actions.some(a => a.purchase_type === 'rights_license' && a.committed === 5000)).toBe(true);
+  });
+
+  it('filters by governance_contexts', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-ctx-filter',
+      brand: { name: 'Acme' },
+      objectives: 'filter test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-ctx-filter',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+    });
+    const ctx = check.governance_context as string;
+
+    // Query by governance_contexts only (no plan_ids)
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      governance_contexts: [ctx],
+      include_entries: true,
+    });
+
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    expect(plans.length).toBe(1);
+    expect(plans[0].plan_id).toBe('plan-ctx-filter');
+  });
+
+  it('infers binding from field presence', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-infer',
+      brand: { name: 'Acme' },
+      objectives: 'inference test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Intent check: tool+payload, no binding field
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-infer',
+      caller: 'https://buyer.example',
+      tool: 'acquire_rights',
+      payload: { budget: 10000 },
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.binding).toBe('proposed');
+  });
+});
+
+describe('governance creative_services purchase type', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('governs creative_services end-to-end: check, report, audit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-creative',
+      brand: { name: 'Acme' },
+      objectives: 'creative test',
+      budget: {
+        total: 50000,
+        currency: 'USD',
+        authority_level: 'agent_full',
+        allocations: { creative_services: { amount: 10000 } },
+      },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Check governance for build_creative
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 5000 },
+    });
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+    expect(ctx).toBeDefined();
+
+    // Report outcome with seller_reference
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-creative',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'creative_order_001', committed_budget: 5000 },
+    });
+    expect(outcome.status).toBe('accepted');
+
+    // Check that allocation is tracked — $5K remaining, $6K should be denied
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 6000 },
+    });
+    expect(denied.status).toBe('denied');
+
+    // Audit logs show governed action with seller_reference
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-creative'],
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const actions = plans[0].governed_actions as Array<Record<string, unknown>>;
+    const creativeAction = actions.find(a => a.purchase_type === 'creative_services');
+    expect(creativeAction).toBeDefined();
+    expect(creativeAction!.committed).toBe(5000);
+    expect(creativeAction!.seller_reference).toBe('creative_order_001');
+  });
+});
+
+describe('storyboard governance sample_requests accepted by training agent', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  // Shared plan that covers all purchase types
+  const UNIVERSAL_PLAN = {
+    plan_id: 'plan_acme_summer_2026',
+    brand: { name: 'Acme Outdoor' },
+    objectives: 'storyboard governance validation',
+    budget: {
+      total: 500000,
+      currency: 'USD',
+      authority_level: 'agent_full',
+      allocations: {
+        media_buy: { amount: 300000 },
+        creative_services: { amount: 50000 },
+        rights_license: { amount: 50000 },
+        signal_activation: { amount: 100000 },
+      },
+    },
+    flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+    countries: ['US'],
+  };
+
+  async function setupPlan(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_plans', { plans: [UNIVERSAL_PLAN] });
+  }
+
+  it('media_buy_seller: check_governance with tool+payload pattern', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_preroll_q2', budget: 25000 },
+          { product_id: 'lifestyle_display_q2', budget: 15000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+    expect(result.governance_context).toBeDefined();
+  });
+
+  it('media_buy_seller: report_plan_outcome with seller_reference', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // First check to get governance_context
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = check.governance_context as string;
+
+    const { result, isError } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'media_buy',
+      outcome: 'completed',
+      seller_response: {
+        seller_reference: 'mb_acme_q2_2026',
+        committed_budget: 40000,
+        packages: [{ budget: 25000 }, { budget: 15000 }],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('accepted');
+  });
+
+  it('creative_services: check + report cycle from storyboard payloads', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // check_governance for build_creative (creative_template pattern)
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: {
+        creative_manifest: {
+          format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+          assets: [{ asset_id: 'image', asset_type: 'image', url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg' }],
+        },
+        target_format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    // report_plan_outcome (creative_template pattern)
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'built_display_300x250', committed_budget: 300 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('rights_license: check + report cycle from brand_rights storyboard', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        brand: { domain: 'acmeoutdoor.com' },
+        right_type: 'image_generation',
+        pricing_option_id: 'standard_monthly',
+        campaign: { name: 'Acme Outdoor Summer 2026', countries: ['US'], start_date: '2026-04-01', end_date: '2026-06-30' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'rights_license',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'rg_acme_summer_2026', committed_budget: 2500 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('signal_activation: check + report cycle from signal storyboards', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: {
+        signal_agent_segment_id: 'prism_high_ltv',
+        pricing_option_id: 'po_prism_flat_monthly',
+        destinations: [{ type: 'platform', platform: 'the-trade-desk', account: 'agency-123-ttd' }],
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'signal_activation',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'deploy_prism_high_ltv_ttd', committed_budget: 1000 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // Initial approval to get governance_context
+    const { result: initial } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = initial.governance_context as string;
+
+    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      phase: 'delivery',
+      governance_context: ctx,
+      delivery_metrics: {
+        reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
+        spend: 20000,
+        cumulative_spend: 20000,
+        impressions: 2500000,
+        cumulative_impressions: 2500000,
+        pacing: 'ahead',
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+  });
+
+  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // Plan with tight media_buy allocation
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'gov_acme_strict',
+        brand: { name: 'Acme' },
+        objectives: 'strict governance',
+        budget: {
+          total: 100000,
+          currency: 'USD',
+          authority_level: 'agent_full',
+          allocations: { media_buy: { amount: 10000 } },
+        },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'gov_acme_strict',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_ctv_q2', budget: 30000 },
+          { product_id: 'outdoor_video_q2', budget: 20000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('denied');
   });
 });

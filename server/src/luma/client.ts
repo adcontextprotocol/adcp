@@ -305,6 +305,30 @@ export async function getEventGuests(eventId: string): Promise<LumaGuest[]> {
 }
 
 /**
+ * Get hosts for an event.
+ * Luma hosts are separate from guests — they don't appear in getEventGuests.
+ */
+export async function getEventHosts(eventId: string): Promise<Array<{ email: string; name: string | null }>> {
+  try {
+    const response = await lumaFetch<{
+      entries: Array<{
+        name: string | null;
+        email: string;
+        api_id: string;
+        type: string;
+      }>;
+    }>(`/event/get-hosts?event_api_id=${encodeURIComponent(eventId)}`);
+
+    return (response.entries || [])
+      .filter(h => h.email)
+      .map(h => ({ email: h.email, name: h.name }));
+  } catch (error) {
+    logger.debug({ err: error, eventId }, 'Could not fetch Luma event hosts');
+    return [];
+  }
+}
+
+/**
  * Get a single guest registration
  */
 export async function getGuest(guestId: string): Promise<LumaGuest | null> {

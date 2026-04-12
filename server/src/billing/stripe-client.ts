@@ -270,7 +270,6 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     return null;
   }
 
-  // First check our cached products - this is faster and more reliable
   const cachedProducts = await getBillingProducts();
   const cachedProduct = cachedProducts.find(p => p.lookup_key === lookupKey);
   if (cachedProduct) {
@@ -278,8 +277,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     return cachedProduct.price_id;
   }
 
-  // Fallback to direct Stripe query if not in cache
-  logger.info({ lookupKey }, 'getPriceByLookupKey: Not in cache, querying Stripe directly');
+  // Direct Stripe lookup as fallback when cache doesn't have the key
   try {
     const prices = await stripe.prices.list({
       lookup_keys: [lookupKey],
@@ -287,25 +285,18 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
       limit: 1,
     });
 
-    if (prices.data.length === 0) {
-      // Log available lookup keys for debugging
-      const allPrices = await stripe.prices.list({ active: true, limit: 100 });
-      const availableLookupKeys = allPrices.data
-        .filter(p => p.lookup_key?.startsWith('aao_'))
-        .map(p => p.lookup_key);
-      logger.error({
-        lookupKey,
-        availableLookupKeys,
-      }, 'getPriceByLookupKey: No price found for lookup key in Stripe');
-      return null;
+    if (prices.data.length > 0) {
+      logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price via direct Stripe lookup');
+      return prices.data[0].id;
     }
-
-    logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price in Stripe');
-    return prices.data[0].id;
   } catch (error) {
-    logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error fetching price');
-    return null;
+    logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error in direct Stripe lookup');
   }
+
+  const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
+  logger.error({ lookupKey, availableLookupKeys },
+    `getPriceByLookupKey: No price found for lookup key "${lookupKey}". Available: ${availableLookupKeys.join(', ')}`);
+  return null;
 }
 
 /**
@@ -488,17 +479,26 @@ export async function createStripeCustomer(data: {
 
     if (existingCustomers.data.length > 0) {
       const existing = existingCustomers.data[0];
-      if (data.metadata) {
-        await stripe.customers.update(existing.id, {
-          name: data.name,
-          metadata: {
-            ...existing.metadata,
-            ...data.metadata,
-          },
-        });
+      const existingOrgId = existing.metadata?.workos_organization_id;
+
+      // Skip if this customer belongs to a different org or has no org metadata —
+      // reusing it would violate the unique constraint on organizations.stripe_customer_id
+      if (orgId && existingOrgId !== orgId) {
+        logger.info({ customerId: existing.id, existingOrgId, requestedOrgId: orgId, email: data.email },
+          'Skipping email-matched Stripe customer — belongs to a different org');
+      } else {
+        if (data.metadata) {
+          await stripe.customers.update(existing.id, {
+            name: data.name,
+            metadata: {
+              ...existing.metadata,
+              ...data.metadata,
+            },
+          });
+        }
+        logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
+        return existing.id;
       }
-      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
-      return existing.id;
     }
 
     // Create new customer

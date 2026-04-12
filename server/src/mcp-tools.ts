@@ -99,13 +99,13 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_agents",
     description:
-      "List all public agents from member organizations, optionally filtered by type (creative, signals, sales)",
+      "List all public agents from member organizations, optionally filtered by type (creative, signals, buying)",
     inputSchema: {
       type: "object" as const,
       properties: {
         type: {
           type: "string",
-          enum: ["creative", "signals", "sales"],
+          enum: ["creative", "signals", "buying"],
           description: "Optional: Filter by agent type",
         },
       },
@@ -787,7 +787,7 @@ export class MCPToolHandler {
         const propertyValue = args?.property_value as string;
 
         // Find agents that can sell this property
-        const allAgents = await this.agentService.listAgents("sales");
+        const allAgents = await this.agentService.listAgents("buying");
         const matchingAgents = [];
 
         for (const agent of allAgents) {
@@ -2012,7 +2012,7 @@ export class MCPToolHandler {
 
     if (type === "all") {
       agents = await this.agentService.listAgents();
-    } else if (["creative", "signals", "sales"].includes(type)) {
+    } else if (["creative", "signals", "buying"].includes(type)) {
       agents = await this.agentService.listAgents(type as AgentType);
     } else {
       throw new Error("Unknown resource type");

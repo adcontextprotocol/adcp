@@ -21,6 +21,7 @@ import { comply, complianceResultToDbInput } from "../addie/services/compliance-
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
+import { validateCrawlDomain } from "../utils/url-security.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -40,6 +41,8 @@ import {
   PolicySchema,
   PolicySummarySchema,
   PolicyHistorySchema,
+  OperatorLookupResultSchema,
+  PublisherLookupResultSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -58,6 +61,7 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
+import { enrichUserWithMembership } from "../utils/html-config.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -75,6 +79,12 @@ function extractDomain(raw: string): string {
   return d.toLowerCase();
 }
 
+const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+function isValidDomain(domain: string): boolean {
+  return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -83,7 +93,7 @@ export interface RegistryApiConfig {
   propertyDb: PropertyDatabase;
   adagentsManager: AdAgentsManager;
   healthChecker: HealthChecker;
-  crawler: CrawlerService & { crawlSingleDomain?: (domain: string) => Promise<void> };
+  crawler: CrawlerService;
   capabilityDiscovery: CapabilityDiscovery;
   registryRequestsDb: {
     trackRequest(type: string, domain: string): Promise<void>;
@@ -496,7 +506,7 @@ registry.registerPath({
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
-      type: z.enum(["creative", "signals", "sales", "governance", "si", "unknown"]).optional(),
+      type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]).optional(),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
@@ -591,6 +601,42 @@ registry.registerPath({
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
     200: { description: "Domains for the agent", content: { "application/json": { schema: z.object({ agent_url: z.string(), domains: z.array(z.string()), count: z.number().int() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/operator",
+  operationId: "lookupOperator",
+  summary: "Operator lookup",
+  description: "Given a domain, returns the agents this entity operates and which publishers trust them.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "pubmatic.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Operator lookup result", content: { "application/json": { schema: OperatorLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/publisher",
+  operationId: "lookupPublisher",
+  summary: "Publisher lookup",
+  description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
+  tags: ["Lookups & Authorization"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "voxmedia.com" }),
+    }),
+  },
+  responses: {
+    200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
+    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -1151,6 +1197,54 @@ registry.registerPath({
   },
 });
 
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/brand-crawl-request",
+  operationId: "requestBrandCrawl",
+  summary: "Request brand.json re-crawl",
+  description:
+    "Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).",
+  tags: ["Brand Discovery"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "examplebrand.com", description: "Domain to re-crawl brand.json for" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Brand crawl request accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            message: z.literal("Brand crawl request accepted"),
+            domain: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
 // ── Router factory ──────────────────────────────────────────────
 
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {
@@ -1324,22 +1418,51 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const result = await brandManager.validateDomain(domain, { skipCache: fresh });
+      // If fresh=true, fetch live from external domain and update DB cache
+      if (fresh) {
+        const result = await brandManager.validateDomain(domain, { skipCache: true });
+        if (result.valid && result.raw_data) {
+          return res.json({
+            domain: result.domain,
+            url: result.url,
+            variant: result.variant,
+            data: result.raw_data,
+            warnings: result.warnings,
+          });
+        }
+        // Live fetch failed — fall through to DB cache
+      }
 
-      if (!result.valid || !result.raw_data) {
-        return res.status(404).json({
-          error: "Brand not found or invalid",
-          domain,
-          errors: result.errors,
+      // Serve from DB — single brands table
+      const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (brand && brand.is_public !== false) {
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const data = { name: brand.brand_name || domain, ...manifest };
+
+        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const url = brand.source_type === "brand_json"
+          ? `https://${domain}/.well-known/brand.json`
+          : `https://agenticadvertising.org/brands/${domain}/brand.json`;
+
+        return res.json({ domain, url, variant, data });
+      }
+
+      // Nothing in DB — try live fetch as last resort
+      const result = await brandManager.validateDomain(domain);
+      if (result.valid && result.raw_data) {
+        return res.json({
+          domain: result.domain,
+          url: result.url,
+          variant: result.variant,
+          data: result.raw_data,
+          warnings: result.warnings,
         });
       }
 
-      return res.json({
-        domain: result.domain,
-        url: result.url,
-        variant: result.variant,
-        data: result.raw_data,
-        warnings: result.warnings,
+      return res.status(404).json({
+        error: "Brand not found or invalid",
+        domain,
+        errors: result.errors,
       });
     } catch (error) {
       logger.error({ error }, "Failed to fetch brand.json");
@@ -2171,7 +2294,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             );
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             promises.push(
               federatedIndex.getPropertiesForAgent(agent.url),
               federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -2186,7 +2309,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             enrichedAgent.stats = results[resultIndex++] as any;
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             const agentProperties = results[resultIndex++] as any[];
             const publisherDomains = results[resultIndex++] as string[];
 
@@ -2246,7 +2369,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Agent Compliance Endpoints ──────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/compliance", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance", bulkResolveRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -2274,7 +2397,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           streak_days: 0,
           last_checked_at: null,
           headline: null,
+          storyboards_passing: 0,
+          storyboards_total: 0,
         });
+      }
+
+      // Storyboard counts are supplementary — don't fail the whole response
+      // if the table hasn't been migrated yet
+      let sbCounts = { passing: 0, total: 0 };
+      try {
+        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Storyboard status query failed");
       }
 
       res.json({
@@ -2288,6 +2422,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         last_failed_at: status.last_failed_at?.toISOString() || null,
         headline: status.headline,
         status_changed_at: status.status_changed_at?.toISOString() || null,
+        storyboards_passing: sbCounts.passing,
+        storyboards_total: sbCounts.total,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance status");
@@ -2295,7 +2431,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/agents/:encodedUrl/compliance/history", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance/history", bulkResolveRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -2333,6 +2469,146 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.status(500).json({ error: "Failed to get compliance history" });
     }
   });
+
+  // ── Storyboard Status (members-only) ─────────────────────────────
+
+  const memberReadMiddleware = authMiddleware ? [authMiddleware] : [];
+
+  router.get(
+    "/registry/agents/:encodedUrl/storyboard-status",
+    ...memberReadMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
+        }
+
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any).isMember) {
+          return res.status(403).json({
+            error: "Storyboard compliance detail is available to members only",
+            members_only: true,
+          });
+        }
+
+        const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+        if (metadata?.compliance_opt_out) {
+          return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
+        }
+
+        let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
+        try {
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
+        }
+
+        const enriched = statuses.map(s => {
+          const sb = getStoryboard(s.storyboard_id);
+          return {
+            storyboard_id: s.storyboard_id,
+            title: sb?.title || s.storyboard_id,
+            category: sb?.category || null,
+            track: sb?.track || null,
+            status: s.status,
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+            last_tested_at: s.last_tested_at?.toISOString() || null,
+            last_passed_at: s.last_passed_at?.toISOString() || null,
+          };
+        });
+
+        res.json({
+          agent_url: agentUrl,
+          storyboards: enriched,
+          passing_count: enriched.filter(s => s.status === "passing").length,
+          total_count: enriched.length,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get storyboard status");
+        res.status(500).json({ error: "Failed to get storyboard status" });
+      }
+    },
+  );
+
+  router.post(
+    "/registry/agents/storyboard-status",
+    bulkResolveRateLimiter,
+    ...memberReadMiddleware,
+    async (req, res) => {
+      try {
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any).isMember) {
+          return res.status(403).json({
+            error: "Batch storyboard status is available to members only",
+            members_only: true,
+          });
+        }
+
+        const { agent_urls } = req.body;
+        if (!Array.isArray(agent_urls) || agent_urls.length === 0) {
+          return res.status(400).json({ error: "agent_urls must be a non-empty array" });
+        }
+        if (agent_urls.length > 100) {
+          return res.status(400).json({ error: "Maximum 100 agent URLs per request" });
+        }
+
+        const validUrls = agent_urls.filter((u: unknown) => typeof u === "string" && validateAgentUrlParam(u as string));
+
+        const metadataMap = await complianceDb.bulkGetRegistryMetadata(validUrls);
+        const nonOptedOut = validUrls.filter((u: string) => !metadataMap.get(u)?.compliance_opt_out);
+        const optedOut = new Set(validUrls.filter((u: string) => metadataMap.get(u)?.compliance_opt_out));
+
+        let statusMap: Awaited<ReturnType<typeof complianceDb.bulkGetStoryboardStatuses>> = new Map();
+        try {
+          statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+        } catch (err) {
+          logger.warn({ err }, "Bulk storyboard status query failed (table may not exist)");
+        }
+
+        const results: Record<string, any> = {};
+        for (const url of validUrls) {
+          if (optedOut.has(url)) {
+            results[url] = { status: "opted_out" };
+            continue;
+          }
+          const statuses = statusMap.get(url) || [];
+          results[url] = statuses.map(s => {
+            const sb = getStoryboard(s.storyboard_id);
+            return {
+              storyboard_id: s.storyboard_id,
+              title: sb?.title || s.storyboard_id,
+              category: sb?.category || null,
+              track: sb?.track || null,
+              status: s.status,
+              steps_passed: s.steps_passed,
+              steps_total: s.steps_total,
+              last_tested_at: s.last_tested_at?.toISOString() || null,
+              last_passed_at: s.last_passed_at?.toISOString() || null,
+            };
+          });
+        }
+
+        const invalidCount = agent_urls.length - validUrls.length;
+        res.json({
+          agents: results,
+          ...(invalidCount > 0 && { invalid_urls: invalidCount }),
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get batch storyboard status");
+        res.status(500).json({ error: "Failed to get batch storyboard status" });
+      }
+    },
+  );
 
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
@@ -2915,10 +3191,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           ...(auth && { auth }),
         });
 
-        // Record the run
+        // Record the run (pass storyboard ID for per-storyboard status materialization)
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
         await complianceDb.recordComplianceRun(
-          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual"),
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual", [req.params.storyboardId]),
         );
 
         // Annotate storyboard phases with comply results
@@ -3100,6 +3376,99 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Lookups & Authorization ───────────────────────────────────
 
+  router.get("/registry/operator", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const profile = await memberDb.getProfileByDomain(domain);
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      const displayName = profile?.display_name || domain;
+      const agentConfigs = (profile?.agents || []).filter(a => a.is_public).slice(0, 20);
+
+      const agents = await Promise.all(
+        agentConfigs.map(async (ac) => {
+          const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
+          return {
+            url: ac.url,
+            name: ac.name || displayName,
+            type: ac.type || "unknown",
+            authorized_by: auths.map(a => ({
+              publisher_domain: a.publisher_domain,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            })),
+          };
+        })
+      );
+
+      res.json({ domain, member, agents });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Operator lookup failed");
+      res.status(500).json({ error: "Operator lookup failed" });
+    }
+  });
+
+  router.get("/registry/publisher", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    if (!rawDomain) {
+      return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+
+    try {
+      const domain = extractDomain(rawDomain);
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      const memberDb = new MemberDatabase();
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const [profile, properties, authorizations, adagentsValid] = await Promise.all([
+        memberDb.getProfileByDomain(domain),
+        federatedIndex.getPropertiesForDomain(domain),
+        federatedIndex.getAuthorizationsForDomain(domain),
+        federatedIndex.hasValidAdagents(domain),
+      ]);
+
+      const member = profile
+        ? { slug: profile.slug, display_name: profile.display_name }
+        : null;
+
+      res.json({
+        domain,
+        member,
+        adagents_valid: adagentsValid,
+        properties: properties.map(p => ({
+          id: p.property_id,
+          type: p.property_type,
+          name: p.name,
+          identifiers: p.identifiers,
+          tags: p.tags,
+        })),
+        authorized_agents: authorizations.map(a => ({
+          url: a.agent_url,
+          authorized_for: a.authorized_for,
+          source: a.source,
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Publisher lookup failed");
+      res.status(500).json({ error: "Publisher lookup failed" });
+    }
+  });
+
   router.get("/registry/lookup/domain/:domain", async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
@@ -3255,7 +3624,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let agentType = "unknown";
       const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
       if (toolNames.some((n: string) => n.includes("get_product") || n.includes("media_buy") || n.includes("create_media"))) {
-        agentType = "sales";
+        agentType = "buying";
       } else if (toolNames.some((n: string) => n.includes("signal") || n.includes("audience"))) {
         agentType = "signals";
       } else if (toolNames.some((n: string) => n.includes("creative") || n.includes("format") || n.includes("preview"))) {
@@ -3292,7 +3661,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
         }
-      } else if (agentType === "sales") {
+      } else if (agentType === "buying") {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {
@@ -3432,40 +3801,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // Public endpoint — target of authoritative_location pointer files.
   // Members place {"authoritative_location":"<this URL>"} at /.well-known/brand.json.
 
-  router.get("/brands/:domain/brand.json", async (req, res) => {
-    const domain = req.params.domain.toLowerCase();
-
-    try {
-      // Hosted brand takes priority (member-managed)
-      const hosted = await brandDb.getHostedBrandByDomain(domain);
-      if (hosted && hosted.is_public) {
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(hosted.brand_json);
-      }
-
-      // Fall back to discovered brand — reconstruct minimal brand.json
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (discovered) {
-        const brandJson: Record<string, unknown> = {
-          name: discovered.brand_name || domain,
-        };
-        if (discovered.brand_manifest) {
-          const manifest = discovered.brand_manifest as Record<string, unknown>;
-          if (manifest.logos) brandJson.logos = manifest.logos;
-          if (manifest.colors) brandJson.colors = manifest.colors;
-        }
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(brandJson);
-      }
-
-      return res.status(404).json({ error: "Brand not found" });
-    } catch (error) {
-      logger.error({ err: error, domain }, "Failed to serve brand.json");
-      return res.status(500).json({ error: "Failed to retrieve brand" });
-    }
-  });
+  // brand.json served at /brands/:domain/brand.json (in http.ts, not here)
 
   // ── Brand setup: link member to brand registry ───────────────────
   // Creates (or updates) a hosted brand entry and links it to the authenticated member's profile.
@@ -3932,8 +4268,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const CRAWL_RATE_LIMIT_MS = 5 * 60 * 1000;  // 5 minutes per domain
   const MEMBER_CRAWL_LIMIT = 30;               // 30 requests per member per hour
   const MEMBER_CRAWL_WINDOW_MS = 60 * 60 * 1000;
-  const DOMAIN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
-
   // Periodic cleanup of stale rate limit entries to prevent memory growth
   const rateLimitCleanupInterval = setInterval(() => {
     const now = Date.now();
@@ -3946,84 +4280,90 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit
 
+  /**
+   * Validate domain and apply rate limits for crawl requests.
+   * Returns the normalized domain on success, or sends an error response.
+   */
+  async function validateAndRateLimitCrawl(
+    req: import('express').Request,
+    res: import('express').Response,
+    rateLimitKey: string,
+  ): Promise<string | null> {
+    const { domain } = req.body;
+    if (!domain || typeof domain !== 'string') {
+      res.status(400).json({ error: "domain is required" });
+      return null;
+    }
+
+    let normalizedDomain: string;
+    try {
+      normalizedDomain = await validateCrawlDomain(domain);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid domain';
+      res.status(400).json({ error: message });
+      return null;
+    }
+
+    const memberId = req.user?.id || 'anonymous';
+
+    // Per-domain rate limit (shared key space for all crawl types on same domain)
+    const lastCrawl = crawlRequestRateLimits.get(rateLimitKey);
+    if (lastCrawl && Date.now() - lastCrawl < CRAWL_RATE_LIMIT_MS) {
+      const retryAfter = Math.ceil((CRAWL_RATE_LIMIT_MS - (Date.now() - lastCrawl)) / 1000);
+      res.status(429).json({ error: "Rate limit exceeded for this domain", retry_after: retryAfter });
+      return null;
+    }
+
+    // Per-member hourly rate limit
+    const memberState = memberCrawlCounts.get(memberId);
+    const now = Date.now();
+    if (memberState && now - memberState.windowStart < MEMBER_CRAWL_WINDOW_MS) {
+      if (memberState.count >= MEMBER_CRAWL_LIMIT) {
+        res.status(429).json({
+          error: "Hourly crawl request limit exceeded",
+          retry_after: Math.ceil((MEMBER_CRAWL_WINDOW_MS - (now - memberState.windowStart)) / 1000),
+        });
+        return null;
+      }
+      memberState.count++;
+    } else {
+      memberCrawlCounts.set(memberId, { count: 1, windowStart: now });
+    }
+
+    crawlRequestRateLimits.set(rateLimitKey, now);
+    return normalizedDomain;
+  }
+
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
     try {
-      const { domain } = req.body;
-      if (!domain || typeof domain !== 'string') {
-        return res.status(400).json({ error: "domain is required" });
-      }
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      if (!normalizedDomain) return;
 
-      const normalizedDomain = domain.toLowerCase().trim();
-
-      // Validate domain format to prevent SSRF via internal hostnames
-      if (!DOMAIN_RE.test(normalizedDomain)) {
-        return res.status(400).json({ error: "Invalid domain format" });
-      }
-
-      // DNS resolution check — reject domains resolving to private/reserved IPs
-      // Force IPv4 to avoid IPv6 SSRF bypass (::1, fc00::/7, etc.)
-      try {
-        const { lookup } = await import('node:dns/promises');
-        const { address } = await lookup(normalizedDomain, { family: 4 });
-        const parts = address.split('.').map(Number);
-        const isPrivate =
-          parts[0] === 10 ||
-          parts[0] === 127 ||
-          (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-          (parts[0] === 192 && parts[1] === 168) ||
-          (parts[0] === 169 && parts[1] === 254) ||
-          address === '0.0.0.0';
-        if (isPrivate) {
-          return res.status(400).json({ error: "Domain resolves to a private/reserved IP address" });
-        }
-      } catch {
-        return res.status(400).json({ error: "Domain could not be resolved" });
-      }
-
-      const memberId = req.user?.id || 'anonymous';
-
-      // Per-domain rate limit
-      const lastCrawl = crawlRequestRateLimits.get(normalizedDomain);
-      if (lastCrawl && Date.now() - lastCrawl < CRAWL_RATE_LIMIT_MS) {
-        const retryAfter = Math.ceil((CRAWL_RATE_LIMIT_MS - (Date.now() - lastCrawl)) / 1000);
-        return res.status(429).json({
-          error: "Rate limit exceeded for this domain",
-          retry_after: retryAfter,
-        });
-      }
-
-      // Per-member hourly rate limit
-      const memberState = memberCrawlCounts.get(memberId);
-      const now = Date.now();
-      if (memberState && now - memberState.windowStart < MEMBER_CRAWL_WINDOW_MS) {
-        if (memberState.count >= MEMBER_CRAWL_LIMIT) {
-          return res.status(429).json({
-            error: "Hourly crawl request limit exceeded",
-            retry_after: Math.ceil((MEMBER_CRAWL_WINDOW_MS - (now - memberState.windowStart)) / 1000),
-          });
-        }
-        memberState.count++;
-      } else {
-        memberCrawlCounts.set(memberId, { count: 1, windowStart: now });
-      }
-
-      crawlRequestRateLimits.set(normalizedDomain, now);
-
-      // Trigger crawl asynchronously — don't wait for completion
-      if (crawler.crawlSingleDomain) {
-        crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
-          logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
-        });
-      }
-
-      return res.status(202).json({
-        message: "Crawl request accepted",
-        domain: normalizedDomain,
+      crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
+        logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
       });
+
+      return res.status(202).json({ message: "Crawl request accepted", domain: normalizedDomain });
     } catch (error) {
       logger.error({ error }, "Failed to process crawl request");
       return res.status(500).json({ error: "Failed to process crawl request" });
+    }
+  });
+
+  router.post("/registry/brand-crawl-request", authMiddleware, async (req, res) => {
+    try {
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      if (!normalizedDomain) return;
+
+      crawler.scanBrandForDomain(normalizedDomain).catch((err: Error) => {
+        logger.error({ err, domain: normalizedDomain }, "Brand crawl request failed");
+      });
+
+      return res.status(202).json({ message: "Brand crawl request accepted", domain: normalizedDomain });
+    } catch (error) {
+      logger.error({ error }, "Failed to process brand crawl request");
+      return res.status(500).json({ error: "Failed to process brand crawl request" });
     }
   });
 

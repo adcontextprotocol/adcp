@@ -17,6 +17,8 @@ export interface UserEmailPreferences {
   unsubscribe_token: string;
   global_unsubscribe: boolean;
   global_unsubscribe_at: Date | null;
+  marketing_opt_in: boolean | null;
+  marketing_opt_in_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -587,6 +589,48 @@ export class EmailPreferencesDatabase {
   }
 
   // ==================== Unsubscribe from Category via Token ====================
+
+  /**
+   * Record the user's marketing opt-in choice from signup.
+   * If optIn is false, disables all email categories (all categories in the
+   * table are marketing — transactional emails bypass this system entirely).
+   * If optIn is true, removes any category overrides so defaults apply.
+   */
+  async setMarketingOptIn(data: {
+    workos_user_id: string;
+    email: string;
+    optIn: boolean;
+  }): Promise<void> {
+    const prefs = await this.getOrCreateUserPreferences({
+      workos_user_id: data.workos_user_id,
+      email: data.email,
+    });
+
+    // Record the explicit consent choice
+    await query(
+      `UPDATE user_email_preferences
+       SET marketing_opt_in = $2, marketing_opt_in_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [prefs.id, data.optIn]
+    );
+
+    if (data.optIn) {
+      // Re-enable: remove all category overrides so defaults (enabled) apply
+      await query(
+        `DELETE FROM user_email_category_preferences WHERE user_preference_id = $1`,
+        [prefs.id]
+      );
+    } else {
+      // Disable all marketing categories in a single query
+      await query(
+        `INSERT INTO user_email_category_preferences (user_preference_id, category_id, enabled)
+         SELECT $1, id, false FROM email_categories
+         ON CONFLICT (user_preference_id, category_id)
+         DO UPDATE SET enabled = false, updated_at = NOW()`,
+        [prefs.id]
+      );
+    }
+  }
 
   /**
    * Unsubscribe from a specific category using token (no auth)

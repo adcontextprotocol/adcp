@@ -109,7 +109,12 @@ export async function cleanupExpired(): Promise<number> {
     }
     return count;
   } catch (err) {
-    logger.error({ err }, 'Failed to clean up expired agent OAuth flows');
+    const isPoolTimeout = err instanceof Error && /timeout|connect/i.test(err.message);
+    if (isPoolTimeout) {
+      logger.warn({ err }, 'Agent OAuth flow cleanup skipped — DB pool busy');
+    } else {
+      logger.error({ err }, 'Failed to clean up expired agent OAuth flows');
+    }
     return 0;
   }
 }

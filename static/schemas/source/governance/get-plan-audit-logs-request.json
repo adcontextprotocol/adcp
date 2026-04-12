@@ -27,6 +27,22 @@
       "minItems": 1,
       "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."
     },
+    "governance_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "Filter audit entries by governance context. Returns only checks and outcomes that share these governance contexts, enabling lifecycle tracing across purchase types."
+    },
+    "purchase_types": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/purchase-type.json"
+      },
+      "minItems": 1,
+      "description": "Filter audit entries by purchase type. Returns only checks and outcomes matching these purchase types (e.g., ['rights_license'] to see all rights activity)."
+    },
     "include_entries": {
       "type": "boolean",
       "description": "Include the full audit trail. Default: false.",
@@ -42,6 +58,11 @@
     {
       "required": [
         "portfolio_plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "governance_contexts"
       ]
     }
   ],

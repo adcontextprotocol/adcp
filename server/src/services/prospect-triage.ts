@@ -565,13 +565,15 @@ export async function triageAndCreateProspect(
   // Log an activity so humans can see what Addie did
   if (orgId) {
     const pool = getPool();
-    pool.query(
-      `INSERT INTO org_activities (organization_id, activity_type, description, logged_by_name, activity_date)
-       VALUES ($1, 'note', $2, 'Addie', NOW())`,
-      [orgId, `Auto-triaged from ${context?.source ?? 'inbound'}: ${result.verdict}`]
-    ).catch(err => {
+    try {
+      await pool.query(
+        `INSERT INTO org_activities (organization_id, activity_type, description, logged_by_name, activity_date)
+         VALUES ($1, 'note', $2, 'Addie', NOW())`,
+        [orgId, `Auto-triaged from ${context?.source ?? 'inbound'}: ${result.verdict}`]
+      );
+    } catch (err) {
       logger.warn({ err, orgId }, 'Failed to log triage activity');
-    });
+    }
   }
 
   // Notify (non-blocking — a missing channel config is fine)
@@ -691,13 +693,15 @@ export async function escalateUnclaimedProspects(): Promise<{ escalated: number 
 
   for (const row of result.rows) {
     // Log the escalation
-    pool.query(
-      `INSERT INTO org_activities (organization_id, activity_type, description, logged_by_name, activity_date)
-       VALUES ($1, 'note', 'Auto-assigned to Addie after 48h unclaimed', 'System', NOW())`,
-      [row.workos_organization_id]
-    ).catch(err => {
+    try {
+      await pool.query(
+        `INSERT INTO org_activities (organization_id, activity_type, description, logged_by_name, activity_date)
+         VALUES ($1, 'note', 'Auto-assigned to Addie after 48h unclaimed', 'System', NOW())`,
+        [row.workos_organization_id]
+      );
+    } catch (err) {
       logger.warn({ err, orgId: row.workos_organization_id }, 'Failed to log escalation activity');
-    });
+    }
   }
 
   if (result.rows.length > 0) {

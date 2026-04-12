@@ -76,12 +76,13 @@
           { href: '/organization', label: 'Overview', icon: '📊' },
           { href: '/dashboard/team', label: 'Team', icon: '👥' },
           { href: '/dashboard/agents', label: 'Agents', icon: '🤖' },
+          { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
         ]
       },
       {
-        label: 'Account',
+        label: 'Content',
         items: [
-          { href: '/account', label: 'Account settings', icon: '⚙️' },
+          { href: '/dashboard/content', label: 'Perspectives', icon: '📝' },
         ]
       }
     ],
@@ -590,11 +591,15 @@
       ? ACCOUNT_NAV_SECTIONS
       : NAV_CONFIG.sections;
 
-    const sectionsHTML = navSections.map(section => {
+    const sectionsHTML = navSections.filter(section => {
+      // Hide admin-only sections unless showAdmin is true
+      if (section.adminOnly && !showAdmin) return false;
+      return true;
+    }).map(section => {
 
       const itemsHTML = section.items.map(item => {
         // Hide Team, Directory listing, and Agents for personal workspaces
-        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents')) {
+        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents' || item.label === 'API keys')) {
           return '';
         }
 

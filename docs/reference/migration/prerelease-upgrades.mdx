@@ -1,15 +1,52 @@
 ---
-title: Prerelease upgrade notes (rc.1 → rc.2)
+title: Prerelease upgrade notes
 sidebarTitle: Prerelease upgrades
-description: "Breaking and additive changes between AdCP 3.0.0-rc.1 and 3.0.0-rc.2."
+description: "Breaking and additive changes between AdCP 3.0.0 release candidates."
 "og:title": "AdCP — Prerelease upgrade notes"
 ---
 
-# Prerelease upgrade notes (rc.1 → rc.2)
+# Prerelease upgrade notes
 
-If you adopted `3.0.0-rc.1`, review these changes before upgrading to rc.2. If you are migrating from v2, see the [main migration guide](/docs/reference/migration).
+If you adopted a prerelease version, review the relevant section below before upgrading. If you are migrating from v2, see the [main migration guide](/docs/reference/migration).
 
-## Potentially breaking for rc.1 adopters
+## rc.3 → rc.4
+
+### Breaking for rc.3 adopters
+
+| Area | rc.3 | rc.4 | What to do |
+|---|---|---|---|
+| Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. See details below. |
+| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Storyboard runners check for it before running deterministic steps. |
+
+### Media buy status migration
+
+`pending_activation` was a single state covering two distinct conditions. It has been split:
+
+| Condition | rc.3 status | rc.4 status |
+|---|---|---|
+| Buy approved, no creatives assigned | `pending_activation` | `pending_creatives` |
+| Buy ready to serve, waiting for flight date | `pending_activation` | `pending_start` |
+| Buy is serving | `active` | `active` (unchanged) |
+
+**What to change:**
+
+1. **Status filters** — Replace `pending_activation` with both `pending_creatives` and `pending_start` in `status_filter` arrays on `get_media_buys` and `get_media_buy_delivery`.
+2. **Status comparisons** — Any `if (status === 'pending_activation')` needs to branch on which condition you're checking. If you want "not yet serving," check for both `pending_creatives` and `pending_start`. If you want "ready but waiting for flight date," check only `pending_start`.
+3. **State machine transitions** — `rejected` is now valid from both `pending_creatives` and `pending_start` (previously only from `pending_activation`). `pending_creatives` → `pending_start` happens when creatives are assigned via `sync_creatives`.
+4. **Legacy alias** — `pending` continues to be accepted as an alias for `pending_start` in delivery response status filters.
+
+See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-states) for the full state machine.
+
+### Additive changes in rc.4
+
+- **Compliance testing capability** — Agents can declare `compliance_testing` in `supported_protocols` with a `scenarios` array listing which `comply_test_controller` scenarios they support. Storyboard runners use this to determine whether deterministic testing steps can be validated.
+- **Storyboard validation fixes** — 20+ validation bugs fixed across 11 storyboard files: corrected field paths (`creatives[0].action`, `media_buy_deliveries`, `renders[0].preview_url`), added missing `value:` to `field_value` checks, added `value` property to storyboard validation schema.
+
+---
+
+## rc.1 → rc.2
+
+### Potentially breaking for rc.1 adopters
 
 | Area | rc.1 | rc.2 | What to do |
 |---|---|---|---|
@@ -19,7 +56,7 @@ If you adopted `3.0.0-rc.1`, review these changes before upgrading to rc.2. If y
 | DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present | Add the discriminator in request builders and validators |
 | Deprecated governance task docs | `delete_content_standards`, `get_property_features` documented | Removed | Use `update_content_standards`, property lists, and `get_adcp_capabilities` instead |
 
-## Additive changes in rc.2
+### Additive changes in rc.2
 
 - **Creative generation and preview** — `build_creative` adds `include_preview`, `preview_inputs`, `preview_quality`, `preview_output_format`, `quality`, `item_limit`, and multi-format `target_format_ids`. Buyers can now preview inline, choose draft vs production generation, and request multiple output formats in one call.
 - **Creative library retrieval** — `build_creative` also supports library retrieval using `creative_id`, optional `concept_id`, `media_buy_id`, `package_id`, and `macro_values`, so ad servers and creative platforms can resolve stored creatives into delivery-ready manifests.

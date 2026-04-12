@@ -141,6 +141,11 @@ export async function mergeOrganizations(
         );
       } else if (resolution === 'use_secondary') {
         // Replace primary's customer with secondary's
+        // Clear secondary first to avoid unique constraint violation
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1`,
+          [secondaryOrgId]
+        );
         await client.query(
           `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
           [secondaryOrg.stripe_customer_id, primaryOrgId]
@@ -170,6 +175,11 @@ export async function mergeOrganizations(
       }
     } else if (secondaryHasStripe && !primaryHasStripe) {
       // Only secondary has Stripe - move it to primary
+      // Clear secondary first to avoid unique constraint violation
+      await client.query(
+        `UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1`,
+        [secondaryOrgId]
+      );
       await client.query(
         `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
         [secondaryOrg.stripe_customer_id, primaryOrgId]

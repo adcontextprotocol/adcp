@@ -188,59 +188,141 @@ export class CrawlerService {
    * (setting domain_verified on hosted_brands) and upserts live authoritative
    * brand.json files into discovered_brands.
    */
+  /**
+   * Scan a single domain for brand.json and upsert discovered/verified brand data.
+   */
+  async scanBrandForDomain(domain: string): Promise<void> {
+    const result = await this.brandManager.validateDomain(domain, { skipCache: true });
+    if (!result.valid || !result.raw_data) return;
+
+    if (result.variant === 'authoritative_location') {
+      const data = result.raw_data as { authoritative_location: string };
+      try {
+        const url = new URL(data.authoritative_location);
+        if (url.hostname === AAO_HOST &&
+            url.pathname === `/brands/${domain}/brand.json`) {
+          const hosted = await this.brandDb.getHostedBrandByDomain(domain);
+          if (hosted && !hosted.domain_verified) {
+            await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
+            log.debug({ domain }, 'Brand verified');
+          }
+        }
+      } catch {
+        // Invalid URL in authoritative_location — skip
+      }
+    } else if (result.variant === 'house_portfolio' ||
+               result.variant === 'brand_agent' ||
+               result.variant === 'house_redirect') {
+      const brandName = this.extractBrandName(result.raw_data, domain);
+      await this.brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_name: brandName,
+        has_brand_manifest: result.variant === 'house_portfolio',
+        brand_manifest: result.variant === 'house_portfolio'
+          ? result.raw_data as Record<string, unknown>
+          : undefined,
+        source_type: 'brand_json',
+      });
+
+      // Extract properties from brand.json and upsert into catalog
+      if (result.variant === 'house_portfolio') {
+        await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
+      }
+    }
+  }
+
+  /**
+   * Extract properties from brand.json and upsert them into the property catalog.
+   * brand.json = "what I own" — the brand declares its properties.
+   */
+  private async upsertBrandProperties(domain: string, brandJson: Record<string, unknown>): Promise<void> {
+    const brands = Array.isArray(brandJson.brands) ? brandJson.brands as Array<Record<string, unknown>> : [];
+    // Also check top-level properties (for simple brand.json without brands array)
+    const topProperties = Array.isArray(brandJson.properties) ? brandJson.properties as Array<Record<string, unknown>> : [];
+
+    const allProperties: Array<{ type: string; identifier: string }> = [];
+    for (const brand of brands) {
+      const props = Array.isArray(brand.properties) ? brand.properties as Array<Record<string, unknown>> : [];
+      for (const p of props) {
+        if (typeof p.identifier === 'string' && typeof p.type === 'string') {
+          allProperties.push({ type: p.type, identifier: p.identifier.toLowerCase() });
+        }
+      }
+    }
+    for (const p of topProperties) {
+      if (typeof p.identifier === 'string' && typeof p.type === 'string') {
+        allProperties.push({ type: p.type, identifier: p.identifier.toLowerCase() });
+      }
+    }
+
+    if (allProperties.length === 0) return;
+
+    // Map brand.json property types to catalog identifier types
+    const typeMap: Record<string, string> = {
+      website: 'domain',
+      mobile_app: 'bundle_id',
+      ctv_app: 'bundle_id',
+      desktop_app: 'bundle_id',
+      dooh: 'domain',
+      podcast: 'domain',
+      radio: 'domain',
+      streaming_audio: 'domain',
+    };
+
+    try {
+      const { uuidv7 } = await import('./db/uuid.js');
+      for (const prop of allProperties) {
+        const identifierType = typeMap[prop.type] || 'domain';
+
+        // Check if this identifier already exists in the catalog
+        const existing = await query<{ property_rid: string }>(
+          'SELECT property_rid FROM catalog_identifiers WHERE identifier_type = $1 AND identifier_value = $2',
+          [identifierType, prop.identifier]
+        );
+
+        if (existing.rows.length > 0) {
+          // Property already in catalog — just update the source timestamp
+          await query(
+            'UPDATE catalog_properties SET source_updated_at = NOW(), updated_at = NOW() WHERE property_rid = $1',
+            [existing.rows[0].property_rid]
+          );
+        } else {
+          // New property — insert into catalog
+          const rid = uuidv7();
+          await query(
+            `INSERT INTO catalog_properties (property_rid, classification, source, status, created_by)
+             VALUES ($1, 'property', 'contributed', 'active', $2)`,
+            [rid, `brand_json:${domain}`]
+          );
+          await query(
+            `INSERT INTO catalog_identifiers (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+             VALUES ($1, $2, $3, $4, 'brand_json', 'strong')
+             ON CONFLICT (identifier_type, identifier_value) DO NOTHING`,
+            [uuidv7(), rid, identifierType, prop.identifier]
+          );
+        }
+      }
+      log.debug({ domain, propertyCount: allProperties.length }, 'Upserted brand.json properties to catalog');
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Failed to upsert brand properties to catalog');
+    }
+  }
+
   private async scanBrandsForDomains(domains: string[]): Promise<void> {
     const CONCURRENCY = 5;
     log.debug({ domainCount: domains.length }, 'Scanning brand.json');
-    let verified = 0;
-    let discovered = 0;
 
-    const scanOne = async (domain: string): Promise<void> => {
-      try {
-        const result = await this.brandManager.validateDomain(domain, { skipCache: true });
-        if (!result.valid || !result.raw_data) return;
-
-        if (result.variant === 'authoritative_location') {
-          const data = result.raw_data as { authoritative_location: string };
-          try {
-            const url = new URL(data.authoritative_location);
-            if (url.hostname === AAO_HOST &&
-                url.pathname === `/brands/${domain}/brand.json`) {
-              const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-              if (hosted && !hosted.domain_verified) {
-                await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
-                verified++;
-                log.debug({ domain }, 'Brand verified');
-              }
-            }
-          } catch {
-            // Invalid URL in authoritative_location — skip
-          }
-        } else if (result.variant === 'house_portfolio' ||
-                   result.variant === 'brand_agent' ||
-                   result.variant === 'house_redirect') {
-          const brandName = this.extractBrandName(result.raw_data, domain);
-          await this.brandDb.upsertDiscoveredBrand({
-            domain,
-            brand_name: brandName,
-            has_brand_manifest: result.variant === 'house_portfolio',
-            brand_manifest: result.variant === 'house_portfolio'
-              ? result.raw_data as Record<string, unknown>
-              : undefined,
-            source_type: 'brand_json',
-          });
-          discovered++;
-        }
-      } catch (err) {
-        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
-      }
-    };
-
-    // Process in batches of CONCURRENCY
     for (let i = 0; i < domains.length; i += CONCURRENCY) {
-      await Promise.all(domains.slice(i, i + CONCURRENCY).map(scanOne));
+      await Promise.all(domains.slice(i, i + CONCURRENCY).map(async (domain) => {
+        try {
+          await this.scanBrandForDomain(domain);
+        } catch (err) {
+          log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
+        }
+      }));
     }
 
-    log.info({ verified, discovered }, 'Brand scan complete');
+    log.info({ domainCount: domains.length }, 'Brand scan complete');
   }
 
   private extractBrandName(data: unknown, fallback: string): string {
@@ -319,10 +401,10 @@ export class CrawlerService {
       }
     }
 
-    // 2. Record publishers discovered from each sales agent's list_authorized_properties
-    log.debug('Processing sales agent discovered publishers');
+    // 2. Record publishers discovered from each buying agent's list_authorized_properties
+    log.debug('Processing buying agent discovered publishers');
     for (const agent of agents) {
-      if (agent.type !== "sales") continue;
+      if (agent.type !== "buying") continue;
 
       const auth = index.getAgentAuthorizations(agent.url);
       if (!auth || auth.publisher_domains.length === 0) continue;
@@ -751,6 +833,13 @@ export class CrawlerService {
           },
           actor: 'api:crawl-request',
         });
+      }
+
+      // Scan brand.json for this domain
+      try {
+        await this.scanBrandForDomain(domain);
+      } catch (err) {
+        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan during single domain crawl failed');
       }
 
       // Rebuild profiles for affected agents

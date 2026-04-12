@@ -27,7 +27,12 @@ Push campaign plans to the governance agent. A plan defines the authorized param
           "currency": "USD",
           "authority_level": "agent_limited",
           "per_seller_max_pct": 40,
-          "reallocation_threshold": 25000
+          "reallocation_threshold": 25000,
+          "allocations": {
+            "media_buy": { "amount": 400000 },
+            "rights_license": { "amount": 75000 },
+            "signal_activation": { "amount": 25000 }
+          }
         },
         "channels": {
           "required": ["olv"],
@@ -105,7 +110,7 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 
 `countries` and `regions` serve two purposes:
 
-1. **Geo enforcement** -- The governance agent rejects media buys targeting outside the plan's markets. A plan with `regions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
+1. **Geo enforcement** -- The governance agent rejects governed actions targeting outside the plan's markets. A plan with `regions: ["US-MA"]` blocks actions that don't explicitly target Massachusetts.
 2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
@@ -126,9 +131,10 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].budget.authority_level` | enum | Yes | `agent_full`, `agent_limited`, or `human_required`. See [specification](/docs/governance/campaign/specification#budget-authority-levels). |
 | `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
 | `plans[].budget.reallocation_threshold` | number | No | Amount above which reallocations require escalation (for `agent_limited`). |
+| `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
-| `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
-| `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects buys targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
+| `plans[].flight` | object | Yes | Authorized flight dates. Governed actions with dates outside this window are rejected. |
+| `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
 | `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
 | `plans[].policy_categories` | array | No | Regulatory categories that apply to this campaign (e.g., `children_directed`, `fair_housing`). Determines which policy regimes the governance agent enforces. When omitted, governance agents MAY infer from the brand's industries and campaign objectives. |
 | `plans[].audience` | object | No | Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). See [audience constraints](#audience-constraints). |

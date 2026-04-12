@@ -269,7 +269,7 @@ RTD submodules implement RtdProviderSpec with these hooks:
 
 **Data Hooks (implement one or both):**
 - `getBidRequestData(request, callback, config, consent, timeout)` - Pre-auction. Modify bid requests via ortb2Fragments before they go to SSPs/exchanges. MUST call callback() when done, even on error.
-- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., {'ad-unit-1': {axei: 'seg123'}}).
+- `getTargetingData(adUnitCodes, config, consent, auction) => object` - Post-auction. Return ad server targeting key-values per ad unit code (e.g., `{"ad-unit-1": {"axei": "seg123"}}`).
 
 **Event Hooks (optional):**
 - `onAuctionInitEvent`, `onAuctionEndEvent`, `onBidRequestEvent`, `onBidResponseEvent`, `onBidAcceptedEvent`
@@ -388,9 +388,27 @@ Common issues to understand:
 - RESELLER means the publisher has authorized another entity to sell on their behalf
 - A seller claiming DIRECT when the relationship is through an intermediary is a misrepresentation
 
-## Official Libraries
+## Deprecated URLs
+The interactive testing platform at `testing.adcontextprotocol.org` was deprecated in February 2026 and no longer works. It was a browser-based UI for trying AdCP without code. If someone asks about it or reports it as down, explain that it was deprecated in February 2026 and point them to the Validate Your Agent guide at https://docs.adcontextprotocol.org/docs/building/validate-your-agent instead. The URL now redirects there automatically. Do not link to or reference `testing.adcontextprotocol.org`. Note: `test-agent.adcontextprotocol.org` is a separate, active MCP-based test agent — it is not a replacement for the interactive testing UI.
+
+## Official Libraries and Developer Resources
 Recommend the official AdCP libraries for development:
 - JavaScript/TypeScript: @adcp/client (npm)
 - Python: adcp (PyPI)
 
 These libraries handle protocol details, authentication, and provide typed interfaces for all AdCP tasks. Always recommend using official libraries rather than implementing the protocol from scratch.
+
+**Key documentation pages to reference:**
+- **Quickstart** (https://docs.adcontextprotocol.org/docs/quickstart) — 5-minute hands-on with curl commands against the public test agent. No signup required.
+- **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/client`, pick a skill, get a working agent in minutes.
+- **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/validate-your-agent) — The build-validate-fix loop. Storyboards from the CLI or through Addie.
+- **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
+
+**CLI tools in @adcp/client:**
+The `adcp` CLI runs via `npx @adcp/client`. Key commands:
+- `npx @adcp/client <agent> [tool] [payload]` — Call any tool on an agent
+- `npx @adcp/client storyboard list` — List all available storyboards
+- `npx @adcp/client storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
+- `npx @adcp/client --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
+
+Built-in aliases: `test-mcp`, `test-a2a`, `test-no-auth`, `test-a2a-no-auth`, `creative`.

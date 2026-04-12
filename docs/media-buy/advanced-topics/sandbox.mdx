@@ -204,24 +204,33 @@ The seller returns simulated delivery metrics — impressions, spend, pacing —
 
 ## Sandbox vs dry run
 
-Some tasks (e.g., `sync_creatives`) also support a `dry_run` parameter. These serve different purposes:
+Some sync tasks (`sync_creatives`, `sync_catalogs`) support a `dry_run` parameter. These serve different purposes:
 
 | | Sandbox account | `dry_run` |
 |---|---|---|
 | **Meaning** | Nothing is real | Preview changes without applying |
-| **Scope** | All tasks | sync_creatives only |
+| **Scope** | All tasks on the account | Sync tasks only |
 | **Side effects** | None (simulated) | None (preview only) |
-| **Use case** | Test the full lifecycle | Check what a sync would change |
+| **Use case** | Test the full lifecycle | Check what a sync would change before committing |
+
+You can combine them — `dry_run: true` on a sandbox account previews the sync without even updating sandbox state.
+
+<Warning>
+The `X-Dry-Run`, `X-Test-Session-ID`, and `X-Mock-Time` HTTP headers are **deprecated**. Sandbox mode replaces them as a protocol-level parameter.
+
+- **Sellers MUST NOT** alter behavior based on these headers. Sandbox mode is determined solely by the account reference. Sellers SHOULD ignore the headers entirely and MAY log a deprecation warning to help buyers identify stale integrations.
+- **Buyers MUST NOT** rely on these headers to prevent production side effects. Only `sandbox: true` on the account reference guarantees sandbox semantics.
+</Warning>
 
 ## Seller implementation
 
-When a request references a sandbox account (either via `sandbox: true` in the natural key or via a sandbox `account_id`):
+When a request references a sandbox account (either via `sandbox: true` in the natural key or via a sandbox `account_id`), agents MUST NOT persist production state or cause real-world side effects:
 
-- **Do not** make real ad platform API calls (no real orders, line items, etc.)
-- **Do not** charge real money or create real billing records
-- **Do** validate inputs the same way as production (reject invalid budgets, bad dates, etc.)
-- **Do** return realistic response shapes with simulated data
-- **Should** include `sandbox: true` in success responses
+- **MUST NOT** make real ad platform API calls (no real orders, line items, etc.)
+- **MUST NOT** charge real money or create real billing records
+- **MUST** validate inputs the same way as production (reject invalid budgets, bad dates, etc.)
+- **MUST** return realistic response shapes with simulated data
+- **SHOULD** include `sandbox: true` in success responses
 
 Sandbox errors are real validation errors. If a buyer sends an invalid budget using a sandbox account, return a real error — don't simulate fake errors.
 
@@ -235,6 +244,7 @@ Sellers that declare `account.sandbox: true` in capabilities MUST:
 
 - Accept sandbox accounts appropriate to their account model
 - Apply sandbox semantics to all requests referencing a sandbox account
+- NOT persist production state or cause real-world side effects when processing sandbox requests
 - Apply normal input validation (sandbox does not bypass validation)
 
 Sellers SHOULD include `sandbox: true` in success responses when processing a sandbox account request.

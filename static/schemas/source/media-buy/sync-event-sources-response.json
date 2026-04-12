@@ -77,7 +77,7 @@
                 "type": "array",
                 "description": "Errors for this event source (only present when action='failed')",
                 "items": {
-                  "type": "string"
+                  "$ref": "/schemas/core/error.json"
                 }
               }
             },

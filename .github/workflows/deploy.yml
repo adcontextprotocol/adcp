@@ -31,25 +31,25 @@ jobs:
         run: |
           echo "Checking that all app machines are running the same image..."
 
-          # Get image digests for started app machines only
+          # Get image digests for started machines (web + worker process groups)
           images=$(flyctl machines list --json | \
-            jq -r '[.[] | select(.config.metadata.fly_process_group == "app" and .state == "started") | .image_ref.digest] | unique')
+            jq -r '[.[] | select((.config.metadata.fly_process_group == "web" or .config.metadata.fly_process_group == "worker") and .state == "started") | .image_ref.digest] | unique')
 
           count=$(echo "$images" | jq 'length')
 
           if [ "$count" -eq 0 ]; then
-            echo "❌ No running app machines found"
+            echo "❌ No running web/worker machines found"
             flyctl machines list
             exit 1
           fi
 
           if [ "$count" -ne 1 ]; then
-            echo "❌ Deploy split detected! App machines are running different images:"
+            echo "❌ Deploy split detected! Machines are running different images:"
             flyctl machines list
             exit 1
           fi
 
-          echo "✅ All app machines running the same image"
+          echo "✅ All web/worker machines running the same image"
 
       - name: Clean up stale console machines
         env:

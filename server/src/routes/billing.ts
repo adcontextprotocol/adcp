@@ -25,7 +25,7 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
-import { OrganizationDatabase, inferMembershipTier, tierFromLookupKey } from "../db/organization-db.js";
+import { OrganizationDatabase, buildSubscriptionUpdate } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 
 const logger = createLogger("billing-routes");
@@ -724,14 +724,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
             const subscriptions = (customer as Stripe.Customer).subscriptions;
             if (subscriptions && subscriptions.data.length > 0) {
               const subscription = subscriptions.data[0];
-              const priceData = subscription.items?.data?.[0]?.price;
-              const membershipTier = subscription.status === 'active'
-                ? (tierFromLookupKey(priceData?.lookup_key) ?? inferMembershipTier(
-                    priceData?.unit_amount ?? null,
-                    priceData?.recurring?.interval ?? null,
-                    org.is_personal ?? false,
-                  ))
-                : null;
+              const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal ?? false);
 
               await pool.query(
                 `UPDATE organizations
@@ -742,22 +735,26 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
                      subscription_current_period_end = $5,
                      subscription_canceled_at = $6,
                      stripe_subscription_id = $7,
-                     membership_tier = $8,
+                     subscription_product_id = $8,
+                     subscription_product_name = COALESCE($9, subscription_product_name),
+                     subscription_price_id = $10,
+                     subscription_price_lookup_key = $11,
+                     membership_tier = $12,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $9`,
+                 WHERE workos_organization_id = $13`,
                 [
-                  subscription.status,
-                  priceData?.unit_amount || null,
-                  priceData?.recurring?.interval || null,
-                  priceData?.currency || "usd",
-                  subscription.current_period_end
-                    ? new Date(subscription.current_period_end * 1000)
-                    : null,
-                  subscription.canceled_at
-                    ? new Date(subscription.canceled_at * 1000)
-                    : null,
-                  subscription.id,
-                  membershipTier,
+                  subUpdate.subscription_status,
+                  subUpdate.subscription_amount,
+                  subUpdate.subscription_interval,
+                  subUpdate.subscription_currency,
+                  subUpdate.subscription_current_period_end,
+                  subUpdate.subscription_canceled_at,
+                  subUpdate.stripe_subscription_id,
+                  subUpdate.subscription_product_id,
+                  subUpdate.subscription_product_name,
+                  subUpdate.subscription_price_id,
+                  subUpdate.subscription_price_lookup_key,
+                  subUpdate.membership_tier,
                   org_id,
                 ]
               );

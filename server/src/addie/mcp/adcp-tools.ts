@@ -2349,7 +2349,7 @@ export function createAdcpToolHandlers(
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
         const ctx = { mode: 'training' as const, userId };
-        const result = executeTrainingAgentTool(task, params, ctx);
+        const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
           return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
         }
@@ -2424,7 +2424,7 @@ export function createAdcpToolHandlers(
                 organization_id: organizationId,
                 agent_url: agentUrl,
                 agent_name: baseUrl.hostname,
-                agent_type: 'sales',
+                agent_type: 'buying',
                 protocol: 'mcp',
               });
               logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');

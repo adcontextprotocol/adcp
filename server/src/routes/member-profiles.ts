@@ -23,6 +23,8 @@ import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import type { MemberBrandInfo } from "../types.js";
+import type { CrawlerService } from "../crawler.js";
+import { validateCrawlDomain } from "../utils/url-security.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
@@ -45,20 +47,17 @@ export interface MemberProfileRoutesConfig {
   brandDb: BrandDatabase;
   orgDb: OrganizationDatabase;
   invalidateMemberContextCache: () => void;
+  crawler?: CrawlerService;
 }
 
 /**
  * Resolve brand identity from the brand registry for a given domain.
- * Checks hosted_brands first, then discovered_brands.
+ * Resolves brand identity from the unified brands table.
  */
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
-  const hosted = await brandDb.getHostedBrandByDomain(domain);
-  if (hosted) {
-    return resolveBrandFromJson(domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-  }
-  const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-  if (discovered?.brand_manifest) {
-    return resolveBrandFromJson(domain, discovered.brand_manifest as Record<string, unknown>, true);
+  const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (brand?.brand_manifest) {
+    return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
   }
   return undefined;
 }
@@ -457,6 +456,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
+      // Trigger crawl for new/updated publisher domains (fire-and-forget)
+      if (config.crawler && updates.publishers && Array.isArray(updates.publishers)) {
+        const existingDomains = new Set(
+          (existingProfile.publishers || []).map((p: { domain?: string }) => p.domain?.toLowerCase().trim()).filter(Boolean)
+        );
+        const MAX_AUTO_CRAWL = 5;
+        let crawlCount = 0;
+        for (const pub of updates.publishers) {
+          if (crawlCount >= MAX_AUTO_CRAWL) break;
+          if (pub.domain && pub.is_public) {
+            validateCrawlDomain(pub.domain).then(domain => {
+              if (!existingDomains.has(domain)) {
+                config.crawler!.crawlSingleDomain(domain).catch(err => {
+                  logger.warn({ err, domain }, 'Auto-crawl for new publisher domain failed');
+                });
+              }
+            }).catch(() => {
+              // Domain failed validation (private IP, invalid format) — skip silently
+            });
+            crawlCount++;
+          }
+        }
+      }
+
       // Write user-reported org knowledge (fire-and-forget)
       const knowledgeWrites: Promise<unknown>[] = [];
       const userId = user.id;
@@ -516,6 +539,209 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       res.status(500).json({
         error: 'Failed to update member profile',
       });
+    }
+  });
+
+  // POST /api/me/agents/:index/publish - Add agent to brand.json
+  router.post('/agents/:index/publish', requireAuth, async (req, res) => {
+    try {
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      if (!profile.primary_brand_domain) {
+        return res.status(400).json({ error: 'Set your primary brand domain first' });
+      }
+
+      const agents = profile.agents || [];
+      if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
+      const agent = agents[index];
+
+      // Validate agent URL is HTTPS
+      try {
+        const parsed = new URL(agent.url);
+        if (parsed.protocol !== 'https:') {
+          return res.status(400).json({ error: 'Agent URL must use HTTPS' });
+        }
+      } catch {
+        return res.status(400).json({ error: 'Agent URL is not a valid URL' });
+      }
+
+      const domain = profile.primary_brand_domain;
+
+      // Check if brand is self-hosted (has authoritative brand.json)
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+      const isSelfHosted = discovered?.source_type === 'brand_json';
+
+      if (isSelfHosted) {
+        // Can't write to their file — return snippet to copy
+        const snippet = {
+          type: agent.type || 'brand',
+          url: agent.url,
+          id: agent.name || agent.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
+          ...(agent.name ? { description: agent.name } : {}),
+        };
+
+        // Mark as public (intent — will be verified via check endpoint)
+        agents[index] = { ...agent, is_public: true };
+        await memberDb.updateProfileByOrgId(orgId, { agents });
+
+        return res.json({
+          action: 'snippet',
+          message: 'Add this to the agents array in your brand.json',
+          snippet,
+        });
+      }
+
+      // Community/hosted brand — write agent into manifest
+      const agentEntry = {
+        type: agent.type || 'brand',
+        url: agent.url,
+        id: agent.name || agent.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
+        ...(agent.name ? { description: agent.name } : {}),
+      };
+
+      // Get current agents from manifest, add/replace by URL
+      const manifest = (discovered?.brand_manifest as Record<string, unknown>) || {};
+      const currentAgents = Array.isArray(manifest.agents) ? manifest.agents as Array<{ type: string; url: string; id: string; description?: string }> : [];
+      const updatedAgents = [...currentAgents.filter(a => a.url !== agent.url), agentEntry];
+
+      await brandDb.updateManifestAgents(domain, updatedAgents, {
+        user_id: req.user!.id,
+        email: req.user!.email,
+        name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
+        summary: `Published ${agent.type || 'brand'} agent to brand.json`,
+      });
+
+      // Update is_public cache
+      agents[index] = { ...agent, is_public: true };
+      await memberDb.updateProfileByOrgId(orgId, { agents });
+
+      return res.json({ action: 'published', message: 'Agent published to brand.json' });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to publish agent');
+      return res.status(500).json({ error: 'Failed to publish agent' });
+    }
+  });
+
+  // DELETE /api/me/agents/:index/publish - Remove agent from brand.json
+  router.delete('/agents/:index/publish', requireAuth, async (req, res) => {
+    try {
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
+
+      const agents = profile.agents || [];
+      if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
+      const agent = agents[index];
+
+      const domain = profile.primary_brand_domain;
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+
+      if (discovered && discovered.source_type !== 'brand_json') {
+        // Community brand — remove agent from manifest
+        const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
+        const currentAgents = Array.isArray(manifest.agents) ? manifest.agents as Array<{ type: string; url: string; id: string }> : [];
+        const updatedAgents = currentAgents.filter(a => a.url !== agent.url);
+
+        await brandDb.updateManifestAgents(domain, updatedAgents, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
+          summary: `Removed ${agent.type || 'brand'} agent from brand.json`,
+        });
+      }
+
+      // Update is_public cache
+      agents[index] = { ...agent, is_public: false };
+      await memberDb.updateProfileByOrgId(orgId, { agents });
+
+      return res.json({ action: 'unpublished', message: 'Agent removed from brand.json' });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to unpublish agent');
+      return res.status(500).json({ error: 'Failed to unpublish agent' });
+    }
+  });
+
+  // POST /api/me/agents/:index/check - Check if agent appears in self-hosted brand.json
+  router.post('/agents/:index/check', requireAuth, async (req, res) => {
+    try {
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
+
+      const agents = profile.agents || [];
+      if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
+      const agent = agents[index];
+
+      const domain = profile.primary_brand_domain;
+
+      // Validate domain is safe to fetch (SSRF protection)
+      try {
+        await validateCrawlDomain(domain);
+      } catch (e) {
+        return res.status(400).json({ error: `Invalid domain: ${(e as Error).message}` });
+      }
+
+      const brandManager = new BrandManager();
+
+      let found = false;
+      try {
+        const result = await brandManager.validateDomain(domain);
+        if (result.valid && result.raw_data) {
+          const data = result.raw_data as Record<string, unknown>;
+          const brandAgents = Array.isArray(data.agents) ? data.agents as Array<{ url?: string }> : [];
+
+          const brands = Array.isArray(data.brands) ? data.brands as Array<{ agents?: Array<{ url?: string }> }> : [];
+          const allAgents = [...brandAgents, ...brands.flatMap(b => b.agents || [])];
+
+          found = allAgents.some(a => a.url === agent.url);
+        }
+      } catch {
+        // Fetch failed — agent not verifiable
+      }
+
+      // Update cache
+      agents[index] = { ...agent, is_public: found };
+      await memberDb.updateProfileByOrgId(orgId, { agents });
+
+      return res.json({
+        found,
+        checked_at: new Date().toISOString(),
+        domain,
+        agent_url: agent.url,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to check agent in brand.json');
+      return res.status(500).json({ error: 'Failed to check agent' });
     }
   });
 

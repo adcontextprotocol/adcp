@@ -22,7 +22,8 @@ import {
 import { sendCommunityReplies } from '../services/community-articles.js';
 import { processFeedsToFetch } from '../services/feed-fetcher.js';
 import { processAlerts } from '../services/industry-alerts.js';
-import { sendChannelMessage } from '../../slack/client.js';
+import { sendChannelMessage, sendDirectMessage } from '../../slack/client.js';
+import { SlackDatabase } from '../../db/slack-db.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
@@ -47,6 +48,16 @@ import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
 
+/** Log pool timeouts at warn (transient) instead of error (which triggers Slack). */
+function logJobSubtaskError(error: unknown, message: string): void {
+  const isPoolTimeout = error instanceof Error && /timeout.*connect|connection.*timeout/i.test(error.message);
+  if (isPoolTimeout) {
+    jobLogger.warn({ error }, `${message} (DB pool busy — skipping)`);
+  } else {
+    jobLogger.error({ error }, message);
+  }
+}
+
 /**
  * Composite runner for content curator that runs multiple sub-tasks sequentially.
  * Processes: pending resources, RSS perspectives, community articles, community replies.
@@ -63,19 +74,19 @@ async function runContentCuratorJob() {
   try {
     results.pendingResources = await processPendingResources({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: pending resources failed');
+    logJobSubtaskError(error, 'Content curator: pending resources failed');
   }
 
   try {
     results.rssPerspectives = await processRssPerspectives({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: RSS perspectives failed');
+    logJobSubtaskError(error, 'Content curator: RSS perspectives failed');
   }
 
   try {
     results.communityArticles = await processCommunityArticles({ limit: 5 });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: community articles failed');
+    logJobSubtaskError(error, 'Content curator: community articles failed');
   }
 
   try {
@@ -84,7 +95,7 @@ async function runContentCuratorJob() {
       return result.ok;
     });
   } catch (error) {
-    jobLogger.error({ error }, 'Content curator: community replies failed');
+    logJobSubtaskError(error, 'Content curator: community replies failed');
   }
 
   return results;
@@ -417,6 +428,8 @@ export function registerAllJobs(): void {
   });
 
   // Event reminder - sends notifications ~24h before events start
+  // For users with accounts: in-app notification + Slack DM
+  // For email-only registrations (e.g. Luma sync): Slack DM if we can match the email
   jobScheduler.register({
     name: 'event-reminder',
     description: 'Send reminder notifications for upcoming events',
@@ -430,25 +443,55 @@ export function registerAllJobs(): void {
       let remindersSent = 0;
 
       const notificationDb = new NotificationDatabase();
+      const slackDb = new SlackDatabase();
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
       for (const event of events) {
         const registrations = await eventsDb.getEventRegistrations(event.id);
         for (const reg of registrations) {
-          if (!reg.workos_user_id || reg.registration_status !== 'registered') continue;
-
-          // Skip if reminder already sent for this event+user
-          const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
-          if (alreadySent) continue;
+          if (reg.registration_status !== 'registered') continue;
 
           try {
-            await notifyUser({
-              recipientUserId: reg.workos_user_id,
-              type: 'event_reminder',
-              referenceId: event.id,
-              referenceType: 'event',
-              title: `Reminder: ${event.title} is tomorrow`,
-              url: `/events/${event.slug}`,
-            });
-            remindersSent++;
+            if (reg.workos_user_id) {
+              // Account user: in-app + Slack DM via notifyUser
+              const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
+              if (alreadySent) continue;
+
+              await notifyUser({
+                recipientUserId: reg.workos_user_id,
+                type: 'event_reminder',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `Reminder: ${event.title} is tomorrow`,
+                url: `/events/${event.slug}`,
+              });
+              remindersSent++;
+            } else if (reg.email) {
+              // Email-only registration (Luma sync): try Slack DM by email
+              const slackUser = await slackDb.findByEmail(reg.email);
+              if (!slackUser?.slack_user_id) continue;
+
+              // Dedup using the slack user's workos_user_id if linked
+              const dedupUserId = slackUser.workos_user_id || `slack:${slackUser.slack_user_id}`;
+              const alreadySent = await notificationDb.exists(dedupUserId, 'event_reminder', event.id);
+              if (alreadySent) continue;
+
+              const eventUrl = `${baseUrl}/events/${event.slug}`;
+              await sendDirectMessage(slackUser.slack_user_id, {
+                text: `Reminder: ${event.title} is tomorrow\n<${eventUrl}|View event>`,
+              });
+
+              // Record notification for dedup on subsequent runs
+              await notificationDb.createNotification({
+                recipientUserId: dedupUserId,
+                type: 'event_reminder',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `Reminder: ${event.title} is tomorrow`,
+                url: `/events/${event.slug}`,
+              });
+              remindersSent++;
+            }
           } catch (err) {
             logger.error({ err }, 'Failed to send event reminder');
           }
@@ -468,6 +511,95 @@ export function registerAllJobs(): void {
     runner: runEventRecapNudgeJob,
     businessHours: { startHour: 9, endHour: 10 },
     shouldLogResult: (r) => r.nudgesSent > 0,
+  });
+
+  // Auto-complete events that have ended
+  jobScheduler.register({
+    name: 'event-auto-complete',
+    description: 'Move published events to completed after they end',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    failureThreshold: 1,
+    runner: async () => {
+      const completedEvents = await eventsDb.autoCompleteExpiredEvents();
+      if (completedEvents.length > 0) {
+        logger.info({ completed: completedEvents.length, events: completedEvents.map(e => e.title) }, 'Auto-completed past events');
+      }
+      return { completed: completedEvents.length };
+    },
+    shouldLogResult: (r) => r.completed > 0,
+  });
+
+  // Post-event follow-up — thank attendees and notify when recap is available
+  jobScheduler.register({
+    name: 'event-follow-up',
+    description: 'Send post-event thank-you to attendees 24h after event ends',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    failureThreshold: 1,
+    runner: async () => {
+      // Find events that ended 23-25h ago (same window pattern as reminder)
+      const from = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      const to = new Date(Date.now() - 23 * 60 * 60 * 1000);
+      const result = await query<{ id: string; title: string; slug: string; end_time: string; recap_html: string | null }>(
+        `SELECT id, title, slug, end_time, recap_html FROM events
+         WHERE status IN ('published', 'completed')
+           AND end_time >= $1 AND end_time <= $2`,
+        [from.toISOString(), to.toISOString()]
+      );
+
+      let followUpsSent = 0;
+      const notificationDb = new NotificationDatabase();
+      const slackDb = new SlackDatabase();
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+      for (const event of result.rows) {
+        const message = event.recap_html
+          ? `The recap for ${event.title} is live!`
+          : `${event.title} has wrapped up — a recap will be posted soon.`;
+        const registrations = await eventsDb.getEventRegistrations(event.id);
+        for (const reg of registrations) {
+          if (reg.registration_status !== 'registered') continue;
+          try {
+            if (reg.workos_user_id) {
+              const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_follow_up', event.id);
+              if (alreadySent) continue;
+              await notifyUser({
+                recipientUserId: reg.workos_user_id,
+                type: 'event_follow_up',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: message,
+                url: `/events/${event.slug}`,
+              });
+              followUpsSent++;
+            } else if (reg.email) {
+              const slackUser = await slackDb.findByEmail(reg.email);
+              if (!slackUser?.slack_user_id) continue;
+              const dedupUserId = slackUser.workos_user_id || `slack:${slackUser.slack_user_id}`;
+              const alreadySent = await notificationDb.exists(dedupUserId, 'event_follow_up', event.id);
+              if (alreadySent) continue;
+              await sendDirectMessage(slackUser.slack_user_id, {
+                text: `${message}\n<${baseUrl}/events/${event.slug}|View event>`,
+              });
+              await notificationDb.createNotification({
+                recipientUserId: dedupUserId,
+                type: 'event_follow_up',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: message,
+                url: `/events/${event.slug}`,
+              });
+              followUpsSent++;
+            }
+          } catch (err) {
+            logger.error({ err }, 'Failed to send event follow-up');
+          }
+        }
+      }
+      return { eventsChecked: result.rows.length, followUpsSent };
+    },
+    shouldLogResult: (r) => r.followUpsSent > 0,
   });
 
   // Brand registry sweep - researches unmapped org domains to maintain 100% coverage

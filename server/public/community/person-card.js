@@ -232,7 +232,7 @@ function injectPersonCardStyles() {
       font-size: var(--text-xs);
       color: var(--color-success-700);
       background: var(--color-success-100);
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--radius-full);
       font-weight: var(--font-medium);
       white-space: nowrap;
@@ -274,7 +274,7 @@ function injectPersonCardStyles() {
 
     .pc-tag {
       font-size: var(--text-xs);
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       background: var(--color-primary-100);
       color: var(--color-brand);
       border-radius: var(--radius-sm);

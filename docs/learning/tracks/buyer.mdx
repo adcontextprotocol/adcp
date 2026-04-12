@@ -192,7 +192,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 **~45 min** | Prerequisite: C3
 
-Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. The skill tested is orchestrating a buying workflow correctly.
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/docs/building/schemas-and-sdks) SDK. The skill tested is orchestrating a buying workflow correctly.
 
 ### What you'll build
 
@@ -201,6 +201,16 @@ Create a working buyer agent that discovers products and executes media buys. Us
 - Media buy creation with targeting and budget
 - Creative sync with at least 1 format
 - Campaign monitoring via delivery reporting
+
+### How you'll validate
+
+Your buyer agent runs against the public test agent (`test-mcp`). Use `npx @adcp/client` to execute tool calls and verify your agent handles the complete buying workflow:
+
+```bash
+npx @adcp/client test-mcp get_products '{"brief":"your campaign brief"}'
+```
+
+See [Validate Your Agent](/docs/building/validate-your-agent) for CLI setup and the full testing workflow.
 
 ### Assessment rubric
 

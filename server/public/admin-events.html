@@ -31,7 +31,7 @@
       margin-bottom: var(--space-5);
       box-shadow: var(--shadow-xs);
     }
-    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
     h2 { margin-bottom: var(--space-4); color: var(--color-text-heading); font-size: var(--text-xl); }
     .events-list {
       display: grid;
@@ -58,7 +58,7 @@
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       flex-wrap: wrap;
       align-items: center;
     }
@@ -90,7 +90,7 @@
       cursor: pointer;
       transition: var(--transition-all);
     }
-    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
@@ -134,7 +134,7 @@
     .form-group select,
     .form-group textarea {
       width: 100%;
-      padding: var(--space-2.5);
+      padding: var(--space-2_5);
       border: var(--border-1) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
@@ -167,7 +167,7 @@
     }
     .modal-buttons {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       justify-content: flex-end;
       margin-top: var(--space-6);
       padding-top: var(--space-5);
@@ -185,7 +185,7 @@
     }
     .filter-bar {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       margin-bottom: var(--space-5);
     }
     .filter-bar select {
@@ -308,6 +308,33 @@
       background: var(--color-success-100);
       color: var(--color-success-700);
     }
+    /* Registrations panel */
+    .reg-stats { display: flex; gap: var(--space-5); margin-bottom: var(--space-5); }
+    .reg-stat { text-align: center; }
+    .reg-stat-value { font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--color-text-heading); }
+    .reg-stat-label { font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .reg-search-bar { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+    .reg-search-bar input { flex: 1; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); }
+    .reg-search-bar select { padding: var(--space-2); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); }
+    .reg-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    .reg-table th { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 2px solid var(--color-gray-200); font-weight: var(--font-semibold); color: var(--color-text-heading); font-size: var(--text-xs); text-transform: uppercase; }
+    .reg-table td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-gray-100); }
+    .reg-table tr:hover td { background: var(--color-bg-subtle); }
+    .reg-actions { display: flex; gap: 4px; }
+    .badge-registered { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-waitlisted { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-interested { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-host { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-partner { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-sponsor { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-participant { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .invite-row { display: flex; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-gray-200); }
+    .invite-row input { flex: 1; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); }
+
+    /* TipTap editor: inner ProseMirror element must fill the wrapper */
+    #recapEditorEl { display: flex; flex-direction: column; }
+    #recapEditorEl .ProseMirror { flex: 1; min-height: 180px; outline: none; }
   </style>
 </head>
 <body>
@@ -610,6 +637,37 @@
           <div id="currentInvitesList" style="margin-top: var(--space-3);"></div>
         </div>
 
+        <!-- Regional Chapters / Committees (only shown when editing existing event) -->
+        <div id="committeeSection" style="display: none;">
+          <div class="section-divider">
+            <div class="section-title">Regional Chapters</div>
+          </div>
+          <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+            Link this event to regional chapters or working groups that are hosting or participating.
+          </p>
+
+          <div id="linkedCommittees" style="margin-bottom: var(--space-3);"></div>
+
+          <div style="display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+              <label style="font-size: var(--text-xs); color: var(--color-text-secondary);">Chapter / Group</label>
+              <select id="committeeSelect" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm);">
+                <option value="">Select...</option>
+              </select>
+            </div>
+            <div style="min-width: 120px;">
+              <label style="font-size: var(--text-xs); color: var(--color-text-secondary);">Role</label>
+              <select id="committeeRole" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm);">
+                <option value="host">Host</option>
+                <option value="partner">Partner</option>
+                <option value="sponsor">Sponsor</option>
+                <option value="participant">Participant</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-secondary btn-small" onclick="linkCommittee()">Link</button>
+          </div>
+        </div>
+
         <!-- Attendee Group (only shown when editing existing event) -->
         <div id="eventGroupSection" style="display: none;">
           <div class="section-divider">
@@ -633,6 +691,20 @@
               <button class="btn btn-secondary btn-small" onclick="viewEventGroupMembers()">View Members</button>
             </div>
           </div>
+
+          <div id="eventGroupNotExists" style="display: none;">
+            <button type="button" class="btn btn-primary" onclick="createEventGroup()">
+              Create Attendee Group + Slack Channel
+            </button>
+            <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
+              This will create a public Slack channel for attendees to join.
+            </p>
+          </div>
+
+          <div id="eventGroupLoading" style="display: none; color: var(--color-text-secondary); font-size: var(--text-sm);">
+            Loading attendee group info...
+          </div>
+        </div>
 
         <!-- Recap (shown for existing events) -->
         <div class="section-divider" id="recapSection" style="display: none;">
@@ -659,20 +731,6 @@
           </div>
         </div>
 
-          <div id="eventGroupNotExists" style="display: none;">
-            <button type="button" class="btn btn-primary" onclick="createEventGroup()">
-              Create Attendee Group + Slack Channel
-            </button>
-            <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-              This will create a public Slack channel for attendees to join.
-            </p>
-          </div>
-
-          <div id="eventGroupLoading" style="display: none; color: var(--color-text-secondary); font-size: var(--text-sm);">
-            Loading attendee group info...
-          </div>
-        </div>
-
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn btn-primary" id="saveBtn">Save Event</button>
@@ -691,6 +749,56 @@
       <div class="modal-buttons">
         <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
         <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Registrations Modal -->
+  <div id="regModal" class="modal-overlay">
+    <div class="modal" style="max-width: 900px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+        <h2 style="margin: 0;" id="regModalTitle">Registrations</h2>
+        <button class="btn btn-secondary btn-small" onclick="closeRegModal()">Close</button>
+      </div>
+
+      <div class="reg-stats" id="regStats"></div>
+
+      <div class="reg-search-bar">
+        <input type="text" id="regSearch" placeholder="Search by name or email..." oninput="filterRegistrations()">
+        <select id="regStatusFilter" onchange="filterRegistrations()">
+          <option value="">All Statuses</option>
+          <option value="registered">Registered</option>
+          <option value="waitlisted">Waitlisted</option>
+          <option value="interested">Interested</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      <div style="max-height: 400px; overflow-y: auto;">
+        <table class="reg-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Source</th>
+              <th>Attended</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="regTableBody"></tbody>
+        </table>
+      </div>
+
+      <div id="regEmpty" class="empty-state" style="display: none; padding: var(--space-6);">
+        No registrations yet.
+      </div>
+
+      <div class="invite-row">
+        <input type="email" id="regInviteEmail" placeholder="Email address">
+        <input type="text" id="regInviteName" placeholder="Name (optional)">
+        <button class="btn btn-primary btn-small" onclick="inviteFromRegPanel()">Invite</button>
+        <button class="btn btn-secondary btn-small" onclick="exportRegistrationsCsv()">Export CSV</button>
       </div>
     </div>
   </div>
@@ -725,7 +833,7 @@
 
     // Initialize
     async function init() {
-      await loadEvents();
+      await Promise.all([loadEvents(), loadAvailableCommittees()]);
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block';
     }
@@ -791,6 +899,13 @@
                 ${event.visibility && event.visibility !== 'public' ? `<span class="badge badge-invite">${event.visibility === 'invite_listed' ? 'invite only' : 'unlisted'}</span>` : ''}
                 <span>${dateStr} at ${timeStr}</span>
                 ${event.venue_city ? `<span>${escapeHtml(event.venue_city)}</span>` : ''}
+                ${event.registration_count !== undefined ? (() => {
+                  const count = event.registration_count || 0;
+                  const max = event.max_attendees;
+                  const pct = max ? (count / max * 100) : 0;
+                  const color = !max ? 'var(--color-text-secondary)' : pct >= 50 ? 'var(--color-success-600)' : pct >= 25 ? 'var(--color-warning-600)' : 'var(--color-error-600)';
+                  return `<span style="color: ${color}; font-weight: 500;">${count}${max ? '/' + max : ''} registered</span>`;
+                })() : ''}
               </div>
             </div>
             <div class="event-actions">
@@ -814,6 +929,7 @@
       document.getElementById('sponsorshipTiers').innerHTML = '';
       document.getElementById('stripeProductInfo').style.display = 'none';
       document.getElementById('eventGroupSection').style.display = 'none';
+      document.getElementById('committeeSection').style.display = 'none';
       sponsorshipTierCount = 0;
       toggleLocationFields();
       toggleSponsorshipTiers();
@@ -901,6 +1017,10 @@
       // Show event group section for existing events
       document.getElementById('eventGroupSection').style.display = 'block';
       loadEventGroupInfo(id);
+
+      // Show committee section for existing events
+      document.getElementById('committeeSection').style.display = 'block';
+      loadLinkedCommittees(id);
 
       document.getElementById('eventModal').style.display = 'flex';
     }
@@ -990,6 +1110,89 @@
       }
     }
 
+    // Committee linking
+    let availableCommittees = [];
+
+    async function loadAvailableCommittees() {
+      try {
+        const res = await fetch('/api/admin/events/committees/available');
+        if (!res.ok) return;
+        const data = await res.json();
+        availableCommittees = data.committees || [];
+      } catch (error) {
+        console.error('Error loading committees:', error);
+      }
+    }
+
+    function populateCommitteeSelect(linkedIds = []) {
+      const select = document.getElementById('committeeSelect');
+      select.innerHTML = '<option value="">Select...</option>';
+      availableCommittees
+        .filter(c => !linkedIds.includes(c.id))
+        .forEach(c => {
+          const label = c.committee_type === 'chapter' ? `${c.name}` : `${c.name} (${c.committee_type})`;
+          select.innerHTML += `<option value="${c.id}">${escapeHtml(label)}</option>`;
+        });
+    }
+
+    async function loadLinkedCommittees(eventId) {
+      try {
+        const res = await fetch(`/api/admin/events/${eventId}/committees`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const committees = data.committees || [];
+
+        const container = document.getElementById('linkedCommittees');
+        if (committees.length === 0) {
+          container.innerHTML = '<p style="font-size: var(--text-sm); color: var(--color-text-muted);">No chapters linked yet.</p>';
+        } else {
+          container.innerHTML = committees.map(c => `
+            <div style="display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; border-bottom: 1px solid var(--color-border);">
+              <span style="flex: 1; font-size: var(--text-sm);">${escapeHtml(c.committee_name)}</span>
+              <span class="badge badge-${escapeHtml(c.role)}" style="font-size: 11px;">${escapeHtml(c.role)}</span>
+              <button type="button" class="btn btn-secondary btn-small" style="padding: 2px 8px; font-size: 11px;" onclick="unlinkCommittee('${escapeHtml(c.committee_id)}')">Remove</button>
+            </div>
+          `).join('');
+        }
+
+        populateCommitteeSelect(committees.map(c => c.committee_id));
+      } catch (error) {
+        console.error('Error loading linked committees:', error);
+      }
+    }
+
+    async function linkCommittee() {
+      if (!editingEventId) return;
+      const committeeId = document.getElementById('committeeSelect').value;
+      const role = document.getElementById('committeeRole').value;
+      if (!committeeId) return;
+
+      try {
+        const res = await fetch(`/api/admin/events/${editingEventId}/committees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ committee_id: committeeId, role }),
+        });
+        if (!res.ok) throw new Error('Failed to link committee');
+        await loadLinkedCommittees(editingEventId);
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function unlinkCommittee(committeeId) {
+      if (!editingEventId) return;
+      try {
+        const res = await fetch(`/api/admin/events/${editingEventId}/committees/${committeeId}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Failed to unlink committee');
+        await loadLinkedCommittees(editingEventId);
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
     // Save event
     async function saveEvent(e) {
       e.preventDefault();
@@ -1068,10 +1271,176 @@
       }
     }
 
-    // View registrations
-    function viewRegistrations(id) {
-      // TODO: Navigate to registrations view
-      alert('Registrations view coming soon');
+    // Registrations panel
+    let regEventId = null;
+    let allRegistrations = [];
+
+    async function viewRegistrations(id) {
+      regEventId = id;
+      const event = events.find(e => e.id === id);
+      if (!event) return;
+
+      document.getElementById('regModalTitle').textContent = `Registrations — ${event.title}`;
+      document.getElementById('regSearch').value = '';
+      document.getElementById('regStatusFilter').value = '';
+      document.getElementById('regInviteEmail').value = '';
+      document.getElementById('regInviteName').value = '';
+      document.getElementById('regModal').style.display = 'flex';
+
+      try {
+        const res = await fetch(`/api/admin/events/${id}/registrations`);
+        if (!res.ok) throw new Error('Failed to load registrations');
+        const data = await res.json();
+        allRegistrations = data.registrations || [];
+        renderRegStats();
+        filterRegistrations();
+      } catch (error) {
+        console.error('Error loading registrations:', error);
+        allRegistrations = [];
+        renderRegStats();
+        filterRegistrations();
+      }
+    }
+
+    function renderRegStats() {
+      const registered = allRegistrations.filter(r => r.registration_status === 'registered').length;
+      const waitlisted = allRegistrations.filter(r => r.registration_status === 'waitlisted').length;
+      const interested = allRegistrations.filter(r => r.registration_status === 'interested').length;
+      const attended = allRegistrations.filter(r => r.attended).length;
+
+      document.getElementById('regStats').innerHTML = `
+        <div class="reg-stat"><div class="reg-stat-value">${registered}</div><div class="reg-stat-label">Registered</div></div>
+        <div class="reg-stat"><div class="reg-stat-value">${waitlisted}</div><div class="reg-stat-label">Waitlisted</div></div>
+        <div class="reg-stat"><div class="reg-stat-value">${interested}</div><div class="reg-stat-label">Interested</div></div>
+        <div class="reg-stat"><div class="reg-stat-value">${attended}</div><div class="reg-stat-label">Attended</div></div>
+        <div class="reg-stat"><div class="reg-stat-value">${allRegistrations.length}</div><div class="reg-stat-label">Total</div></div>
+      `;
+    }
+
+    function filterRegistrations() {
+      const search = document.getElementById('regSearch').value.toLowerCase();
+      const status = document.getElementById('regStatusFilter').value;
+
+      let filtered = allRegistrations;
+      if (search) {
+        filtered = filtered.filter(r =>
+          (r.name || '').toLowerCase().includes(search) ||
+          (r.email || '').toLowerCase().includes(search)
+        );
+      }
+      if (status) {
+        filtered = filtered.filter(r => r.registration_status === status);
+      }
+
+      const tbody = document.getElementById('regTableBody');
+      const empty = document.getElementById('regEmpty');
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+
+      empty.style.display = 'none';
+      tbody.innerHTML = filtered.map(reg => {
+        const name = escapeHtml(reg.name || '—');
+        const email = escapeHtml(reg.email || '—');
+        const statusBadge = `<span class="badge badge-${escapeHtml(reg.registration_status)}">${escapeHtml(reg.registration_status)}</span>`;
+        const source = escapeHtml(reg.registration_source || '—');
+        const attendedStr = reg.attended
+          ? `<span style="color: var(--color-success-600);">Yes</span>`
+          : (reg.registration_status === 'registered' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="checkInAttendee('${escapeHtml(reg.id)}')">Check in</button>` : '—');
+
+        return `<tr>
+          <td>${name}</td>
+          <td>${email}</td>
+          <td>${statusBadge}</td>
+          <td>${source}</td>
+          <td>${attendedStr}</td>
+          <td class="reg-actions">
+            ${reg.registration_status === 'waitlisted' ? `<button class="btn btn-primary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="approveRegistration('${escapeHtml(reg.id)}')">Approve</button>` : ''}
+            ${reg.registration_status !== 'cancelled' ? `<button class="btn btn-secondary btn-small" style="padding: 1px 6px; font-size: 11px;" onclick="cancelRegistration('${escapeHtml(reg.id)}')">Cancel</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function checkInAttendee(regId) {
+      try {
+        const res = await fetch(`/api/admin/events/${regEventId}/registrations/${regId}/check-in`, { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to check in');
+        await viewRegistrations(regEventId);
+      } catch (error) { alert(error.message); }
+    }
+
+    async function approveRegistration(regId) {
+      try {
+        const res = await fetch(`/api/admin/events/${regEventId}/registrations/${regId}/approve`, { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to approve');
+        await viewRegistrations(regEventId);
+      } catch (error) { alert(error.message); }
+    }
+
+    async function cancelRegistration(regId) {
+      try {
+        const res = await fetch(`/api/admin/events/${regEventId}/registrations/${regId}/cancel`, { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to cancel');
+        await viewRegistrations(regEventId);
+      } catch (error) { alert(error.message); }
+    }
+
+    async function inviteFromRegPanel() {
+      const email = document.getElementById('regInviteEmail').value.trim();
+      const name = document.getElementById('regInviteName').value.trim();
+      if (!email) return;
+
+      try {
+        // Add to invite list
+        await fetch(`/api/admin/events/${regEventId}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails: [email] }),
+        });
+        // Create registration
+        await fetch(`/api/admin/events/${regEventId}/registrations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, name: name || undefined, registration_status: 'interested', registration_source: 'admin' }),
+        });
+        document.getElementById('regInviteEmail').value = '';
+        document.getElementById('regInviteName').value = '';
+        await viewRegistrations(regEventId);
+      } catch (error) { alert(error.message); }
+    }
+
+    function closeRegModal() {
+      regEventId = null;
+      allRegistrations = [];
+      document.getElementById('regModal').style.display = 'none';
+    }
+
+    function exportRegistrationsCsv() {
+      if (allRegistrations.length === 0) return;
+      const rows = [['Name', 'Email', 'Status', 'Source', 'Registered At', 'Attended']];
+      for (const r of allRegistrations) {
+        rows.push([
+          r.name || '',
+          r.email || '',
+          r.registration_status,
+          r.registration_source || '',
+          r.registered_at ? new Date(r.registered_at).toISOString() : '',
+          r.attended ? 'Yes' : 'No',
+        ]);
+      }
+      const csv = rows.map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const event = events.find(e => e.id === regEventId);
+      a.download = `${event?.slug || 'registrations'}-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     // Delete modal
@@ -1109,6 +1478,9 @@
       document.getElementById('eventGroupExists').style.display = 'none';
       document.getElementById('eventGroupNotExists').style.display = 'none';
       document.getElementById('eventGroupLoading').style.display = 'none';
+      // Reset committee section
+      document.getElementById('committeeSection').style.display = 'none';
+      document.getElementById('linkedCommittees').innerHTML = '';
       // Reset access control section
       document.getElementById('accessRulesSection').style.display = 'none';
       document.getElementById('inviteListSection').style.display = 'none';

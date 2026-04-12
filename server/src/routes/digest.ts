@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getDigestByDate, getCurrentWeekDigest, getRecentDigests, recordDigestFeedback, isLegacyContent, type PersonaCluster, type DigestContent } from '../db/digest-db.js';
+import { getDigestByDate, getCurrentWeekDigest, getRecentDigests, getDigestCoverImage, recordDigestFeedback, isLegacyContent, type PersonaCluster, type DigestContent } from '../db/digest-db.js';
 import { generateDigestSubject } from '../addie/services/digest-builder.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
 
@@ -149,6 +149,32 @@ export function createDigestRouter(): Router {
     } catch (error) {
       logger.error({ error }, 'Failed to render digest archive');
       res.status(500).send('Internal server error');
+    }
+  });
+
+  /**
+   * GET /digest/:date/cover.png - Serve the cover image for a digest edition.
+   * Public (used in emails and web views). Long cache since images don't change.
+   */
+  router.get('/:date/cover.png', async (req: Request, res: Response) => {
+    const { date } = req.params;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).send('Invalid date format');
+      return;
+    }
+    try {
+      const imageData = await getDigestCoverImage(date);
+      if (!imageData) {
+        res.status(404).send('No cover image');
+        return;
+      }
+      res.set('Content-Type', 'image/png');
+      res.set('Content-Length', String(imageData.length));
+      res.set('Cache-Control', 'public, max-age=604800');
+      res.send(imageData);
+    } catch (error) {
+      logger.error({ error, date }, 'Failed to serve cover image');
+      res.status(500).send('Failed to serve cover image');
     }
   });
 

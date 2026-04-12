@@ -11,6 +11,58 @@
 
 import type { SlackBlockMessage } from '../slack/types.js';
 
+// ─── Section Descriptors ──────────────────────────────────────────────
+
+export interface SectionDescriptor {
+  /** Property key on the content object (e.g. 'decisions', 'whatToWatch') */
+  key: string;
+  /** Display label in admin UI */
+  label: string;
+  /** Subtitle hint */
+  hint?: string;
+  /** Render admin-preview HTML from opaque content (server-side) */
+  renderHtml: (content: unknown) => string;
+  /** Item count for badge display */
+  countFn?: (content: unknown) => number;
+  /** Whether this section supports item-level edit/delete/reorder */
+  supportsItemEdit?: boolean;
+  /** Grid layout hint */
+  layout?: 'full' | 'half';
+}
+
+export interface CustomSection {
+  id: string;
+  title: string;
+  /** Markdown body */
+  body: string;
+  /** Insertion index among the newsletter's sections */
+  position: number;
+}
+
+export interface ItemOperations {
+  editItem: (content: unknown, index: number, body: Record<string, unknown>, editor: string) => unknown;
+  deleteItem: (content: unknown, index: number, editor: string) => unknown;
+  reorderItems: (content: unknown, indices: number[], editor: string) => unknown;
+}
+
+/** Check if a section key is hidden in the content */
+export function isSectionHidden(content: unknown, key: string): boolean {
+  const c = content as { hiddenSections?: string[] };
+  return (c.hiddenSections || []).includes(key);
+}
+
+/** Get custom sections from content */
+export function getCustomSections(content: unknown): CustomSection[] {
+  const c = content as { customSections?: CustomSection[] };
+  return c.customSections || [];
+}
+
+/** Get pasted content override, if any */
+export function getPastedContent(content: unknown): string | undefined {
+  const c = content as { pastedContent?: string };
+  return c.pastedContent;
+}
+
 // ─── Palette ───────────────────────────────────────────────────────────
 
 export interface NewsletterPalette {
@@ -82,6 +134,14 @@ export interface NewsletterEditionDB {
   getRecent(limit: number): Promise<EditionRecord[]>;
   getRecipients(): Promise<NewsletterRecipient[]>;
   getUserWorkingGroupMap(): Promise<Map<string, string[]>>;
+
+  // ─── Cover Image (optional) ──────────────────────────────────────────
+  /** Store a cover image for a draft edition. Returns false if not a draft. */
+  setCoverImage?(id: number, imageData: Buffer, promptUsed: string): Promise<boolean>;
+  /** Get the cover image binary by edition date. */
+  getCoverImage?(editionDate: string): Promise<Buffer | null>;
+  /** Get cover image + prompt (for reuse when publishing as perspective). */
+  getCoverImageWithPrompt?(editionDate: string): Promise<{ imageData: Buffer; promptUsed: string } | null>;
 }
 
 // ─── Newsletter Config ─────────────────────────────────────────────────
@@ -117,6 +177,8 @@ export interface NewsletterConfig {
   signOff: { text: string; attribution: string; domain: string };
   /** Slack announcement channel env var */
   announcementChannelEnvVar: string;
+  /** URL prefix for public cover images, e.g. '/digest' → /digest/:date/cover.png */
+  coverRoutePrefix?: string;
 
   /** Build content for a new edition */
   buildContent: () => Promise<unknown>;
@@ -151,4 +213,16 @@ export interface NewsletterConfig {
 
   /** Fields editable via direct admin API (not LLM instruction) */
   editableFields: string[];
+
+  /** Section descriptors for the admin UI */
+  sections?: SectionDescriptor[];
+
+  /** Optional: apply a free-form editing instruction via LLM */
+  applyInstruction?: (content: unknown, instruction: string, editorName: string) => Promise<{ content: unknown; summary: string }>;
+
+  /** Optional: item-level operations for array sections (keyed by section key) */
+  itemOperations?: Record<string, ItemOperations>;
+
+  /** Favicon/icon path for the admin page */
+  adminIcon?: string;
 }

@@ -19,7 +19,7 @@ import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { invalidateMemberContextCache } from '../member-context.js';
-import { OrganizationDatabase, inferMembershipTier } from '../../db/organization-db.js';
+import { OrganizationDatabase, resolveMembershipTier } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -2028,11 +2028,12 @@ export function createAdminToolHandlers(
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
-      const displayTier = org.membership_tier
-        || inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+      const displayTier = resolveMembershipTier(org);
       if (displayTier) {
-        const inferred = !org.membership_tier ? ' _(inferred from amount)_' : '';
-        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${inferred}\n`;
+        let tierSource = '';
+        if (!org.membership_tier && org.subscription_price_lookup_key) tierSource = ' _(from lookup key)_';
+        else if (!org.membership_tier) tierSource = ' _(inferred from amount)_';
+        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${tierSource}\n`;
       }
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
@@ -2814,6 +2815,13 @@ export function createAdminToolHandlers(
 
     // Step 1: Find the organization
     const searchPattern = `%${companyName}%`;
+    const searchParams: string[] = [searchPattern];
+    let paramIdx = 2;
+    const domainClause = domain ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})` : '';
+    if (domain) searchParams.push(`%${domain}%`);
+    const exactIdx = paramIdx++;
+    const prefixIdx = paramIdx++;
+    searchParams.push(companyName, `${companyName}%`);
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
@@ -2821,15 +2829,13 @@ export function createAdminToolHandlers(
               discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
-         AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
+         AND (LOWER(name) LIKE LOWER($1) ${domainClause})
        ORDER BY
-         CASE WHEN LOWER(name) = LOWER($3) THEN 0
-              WHEN LOWER(name) LIKE LOWER($4) THEN 1
+         CASE WHEN LOWER(name) = LOWER($${exactIdx}) THEN 0
+              WHEN LOWER(name) LIKE LOWER($${prefixIdx}) THEN 1
               ELSE 2 END
        LIMIT 5`,
-      domain
-        ? [searchPattern, `%${domain}%`, companyName, `${companyName}%`]
-        : [searchPattern, companyName, `${companyName}%`]
+      searchParams
     );
 
     if (searchResult.rows.length === 0) {
@@ -2953,7 +2959,8 @@ export function createAdminToolHandlers(
         );
       }
       if (!selectedProduct) {
-        return `❌ Product not found for lookup_key: "${lookupKey}". Use find_membership_products to get valid lookup keys.`;
+        const validKeys = products.map(p => p.lookup_key).filter(Boolean);
+        return `❌ Product not found for lookup_key: "${lookupKey}". Valid keys: ${validKeys.join(', ')}`;
       }
     }
 

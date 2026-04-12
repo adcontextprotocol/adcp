@@ -231,11 +231,13 @@ export const FederatedAgentWithDetailsSchema = z
     url: z.string(),
     name: z.string(),
     type: z.enum([
-      "creative",
-      "signals",
-      "sales",
+      "brand",
+      "rights",
+      "measurement",
       "governance",
-      "si",
+      "creative",
+      "buying",
+      "signals",
       "unknown",
     ]),
     protocol: z.enum(["mcp", "a2a"]).optional(),
@@ -395,4 +397,51 @@ export const PolicyHistorySchema = z
     revisions: z.array(PolicyRevisionEntrySchema),
   })
   .openapi("PolicyHistory");
+
+// ── Operator & Publisher Lookup ────────────────────────────────
+
+const AgentAuthorizationSummarySchema = z.object({
+  publisher_domain: z.string(),
+  authorized_for: z.string().optional(),
+  source: z.enum(["adagents_json", "agent_claim"]),
+});
+
+const OperatorAgentSchema = z.object({
+  url: z.string(),
+  name: z.string(),
+  type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]),
+  authorized_by: z.array(AgentAuthorizationSummarySchema),
+});
+
+export const OperatorLookupResultSchema = z
+  .object({
+    domain: z.string().openapi({ example: "pubmatic.com" }),
+    member: MemberRefSchema.nullable(),
+    agents: z.array(OperatorAgentSchema),
+  })
+  .openapi("OperatorLookupResult");
+
+const PublisherPropertySchema = z.object({
+  id: z.string().optional(),
+  type: z.string().optional(),
+  name: z.string().optional(),
+  identifiers: z.array(PropertyIdentifierSchema).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const PublisherAuthorizedAgentSchema = z.object({
+  url: z.string(),
+  authorized_for: z.string().optional(),
+  source: z.enum(["adagents_json", "agent_claim"]),
+});
+
+export const PublisherLookupResultSchema = z
+  .object({
+    domain: z.string().openapi({ example: "voxmedia.com" }),
+    member: MemberRefSchema.nullable(),
+    adagents_valid: z.boolean().nullable(),
+    properties: z.array(PublisherPropertySchema),
+    authorized_agents: z.array(PublisherAuthorizedAgentSchema),
+  })
+  .openapi("PublisherLookupResult");
 

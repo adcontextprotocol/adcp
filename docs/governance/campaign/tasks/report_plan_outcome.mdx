@@ -19,9 +19,10 @@ Sellers do not call this task. They report delivery data via [`check_governance`
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "completed",
     "seller_response": {
-      "media_buy_id": "mb_seller_456",
+      "seller_reference": "mb_seller_456",
       "packages": [
         {
           "package_id": "pkg_001",
@@ -101,9 +102,9 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "delivery",
     "delivery": {
-      "media_buy_id": "mb_seller_456",
       "reporting_period": {
         "start": "2026-03-15T00:00:00Z",
         "end": "2026-03-22T00:00:00Z"
@@ -159,6 +160,7 @@ If the seller rejected the request, report it so the governance agent can update
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
+    "governance_context": "gc_mb_seller_456",
     "outcome": "failed",
     "error": {
       "code": "PRODUCT_UNAVAILABLE",
@@ -188,15 +190,15 @@ If the seller rejected the request, report it so the governance agent can update
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
 | `check_id` | string | Conditional | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
+| `purchase_type` | enum | No | The kind of financial commitment: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
-| `seller_response.media_buy_id` | string | No | Seller's media buy identifier. |
+| `seller_response.seller_reference` | string | No | The seller's identifier for the created resource (e.g., `media_buy_id`, `rights_grant_id`, `deployment_id`). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque `governance_context`. |
 | `seller_response.committed_budget` | number | No | Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing individual package budgets. |
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
 | `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
 | `seller_response.creative_deadline` | string | No | ISO 8601 deadline for creative submission. |
-| `delivery` | object | No | Delivery metrics. Required when outcome is `delivery`. |
-| `delivery.media_buy_id` | string | No | The media buy being reported on. |
+| `delivery` | object | No | Delivery metrics. Required when outcome is `delivery`. The `governance_context` (already required on all governance calls) is the sole lifecycle correlator. |
 | `delivery.reporting_period` | object | No | Start and end timestamps for the reporting window. |
 | `delivery.impressions` | integer | No | Impressions delivered in the period. |
 | `delivery.spend` | number | No | Spend in the period. |

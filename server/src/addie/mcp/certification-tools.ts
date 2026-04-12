@@ -69,6 +69,9 @@ const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
  */
 const BUILD_PROJECT_METHODOLOGY = `## Build project approach — Specify, Build, Validate, Explain, Extend
 
+## CRITICAL RULE — call get_build_phase_instructions at every phase transition
+When transitioning to the Build, Validate, or Extend phase, you MUST call the get_build_phase_instructions tool BEFORE giving the learner any instructions. The tool returns the exact commands and URLs the learner needs. Present the tool's response to the learner exactly as returned — do not rewrite, summarize, or add your own build prompts. This ensures every learner gets the same validated workflow using skill files and storyboards.
+
 ## CRITICAL RULE — coaching errors during Phase 2 (Build) and Phase 5 (Extend)
 When a learner reports a build error during Phase 2 or 5, use this exact response pattern:
 
@@ -82,15 +85,23 @@ If after 3 rounds on the same error the coding assistant hasn't resolved it, sug
 
 Exception — specification gaps only: if the error reveals that the learner's original specification was incomplete (they didn't mention which library to use, left out the sandbox URL, or missed a key architectural requirement from Phase 1), point out what was missing from the spec so they can update their prompt. This exception is about what the spec was missing, not about diagnosing the code.
 
-This is a build project, not a lecture. The learner builds a working AdCP agent using an AI coding assistant (Claude Code, Cursor, Copilot) and the adcp client library. Your role is coach, not builder.
+This is a build project, not a lecture. The learner builds a working AdCP agent using an AI coding assistant (Claude Code, Cursor, Copilot) and @adcp/client. Your role is coach, not builder.
+
+**Skill files and storyboards are the core tools.**
+Each build project maps to a skill file (which generates the agent) and a storyboard (which validates it):
+- Publisher track (B4): skill = build-seller-agent, storyboard = media_buy_seller
+- Buyer track (C4): uses the client SDK against the public test agent (test-mcp). Validation = run tool calls against test-mcp and verify responses.
+- Platform track (D4): skill = build-seller-agent or build-signals-agent (learner's choice), storyboard = matching storyboard for chosen type
+
+The learner should use these tools. They are how agents are built and validated in practice.
 
 **Follow the 5 phases in order:**
 
 1. **Specify (~5 min)** — Help the learner describe what they want to build using AdCP terminology. Do NOT write the prompt for them. Ask guiding questions: "What products will you offer?" "What pricing model?" "What formats and channels?" If they can't specify it, they didn't learn the track material. Coach them through it.
-2. **Build (~5 min)** — The learner goes to their AI coding assistant and builds the agent. This is the fast part. Tell them to come back when it's running. When they hit errors, follow the CRITICAL RULE above — redirect to their coding assistant, do not fix it yourself.
-3. **Validate (~10 min)** — Give the learner specific MCP tool calls to run against their local agent. They paste the JSON responses back. Validate each response against AdCP schemas. If something fails: (a) name the specific schema violation (e.g., "the field is called base_rate, not price"), (b) explain why the schema requires it — this is protocol knowledge their coding assistant doesn't have, (c) then redirect them to take the schema feedback back to their coding assistant for the mechanical fix. Sage teaches the AdCP reasoning, the coding assistant makes the code change.
+2. **Build (~5 min)** — Call get_build_phase_instructions(module_id, "build", learner_spec, coding_tool) and present the result. Do NOT write your own build prompt. When they hit errors, follow the error coaching CRITICAL RULE above.
+3. **Validate (~10 min)** — Call get_build_phase_instructions(module_id, "validate") and present the result. Do NOT ask the learner to run individual tool calls. If steps fail, coach through each failure: (a) name the specific issue, (b) explain the protocol reasoning, (c) redirect to coding assistant. Loop: run storyboard → read failures → fix → re-run.
 4. **Explain (~10 min)** — This is the real assessment. Ask probing questions about design decisions, trade-offs, and extensions. The learner should reason about their agent using concepts from the track modules. "Why this pricing model?" "What happens if...?" "How would you add...?"
-5. **Extend (~15 min)** — Give the learner a challenge: add a new capability. They go back to the coding assistant, make changes, come back with results. This tests whether they can iterate on AdCP implementations.
+5. **Extend (~15 min)** — Give the learner a challenge: add a new capability. Call get_build_phase_instructions(module_id, "extend") for the re-validation instructions. This tests whether they can iterate on AdCP implementations using the same tools they'll use after certification.
 
 **Restricted environments**: Many learners work at organizations that restrict what MCP servers or connectors can be added to their company AI tools. If a learner says they can't add a connector or install an MCP server due to org-level restrictions, don't treat this as a blocker. Tell them to use a personal account or a local setup outside their corporate environment. Frame it positively: "That's common — most orgs lock down their AI tools. Use a personal account or run it locally for this exercise." If the learner cannot access any environment for the build exercise, they cannot complete a build project module in this session — offer to revisit when they have access.
 
@@ -794,6 +805,31 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'get_build_phase_instructions',
+    description: 'Get the exact instructions for a build project phase transition. You MUST call this tool when transitioning to the Build, Validate, or Extend phase of B4, C4, or D4. The tool returns the specific commands and URLs the learner needs — present them exactly as returned, do not rewrite or summarize. This ensures every learner gets the same validated workflow.',
+    usage_hints: 'MUST call when entering Build, Validate, or Extend phase of B4/C4/D4. Call BEFORE giving the learner any build or validation instructions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        module_id: { type: 'string', description: 'Build project module (B4, C4, or D4)' },
+        phase: {
+          type: 'string',
+          enum: ['build', 'validate', 'extend'],
+          description: 'The phase the learner is transitioning to',
+        },
+        learner_spec: {
+          type: 'string',
+          description: 'The learner\'s specification from Phase 1 (for build phase) or the capability they added (for extend phase)',
+        },
+        coding_tool: {
+          type: 'string',
+          description: 'The coding assistant the learner is using (e.g., "Claude Code", "Cursor", "Windsurf", "Copilot")',
+        },
+      },
+      required: ['module_id', 'phase'],
+    },
+  },
+  {
     name: 'save_learner_feedback',
     description: 'Save learner feedback after completing a certification module. Call this when the learner shares thoughts about the experience — what was confusing, what worked well, suggestions for improvement.',
     usage_hints: 'use after module completion when the learner provides feedback about the experience',
@@ -971,8 +1007,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -1023,8 +1060,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
@@ -1060,8 +1097,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D4: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
-    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Authentication', url: `${DOCS_BASE}/docs/building/integration/authentication` },
@@ -2091,6 +2129,154 @@ export function createCertificationToolHandlers(
       logger.error({ error }, 'Failed to save teaching checkpoint');
       throw new ToolError('Failed to save checkpoint. Try again before completing the module — a checkpoint is required for completion.');
     }
+  });
+
+  // ----- get_build_phase_instructions -----
+  handlers.set('get_build_phase_instructions', async (input) => {
+    const moduleId = (input.module_id as string).toUpperCase();
+    const phase = input.phase as string;
+    const learnerSpec = (input.learner_spec as string) || '[their specification]';
+    const codingTool = (input.coding_tool as string) || 'your coding assistant';
+
+    if (!['B4', 'C4', 'D4'].includes(moduleId)) {
+      return `get_build_phase_instructions is only for build project modules (B4, C4, D4). Module "${moduleId}" is not a build project.`;
+    }
+
+    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/build-an-agent';
+    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent';
+    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks';
+
+    if (moduleId === 'C4') {
+      // Buyer track: SDK against the public test agent, no skill file
+      if (phase === 'build') {
+        return `## Phase 2: Build — Buyer Agent
+
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
+
+Tell ${codingTool}: "Build a buyer agent using @adcp/client that connects to the public test agent (test-mcp). It should discover products with get_products, create a media buy with create_media_buy, and sync creatives. Here is the campaign spec: ${learnerSpec}"
+
+The SDK handles protocol details — the learner focuses on orchestration logic.
+
+Reference: ${SDKS_URL}
+
+Tell them to come back when it runs against the test agent.`;
+      }
+      if (phase === 'validate') {
+        return `## Phase 3: Validate — Buyer Agent
+
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
+
+Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
+\`\`\`
+npx @adcp/client test-mcp get_products '{"brief":"<your campaign brief>"}'
+\`\`\`
+
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+
+Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
+
+Reference: ${VALIDATE_URL}`;
+      }
+      if (phase === 'extend') {
+        return `## Phase 5: Extend — Buyer Agent
+
+The learner adds a new capability to their buyer agent, then re-runs the buying flow against test-mcp to verify everything still works. They paste the results for review.`;
+      }
+    }
+
+    // B4 and D4: skill file + storyboard workflow
+    // The specific skill and storyboard come from the Build an Agent docs page.
+    // Use search_docs to look up the matching skill if you don't know it.
+
+    if (phase === 'build') {
+      const isClaudeCode = codingTool.toLowerCase().includes('claude');
+
+      const lookupInstructions = moduleId === 'B4'
+        // B4 is always build-seller-agent
+        ? `The skill for B4 (publisher track) is \`build-seller-agent\`. The skill file URL is:
+https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md`
+        // D4: Addie must look up the right skill
+        : `Look up the matching skill for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL}
+The page has a table mapping each agent type to its skill file. If you're unsure which skill matches, use search_docs to look up "build an agent skill" and find the table. Skill files are at:
+https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/<skill-name>/SKILL.md`;
+
+      const fetchPattern = isClaudeCode
+        ? `In ${codingTool}: "Fetch <SKILL_FILE_URL>, then build an agent for ${learnerSpec}"`
+        : `In ${codingTool}: download the skill file and include it as context with: "Build an agent for ${learnerSpec}"`;
+
+      return `## Phase 2: Build
+
+${lookupInstructions}
+
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
+
+${fetchPattern}
+
+The skill file walks the coding assistant through everything — business model decisions, tool registration with correct schemas, response shapes, and error handling.
+
+Come back when the agent is running locally.
+
+Reference: ${BUILD_AN_AGENT_URL}
+
+DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill file IS the prompt.`;
+    }
+
+    if (phase === 'validate') {
+      const storyboardNote = moduleId === 'B4'
+        ? 'The storyboard for B4 is `media_buy_seller`.'
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client storyboard list\` to see all options.`;
+
+      const storyboardCmd = moduleId === 'B4'
+        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+
+      const placeholderNote = moduleId !== 'B4'
+        ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
+        : '';
+
+      return `## Phase 3: Validate
+
+${storyboardNote}${placeholderNote}
+
+PRESENT THESE INSTRUCTIONS TO THE LEARNER:
+
+Save your agent and run the storyboard:
+\`\`\`
+npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
+${storyboardCmd}
+\`\`\`
+
+Paste the output here. The storyboard exercises the complete workflow and validates every response against AdCP schemas.
+
+If all steps pass: celebrate and move to Phase 4 (Explain).
+If steps fail: paste the output and I'll help you understand each failure.
+
+Reference: ${VALIDATE_URL}
+
+DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JSON responses one at a time. The storyboard IS the validation.`;
+    }
+
+    if (phase === 'extend') {
+      const extendCmd = moduleId === 'B4'
+        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+      const extendNote = moduleId !== 'B4'
+        ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
+        : '';
+
+      return `## Phase 5: Extend
+
+The learner adds a new capability to their agent (you choose what — a new product, a new pricing model, error handling for a specific case, etc.).
+
+After making changes, they re-run the storyboard to verify everything still passes:${extendNote}
+\`\`\`
+${extendCmd}
+\`\`\`
+
+This tests whether they can iterate on AdCP implementations using the same tools they'll use after certification.`;
+    }
+
+    return `Unknown phase "${phase}". Valid phases: build, validate, extend.`;
   });
 
   // ----- save_learner_feedback -----

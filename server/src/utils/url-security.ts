@@ -99,6 +99,21 @@ export function sanitizeUrl(url: URL): string {
   return `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
 }
 
+const DOMAIN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+/**
+ * Validate a domain for safe crawling: format check + DNS resolution to reject private IPs.
+ * Returns the normalized domain on success, throws on validation failure.
+ */
+export async function validateCrawlDomain(domain: string): Promise<string> {
+  const normalized = domain.toLowerCase().trim();
+  if (!DOMAIN_RE.test(normalized)) {
+    throw new Error('Invalid domain format');
+  }
+  await validateHostResolution(normalized);
+  return normalized;
+}
+
 /**
  * SSRF-safe fetch: validates the URL and all redirect hops against private IP ranges,
  * then returns the response. Encapsulates the full validation + fetch cycle so that

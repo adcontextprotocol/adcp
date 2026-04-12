@@ -69,6 +69,16 @@ export interface AgentComplianceStatus {
   updated_at: Date;
 }
 
+export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
+const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
+
+export interface StoryboardStatusEntry {
+  storyboard_id: string;
+  status: StoryboardStatus;
+  steps_passed: number;
+  steps_total: number;
+}
+
 export interface RecordComplianceRunInput {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
@@ -84,6 +94,7 @@ export interface RecordComplianceRunInput {
   observations_json?: any;
   triggered_by?: TriggeredBy;
   dry_run?: boolean;
+  storyboard_statuses?: StoryboardStatusEntry[];
 }
 
 // =====================================================
@@ -152,6 +163,7 @@ export class ComplianceDatabase {
   async recordComplianceRun(input: RecordComplianceRunInput): Promise<{
     run: ComplianceRun;
     statusTransition: { previous: ComplianceStatus; current: ComplianceStatus } | null;
+    storyboardStatuses: StoryboardStatusEntry[];
   }> {
     const client = await getClient();
 
@@ -251,6 +263,54 @@ export class ComplianceDatabase {
         ],
       );
 
+      // 5. Batch upsert per-storyboard statuses (single query, not N+1)
+      if (input.storyboard_statuses?.length) {
+        // Validate status values before sending to Postgres to surface typos
+        // as clear errors instead of cryptic constraint violations inside unnest
+        for (const sb of input.storyboard_statuses) {
+          if (!VALID_STORYBOARD_STATUSES.has(sb.status)) {
+            throw new Error(`Invalid storyboard status "${sb.status}" for ${sb.storyboard_id}`);
+          }
+        }
+
+        const sbIds = input.storyboard_statuses.map(s => s.storyboard_id);
+        const sbStatuses = input.storyboard_statuses.map(s => s.status);
+        const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
+        const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
+
+        await client.query(
+          `INSERT INTO agent_storyboard_status (
+            agent_url, storyboard_id, status, last_tested_at,
+            last_passed_at, last_failed_at, run_id,
+            steps_passed, steps_total, triggered_by, updated_at
+          )
+          SELECT
+            $1, sb_id, sb_status, NOW(),
+            CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
+            CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
+            $4, sb_passed, sb_total, $7, NOW()
+          FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
+            AS t(sb_id, sb_status, sb_passed, sb_total)
+          ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
+            status = EXCLUDED.status,
+            last_tested_at = NOW(),
+            last_passed_at = CASE
+              WHEN EXCLUDED.status = 'passing' THEN NOW()
+              ELSE agent_storyboard_status.last_passed_at
+            END,
+            last_failed_at = CASE
+              WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
+              ELSE agent_storyboard_status.last_failed_at
+            END,
+            run_id = EXCLUDED.run_id,
+            steps_passed = EXCLUDED.steps_passed,
+            steps_total = EXCLUDED.steps_total,
+            triggered_by = EXCLUDED.triggered_by,
+            updated_at = NOW()`,
+          [input.agent_url, sbIds, sbStatuses, run.id, sbStepsPassed, sbStepsTotal, input.triggered_by ?? 'heartbeat'],
+        );
+      }
+
       await client.query('COMMIT');
 
       const row = statusResult.rows[0];
@@ -258,7 +318,7 @@ export class ComplianceDatabase {
         ? { previous: row.previous_status as ComplianceStatus, current: row.status as ComplianceStatus }
         : null;
 
-      return { run, statusTransition: transition };
+      return { run, statusTransition: transition, storyboardStatuses: input.storyboard_statuses ?? [] };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -405,6 +465,73 @@ export class ComplianceDatabase {
          updated_at = NOW()`,
       [agentUrl, intervalHours],
     );
+  }
+
+  // ----- Storyboard Status Queries -----
+
+  async getStoryboardStatuses(agentUrl: string): Promise<Array<{
+    storyboard_id: string;
+    status: string;
+    last_tested_at: Date | null;
+    last_passed_at: Date | null;
+    last_failed_at: Date | null;
+    steps_passed: number;
+    steps_total: number;
+    triggered_by: string | null;
+  }>> {
+    const result = await query(
+      `SELECT storyboard_id, status, last_tested_at, last_passed_at, last_failed_at,
+              steps_passed, steps_total, triggered_by
+       FROM agent_storyboard_status
+       WHERE agent_url = $1
+       ORDER BY storyboard_id`,
+      [agentUrl],
+    );
+    return result.rows;
+  }
+
+  async getStoryboardStatusCounts(agentUrl: string): Promise<{ passing: number; total: number }> {
+    const result = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'passing') AS passing,
+         COUNT(*) AS total
+       FROM agent_storyboard_status
+       WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    const row = result.rows[0];
+    return { passing: parseInt(row?.passing ?? '0'), total: parseInt(row?.total ?? '0') };
+  }
+
+  async bulkGetStoryboardStatuses(agentUrls: string[]): Promise<Map<string, Array<{
+    storyboard_id: string;
+    status: string;
+    last_tested_at: Date | null;
+    last_passed_at: Date | null;
+    steps_passed: number;
+    steps_total: number;
+  }>>> {
+    if (agentUrls.length === 0) return new Map();
+
+    const result = await query(
+      `SELECT agent_url, storyboard_id, status, last_tested_at, last_passed_at,
+              steps_passed, steps_total
+       FROM agent_storyboard_status
+       WHERE agent_url = ANY($1)
+       ORDER BY agent_url, storyboard_id`,
+      [agentUrls],
+    );
+
+    const map = new Map<string, Array<{
+      storyboard_id: string; status: string;
+      last_tested_at: Date | null; last_passed_at: Date | null;
+      steps_passed: number; steps_total: number;
+    }>>();
+    for (const row of result.rows) {
+      if (!map.has(row.agent_url)) map.set(row.agent_url, []);
+      map.get(row.agent_url)!.push(row);
+    }
+    return map;
   }
 
   // ----- Helpers -----

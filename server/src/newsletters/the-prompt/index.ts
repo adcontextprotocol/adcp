@@ -5,10 +5,12 @@
  * All content-specific logic delegates to existing digest modules.
  */
 
-import type { NewsletterConfig } from '../config.js';
+import type { NewsletterConfig, SectionDescriptor, ItemOperations } from '../config.js';
 import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
+import { escapeHtml } from '../email-layout.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
+import { applyDigestEdit } from '../../addie/services/digest-editor.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview } from '../../addie/templates/weekly-digest.js';
 import {
   createDigest,
@@ -23,6 +25,9 @@ import {
   getRecentDigests,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
+  setDigestCoverImage,
+  getDigestCoverImage,
+  getDigestCoverImageWithPrompt,
   type DigestContent,
   type DigestRecord,
 } from '../../db/digest-db.js';
@@ -128,6 +133,15 @@ const promptDB: NewsletterEditionDB = {
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
+  async setCoverImage(id, imageData, promptUsed) {
+    return setDigestCoverImage(id, imageData, promptUsed);
+  },
+  async getCoverImage(editionDate) {
+    return getDigestCoverImage(editionDate);
+  },
+  async getCoverImageWithPrompt(editionDate) {
+    return getDigestCoverImageWithPrompt(editionDate);
+  },
 };
 
 // ─── Markdown builder ──────────────────────────────────────────────────
@@ -163,6 +177,9 @@ function buildPromptMarkdown(content: unknown): string {
   const c = content as DigestContent;
   const sections: string[] = [];
 
+  if (c.coverImageUrl) {
+    sections.push(`![The Prompt cover](${c.coverImageUrl})`);
+  }
   sections.push(c.openingTake);
   if (c.editorsNote) {
     const noteText = /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s\/]/i.test(c.editorsNote)
@@ -237,6 +254,143 @@ function extractPromptTags(content: unknown): string[] {
   return Array.from(tags).slice(0, 10);
 }
 
+// ─── Section Descriptors ──────────────────────────────────────────────
+
+function escUrl(s: string): string {
+  return /^https?:\/\//i.test(s) ? escapeHtml(s) : '#';
+}
+
+const PROMPT_SECTIONS: SectionDescriptor[] = [
+  {
+    key: 'whatToWatch',
+    label: 'What to Watch',
+    hint: 'Articles, official content, and industry intel',
+    supportsItemEdit: true,
+    countFn: (c) => (c as DigestContent).whatToWatch?.length ?? 0,
+    renderHtml: (c) => {
+      const items = (c as DigestContent).whatToWatch || [];
+      if (items.length === 0) return '<em style="color:#888;">No articles this cycle</em>';
+      return items.map((item, i) => {
+        const isOfficial = item.tags?.includes('official');
+        return `<div class="item-card" data-index="${i}">
+          ${isOfficial ? '<span class="item-badge badge-official">OFFICIAL</span>' : ''}
+          <a href="${escUrl(item.url)}" target="_blank"><strong>${escapeHtml(item.title)}</strong></a>
+          <br><span style="font-size:13px;color:#666;">${escapeHtml(item.summary)}</span>
+          ${item.whyItMatters ? `<br><em style="font-size:13px;color:#555;">${escapeHtml(item.whyItMatters)}</em>` : ''}
+        </div>`;
+      }).join('');
+    },
+  },
+  {
+    key: 'fromTheInside',
+    label: 'From the Inside',
+    hint: 'Working group activity, meetings, and active threads',
+    countFn: (c) => (c as DigestContent).fromTheInside?.length ?? 0,
+    renderHtml: (c) => {
+      const groups = (c as DigestContent).fromTheInside || [];
+      if (groups.length === 0) return '<em style="color:#888;">No WG activity this cycle</em>';
+      return groups.map(g => `<div style="margin-bottom:12px;">
+        <strong>${escapeHtml(g.name)}</strong>
+        <br><span style="font-size:13px;color:#666;">${escapeHtml(g.summary)}</span>
+        ${g.meetingRecaps.length > 0 ? `<br><span style="font-size:12px;color:#888;">${g.meetingRecaps.length} recap(s)</span>` : ''}
+        ${g.activeThreads.length > 0 ? `<span style="font-size:12px;color:#888;margin-left:8px;">${g.activeThreads.length} thread(s)</span>` : ''}
+      </div>`).join('');
+    },
+  },
+  {
+    key: 'voices',
+    label: 'Voices',
+    hint: 'Member perspectives and community contributions',
+    countFn: (c) => (c as DigestContent).voices?.length ?? 0,
+    renderHtml: (c) => {
+      const voices = (c as DigestContent).voices || [];
+      if (voices.length === 0) return '<em style="color:#888;">No perspectives this cycle</em>';
+      return voices.map(v => `<div style="margin-bottom:8px;">
+        <a href="${escUrl(v.url)}" target="_blank"><strong>${escapeHtml(v.title)}</strong></a>
+        <br><span style="font-size:13px;color:#666;">by ${escapeHtml(v.authorName)}</span>
+      </div>`).join('');
+    },
+  },
+  {
+    key: 'newMembers',
+    label: 'New Members',
+    hint: 'Organizations that joined recently',
+    layout: 'half',
+    countFn: (c) => (c as DigestContent).newMembers?.length ?? 0,
+    renderHtml: (c) => {
+      const members = (c as DigestContent).newMembers || [];
+      if (members.length === 0) return '<em style="color:#888;">No new members</em>';
+      return members.map(m => `<span style="margin-right:8px;">${escapeHtml(m.name)}</span>`).join('');
+    },
+  },
+  {
+    key: 'whatShipped',
+    label: 'What Shipped',
+    hint: 'Recent releases and changelog entries',
+    layout: 'half',
+    countFn: (c) => (c as DigestContent).whatShipped?.length ?? 0,
+    renderHtml: (c) => {
+      const shipped = (c as DigestContent).whatShipped || [];
+      if (shipped.length === 0) return '<em style="color:#888;">No releases</em>';
+      return shipped.map(s => `<div style="margin-bottom:6px;">
+        <a href="${escUrl(s.url)}" target="_blank">${escapeHtml(s.title)}</a>
+        ${s.summary ? ` — <span style="font-size:13px;color:#666;">${escapeHtml(s.summary)}</span>` : ''}
+      </div>`).join('');
+    },
+  },
+];
+
+// ─── Item Operations (whatToWatch article CRUD) ───────────────────────
+
+const PROMPT_ITEM_OPS: Record<string, ItemOperations> = {
+  whatToWatch: {
+    editItem: (content, index, body, editor) => {
+      const c = { ...(content as DigestContent) };
+      if (index < 0 || index >= c.whatToWatch.length) throw new Error('Index out of range');
+      const article = { ...c.whatToWatch[index] };
+      if (body.title !== undefined) article.title = String(body.title);
+      if (body.summary !== undefined) article.summary = String(body.summary);
+      if (body.whyItMatters !== undefined) article.whyItMatters = String(body.whyItMatters);
+      if (body.url !== undefined) article.url = String(body.url);
+      c.whatToWatch = [...c.whatToWatch];
+      c.whatToWatch[index] = article;
+      c.editHistory = [...(c.editHistory || []), {
+        editedBy: editor,
+        editedAt: new Date().toISOString(),
+        description: `Edited article "${article.title.slice(0, 40)}"`,
+      }];
+      return c;
+    },
+    deleteItem: (content, index, editor) => {
+      const c = { ...(content as DigestContent) };
+      if (index < 0 || index >= c.whatToWatch.length) throw new Error('Index out of range');
+      const removed = c.whatToWatch[index];
+      c.whatToWatch = c.whatToWatch.filter((_, i) => i !== index);
+      c.editHistory = [...(c.editHistory || []), {
+        editedBy: editor,
+        editedAt: new Date().toISOString(),
+        description: `Removed article "${removed.title.slice(0, 40)}"`,
+      }];
+      return c;
+    },
+    reorderItems: (content, indices, editor) => {
+      const c = { ...(content as DigestContent) };
+      if (indices.length !== c.whatToWatch.length) throw new Error('Index array length mismatch');
+      const original = [...c.whatToWatch];
+      c.whatToWatch = indices.map(i => {
+        if (i < 0 || i >= original.length) throw new Error('Invalid index in reorder');
+        return original[i];
+      });
+      c.editHistory = [...(c.editHistory || []), {
+        editedBy: editor,
+        editedAt: new Date().toISOString(),
+        description: 'Reordered articles',
+      }];
+      return c;
+    },
+  },
+};
+
 // ─── Registration ──────────────────────────────────────────────────────
 
 export const thePromptConfig: NewsletterConfig = {
@@ -272,6 +426,7 @@ export const thePromptConfig: NewsletterConfig = {
     domain: 'AgenticAdvertising.org',
   },
   announcementChannelEnvVar: 'SLACK_ANNOUNCEMENTS_CHANNEL',
+  coverRoutePrefix: '/digest',
   buildContent: buildDigestContent,
   hasMinimumContent: (c) => hasMinimumContent(c as DigestContent),
   generateSubject: (c) => generateDigestSubject(c as DigestContent),
@@ -282,7 +437,14 @@ export const thePromptConfig: NewsletterConfig = {
   renderSlack: (content, editionDate) => renderDigestSlack(content as DigestContent, editionDate),
   renderReview: (content, editionDate) => renderDigestReview(content as DigestContent, editionDate),
   db: promptDB,
-  editableFields: ['openingTake', 'editorsNote', 'shareableTake', 'emailSubject'],
+  editableFields: ['openingTake', 'editorsNote', 'shareableTake', 'emailSubject', 'dateFlavor'],
+  sections: PROMPT_SECTIONS,
+  itemOperations: PROMPT_ITEM_OPS,
+  applyInstruction: async (content, instruction, editorName) => {
+    const result = await applyDigestEdit(content as DigestContent, instruction, editorName);
+    return { content: result.content, summary: result.summary };
+  },
+  adminIcon: '/addie-icon.svg',
 };
 
 registerNewsletter(thePromptConfig);

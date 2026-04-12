@@ -1,14 +1,14 @@
 ---
 title: Compliance test controller
-description: "Optional sandbox tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically."
+description: "Optional sandbox tool that lets the storyboard runner walk full lifecycle state machines by triggering seller-side transitions deterministically."
 "og:title": "AdCP — Compliance test controller"
 ---
 
 # Compliance test controller
 
-AdCP defines lifecycle state machines for accounts, creatives, media buys, SI sessions, and delivery reporting. Many transitions in these state machines are seller-initiated — creative approval, account suspension, budget depletion, delivery accrual. A compliance tester (like `comply()` in `@adcp/client`) can only exercise buyer-initiated flows, leaving seller-initiated transitions untested.
+AdCP defines lifecycle state machines for accounts, creatives, media buys, SI sessions, and delivery reporting. Many transitions in these state machines are seller-initiated — creative approval, account suspension, budget depletion, delivery accrual. A storyboard runner can only exercise buyer-initiated flows, leaving seller-initiated transitions untested.
 
-The **compliance test controller** is an optional tool that sellers expose in sandbox mode. It allows a compliance tester to trigger seller-side state transitions deterministically, enabling end-to-end lifecycle verification.
+The **compliance test controller** is an optional tool that sellers expose in sandbox mode. It allows a storyboard runner to trigger seller-side state transitions deterministically, enabling end-to-end lifecycle verification.
 
 ## Motivation
 
@@ -27,9 +27,11 @@ Without a test controller, compliance testing is observational: fire an action, 
 
 Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool should only appear when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This ensures production context windows are not taxed by test-only tooling and prevents accidental state manipulation.
 
-The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so comply implementations can connect appropriately.
+The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
 
-Comply SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
+The storyboard runner SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
+
+If a `comply_test_controller` call references a non-sandbox account, the controller MUST return `FORBIDDEN`. Sandbox gating is enforced per-request on the account reference, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params.
 
 ## Tool definition
 
@@ -151,7 +153,7 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
 
 ### `force_session_status`
 
-Transitions an SI session to a terminal status. Enables testing timeout and termination scenarios that would otherwise require waiting for real timeouts. The `termination_reason` param simulates the cause so comply can verify sellers report the correct reason in subsequent responses.
+Transitions an SI session to a terminal status. Enables testing timeout and termination scenarios that would otherwise require waiting for real timeouts. The `termination_reason` param simulates the cause so the storyboard runner can verify sellers report the correct reason in subsequent responses.
 
 **Params:**
 
@@ -311,7 +313,7 @@ The `simulated` field echoes back the values injected by this call. The `cumulat
 
 ### Error codes
 
-Controllers MUST use structured error codes so comply can assert on specific failure modes:
+Controllers MUST use structured error codes so the storyboard runner can assert on specific failure modes:
 
 | Error code | When |
 |---|---|
@@ -319,11 +321,11 @@ Controllers MUST use structured error codes so comply can assert on specific fai
 | `NOT_FOUND` | Entity does not exist or caller does not have access (multi-tenant sandboxes SHOULD treat "not yours" as "not found") |
 | `UNKNOWN_SCENARIO` | Scenario not implemented by this seller |
 | `INVALID_PARAMS` | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
-| `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). Comply SHOULD retry once before treating as a failure. |
+| `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
 
 ### Idempotency
 
-State transition scenarios (`force_*`) are idempotent: forcing a status that matches the current state returns success with `previous_state` equal to `current_state`. This avoids flaky tests when comply retries after transient failures.
+State transition scenarios (`force_*`) are idempotent: forcing a status that matches the current state returns success with `previous_state` equal to `current_state`. This avoids flaky tests when the runner retries after transient failures.
 
 Simulation scenarios (`simulate_*`) are NOT idempotent — `simulate_delivery` adds to existing totals, while `simulate_budget_spend` replaces the current spend level.
 
@@ -333,7 +335,7 @@ The presence of `comply_test_controller` in a seller's tool list determines whic
 
 ### Capability discovery
 
-A seller may implement the test controller without supporting every scenario. Comply SHOULD call `comply_test_controller` with `scenario: "list_scenarios"` as the first interaction. Sellers that support this return the list of implemented scenarios:
+A seller may implement the test controller without supporting every scenario. The storyboard runner SHOULD call `comply_test_controller` with `scenario: "list_scenarios"` as the first interaction. Sellers that support this return the list of implemented scenarios:
 
 ```json
 {
@@ -346,24 +348,24 @@ A seller may implement the test controller without supporting every scenario. Co
 }
 ```
 
-Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. When this happens, comply runs each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — comply discovers supported scenarios through trial.
+Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. When this happens, the runner tries each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — the runner discovers supported scenarios through trial.
 
 ### Observational mode (default)
 
 When `comply_test_controller` is not available:
-- Comply runs buyer-initiated flows and validates response schemas
+- The runner executes buyer-initiated flows and validates response schemas
 - State machine transitions that require seller action are skipped
 - Advisory observations note what could not be tested
 
 ### Deterministic mode
 
 When `comply_test_controller` is available:
-- Comply walks every reachable state in each lifecycle
+- The runner walks every reachable state in each lifecycle
 - Forces edge cases: terminal states, invalid transitions, error codes
 - Validates that forced state changes are reflected in subsequent reads
 - Tests operation gates (e.g., `create_media_buy` blocked when account is `suspended`)
 
-Comply distinguishes three outcome categories in deterministic mode:
+The runner distinguishes three outcome categories in deterministic mode:
 - **Scenario not supported** — returned by `list_scenarios` or `UNKNOWN_SCENARIO` error. Reported as a coverage gap, not a failure.
 - **Transition correctly rejected** — controller returned `INVALID_TRANSITION` for an invalid state change. This is a pass.
 - **Unexpected failure** — controller returned an error for a transition that should be valid, or succeeded on a transition that should fail. This is a compliance failure.
@@ -430,8 +432,8 @@ Comply distinguishes three outcome categories in deterministic mode:
 
 | Tier | Requirement | What it proves |
 |------|-------------|----------------|
-| **Functional compliance** | Pass comply in observational mode | Tools exist, respond correctly, and complete buyer-initiated flows |
-| **Stateful compliance** | Pass comply in deterministic mode | State machines enforce correct transitions, error codes match spec, operation gates block correctly |
+| **Functional compliance** | Pass all storyboards in observational mode | Tools exist, respond correctly, and complete buyer-initiated flows |
+| **Stateful compliance** | Pass all storyboards in deterministic mode | State machines enforce correct transitions, error codes match spec, operation gates block correctly |
 
 ## Implementation guidance
 
@@ -455,8 +457,8 @@ Comply distinguishes three outcome categories in deterministic mode:
 
 1. **Sellers validate transition ordering.** The controller enforces the same state machine rules as production. Calling `force_creative_status(approved)` on a creative that was never `processing` is an error — the controller rejects it just as production would. The lifecycle state machines referenced here are defined in the respective protocol specifications (see [creative lifecycle](/docs/creative/specification#creative-status-lifecycle), [account lifecycle](/docs/accounts/overview#account-status-lifecycle), [media buy lifecycle](/docs/media-buy/specification), [SI session lifecycle](/docs/sponsored-intelligence/specification#session-states)).
 
-2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple comply instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
+2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple storyboard runner instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
 
-3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. Comply ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
+3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. The runner ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
 
-4. **One tool, many scenarios.** The single-tool design keeps context window cost to ~500 tokens vs ~1,400 for seven separate tools. Sellers implement one sandbox gate. Comply detects one tool. The `list_scenarios` introspection handles partial implementations without requiring per-tool presence detection.
+4. **One tool, many scenarios.** The single-tool design keeps context window cost to ~500 tokens vs ~1,400 for seven separate tools. Sellers implement one sandbox gate. The runner detects one tool. The `list_scenarios` introspection handles partial implementations without requiring per-tool presence detection.

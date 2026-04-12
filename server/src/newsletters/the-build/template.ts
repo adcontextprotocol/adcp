@@ -8,11 +8,26 @@
 import type { BuildContent } from '../../db/build-db.js';
 import type { SlackBlockMessage } from '../../slack/types.js';
 import { escapeHtml, trackLink, formatDate, renderEmailShell } from '../email-layout.js';
+import { isSectionHidden, getCustomSections, getPastedContent } from '../config.js';
 import { BUILD_PALETTE } from './index.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 export type BuildSegment = 'website_only' | 'slack_only' | 'both' | 'active';
+
+/** Simple markdown-to-HTML for pasted/custom content. Only allows http(s) URLs. */
+function markdownToHtml(md: string): string {
+  return escapeHtml(md)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => {
+      // After escapeHtml, "https://" stays as "https://" (no special chars).
+      // Reject anything that doesn't start with the escaped http(s) prefix.
+      if (!/^https?:\/\//i.test(url)) return text as string;
+      return `<a href="${url}" style="color: ${BUILD_PALETTE.primary}; text-decoration: none;">${text}</a>`;
+    })
+    .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;">$1</code>')
+    .replace(/\n/g, '<br>');
+}
 
 // ─── Email Rendering ───────────────────────────────────────────────────
 
@@ -39,10 +54,41 @@ export function renderBuildEmail(
     </div>`);
   }
 
+  // Paste-your-own mode: render pasted markdown and skip all auto sections
+  const pasted = getPastedContent(content);
+  if (pasted) {
+    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(pasted)}</div>`);
+
+    // Also render any custom sections
+    for (const cs of getCustomSections(content)) {
+      if (cs.title) {
+        sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
+      }
+      sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+      sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
+    }
+
+    const bodyHtml = sections.join('\n');
+    const html = renderEmailShell({
+      newsletterName: 'The Build', author: 'Sage', palette: BUILD_PALETTE,
+      perspectiveSlugPrefix: 'the-build', signOff: { text: "That's the cycle. If something broke, file an issue. If something's missing, open a PR.", attribution: 'Sage', domain: 'docs.adcontextprotocol.org' },
+      preheaderText: content.statusLine, editionDate, trackingId, segment, firstName, coverImageUrl: content.coverImageUrl, bodyHtml,
+    });
+    return { html, text: `The Build — ${formatDate(editionDate)}\n\n${content.statusLine}\n\n${pasted}` };
+  }
+
   sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
 
+  // Render custom sections positioned before auto sections (position 0)
+  for (const cs of getCustomSections(content).filter(s => s.position === 0)) {
+    if (cs.title) sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
+  }
+
   // Decisions & Proposals
-  if (content.decisions.length > 0) {
+  if (content.decisions.length > 0 && !isSectionHidden(content, 'decisions')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Decisions & proposals</h2>`);
     for (const d of content.decisions) {
       const badge = d.status === 'decided'
@@ -64,7 +110,7 @@ export function renderBuildEmail(
   }
 
   // What Shipped
-  if (content.whatShipped.length > 0) {
+  if (content.whatShipped.length > 0 && !isSectionHidden(content, 'whatShipped')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">What shipped</h2>`);
     // Breaking changes first
     const sorted = [...content.whatShipped].sort((a, b) => (b.breaking ? 1 : 0) - (a.breaking ? 1 : 0));
@@ -85,7 +131,7 @@ export function renderBuildEmail(
   }
 
   // Help Needed (above Deep Dive — highest-action section for contributors)
-  if (content.helpNeeded.length > 0) {
+  if (content.helpNeeded.length > 0 && !isSectionHidden(content, 'helpNeeded')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Help needed</h2>`);
     for (const item of content.helpNeeded) {
       const typeLabel = item.type === 'code' ? 'Code' : item.type === 'review' ? 'Review' : item.type === 'writing' ? 'Writing' : 'Expertise';
@@ -102,7 +148,7 @@ export function renderBuildEmail(
   }
 
   // Deep Dive
-  if (content.deepDive) {
+  if (content.deepDive && !isSectionHidden(content, 'deepDive')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Deep dive: ${escapeHtml(content.deepDive.title)}</h2>`);
     const excerpt = content.deepDive.body.slice(0, 300).trim();
     sections.push(`
@@ -112,7 +158,7 @@ export function renderBuildEmail(
   }
 
   // Contributor Spotlight
-  if (content.contributorSpotlight.length > 0) {
+  if (content.contributorSpotlight.length > 0 && !isSectionHidden(content, 'contributorSpotlight')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Contributor spotlight</h2>`);
     for (const c of content.contributorSpotlight) {
       sections.push(`
@@ -122,6 +168,13 @@ export function renderBuildEmail(
         ${c.url ? ` <a href="${t(`contributor_${content.contributorSpotlight.indexOf(c)}`, c.url.startsWith('/') ? BASE_URL + c.url : c.url)}" style="color: ${BUILD_PALETTE.primary}; text-decoration: none;">&rarr;</a>` : ''}
       </p>`);
     }
+  }
+
+  // Custom sections at end (position > 0, not already rendered)
+  for (const cs of getCustomSections(content).filter(s => s.position > 0)) {
+    if (cs.title) sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 
   const bodyHtml = sections.join('\n');
@@ -141,6 +194,7 @@ export function renderBuildEmail(
     trackingId,
     segment,
     firstName,
+    coverImageUrl: content.coverImageUrl,
     bodyHtml,
   });
 
@@ -158,7 +212,15 @@ function renderBuildText(content: BuildContent, editionDate: string): string {
     '',
   ];
 
-  if (content.decisions.length > 0) {
+  // Pasted content short-circuits
+  const pastedText = getPastedContent(content);
+  if (pastedText) {
+    lines.push(pastedText.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)'));
+    lines.push('', '---', "That's the cycle. If something broke, file an issue. If something's missing, open a PR.", '— Sage', 'docs.adcontextprotocol.org');
+    return lines.join('\n');
+  }
+
+  if (content.decisions.length > 0 && !isSectionHidden(content, 'decisions')) {
     lines.push('DECISIONS & PROPOSALS', '');
     for (const d of content.decisions) {
       lines.push(`[${d.status.toUpperCase()}] ${d.workingGroup}: ${d.title}`);
@@ -168,7 +230,7 @@ function renderBuildText(content: BuildContent, editionDate: string): string {
     }
   }
 
-  if (content.whatShipped.length > 0) {
+  if (content.whatShipped.length > 0 && !isSectionHidden(content, 'whatShipped')) {
     lines.push('WHAT SHIPPED', '');
     for (const r of content.whatShipped) {
       lines.push(`${r.breaking ? '[BREAKING] ' : ''}${r.repo} ${r.version} — ${r.summary}`);
@@ -177,7 +239,7 @@ function renderBuildText(content: BuildContent, editionDate: string): string {
     }
   }
 
-  if (content.helpNeeded.length > 0) {
+  if (content.helpNeeded.length > 0 && !isSectionHidden(content, 'helpNeeded')) {
     lines.push('HELP NEEDED', '');
     for (const h of content.helpNeeded) {
       lines.push(`[${h.type.toUpperCase()}] ${h.title} (${h.source})`);
@@ -187,12 +249,18 @@ function renderBuildText(content: BuildContent, editionDate: string): string {
     }
   }
 
-  if (content.contributorSpotlight.length > 0) {
+  if (content.contributorSpotlight.length > 0 && !isSectionHidden(content, 'contributorSpotlight')) {
     lines.push('CONTRIBUTOR SPOTLIGHT', '');
     for (const c of content.contributorSpotlight) {
       lines.push(`${c.name}${c.handle ? ` (${c.handle})` : ''} — ${c.contribution}`);
     }
     lines.push('');
+  }
+
+  // Custom sections
+  for (const cs of getCustomSections(content)) {
+    if (cs.title) lines.push(cs.title.toUpperCase(), '');
+    lines.push(cs.body.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)'), '');
   }
 
   lines.push('---');
@@ -212,6 +280,14 @@ export function renderBuildSlack(content: BuildContent, editionDate: string): Sl
     type: 'header',
     text: { type: 'plain_text', text: `The Build — ${formatDate(editionDate)}` },
   });
+
+  if (content.coverImageUrl) {
+    blocks.push({
+      type: 'image',
+      image_url: content.coverImageUrl,
+      alt_text: `The Build cover — ${formatDate(editionDate)}`,
+    });
+  }
 
   blocks.push({
     type: 'section',
@@ -269,7 +345,7 @@ export function renderBuildReview(content: BuildContent, editionDate: string): S
         type: 'actions',
         elements: [
           { type: 'button', text: { type: 'plain_text', text: 'Approve' }, style: 'primary', action_id: 'build_approve' },
-          { type: 'button', text: { type: 'plain_text', text: 'Edit' }, action_id: 'build_edit', url: `${BASE_URL}/admin/the-build` },
+          { type: 'button', text: { type: 'plain_text', text: 'Edit' }, action_id: 'build_edit', url: `${BASE_URL}/admin/newsletters/the_build` },
         ],
       },
     ] as never[],

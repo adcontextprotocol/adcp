@@ -55,6 +55,25 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
 }
 ```
 
+### Purchase types
+
+Governance plans govern all financial commitments, not just media buys. The `purchase_type` field on `check_governance` identifies which kind of commitment is being validated:
+
+| Purchase type | Tool | What's governed |
+|--------------|------|-----------------|
+| `media_buy` (default) | `create_media_buy`, `update_media_buy` | Media inventory purchases |
+| `rights_license` | `acquire_rights`, `update_rights` | Brand rights licensing fees |
+| `signal_activation` | `activate_signal` | Data signal activation fees |
+| `creative_services` | `build_creative` | Creative generation fees |
+
+All purchase types share the same governance loop: `sync_plans` → `check_governance` → execute → `report_plan_outcome`. The governance agent validates budget authority, geo compliance, and flight compliance across all types. Media-buy-specific validations (channel compliance, seller concentration, delivery pacing) apply only when `purchase_type` is `media_buy` or when the payload contains the relevant fields.
+
+When `purchase_type` is omitted, the governance agent assumes `media_buy`.
+
+<Note>
+**Future purchase types**: Content standards, property list curation, and measurement/verification services (brand lift studies, viewability, fraud detection) all carry `pricing_options` in their schemas and bill through `report_usage`. These services currently lack an explicit activation tool where the buyer commits to the service — the billing relationship is implicit. When the protocol adds activation surfaces for these services, corresponding purchase types will be added to enable governance checks at the point of commitment.
+</Note>
+
 ### Budget authority levels
 
 | Level | Meaning |
@@ -62,6 +81,29 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
 | `agent_full` | Agent can execute any spend within the total budget without human approval |
 | `agent_limited` | Agent can execute within thresholds but MUST escalate large changes (defined by `reallocation_threshold`) |
 | `human_required` | Every spend commitment requires human approval |
+
+### Budget allocations
+
+Plans can optionally partition the total budget across purchase types using `allocations`:
+
+```json
+{
+  "budget": {
+    "total": 500000,
+    "currency": "USD",
+    "authority_level": "agent_limited",
+    "allocations": {
+      "media_buy": { "amount": 400000 },
+      "rights_license": { "amount": 75000 },
+      "signal_activation": { "amount": 25000 }
+    }
+  }
+}
+```
+
+When `allocations` is present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions — the sum of allocations MAY differ from the total.
+
+When `allocations` is present but a purchase type is not listed (e.g., `signal_activation` is attempted against a plan that only allocates for `media_buy` and `rights_license`), the governance agent validates the action against the plan's total budget only. Unlisted types are not denied — they draw from the shared pool. To restrict spending to listed types only, set `custom_policies` with explicit constraints.
 
 ### Channel mix targets
 
@@ -183,7 +225,7 @@ Policies are declared directly on the plan via `policy_ids` and `custom_policies
 2. Intersect with the plan's `countries` and `regions` -- only policies applicable to the plan's markets are active
 3. Include all `custom_policies` (these apply regardless of geography)
 
-The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject media buys targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects buys not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
+The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
 The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
@@ -355,6 +397,10 @@ The governance agent infers the validation phase from the `tool` parameter in `c
 | `get_products` | Discovery -- validates search intent, seller eligibility, product suitability |
 | `create_media_buy` | Purchase -- validates budget authority, targeting compliance, flight dates |
 | `update_media_buy` | Purchase -- validates change magnitude, reallocation thresholds |
+| `acquire_rights` | Purchase -- validates budget authority, geo compliance, flight dates |
+| `update_rights` | Purchase -- validates change magnitude, reallocation thresholds |
+| `activate_signal` | Purchase -- validates budget authority, geo compliance, flight dates |
+| `build_creative` | Purchase -- validates budget authority, geo compliance |
 
 Phase context is cumulative. During **purchase**, the governance agent considers what was discovered during **discovery**.
 
@@ -423,7 +469,7 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 ```json
 {
-  "media_buy_id": "mb_seller_456",
+  "seller_reference": "mb_seller_456",
   "packages": ["..."],
   "planned_delivery": {
     "geo": { "countries": ["US"] },
@@ -448,7 +494,7 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Seller-side governance checks close this gap by giving sellers an independent way to confirm that purchases are approved.
 
-The seller POSTs to the buyer's `governance_agents` URLs when media buy events occur. The governance agent maintains all state and correlates requests by `plan_id` + `media_buy_id` -- the seller does not need to track governance history or chain IDs across calls.
+The seller POSTs to the buyer's `governance_agents` URLs when governed action events occur. The governance agent maintains all state and correlates requests by `plan_id` + `governance_context` -- the seller does not need to track governance history or chain IDs across calls.
 
 ### Setup
 
@@ -496,7 +542,7 @@ See the [safety model](/docs/governance/campaign/safety-model) for the crawl-wal
 
 ### Governance context
 
-The `governance_context` field is an opaque string issued by the governance agent in the `check_governance` response. It enables lifecycle continuity — the governance agent encodes whatever internal state it needs (plan reference, budget snapshot, check history) into this value.
+The `governance_context` field is an opaque string issued by the governance agent in the `check_governance` response. It correlates any governed action's lifecycle and is the primary audit/reporting key. The governance agent encodes whatever internal state it needs (plan reference, budget snapshot, check history) into this value.
 
 Callers MUST NOT interpret `governance_context`. They persist and forward it:
 
@@ -514,13 +560,13 @@ Governance checks cover the full media buy lifecycle through three phases:
 
 | Phase | Trigger | What's validated |
 |-------|---------|------------------|
-| `purchase` | `create_media_buy` | Budget, geo, channels, flight dates, policies |
-| `modification` | `update_media_buy` | Change magnitude, reallocation, new parameters |
+| `purchase` | `create_media_buy`, `acquire_rights`, `activate_signal`, `build_creative` | Budget, geo, channels, flight dates, policies |
+| `modification` | `update_media_buy`, `update_rights` | Change magnitude, reallocation, new parameters |
 | `delivery` | Periodic (seller-initiated) | Pacing, spend rate, geo drift, channel distribution |
 
 The `phase` field defaults to `purchase` if omitted, so existing implementations continue to work without changes.
 
-The governance agent maintains all state and correlates requests by `plan_id` + `media_buy_id`. The seller does not chain check IDs or track conversation history -- it posts what happened, and the governance agent looks up context.
+The governance agent maintains all state and correlates requests by `plan_id` + `governance_context`. The seller does not chain check IDs or track conversation history -- it posts what happened, and the governance agent looks up context.
 
 ### Purchase phase
 
@@ -553,7 +599,7 @@ When the seller receives an `update_media_buy` request:
 
 1. The seller interprets the update and determines the new `planned_delivery`.
 2. The seller calls `check_governance` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`.
-3. The governance agent looks up the media buy by `plan_id` + `media_buy_id` and evaluates the changes against the plan.
+3. The governance agent looks up the governed action by `plan_id` + `governance_context` and evaluates the changes against the plan.
 4. If `approved`, the seller confirms the update.
 5. If `denied` or `conditions`, the seller follows the same flow as purchase phase.
 
@@ -616,7 +662,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "caller": "https://seller.example.com",
-    "media_buy_id": "mb_seller_456",
+    "governance_context": "gc_from_buyer_envelope",
     "phase": "purchase",
     "planned_delivery": {
       "geo": { "countries": ["US"] },
@@ -716,7 +762,7 @@ For accounts with a single governance agent, pass a one-element array.
 
 Governance checks complement the buyer-side governance loop, they do not replace it:
 
-| Concern | Intent checks (orchestrator, `tool` + `payload`) | Execution checks (seller, `media_buy_id` + `planned_delivery`) |
+| Concern | Intent checks (orchestrator, `tool` + `payload`) | Execution checks (seller, `governance_context` + `planned_delivery`) |
 |---------|--------------------------------------|---------------------------------------|
 | **Who checks** | Buyer's governance agent, called by orchestrator | Buyer's governance agent, called by seller |
 | **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
@@ -758,7 +804,7 @@ flowchart TD
     V --> U
     U --> W{Update needed?}
     W -->|yes| X["check_governance(tool: update_media_buy, payload)"]
-    X --> Y["Seller calls check_governance(media_buy_id, phase: modification)"]
+    X --> Y["Seller calls check_governance(governance_context, phase: modification)"]
     W -->|no| Z{Delivery active?}
     Z -->|yes| AA["Seller calls check_governance (delivery) periodically"]
     AA --> AB{Delivery approved?}
