@@ -26,6 +26,8 @@ export interface Installment {
   url?: string;
   season?: number;
   episode_number?: number;
+  topics?: string[];
+  status?: 'active' | 'removed';
 }
 
 export interface FeedResult {
@@ -57,6 +59,8 @@ export interface CollectionFromFeed {
   talent?: Array<{ name: string; role?: string }>;
   installments: Installment[];
   last_synced_at: string;
+  last_sync_status?: 'ok' | 'error';
+  last_sync_error?: string;
 }
 
 // ─── iTunes category → IAB Content Taxonomy mapping ──────────────────
@@ -129,6 +133,32 @@ export function detectFeedType(url: string): 'youtube' | 'spotify' | 'rss' {
   return 'rss';
 }
 
+// ─── Topic extraction ────────────────────────────────────────────────
+
+const TOPIC_KEYWORDS: Record<string, string[]> = {
+  'Technology': ['tech', 'ai', 'artificial intelligence', 'software', 'crypto', 'blockchain', 'startup', 'silicon valley', 'app', 'algorithm', 'data', 'robot', 'machine learning'],
+  'Politics': ['election', 'congress', 'senate', 'president', 'democrat', 'republican', 'vote', 'policy', 'legislation', 'campaign', 'political', 'white house', 'government'],
+  'Business': ['economy', 'market', 'stock', 'inflation', 'recession', 'ceo', 'ipo', 'startup', 'revenue', 'profit', 'wall street', 'trade', 'gdp', 'fed', 'interest rate'],
+  'Health': ['health', 'medical', 'covid', 'vaccine', 'mental health', 'doctor', 'hospital', 'disease', 'fitness', 'wellness', 'diet', 'therapy'],
+  'Science': ['science', 'climate', 'space', 'nasa', 'research', 'study', 'environment', 'species', 'physics', 'biology', 'evolution'],
+  'Sports': ['nfl', 'nba', 'mlb', 'soccer', 'football', 'basketball', 'baseball', 'olympics', 'championship', 'playoff', 'super bowl', 'world cup', 'athlete'],
+  'Entertainment': ['movie', 'film', 'tv show', 'celebrity', 'music', 'album', 'concert', 'streaming', 'netflix', 'hollywood', 'oscar', 'grammy', 'emmy'],
+  'World': ['war', 'ukraine', 'russia', 'china', 'nato', 'un', 'refugee', 'immigration', 'border', 'middle east', 'europe', 'asia', 'africa'],
+  'Crime': ['crime', 'murder', 'trial', 'jury', 'prison', 'police', 'investigation', 'fraud', 'lawsuit', 'court', 'judge', 'verdict'],
+  'Education': ['school', 'university', 'college', 'student', 'teacher', 'education', 'curriculum', 'degree', 'tuition'],
+};
+
+export function extractTopics(title: string, description?: string): string[] {
+  const text = `${title} ${description || ''}`.toLowerCase();
+  const topics = new Set<string>();
+  for (const [topic, keywords] of Object.entries(TOPIC_KEYWORDS)) {
+    if (keywords.some(kw => text.includes(kw))) {
+      topics.add(topic);
+    }
+  }
+  return [...topics].slice(0, 5);
+}
+
 // ─── RSS Parser ──────────────────────────────────────────────────────
 
 const rssParser = new Parser({
@@ -171,6 +201,8 @@ export async function fetchRssFeed(url: string): Promise<FeedResult> {
     url: item.enclosure?.url || item.link || undefined,
     season: (item.itunes as Record<string, string>)?.season ? parseInt((item.itunes as Record<string, string>).season) : undefined,
     episode_number: (item.itunes as Record<string, string>)?.episode ? parseInt((item.itunes as Record<string, string>).episode) : undefined,
+    topics: extractTopics(item.title || '', item.contentSnippet),
+    status: 'active' as const,
   }));
 
   // Extract rich metadata from iTunes/podcast fields
@@ -275,6 +307,8 @@ export async function fetchYouTubeChannel(url: string): Promise<FeedResult> {
         description: item.snippet.description?.slice(0, 500),
         published_at: item.snippet.publishedAt,
         url: `https://www.youtube.com/watch?v=${item.contentDetails.videoId}`,
+        topics: extractTopics(item.snippet.title, item.snippet.description),
+        status: 'active' as const,
       });
     }
 
@@ -356,6 +390,8 @@ export async function fetchSpotifyPodcast(url: string): Promise<FeedResult> {
     published_at: ep.release_date,
     duration_seconds: Math.round(ep.duration_ms / 1000),
     url: ep.external_urls.spotify,
+    topics: extractTopics(ep.name, ep.description),
+    status: 'active' as const,
   }));
 
   // Fetch more episodes if available (up to 200 total)
@@ -378,6 +414,8 @@ export async function fetchSpotifyPodcast(url: string): Promise<FeedResult> {
         id: ep.id, name: ep.name, description: ep.description?.slice(0, 500),
         published_at: ep.release_date, duration_seconds: Math.round(ep.duration_ms / 1000),
         url: ep.external_urls.spotify,
+        topics: extractTopics(ep.name, ep.description),
+        status: 'active' as const,
       });
     }
     nextUrl = nextData.next;
@@ -465,23 +503,41 @@ async function syncBrandFeeds(row: { domain: string; brand_manifest: Record<stri
     try {
       const { result: feedResult } = await fetchFeed(collection.feed_url);
 
-      // Merge installments — update existing by ID, append new, cap total
+      // Merge installments — update existing by ID, append new, mark removed
+      const feedIds = new Set(feedResult.installments.map(i => i.id));
       const existingById = new Map((collection.installments || []).map(i => [i.id, i]));
-      for (const installment of feedResult.installments) {
-        existingById.set(installment.id, { ...existingById.get(installment.id), ...installment });
+
+      // Mark installments no longer in feed as removed (don't delete — something may depend on them)
+      for (const [id, inst] of existingById) {
+        if (!feedIds.has(id) && inst.status !== 'removed') {
+          existingById.set(id, { ...inst, status: 'removed' });
+        }
       }
+
+      // Update existing + append new from feed
+      for (const installment of feedResult.installments) {
+        existingById.set(installment.id, { ...existingById.get(installment.id), ...installment, status: 'active' });
+      }
+
       collection.installments = Array.from(existingById.values())
         .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
         .slice(0, MAX_INSTALLMENTS);
 
       collection.last_synced_at = new Date().toISOString();
+      collection.last_sync_status = 'ok';
+      collection.last_sync_error = undefined;
       if (feedResult.artwork_url && !collection.artwork_url) {
         collection.artwork_url = feedResult.artwork_url;
       }
       changed = true;
       synced++;
     } catch (err) {
-      logger.warn({ domain: row.domain, feed_url: collection.feed_url, err: err instanceof Error ? err.message : err }, 'Feed sync failed');
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.warn({ domain: row.domain, feed_url: collection.feed_url, err: errorMsg }, 'Feed sync failed');
+      collection.last_synced_at = new Date().toISOString();
+      collection.last_sync_status = 'error';
+      collection.last_sync_error = errorMsg;
+      changed = true;
       errors++;
     }
   }

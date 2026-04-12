@@ -1284,6 +1284,18 @@
             </div>
           </details>
 
+          <!-- Feed Import -->
+          <details id="edit-section-feeds" class="edit-section-group">
+            <summary>Content Feeds</summary>
+            <p class="edit-section-hint">Import your podcast, YouTube channel, or Spotify show. We'll pull in all episodes and keep them synced.</p>
+            <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);">
+              <input type="url" id="feed-url-input" class="edit-form-input" placeholder="Paste RSS feed, YouTube channel, or Spotify show URL" style="flex:1;">
+              <button type="button" class="btn btn-primary btn-sm" onclick="importFeed()" id="import-feed-btn">Import</button>
+            </div>
+            <div id="feed-import-status" style="font-size:var(--text-sm);margin-bottom:var(--space-2);"></div>
+            <div id="feeds-list"></div>
+          </details>
+
           <!-- Hidden edit summary - auto-generated on save -->
           <input type="hidden" id="edit-summary">
 
@@ -1633,6 +1645,7 @@
 
         // Update section counts and scroll into view
         updateSectionCounts();
+        loadFeeds();
         editFormDirty = false;
         if (!form._dirtyListenersAttached) {
           const markDirty = () => { editFormDirty = true; };
@@ -1911,6 +1924,117 @@
         // Capitalize first change
         changes[0] = changes[0].charAt(0).toUpperCase() + changes[0].slice(1);
         return changes.join(', ');
+      }
+
+      async function importFeed() {
+        const input = document.getElementById('feed-url-input');
+        const status = document.getElementById('feed-import-status');
+        const btn = document.getElementById('import-feed-btn');
+        const url = input.value.trim();
+        if (!url) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Importing...';
+        status.textContent = 'Fetching feed...';
+        status.style.color = 'var(--color-text-muted)';
+
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ url }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            status.textContent = data.error || 'Failed to import';
+            status.style.color = 'var(--color-error-500)';
+            return;
+          }
+
+          input.value = '';
+          status.innerHTML = `Imported <strong>${escapeHtml(data.name)}</strong> — ${data.installment_count} episodes` +
+            (data.genre?.length ? ` · Genre: ${data.genre.join(', ')}` : '') +
+            (data.content_rating ? ` · Rating: ${data.content_rating.rating}` : '') +
+            (data.talent?.length ? ` · Host: ${data.talent.map(t => t.name).join(', ')}` : '');
+          status.style.color = 'var(--color-success-600)';
+
+          if (data.product_suggestion) {
+            status.innerHTML += `<br><span style="font-size:var(--text-xs);color:var(--color-text-muted);">Product suggestion: ${escapeHtml(data.product_suggestion.name)} (${data.product_suggestion.placement}, ${data.product_suggestion.pricing_model})</span>`;
+          }
+
+          editFormDirty = true;
+          loadFeeds();
+        } catch (err) {
+          status.textContent = 'Failed: ' + err.message;
+          status.style.color = 'var(--color-error-500)';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Import';
+        }
+      }
+
+      async function loadFeeds() {
+        const container = document.getElementById('feeds-list');
+        if (!container || !currentDomain) return;
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds`, { credentials: 'include' });
+          if (!resp.ok) return;
+          const { feeds } = await resp.json();
+          if (!feeds?.length) { container.innerHTML = ''; return; }
+
+          container.innerHTML = feeds.map(f => `
+            <div class="edit-list-row" style="align-items:center;">
+              <div style="flex:1;min-width:200px;">
+                <strong>${escapeHtml(f.name)}</strong>
+                <div style="font-size:var(--text-xs);color:var(--color-text-muted);">
+                  ${escapeHtml(f.feed_type)} · ${f.installment_count} episodes
+                  ${f.last_sync_status === 'error' ? `<span style="color:var(--color-error-500);">· Sync error: ${escapeHtml(f.last_sync_error || 'unknown')}</span>` : ''}
+                  ${f.last_synced_at ? `· Synced ${new Date(f.last_synced_at).toLocaleDateString()}` : ''}
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="syncFeed('${escapeAttr(f.collection_id)}')">Re-sync</button>
+              <button type="button" class="edit-list-remove" onclick="removeFeed('${escapeAttr(f.collection_id)}')" title="Remove" aria-label="Remove feed">&times;</button>
+            </div>
+          `).join('');
+
+          // Update section count
+          const badge = document.querySelector('#edit-section-feeds .edit-section-count');
+          if (badge) badge.textContent = `(${feeds.length})`;
+          else {
+            const summary = document.querySelector('#edit-section-feeds summary');
+            if (summary) {
+              const b = document.createElement('span');
+              b.className = 'edit-section-count';
+              b.textContent = `(${feeds.length})`;
+              summary.appendChild(b);
+            }
+          }
+        } catch { /* feeds optional */ }
+      }
+
+      async function syncFeed(collectionId) {
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds/${encodeURIComponent(collectionId)}/sync`, {
+            method: 'POST', credentials: 'include'
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            document.getElementById('feed-import-status').textContent = `Synced — ${data.installment_count} episodes`;
+            document.getElementById('feed-import-status').style.color = 'var(--color-success-600)';
+            loadFeeds();
+          }
+        } catch { /* ignore */ }
+      }
+
+      async function removeFeed(collectionId) {
+        if (!confirm('Remove this feed?')) return;
+        try {
+          await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds/${encodeURIComponent(collectionId)}`, {
+            method: 'DELETE', credentials: 'include'
+          });
+          loadFeeds();
+        } catch { /* ignore */ }
       }
 
       async function saveEdit() {

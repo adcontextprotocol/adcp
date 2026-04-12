@@ -155,6 +155,8 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
           feed_type: c.feed_type,
           installment_count: c.installments?.length || 0,
           last_synced_at: c.last_synced_at,
+          last_sync_status: c.last_sync_status,
+          last_sync_error: c.last_sync_error,
         })),
       });
     } catch (err) {
