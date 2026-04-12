@@ -361,10 +361,11 @@ phases:
       checking delivery mid-flight will see data at different maturation stages: recent
       airings show only live numbers, while airings from two weeks ago have full C7.
 
-      The seller returns delivery data tagged with the measurement window so the buyer
-      understands which numbers are preliminary (live) and which are final (C7). The
-      buyer should not make pacing decisions based on live-only data for a C7-guaranteed
-      buy.
+      The seller sends delivery data with measurement window context so the buyer
+      understands which numbers are preliminary and which are final. As windows mature,
+      the seller sends window_update notifications with supersedes_window indicating
+      which prior data is being replaced. The buyer should not make pacing decisions
+      based on live-only data for a C7-guaranteed buy.
 
     steps:
       - id: get_delivery
@@ -390,10 +391,15 @@ phases:
         stateful: true
         expected: |
           Return delivery metrics for the broadcast buy:
-          - Per-package delivery: impressions (viewers), GRPs, spots aired, spend
-          - Measurement window context on each data point (live, c3, or c7)
+          - Per-package: impressions, GRPs, spots aired, spend
+          - measurement_window on each package (live, c3, or c7)
+          - is_final: false for packages with data still maturing
           - Pacing information relative to the guaranteed unit count
-          - Data availability note: most recent 8 days will show live-only data
+
+          For webhook delivery, use notification_type: window_update when
+          sending updated data for a period with a wider window. Include
+          supersedes_window to indicate which prior data is being replaced
+          (e.g., supersedes_window: "live" when sending C3 data).
 
           The buyer uses this to understand:
           - How many spots have aired vs. the guaranteed count
@@ -448,8 +454,10 @@ phases:
         stateful: true
         expected: |
           Return final delivery metrics with all data points at C7 maturation:
-          - Per-package delivery: final impressions, GRPs, spots aired, spend
-          - All measurement windows should show c7 (fully matured)
+          - Per-package: final impressions, GRPs, spots aired, spend
+          - measurement_window: "c7" on all packages
+          - is_final: true on all packages (all windows fully matured)
+          - supersedes_window: "c3" (this C7 data replaced the prior C3 data)
           - Final pacing: delivered vs. guaranteed audience levels
           - Budget reconciliation: actual spend vs. committed
 
