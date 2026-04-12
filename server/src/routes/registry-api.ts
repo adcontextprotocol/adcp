@@ -1418,22 +1418,51 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const result = await brandManager.validateDomain(domain, { skipCache: fresh });
+      // If fresh=true, fetch live from external domain and update DB cache
+      if (fresh) {
+        const result = await brandManager.validateDomain(domain, { skipCache: true });
+        if (result.valid && result.raw_data) {
+          return res.json({
+            domain: result.domain,
+            url: result.url,
+            variant: result.variant,
+            data: result.raw_data,
+            warnings: result.warnings,
+          });
+        }
+        // Live fetch failed — fall through to DB cache
+      }
 
-      if (!result.valid || !result.raw_data) {
-        return res.status(404).json({
-          error: "Brand not found or invalid",
-          domain,
-          errors: result.errors,
+      // Serve from DB — single brands table
+      const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (brand && brand.is_public !== false) {
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const data = { name: brand.brand_name || domain, ...manifest };
+
+        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const url = brand.source_type === "brand_json"
+          ? `https://${domain}/.well-known/brand.json`
+          : `https://agenticadvertising.org/brands/${domain}/brand.json`;
+
+        return res.json({ domain, url, variant, data });
+      }
+
+      // Nothing in DB — try live fetch as last resort
+      const result = await brandManager.validateDomain(domain);
+      if (result.valid && result.raw_data) {
+        return res.json({
+          domain: result.domain,
+          url: result.url,
+          variant: result.variant,
+          data: result.raw_data,
+          warnings: result.warnings,
         });
       }
 
-      return res.json({
-        domain: result.domain,
-        url: result.url,
-        variant: result.variant,
-        data: result.raw_data,
-        warnings: result.warnings,
+      return res.status(404).json({
+        error: "Brand not found or invalid",
+        domain,
+        errors: result.errors,
       });
     } catch (error) {
       logger.error({ error }, "Failed to fetch brand.json");
@@ -3772,40 +3801,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // Public endpoint — target of authoritative_location pointer files.
   // Members place {"authoritative_location":"<this URL>"} at /.well-known/brand.json.
 
-  router.get("/brands/:domain/brand.json", async (req, res) => {
-    const domain = req.params.domain.toLowerCase();
-
-    try {
-      // Hosted brand takes priority (member-managed)
-      const hosted = await brandDb.getHostedBrandByDomain(domain);
-      if (hosted && hosted.is_public) {
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(hosted.brand_json);
-      }
-
-      // Fall back to discovered brand — reconstruct minimal brand.json
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (discovered) {
-        const brandJson: Record<string, unknown> = {
-          name: discovered.brand_name || domain,
-        };
-        if (discovered.brand_manifest) {
-          const manifest = discovered.brand_manifest as Record<string, unknown>;
-          if (manifest.logos) brandJson.logos = manifest.logos;
-          if (manifest.colors) brandJson.colors = manifest.colors;
-        }
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(brandJson);
-      }
-
-      return res.status(404).json({ error: "Brand not found" });
-    } catch (error) {
-      logger.error({ err: error, domain }, "Failed to serve brand.json");
-      return res.status(500).json({ error: "Failed to retrieve brand" });
-    }
-  });
+  // brand.json served at /brands/:domain/brand.json (in http.ts, not here)
 
   // ── Brand setup: link member to brand registry ───────────────────
   // Creates (or updates) a hosted brand entry and links it to the authenticated member's profile.

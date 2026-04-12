@@ -52,16 +52,12 @@ export interface MemberProfileRoutesConfig {
 
 /**
  * Resolve brand identity from the brand registry for a given domain.
- * Checks hosted_brands first, then discovered_brands.
+ * Resolves brand identity from the unified brands table.
  */
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
-  const hosted = await brandDb.getHostedBrandByDomain(domain);
-  if (hosted) {
-    return resolveBrandFromJson(domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-  }
-  const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-  if (discovered?.brand_manifest) {
-    return resolveBrandFromJson(domain, discovered.brand_manifest as Record<string, unknown>, true);
+  const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (brand?.brand_manifest) {
+    return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
   }
   return undefined;
 }
