@@ -125,8 +125,8 @@ export function detectFeedType(url: string): 'youtube' | 'spotify' | 'rss' {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
-    if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
-    if (host.includes('spotify.com')) return 'spotify';
+    if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'youtu.be' || host === 'm.youtube.com') return 'youtube';
+    if (host === 'open.spotify.com') return 'spotify';
   } catch {
     // not a valid URL — treat as RSS
   }
@@ -368,6 +368,8 @@ async function getSpotifyAccessToken(): Promise<string> {
 export async function fetchSpotifyPodcast(url: string): Promise<FeedResult> {
   const showId = extractSpotifyShowId(url);
   if (!showId) throw new Error('Could not extract Spotify show ID from URL');
+  // Validate showId is alphanumeric only (prevent injection into URL)
+  if (!/^[a-zA-Z0-9]+$/.test(showId)) throw new Error('Invalid Spotify show ID');
 
   const token = await getSpotifyAccessToken();
 
