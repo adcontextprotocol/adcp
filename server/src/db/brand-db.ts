@@ -649,6 +649,9 @@ export class BrandDatabase {
         );
       } else {
         const current = result.rows[0];
+        if (current.source_type === 'brand_json') {
+          throw new Error('Cannot modify agents on authoritative brand (managed via brand.json)');
+        }
         const manifest = (current.brand_manifest as Record<string, unknown>) || {};
         manifest.agents = agents;
 

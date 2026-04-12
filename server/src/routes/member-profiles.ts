@@ -549,8 +549,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // POST /api/me/agents/:index/publish - Add agent to brand.json
   router.post('/agents/:index/publish', requireAuth, async (req, res) => {
     try {
-      const index = parseInt(req.params.index);
-      if (isNaN(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
       const userRow = await query<{ primary_organization_id: string | null }>(
         'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
@@ -569,6 +569,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const agents = profile.agents || [];
       if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
       const agent = agents[index];
+
+      // Validate agent URL is HTTPS
+      try {
+        const parsed = new URL(agent.url);
+        if (parsed.protocol !== 'https:') {
+          return res.status(400).json({ error: 'Agent URL must use HTTPS' });
+        }
+      } catch {
+        return res.status(400).json({ error: 'Agent URL is not a valid URL' });
+      }
 
       const domain = profile.primary_brand_domain;
       const brandDb = new BrandDatabase();
@@ -631,8 +641,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // DELETE /api/me/agents/:index/publish - Remove agent from brand.json
   router.delete('/agents/:index/publish', requireAuth, async (req, res) => {
     try {
-      const index = parseInt(req.params.index);
-      if (isNaN(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
       const userRow = await query<{ primary_organization_id: string | null }>(
         'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
@@ -682,8 +692,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // POST /api/me/agents/:index/check - Check if agent appears in self-hosted brand.json
   router.post('/agents/:index/check', requireAuth, async (req, res) => {
     try {
-      const index = parseInt(req.params.index);
-      if (isNaN(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
       const userRow = await query<{ primary_organization_id: string | null }>(
         'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
@@ -702,6 +712,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const agent = agents[index];
 
       const domain = profile.primary_brand_domain;
+
+      // Validate domain is safe to fetch (SSRF protection)
+      try {
+        await validateCrawlDomain(domain);
+      } catch (e) {
+        return res.status(400).json({ error: `Invalid domain: ${(e as Error).message}` });
+      }
+
       const brandManager = new BrandManager();
 
       let found = false;
