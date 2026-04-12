@@ -2472,7 +2472,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
         }
 
-        const statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
+        try {
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
+        }
+
         const enriched = statuses.map(s => {
           const sb = getStoryboard(s.storyboard_id);
           return {
@@ -2533,7 +2539,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const nonOptedOut = validUrls.filter((u: string) => !metadataMap.get(u)?.compliance_opt_out);
         const optedOut = new Set(validUrls.filter((u: string) => metadataMap.get(u)?.compliance_opt_out));
 
-        const statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+        let statusMap: Awaited<ReturnType<typeof complianceDb.bulkGetStoryboardStatuses>> = new Map();
+        try {
+          statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+        } catch (err) {
+          logger.warn({ err }, "Bulk storyboard status query failed (table may not exist)");
+        }
 
         const results: Record<string, any> = {};
         for (const url of validUrls) {
@@ -2548,6 +2559,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
               storyboard_id: s.storyboard_id,
               title: sb?.title || s.storyboard_id,
               category: sb?.category || null,
+              track: sb?.track || null,
               status: s.status,
               steps_passed: s.steps_passed,
               steps_total: s.steps_total,
