@@ -84,12 +84,6 @@
         items: [
           { href: '/dashboard/content', label: 'Perspectives', icon: '📝' },
         ]
-      },
-      {
-        label: 'Account',
-        items: [
-          { href: '/account', label: 'Account settings', icon: '⚙️' },
-        ]
       }
     ],
     backLink: { href: 'https://agenticadvertising.org', label: '← Back to AAO' }
