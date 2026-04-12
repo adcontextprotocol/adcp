@@ -81,6 +81,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
         stateful: false
         expected: |
           Return products matching the brief. Each product should include:
@@ -146,6 +147,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
         stateful: true
         expected: |
           Process the broadcast media buy and return:
@@ -212,6 +214,7 @@ phases:
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
           Return the current state of the media buy:
@@ -260,6 +263,7 @@ phases:
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
         stateful: false
         expected: |
           Return broadcast spot formats the platform accepts. Each format should define:
@@ -292,6 +296,7 @@ phases:
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
         stateful: true
         expected: |
           Accept and validate broadcast spot files:
@@ -381,6 +386,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return delivery metrics for the broadcast buy:
@@ -438,6 +444,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
         stateful: true
         expected: |
           Return final delivery metrics with all data points at C7 maturation:
