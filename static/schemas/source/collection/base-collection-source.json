@@ -93,10 +93,10 @@
         },
         "genre_taxonomy": {
           "$ref": "/schemas/enums/genre-taxonomy.json",
-          "description": "Taxonomy for the genre values. When present, genre values are interpreted as taxonomy IDs."
+          "description": "Taxonomy for the genre values. Required so sellers can interpret genre strings unambiguously. Use 'custom' for free-form values negotiated out of band."
         }
       },
-      "required": ["selection_type", "publisher_domain", "genres"],
+      "required": ["selection_type", "publisher_domain", "genres", "genre_taxonomy"],
       "additionalProperties": false
     }
   ]

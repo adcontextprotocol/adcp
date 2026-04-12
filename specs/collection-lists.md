@@ -96,7 +96,7 @@ The boundary: if it can be decided from the collection's declared metadata alone
 
 Like property lists, collection lists start with a base set and apply filters. Three selection patterns, using the same discriminated union approach:
 
-**distribution_ids** — Select collections by platform-independent identifiers. This is the primary mechanism for cross-publisher exclusion. An IMDb ID identifies a program regardless of which CTV platform carries it.
+**distribution_ids** — Select collections by platform-independent identifiers. The primary mechanism for cross-publisher exclusion — an IMDb ID identifies a program regardless of which CTV platform carries it.
 
 ```json
 {
@@ -108,6 +108,8 @@ Like property lists, collection lists start with a base set and apply filters. T
   ]
 }
 ```
+
+**Gracenote ID guidance:** Use root-level IDs for collection lists — SH-prefixed for series, MV-prefixed for movies, SP-prefixed for sports programs. Do not use EP-prefixed episode IDs in collection lists; episode-level exclusion is a content standards concern.
 
 **publisher_collections** — Select specific collections within a publisher's `adagents.json`. Equivalent to `publisher_ids` on property lists. Use when the publisher's internal collection IDs are known.
 
@@ -148,6 +150,8 @@ Filters narrow the resolved list. Applied after base collection selection.
 | `production_quality` | string[] | OR | Filter by production quality (professional, prosumer, ugc) |
 
 **Include vs. exclude semantics:** Include filters are allowlists — only matching collections pass. Exclude filters are blocklists — matching collections are removed. When both are present for the same dimension (e.g., `genres_include` and `genres_exclude`), include is applied first, then exclude narrows further.
+
+**Filter interaction example:** A list with `genres_include: ["drama", "comedy"]` and `genres_exclude: ["crime"]` first includes only drama and comedy collections, then removes any tagged as crime. A collection tagged `["drama", "crime"]` would be excluded — the exclude filter wins over the include. A collection tagged `["comedy"]` passes. A collection tagged `["sports"]` is excluded by the include filter (not in the allowed set).
 
 **Content rating filters vs. content standards:** `content_ratings_exclude: [{ system: "tv_parental", rating: "TV-MA" }]` excludes all collections declared as TV-MA. This is a metadata filter on the collection's `content_rating` field. It doesn't evaluate episode content — an individual episode rated differently than the series baseline is the content standards layer's job.
 
@@ -309,7 +313,7 @@ Parallel to `property-list-ref.json`:
 
 ### In Targeting Overlays
 
-Add `collection_list` to `targeting.json`:
+Two fields in `targeting.json` support both inclusion and exclusion:
 
 ```json
 {
@@ -317,16 +321,23 @@ Add `collection_list` to `targeting.json`:
     "agent_url": "https://governance.pinnacleagency.com",
     "list_id": "pl_novamotors_approved_ctv"
   },
-  "collection_list": {
+  "collection_list_exclude": {
     "agent_url": "https://governance.pinnacleagency.com",
-    "list_id": "cl_novamotors_ctv_dna_2026"
+    "list_id": "cl_novamotors_dna_2026"
   }
 }
 ```
 
-**Semantics:** The collection list in a targeting overlay is an **exclusion list** — these collections must not carry the buyer's ads. This matches the dominant use case (brand safety do-not-air lists are exclusions).
+| Field | Semantics | Use case |
+|---|---|---|
+| `collection_list` | Inclusion — only run in these collections | "Only buy pre-roll on these three shows" |
+| `collection_list_exclude` | Exclusion — never run in these collections | Brand safety do-not-air lists |
 
-For inclusion-based collection targeting ("only run in these shows"), use `collection_targeting_allowed: true` on the product with collection selectors in the media buy — this is the existing product-level mechanism.
+A media buy can reference both simultaneously: "run in these approved shows, but never in these specific programs even if they appear on the approved list." The exclude list always wins when there's overlap.
+
+**Why collection lists have both include and exclude in targeting but property lists only have include:** Property lists were designed before the include/exclude pattern was established across other targeting dimensions (geo, audience, device). Collection lists follow the current pattern. A future protocol evolution may add `property_list_exclude` for symmetry.
+
+For product-level collection targeting (seller declares which collections are available), use `collection_targeting_allowed: true` on the product with collection selectors — this is the existing product-level mechanism.
 
 ### Seller Resolution Flow
 
@@ -460,7 +471,7 @@ A beverage brand's CTV brand safety configuration:
       "agent_url": "https://governance.pinnacleagency.com",
       "list_id": "pl_novamotors_approved_ctv"
     },
-    "collection_list": {
+    "collection_list_exclude": {
       "agent_url": "https://governance.pinnacleagency.com",
       "list_id": "cl_novamotors_dna_2026"
     }
@@ -469,6 +480,8 @@ A beverage brand's CTV brand safety configuration:
 ```
 
 Content standards are applied separately at the content evaluation layer — they don't need to be in the targeting overlay because they operate per-impression, not per-package.
+
+**Composition is optional.** Most buyers will use one or two of the three layers, not all three. A buyer who only needs to exclude specific programs can use a collection list alone. A buyer who only cares about contextual adjacency can use content standards alone. The three-layer model is a composition framework, not a requirement.
 
 ## CTV Partner Mapping Patterns
 
@@ -479,6 +492,38 @@ CTV partners support different levels of exclusion granularity. Collection lists
 - **Partners with app-level control only** — Property list entries handle these. Collection list entries for programs on these platforms are informational — the seller acknowledges them but may only be able to enforce at the app level.
 
 For partners that support both levels, the collection list provides the complete picture: explicit program exclusions plus structural genre/rating filters that catch programs not individually listed.
+
+## Live Sports Example
+
+Live sports is the largest CTV brand safety concern — a car brand not wanting to appear during a controversial halftime show, or an alcohol brand needing to avoid youth-targeted sports programming. Collection lists handle live sports through the `event_series` kind:
+
+```json
+{
+  "tool": "create_collection_list",
+  "arguments": {
+    "name": "Acme Outdoor — Excluded Sports Events",
+    "base_collections": [
+      {
+        "selection_type": "distribution_ids",
+        "identifiers": [
+          { "type": "gracenote_id", "value": "SP000001" },
+          { "type": "gracenote_id", "value": "SP000002" }
+        ]
+      }
+    ],
+    "filters": {
+      "kinds": ["event_series"],
+      "genres_exclude": ["combat_sports"],
+      "genre_taxonomy": "gracenote"
+    },
+    "brand": { "domain": "acmeoutdoor.com" }
+  }
+}
+```
+
+This excludes specific sports programs by Gracenote ID (SP-prefixed for sports programs) and structurally excludes all combat sports event series. The `event_series` kind filter ensures the list only targets live event programming, not documentary series about sports.
+
+Live sports collections have the same distribution identifier structure as scripted content — a championship league is identifiable by Gracenote or EIDR ID regardless of which streaming platform carries it.
 
 ## Schema Changes Summary
 
@@ -505,34 +550,25 @@ For partners that support both levels, the collection list provides the complete
 
 | Schema | Change |
 |--------|--------|
-| `targeting.json` | Add `collection_list` field (collection-list-ref) |
+| `targeting.json` | Add `collection_list` (inclusion) and `collection_list_exclude` (exclusion) fields |
+| `content-rating-system.json` | Add `chvrs` (Canada), `csa` (France), `pegi` (pan-European gaming) |
 
-### Registry Extensions
+## Resolved Questions
 
-| Table | Purpose |
-|-------|---------|
-| `registry_collections` | Canonical collection entries with metadata |
-| `registry_collection_identifiers` | Distribution identifier → collection_rid mapping |
-| `registry_collection_distributions` | Which properties carry which collections |
+1. **Include vs. exclude semantics in targeting.** Both supported. `collection_list` for inclusion, `collection_list_exclude` for exclusion. Follows the paired include/exclude pattern used by geo, audience, and device targeting fields.
 
-### New API Endpoints
+2. **Genre taxonomy standardization.** Normalized via the `genre-taxonomy` enum: `iab_content_3.0`, `iab_content_2.2`, `gracenote`, `eidr`, `apple_genres`, `google_genres`, `roku`, `amazon_genres`, `custom`. The `publisher_genres` base collection source requires `genre_taxonomy` so sellers can interpret genre strings unambiguously.
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/registry/collections/resolve` | Resolve distribution identifiers to collection_rids |
-| `GET /api/registry/collections` | Browse collection registry |
-| `GET /api/registry/collections/sync` | Sync collection registry changes |
+3. **Rating system coverage.** Multiple systems supported via content-rating.json (system + rating). Added `chvrs` (Canada), `csa` (France), `pegi` (pan-European gaming) for international coverage alongside existing US, UK, Germany, Australia systems.
+
+4. **Partial matches.** Coverage gaps approach from property lists replicated. The `get_collection_list` response includes a `coverage_gaps` field mapping dimension names to distribution identifiers for collections included despite missing metadata.
+
+5. **Collection list webhooks.** Supported via `webhook_url` on the collection list and the `collection_list_changed` webhook schema.
 
 ## Open Questions
 
-1. **Include vs. exclude semantics in targeting.** The spec defaults collection_list in targeting to exclusion semantics. Should it support inclusion too (equivalent to `collection_targeting_allowed` on products)? Or is product-level collection targeting sufficient for inclusion?
+1. **Multiple lists per targeting field.** The current schema allows one `collection_list` and one `collection_list_exclude` per targeting overlay. In practice, governance is layered (brand list + agency list + trading desk list). A future evolution may accept arrays of refs.
 
-2. **Genre taxonomy standardization.** Collection genre filters require matching taxonomies between buyer lists and seller declarations. If a seller uses free-form genres and the list uses IAB Content Taxonomy 3.0, matching breaks. Should the registry normalize genres?
+2. **Collection registry bootstrap.** The collection registry (collection_rid for cross-publisher identity) is designed but not implemented. Entertainment metadata services (Gracenote, EIDR) are the natural seed sources. See `specs/collection-registry.md` (planned) for the full design.
 
-3. **Rating system coverage.** A US-centric list uses TV Parental Guidelines. International campaigns need BBFC, FSK, ACB ratings. Should collection lists support multiple rating system filters simultaneously? (Probably yes — same as the content-rating schema already supports.)
-
-4. **Partial matches.** When a seller can't resolve all entries in a collection list, should the buy proceed with what resolved, or fail? Property lists handle this with coverage_gaps in the response. Collection lists should do the same.
-
-5. **Collection list webhooks.** Property lists support `webhook_url` for change notifications. Collection lists probably need the same — a show getting a new season with a different content rating should notify lists that filter by rating.
-
-6. **Registry bootstrap.** The property registry bootstraps from contributed knowledge graphs. The collection registry could bootstrap from entertainment metadata services (Gracenote, EIDR). What's the right seed source?
+3. **OpenRTB content signal alignment.** IAB Tech Lab's CTV Addressability Working Group is developing program-level signal specifications. When standardized, collection lists should adopt their identifier scheme. The `genre_taxonomy` enum descriptions include OpenRTB `cattax` integer mappings for the IAB taxonomies.

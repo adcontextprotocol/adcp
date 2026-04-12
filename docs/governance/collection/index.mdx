@@ -40,6 +40,8 @@ These three layers compose. A media buy can reference all three:
 - **Collection list**: excluded programs
 - **Content standards**: contextual adjacency rules (nuanced policies like "exclude kids content except G/PG animation")
 
+Most buyers will use one or two layers, not all three. A buyer who only needs to exclude specific programs can use a collection list alone. The three-layer model is a composition framework, not a requirement.
+
 ### When to use collection lists vs. content standards
 
 Collection lists filter by declared metadata — genre tags, content ratings, distribution identifiers. They operate at setup time and apply uniformly.
@@ -53,6 +55,8 @@ Content standards evaluate individual artifacts (articles, episodes, pages) agai
 ### Distribution identifiers are the cross-publisher key
 
 Collections in AdCP carry [distribution identifiers](/docs/media-buy/product-discovery/collections-and-installments) — platform-independent IDs like IMDb, Gracenote, and EIDR that uniquely identify a program regardless of where it airs. Collection lists use these identifiers to express "this program, everywhere."
+
+**Gracenote ID guidance:** Use root-level IDs for collection lists — SH-prefixed for series, MV-prefixed for movies, SP-prefixed for sports programs. Do not use EP-prefixed episode IDs; episode-level exclusion is a content standards concern.
 
 ### Setup-time, not bid-time
 
@@ -114,7 +118,13 @@ Collection lists are referenced in targeting overlays alongside property lists. 
 | `collection_list` | Inclusion — only run in these collections | "Only buy pre-roll on these three shows" |
 | `collection_list_exclude` | Exclusion — never run in these collections | Brand safety do-not-air lists |
 
-For inclusion-based collection targeting at the product level, use `collection_targeting_allowed: true` on products with collection selectors in the media buy.
+A media buy can reference both simultaneously — "run in these approved shows, but never in these specific programs even if they appear on the approved list." The exclude list always wins on overlap.
+
+For product-level collection targeting (seller declares which collections are available), use `collection_targeting_allowed: true` on products with collection selectors.
+
+<Info>
+**Why two fields for collections but one for properties?** Property lists predate the paired include/exclude pattern now used across other targeting dimensions (geo, audience, device). Collection lists follow the current pattern. A future evolution may add `property_list_exclude` for symmetry.
+</Info>
 
 ## Seller resolution
 

@@ -98,9 +98,11 @@ Filters narrow the resolved list after base collection selection:
 
 **Include vs. exclude**: include filters are allowlists, exclude filters are blocklists. When both are present for the same dimension, include is applied first, then exclude narrows further.
 
+**Example:** A list with `genres_include: ["drama", "comedy"]` and `genres_exclude: ["crime"]` first includes only drama and comedy collections, then removes any tagged as crime. A collection tagged `["drama", "crime"]` is excluded — the exclude filter wins. A collection tagged `["sports"]` is excluded by the include filter (not in the allowed set).
+
 **Content ratings are metadata filters, not content evaluation.** `content_ratings_exclude: [{ system: "tv_parental", rating: "TV-MA" }]` excludes all collections *declared* as TV-MA. It doesn't evaluate individual episodes — that's [content standards](/docs/governance/content-standards/index).
 
-**Genre taxonomy** normalizes genre matching between buyers and sellers. Supported taxonomies: `iab_content_3.0`, `iab_content_2.2`, `gracenote`, `eidr`, `apple_genres`, `google_genres`, `custom`.
+**Genre taxonomy** normalizes genre matching between buyers and sellers. Supported taxonomies: `iab_content_3.0`, `iab_content_2.2`, `gracenote`, `eidr`, `apple_genres`, `google_genres`, `roku`, `amazon_genres`, `custom`. The `custom` value is an escape hatch for publisher-defined taxonomies — buyer and seller negotiate the vocabulary out of band.
 
 ## create_collection_list
 
