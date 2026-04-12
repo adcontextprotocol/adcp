@@ -73,6 +73,7 @@
       display: flex;
       align-items: center;
       gap: var(--space-3);
+      flex-wrap: wrap;
     }
     .refresh-btn {
       padding: var(--space-2) var(--space-3);
@@ -81,10 +82,15 @@
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
       cursor: pointer;
-      color: var(--color-text-primary);
+      color: var(--color-text);
+      transition: var(--transition-all, background 0.15s);
     }
     .refresh-btn:hover {
-      background: var(--color-gray-50);
+      background: var(--color-gray-100);
+    }
+    .refresh-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-brand-alpha, rgba(26, 54, 180, 0.3));
     }
     .auto-refresh-label {
       font-size: var(--text-xs);
@@ -122,7 +128,11 @@
       padding: var(--space-3) var(--space-4);
       font-size: var(--text-sm);
       border-bottom: var(--border-1) solid var(--color-gray-100);
-      color: var(--color-text-primary);
+      color: var(--color-text);
+      vertical-align: middle;
+    }
+    tr:last-child td {
+      border-bottom: none;
     }
     tr:hover td {
       background: var(--color-gray-50);
@@ -131,10 +141,10 @@
     /* Status badges */
     .badge {
       display: inline-block;
-      padding: 2px var(--space-2);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      font-weight: var(--font-semibold);
+      padding: var(--badge-padding-y, var(--space-1)) var(--badge-padding-x, var(--space-3));
+      border-radius: var(--badge-radius, var(--radius-full));
+      font-size: var(--badge-font-size, var(--text-xs));
+      font-weight: var(--badge-font-weight, var(--font-semibold));
       white-space: nowrap;
     }
     .badge-executing {
@@ -170,6 +180,13 @@
     .muted {
       color: var(--color-text-muted);
     }
+    .failure-count {
+      color: var(--color-error-600);
+      font-weight: var(--font-semibold);
+    }
+    .job-desc {
+      font-size: var(--text-xs);
+    }
 
     /* Worker unreachable banner */
     .banner-warning {
@@ -179,7 +196,7 @@
       padding: var(--space-3) var(--space-4);
       margin-bottom: var(--space-4);
       font-size: var(--text-sm);
-      color: var(--color-warning-800, #92400e);
+      color: var(--color-warning-700);
     }
 
     .empty-state {
@@ -297,7 +314,7 @@
       } catch (e) {
         console.error('Error loading jobs:', e);
         document.getElementById('jobsTable').innerHTML =
-          '<tr><td colspan="7" class="empty-state" style="color: var(--color-error-600);">Failed to load job status</td></tr>';
+          '<tr><td colspan="7" class="empty-state failure-count">Failed to load job status</td></tr>';
       }
     }
 
@@ -329,14 +346,14 @@
           ? '<span class="mono">' + formatDuration(job.lastDurationMs) + '</span>'
           : '<span class="muted">-</span>';
         const failures = job.consecutiveFailures > 0
-          ? '<span style="color: var(--color-error-600); font-weight: var(--font-semibold);">' + job.consecutiveFailures + '</span>'
+          ? '<span class="failure-count">' + job.consecutiveFailures + '</span>'
           : '<span class="muted">0</span>';
         const lastError = job.lastError
           ? '<span class="error-text" title="' + escapeAttr(job.lastError) + '">' + escapeHtml(job.lastError) + '</span>'
           : '<span class="muted">-</span>';
 
         html += '<tr>' +
-          '<td><strong>' + escapeHtml(job.name) + '</strong><br><span class="muted" style="font-size: var(--text-xs);">' + escapeHtml(job.description || '') + '</span></td>' +
+          '<td><strong>' + escapeHtml(job.name) + '</strong><br><span class="muted job-desc">' + escapeHtml(job.description || '') + '</span></td>' +
           '<td>' + statusBadge + '</td>' +
           '<td class="mono">' + interval + '</td>' +
           '<td>' + lastRun + '</td>' +
