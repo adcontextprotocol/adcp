@@ -78,6 +78,7 @@
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
           { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
+          { href: '/admin/jobs', label: 'Background Jobs', icon: '⚙️' },
           { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
           { href: '/admin/bans', label: 'Bans', icon: '🚫' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },

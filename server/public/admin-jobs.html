@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Jobs - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-6);
+    }
+    h1 {
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+
+    /* Summary cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .summary-card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-xs);
+      padding: var(--space-4);
+    }
+    .summary-card .label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-1);
+    }
+    .summary-card .value {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .summary-card .value.warning {
+      color: var(--color-warning-500);
+    }
+    .summary-card .value.error {
+      color: var(--color-error-600);
+    }
+    .summary-card .value.success {
+      color: var(--color-success-700);
+    }
+
+    /* Auto-refresh controls */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .refresh-btn {
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      color: var(--color-text);
+      transition: var(--transition-all, background 0.15s);
+    }
+    .refresh-btn:hover {
+      background: var(--color-gray-100);
+    }
+    .refresh-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-brand-alpha, rgba(26, 54, 180, 0.3));
+    }
+    .auto-refresh-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+    .last-updated {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* Table */
+    .table-container {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-xs);
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      background: var(--color-gray-50);
+      white-space: nowrap;
+    }
+    td {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      color: var(--color-text);
+      vertical-align: middle;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover td {
+      background: var(--color-gray-50);
+    }
+
+    /* Status badges */
+    .badge {
+      display: inline-block;
+      padding: var(--badge-padding-y, var(--space-1)) var(--badge-padding-x, var(--space-3));
+      border-radius: var(--badge-radius, var(--radius-full));
+      font-size: var(--badge-font-size, var(--text-xs));
+      font-weight: var(--badge-font-weight, var(--font-semibold));
+      white-space: nowrap;
+    }
+    .badge-executing {
+      background: var(--color-info-100, #dbeafe);
+      color: var(--color-info-700, #1d4ed8);
+    }
+    .badge-idle {
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+    }
+    .badge-failing {
+      background: var(--color-error-100, #fee2e2);
+      color: var(--color-error-600);
+    }
+
+    /* Duration and interval formatting */
+    .mono {
+      font-family: var(--font-mono, monospace);
+      font-size: var(--text-xs);
+    }
+    .error-text {
+      color: var(--color-error-600);
+      font-size: var(--text-xs);
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .error-text:hover {
+      white-space: normal;
+      word-break: break-word;
+    }
+    .muted {
+      color: var(--color-text-muted);
+    }
+    .failure-count {
+      color: var(--color-error-600);
+      font-weight: var(--font-semibold);
+    }
+    .job-desc {
+      font-size: var(--text-xs);
+    }
+
+    /* Worker unreachable banner */
+    .banner-warning {
+      background: var(--color-warning-100, #fef3c7);
+      border: var(--border-1) solid var(--color-warning-500);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-warning-700);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Background Jobs</h1>
+        <p class="subtitle">Worker process status and scheduled job monitoring</p>
+      </div>
+      <div class="controls">
+        <span class="last-updated" id="lastUpdated"></span>
+        <label class="auto-refresh-label">
+          <input type="checkbox" id="autoRefresh" checked> Auto-refresh (10s)
+        </label>
+        <button class="refresh-btn" onclick="loadJobs()">Refresh</button>
+      </div>
+    </div>
+
+    <div id="warningBanner"></div>
+
+    <div class="summary-cards" id="summaryCards">
+      <div class="summary-card">
+        <div class="label">Process</div>
+        <div class="value" id="summaryProcess">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Uptime</div>
+        <div class="value" id="summaryUptime">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Memory (RSS)</div>
+        <div class="value" id="summaryMemory">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Heap Used</div>
+        <div class="value" id="summaryHeap">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Executing</div>
+        <div class="value success" id="summaryExecuting">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Failing</div>
+        <div class="value" id="summaryFailing">-</div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th>Interval</th>
+            <th>Last Run</th>
+            <th>Duration</th>
+            <th>Failures</th>
+            <th>Last Error</th>
+          </tr>
+        </thead>
+        <tbody id="jobsTable">
+          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let refreshTimer = null;
+
+    async function loadJobs() {
+      try {
+        const response = await fetch('/api/admin/jobs');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        // Warning banner
+        const banner = document.getElementById('warningBanner');
+        if (data.workerUnreachable) {
+          banner.innerHTML = '<div class="banner-warning">Worker machine is unreachable. Showing web machine data only.</div>';
+        } else {
+          banner.innerHTML = '';
+        }
+
+        // Summary cards
+        document.getElementById('summaryProcess').textContent = data.processRole || '-';
+        document.getElementById('summaryUptime').textContent = formatUptime(data.uptime);
+        document.getElementById('summaryMemory').textContent = data.memory?.rss || '-';
+        document.getElementById('summaryHeap').textContent = data.memory?.heapUsed || '-';
+
+        const jobs = data.jobs || [];
+        const executing = jobs.filter(j => j.executing).length;
+        const failing = jobs.filter(j => j.consecutiveFailures > 0).length;
+
+        document.getElementById('summaryExecuting').textContent = executing;
+        const failEl = document.getElementById('summaryFailing');
+        failEl.textContent = failing;
+        failEl.className = 'value' + (failing > 0 ? ' error' : ' success');
+
+        // Table
+        renderJobs(jobs);
+
+        // Last updated
+        document.getElementById('lastUpdated').textContent =
+          'Updated ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        console.error('Error loading jobs:', e);
+        document.getElementById('jobsTable').innerHTML =
+          '<tr><td colspan="7" class="empty-state failure-count">Failed to load job status</td></tr>';
+      }
+    }
+
+    function renderJobs(jobs) {
+      const tbody = document.getElementById('jobsTable');
+      if (jobs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No jobs registered (web machines don\'t run jobs)</td></tr>';
+        return;
+      }
+
+      // Sort: executing first, then failing, then by name
+      jobs.sort((a, b) => {
+        if (a.executing !== b.executing) return b.executing - a.executing;
+        if (a.consecutiveFailures !== b.consecutiveFailures) return b.consecutiveFailures - a.consecutiveFailures;
+        return a.name.localeCompare(b.name);
+      });
+
+      let html = '';
+      for (const job of jobs) {
+        const statusBadge = job.executing
+          ? '<span class="badge badge-executing">Executing</span>'
+          : job.consecutiveFailures > 0
+            ? '<span class="badge badge-failing">Failing</span>'
+            : '<span class="badge badge-idle">Idle</span>';
+
+        const interval = formatInterval(job.interval);
+        const lastRun = job.lastRunAt ? timeAgo(job.lastRunAt) : '<span class="muted">Never</span>';
+        const duration = job.lastDurationMs != null
+          ? '<span class="mono">' + formatDuration(job.lastDurationMs) + '</span>'
+          : '<span class="muted">-</span>';
+        const failures = job.consecutiveFailures > 0
+          ? '<span class="failure-count">' + job.consecutiveFailures + '</span>'
+          : '<span class="muted">0</span>';
+        const lastError = job.lastError
+          ? '<span class="error-text" title="' + escapeAttr(job.lastError) + '">' + escapeHtml(job.lastError) + '</span>'
+          : '<span class="muted">-</span>';
+
+        html += '<tr>' +
+          '<td><strong>' + escapeHtml(job.name) + '</strong><br><span class="muted job-desc">' + escapeHtml(job.description || '') + '</span></td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td class="mono">' + escapeHtml(interval) + '</td>' +
+          '<td>' + lastRun + '</td>' +
+          '<td>' + duration + '</td>' +
+          '<td>' + failures + '</td>' +
+          '<td>' + lastError + '</td>' +
+          '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function formatInterval(interval) {
+      if (!interval) return '-';
+      const v = interval.value;
+      const u = interval.unit;
+      if (u === 'hours' && v >= 24) return (v / 24) + 'd';
+      if (u === 'hours') return v + 'h';
+      if (u === 'minutes') return v + 'm';
+      if (u === 'seconds') return v + 's';
+      return v + ' ' + u;
+    }
+
+    function formatDuration(ms) {
+      if (ms < 1000) return ms + 'ms';
+      if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+      return (ms / 60000).toFixed(1) + 'min';
+    }
+
+    function formatUptime(seconds) {
+      if (!seconds && seconds !== 0) return '-';
+      if (seconds < 60) return seconds + 's';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+      return Math.floor(seconds / 86400) + 'd ' + Math.floor((seconds % 86400) / 3600) + 'h';
+    }
+
+    function timeAgo(isoString) {
+      const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+      if (seconds < 5) return 'just now';
+      if (seconds < 60) return seconds + 's ago';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+      return Math.floor(seconds / 86400) + 'd ago';
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function escapeAttr(text) {
+      if (!text) return '';
+      return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Auto-refresh
+    function setupAutoRefresh() {
+      const checkbox = document.getElementById('autoRefresh');
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          refreshTimer = setInterval(loadJobs, 10000);
+        } else {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+      });
+      refreshTimer = setInterval(loadJobs, 10000);
+    }
+
+    // Cleanup on navigation
+    window.addEventListener('beforeunload', () => {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
+
+    // Init
+    loadJobs();
+    setupAutoRefresh();
+  </script>
+</body>
+</html>

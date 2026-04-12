@@ -5703,6 +5703,10 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
+    this.app.get('/admin/jobs', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-jobs.html');
+    });
+
     this.app.get('/admin/certification', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-certification.html');
     });
