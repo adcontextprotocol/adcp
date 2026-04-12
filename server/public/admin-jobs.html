@@ -355,7 +355,7 @@
         html += '<tr>' +
           '<td><strong>' + escapeHtml(job.name) + '</strong><br><span class="muted job-desc">' + escapeHtml(job.description || '') + '</span></td>' +
           '<td>' + statusBadge + '</td>' +
-          '<td class="mono">' + interval + '</td>' +
+          '<td class="mono">' + escapeHtml(interval) + '</td>' +
           '<td>' + lastRun + '</td>' +
           '<td>' + duration + '</td>' +
           '<td>' + failures + '</td>' +
@@ -423,6 +423,11 @@
       });
       refreshTimer = setInterval(loadJobs, 10000);
     }
+
+    // Cleanup on navigation
+    window.addEventListener('beforeunload', () => {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
 
     // Init
     loadJobs();
