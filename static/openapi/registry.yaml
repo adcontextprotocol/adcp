@@ -325,11 +325,13 @@ components:
         type:
           type: string
           enum:
-            - creative
-            - signals
-            - sales
+            - brand
+            - rights
+            - measurement
             - governance
-            - si
+            - creative
+            - buying
+            - signals
             - unknown
         protocol:
           type: string
@@ -656,12 +658,13 @@ components:
               type:
                 type: string
                 enum:
-                  - creative
-                  - signals
-                  - sales
+                  - brand
+                  - rights
+                  - measurement
                   - governance
-                  - si
-                  - buyer
+                  - creative
+                  - buying
+                  - signals
                   - unknown
               authorized_by:
                 type: array
@@ -1990,11 +1993,13 @@ paths:
         - schema:
             type: string
             enum:
-              - creative
-              - signals
-              - sales
+              - brand
+              - rights
+              - measurement
               - governance
-              - si
+              - creative
+              - buying
+              - signals
               - unknown
           required: false
           name: type

@@ -879,10 +879,10 @@ export class CommunityDatabase {
 
   async getHubData(userId: string): Promise<HubData> {
     // Fetch user profile
-    const profileResult = await query<CommunityProfile & { first_name: string; last_name: string; city: string | null; country: string | null }>(
+    const profileResult = await query<CommunityProfile & { first_name: string; last_name: string; city: string | null; country: string | null; email: string | null }>(
       `SELECT workos_user_id, slug, headline, bio, avatar_url, expertise, interests,
               linkedin_url, twitter_url, github_username, is_public, open_to_coffee_chat, open_to_intros,
-              first_name, last_name, city, country
+              first_name, last_name, city, country, email
        FROM users WHERE workos_user_id = $1`,
       [userId]
     );
@@ -907,7 +907,7 @@ export class CommunityDatabase {
       this.getUserBadges(userId),
       this.getSuggestedConnections(userId, 4),
       this.getRecentPublicProfiles(5),
-      this.getUpcomingEvents(userId),
+      this.getUpcomingEvents(userId, profile.email ?? undefined),
       this.getUserWorkingGroupsWithCount(userId),
       this.getConnectionCount(userId),
       this.getPendingRequestCount(userId),
@@ -928,19 +928,30 @@ export class CommunityDatabase {
     };
   }
 
-  private async getUpcomingEvents(userId: string): Promise<{ id: string; title: string; start_time: string; co_attendee_count: number }[]> {
+  private async getUpcomingEvents(userId: string, userEmail?: string): Promise<{ id: string; title: string; start_time: string; co_attendee_count: number }[]> {
+    // Match registrations by workos_user_id OR email (Luma-synced registrations only have email)
+    const userMatch = userEmail
+      ? `(er.workos_user_id = $1 OR LOWER(er.email) = LOWER($2))`
+      : `er.workos_user_id = $1`;
+    const excludeSelf = userEmail
+      ? `AND er2.workos_user_id != $1 AND LOWER(er2.email) != LOWER($2)`
+      : `AND er2.workos_user_id != $1`;
+    const params = userEmail ? [userId, userEmail] : [userId];
+
     const result = await query<{ id: string; title: string; start_time: string; co_attendee_count: number }>(
-      `SELECT e.id, e.title, e.start_time,
+      `SELECT DISTINCT e.id, e.title, e.start_time,
               (SELECT COUNT(*) FROM event_registrations er2
-               WHERE er2.event_id = e.id AND er2.workos_user_id != $1) as co_attendee_count
+               WHERE er2.event_id = e.id ${excludeSelf}
+                 AND er2.registration_status IN ('registered', 'waitlisted')) as co_attendee_count
        FROM events e
        JOIN event_registrations er ON er.event_id = e.id
-       WHERE er.workos_user_id = $1
+       WHERE ${userMatch}
+         AND er.registration_status IN ('registered', 'waitlisted')
          AND e.start_time > NOW()
          AND e.status = 'published'
        ORDER BY e.start_time ASC
        LIMIT 5`,
-      [userId]
+      params
     );
     return result.rows;
   }

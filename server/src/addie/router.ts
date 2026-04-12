@@ -390,7 +390,9 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
-- Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
+- Upcoming events, event registrations, "am I registered", event details, register interest → ["events"]
+- Who is coming to an event, attendee lists, invite someone to an event, create/update events → ["events", "admin"]
+- Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
 - Listing all members with payment/product/invoice status → ["admin"]
 - Task management, marking tasks done, checking tasks, reminders, logging conversations → ["admin"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
@@ -435,7 +437,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? `
 
 3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
+   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
    - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.

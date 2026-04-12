@@ -507,7 +507,7 @@ registry.registerPath({
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
-      type: z.enum(["creative", "signals", "sales", "governance", "si", "unknown"]).optional(),
+      type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]).optional(),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
@@ -1428,22 +1428,51 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const result = await brandManager.validateDomain(domain, { skipCache: fresh });
+      // If fresh=true, fetch live from external domain and update DB cache
+      if (fresh) {
+        const result = await brandManager.validateDomain(domain, { skipCache: true });
+        if (result.valid && result.raw_data) {
+          return res.json({
+            domain: result.domain,
+            url: result.url,
+            variant: result.variant,
+            data: result.raw_data,
+            warnings: result.warnings,
+          });
+        }
+        // Live fetch failed — fall through to DB cache
+      }
 
-      if (!result.valid || !result.raw_data) {
-        return res.status(404).json({
-          error: "Brand not found or invalid",
-          domain,
-          errors: result.errors,
+      // Serve from DB — single brands table
+      const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (brand && brand.is_public !== false) {
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const data = { name: brand.brand_name || domain, ...manifest };
+
+        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const url = brand.source_type === "brand_json"
+          ? `https://${domain}/.well-known/brand.json`
+          : `https://agenticadvertising.org/brands/${domain}/brand.json`;
+
+        return res.json({ domain, url, variant, data });
+      }
+
+      // Nothing in DB — try live fetch as last resort
+      const result = await brandManager.validateDomain(domain);
+      if (result.valid && result.raw_data) {
+        return res.json({
+          domain: result.domain,
+          url: result.url,
+          variant: result.variant,
+          data: result.raw_data,
+          warnings: result.warnings,
         });
       }
 
-      return res.json({
-        domain: result.domain,
-        url: result.url,
-        variant: result.variant,
-        data: result.raw_data,
-        warnings: result.warnings,
+      return res.status(404).json({
+        error: "Brand not found or invalid",
+        domain,
+        errors: result.errors,
       });
     } catch (error) {
       logger.error({ error }, "Failed to fetch brand.json");
@@ -2296,7 +2325,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             );
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             promises.push(
               federatedIndex.getPropertiesForAgent(agent.url),
               federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -2311,7 +2340,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             enrichedAgent.stats = results[resultIndex++] as any;
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             const agentProperties = results[resultIndex++] as any[];
             const publisherDomains = results[resultIndex++] as string[];
 
@@ -2404,8 +2433,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         });
       }
 
-      // Include public storyboard summary counts
-      const sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+      // Storyboard counts are supplementary — don't fail the whole response
+      // if the table hasn't been migrated yet
+      let sbCounts = { passing: 0, total: 0 };
+      try {
+        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Storyboard status query failed");
+      }
 
       res.json({
         agent_url: agentUrl,
@@ -2497,7 +2532,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
         }
 
-        const statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
+        try {
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
+        }
+
         const enriched = statuses.map(s => {
           const sb = getStoryboard(s.storyboard_id);
           return {
@@ -2558,7 +2599,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const nonOptedOut = validUrls.filter((u: string) => !metadataMap.get(u)?.compliance_opt_out);
         const optedOut = new Set(validUrls.filter((u: string) => metadataMap.get(u)?.compliance_opt_out));
 
-        const statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+        let statusMap: Awaited<ReturnType<typeof complianceDb.bulkGetStoryboardStatuses>> = new Map();
+        try {
+          statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+        } catch (err) {
+          logger.warn({ err }, "Bulk storyboard status query failed (table may not exist)");
+        }
 
         const results: Record<string, any> = {};
         for (const url of validUrls) {
@@ -2573,6 +2619,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
               storyboard_id: s.storyboard_id,
               title: sb?.title || s.storyboard_id,
               category: sb?.category || null,
+              track: sb?.track || null,
               status: s.status,
               steps_passed: s.steps_passed,
               steps_total: s.steps_total,
@@ -3608,7 +3655,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let agentType = "unknown";
       const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
       if (toolNames.some((n: string) => n.includes("get_product") || n.includes("media_buy") || n.includes("create_media"))) {
-        agentType = "sales";
+        agentType = "buying";
       } else if (toolNames.some((n: string) => n.includes("signal") || n.includes("audience"))) {
         agentType = "signals";
       } else if (toolNames.some((n: string) => n.includes("creative") || n.includes("format") || n.includes("preview"))) {
@@ -3645,7 +3692,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
         }
-      } else if (agentType === "sales") {
+      } else if (agentType === "buying") {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {
@@ -3785,40 +3832,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // Public endpoint — target of authoritative_location pointer files.
   // Members place {"authoritative_location":"<this URL>"} at /.well-known/brand.json.
 
-  router.get("/brands/:domain/brand.json", async (req, res) => {
-    const domain = req.params.domain.toLowerCase();
-
-    try {
-      // Hosted brand takes priority (member-managed)
-      const hosted = await brandDb.getHostedBrandByDomain(domain);
-      if (hosted && hosted.is_public) {
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(hosted.brand_json);
-      }
-
-      // Fall back to discovered brand — reconstruct minimal brand.json
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (discovered) {
-        const brandJson: Record<string, unknown> = {
-          name: discovered.brand_name || domain,
-        };
-        if (discovered.brand_manifest) {
-          const manifest = discovered.brand_manifest as Record<string, unknown>;
-          if (manifest.logos) brandJson.logos = manifest.logos;
-          if (manifest.colors) brandJson.colors = manifest.colors;
-        }
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Cache-Control", "public, max-age=300");
-        return res.json(brandJson);
-      }
-
-      return res.status(404).json({ error: "Brand not found" });
-    } catch (error) {
-      logger.error({ err: error, domain }, "Failed to serve brand.json");
-      return res.status(500).json({ error: "Failed to retrieve brand" });
-    }
-  });
+  // brand.json served at /brands/:domain/brand.json (in http.ts, not here)
 
   // ── Brand setup: link member to brand registry ───────────────────
   // Creates (or updates) a hosted brand entry and links it to the authenticated member's profile.

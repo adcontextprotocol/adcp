@@ -388,6 +388,9 @@ Common issues to understand:
 - RESELLER means the publisher has authorized another entity to sell on their behalf
 - A seller claiming DIRECT when the relationship is through an intermediary is a misrepresentation
 
+## Deprecated URLs
+The interactive testing platform at `testing.adcontextprotocol.org` was deprecated in February 2026 and no longer works. It was a browser-based UI for trying AdCP without code. If someone asks about it or reports it as down, explain that it was deprecated in February 2026 and point them to the Validate Your Agent guide at https://docs.adcontextprotocol.org/docs/building/validate-your-agent instead. The URL now redirects there automatically. Do not link to or reference `testing.adcontextprotocol.org`. Note: `test-agent.adcontextprotocol.org` is a separate, active MCP-based test agent — it is not a replacement for the interactive testing UI.
+
 ## Official Libraries and Developer Resources
 Recommend the official AdCP libraries for development:
 - JavaScript/TypeScript: @adcp/client (npm)

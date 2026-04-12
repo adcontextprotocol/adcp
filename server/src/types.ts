@@ -1,9 +1,10 @@
-export type AgentType = "creative" | "signals" | "sales" | "governance" | "si" | "unknown";
+export type AgentType = "brand" | "rights" | "measurement" | "governance" | "creative" | "buying" | "signals" | "unknown";
 
 /**
- * Valid agent type values for runtime validation
+ * Valid agent type values for runtime validation.
+ * Matches the brand-agent-type.json schema enum (plus "unknown" for unclassified).
  */
-export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "governance", "si", "unknown"] as const;
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"] as const;
 
 /**
  * Type guard to check if a string is a valid AgentType
@@ -314,39 +315,37 @@ export interface WorkOSUser {
 
 // Member Profile Types
 
-export type MemberOffering =
-  | 'buyer_agent'
-  | 'sales_agent'
-  | 'creative_agent'
-  | 'signals_agent'
-  | 'si_agent'
-  | 'governance_agent'
-  | 'publisher'
-  | 'data_provider'
+/**
+ * Services a member offers to others (not derivable from their brand.json).
+ * Agent-related capabilities (buying, creative, signals, etc.) are derived
+ * from the agents array in brand.json — they don't need to be declared here.
+ */
+export type MemberService =
+  | 'agent_development'
+  | 'system_integration'
   | 'consulting'
+  | 'data_services'
+  | 'publisher_services'
   | 'other';
 
-/**
- * Valid member offering values for runtime validation
- */
-export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
-  'buyer_agent',
-  'sales_agent',
-  'creative_agent',
-  'signals_agent',
-  'si_agent',
-  'governance_agent',
-  'publisher',
-  'data_provider',
+export const VALID_MEMBER_SERVICES: readonly MemberService[] = [
+  'agent_development',
+  'system_integration',
   'consulting',
+  'data_services',
+  'publisher_services',
   'other',
 ] as const;
 
-/**
- * Type guard to check if a string is a valid MemberOffering
- */
-export function isValidMemberOffering(value: string | undefined | null): value is MemberOffering {
-  return typeof value === 'string' && VALID_MEMBER_OFFERINGS.includes(value as MemberOffering);
+export function isValidMemberService(value: string | undefined | null): value is MemberService {
+  return typeof value === 'string' && VALID_MEMBER_SERVICES.includes(value as MemberService);
+}
+
+/** @deprecated Use MemberService instead */
+export type MemberOffering = MemberService | 'buyer_agent' | 'sales_agent' | 'creative_agent' | 'signals_agent' | 'si_agent' | 'governance_agent' | 'publisher' | 'data_provider';
+export const VALID_MEMBER_OFFERINGS = [...VALID_MEMBER_SERVICES, 'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'data_provider'] as const;
+export function isValidMemberOffering(value: string | undefined | null): boolean {
+  return typeof value === 'string' && (VALID_MEMBER_OFFERINGS as readonly string[]).includes(value);
 }
 
 /**
@@ -481,6 +480,13 @@ export interface DiscoveredBrand {
   discovered_at: Date;
   last_validated?: Date;
   expires_at?: Date;
+  // Merged from hosted_brands
+  workos_organization_id?: string;
+  created_by_user_id?: string;
+  created_by_email?: string;
+  domain_verified?: boolean;
+  verification_token?: string;
+  is_public?: boolean;
 }
 
 /**
@@ -605,6 +611,12 @@ export interface MemberBrandInfo {
   logos?: BrandLogo[];
   brand_color?: string;
   verified: boolean;
+  // Extended fields resolved from brand.json
+  name?: string;
+  description?: string;
+  contact?: { name?: string; email?: string; domain?: string };
+  agent_types?: string[];
+  property_count?: number;
 }
 
 export interface MemberProfile {

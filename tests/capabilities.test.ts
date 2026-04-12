@@ -11,17 +11,17 @@ describe("CapabilityDiscovery", () => {
         tools.map((t) => ({ name: t.name, description: "", input_schema: {}, verified_at: "" }))
       );
 
-    it("should infer sales type from sales-specific tools", () => {
-      expect(inferAgentType([{ name: "get_products" }])).toBe("sales");
-      expect(inferAgentType([{ name: "create_media_buy" }])).toBe("sales");
-      expect(inferAgentType([{ name: "list_authorized_properties" }])).toBe("sales");
+    it("should infer buying type from buying-specific tools", () => {
+      expect(inferAgentType([{ name: "get_products" }])).toBe("buying");
+      expect(inferAgentType([{ name: "create_media_buy" }])).toBe("buying");
+      expect(inferAgentType([{ name: "list_authorized_properties" }])).toBe("buying");
       expect(
         inferAgentType([
           { name: "get_products" },
           { name: "create_media_buy" },
           { name: "list_authorized_properties" },
         ])
-      ).toBe("sales");
+      ).toBe("buying");
     });
 
     it("should infer creative type from creative-specific tools", () => {
@@ -45,27 +45,27 @@ describe("CapabilityDiscovery", () => {
       expect(inferAgentType([{ name: "ping" }, { name: "health_check" }])).toBe("unknown");
     });
 
-    it("should prioritize sales for multi-type agents", () => {
-      // Both sales and creative tools → sales (primary commerce type)
+    it("should prioritize buying for multi-type agents", () => {
+      // Both buying and creative tools → buying (primary commerce type)
       expect(
         inferAgentType([{ name: "get_products" }, { name: "list_creative_formats" }])
-      ).toBe("sales");
-      // All three types → sales
+      ).toBe("buying");
+      // All three types → buying
       expect(
         inferAgentType([
           { name: "get_products" },
           { name: "build_creative" },
           { name: "get_signals" },
         ])
-      ).toBe("sales");
-      // Creative + signals (no sales) → creative
+      ).toBe("buying");
+      // Creative + signals (no buying) → creative
       expect(
         inferAgentType([{ name: "build_creative" }, { name: "get_signals" }])
       ).toBe("creative");
     });
 
     it("should handle tool names case-insensitively", () => {
-      expect(inferAgentType([{ name: "GET_PRODUCTS" }])).toBe("sales");
+      expect(inferAgentType([{ name: "GET_PRODUCTS" }])).toBe("buying");
       expect(inferAgentType([{ name: "List_Creative_Formats" }])).toBe("creative");
       expect(inferAgentType([{ name: "MATCH_AUDIENCE" }])).toBe("signals");
     });
@@ -79,7 +79,7 @@ describe("CapabilityDiscovery", () => {
       last_discovered: new Date().toISOString(),
     };
 
-    it("should return sales when standard_operations is present", () => {
+    it("should return buying when standard_operations is present", () => {
       const profile: AgentCapabilityProfile = {
         ...baseProfile,
         standard_operations: {
@@ -91,7 +91,7 @@ describe("CapabilityDiscovery", () => {
           can_list_properties: true,
         },
       };
-      expect(discovery.inferTypeFromProfile(profile)).toBe("sales");
+      expect(discovery.inferTypeFromProfile(profile)).toBe("buying");
     });
 
     it("should return creative when creative_capabilities is present", () => {
@@ -124,9 +124,9 @@ describe("CapabilityDiscovery", () => {
       expect(discovery.inferTypeFromProfile(baseProfile)).toBe("unknown");
     });
 
-    it("should prioritize sales over creative over signals when multiple present", () => {
-      // sales + creative -> sales
-      const salesAndCreative: AgentCapabilityProfile = {
+    it("should prioritize buying over creative over signals when multiple present", () => {
+      // buying + creative -> buying
+      const buyingAndCreative: AgentCapabilityProfile = {
         ...baseProfile,
         standard_operations: {
           can_search_inventory: true,
@@ -143,7 +143,7 @@ describe("CapabilityDiscovery", () => {
           can_preview: false,
         },
       };
-      expect(discovery.inferTypeFromProfile(salesAndCreative)).toBe("sales");
+      expect(discovery.inferTypeFromProfile(buyingAndCreative)).toBe("buying");
 
       // creative + signals -> creative
       const creativeAndSignals: AgentCapabilityProfile = {

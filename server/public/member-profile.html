@@ -833,33 +833,30 @@
           </div>
 
           <!-- Offerings -->
-          <h2>What Do You Offer?</h2>
+          <h2>Services You Offer</h2>
+          <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Agent capabilities (buying, creative, signals, etc.) are derived from your brand.json. These are additional services you provide to others.</p>
           <div class="form-group">
             <label>Select all that apply:</label>
             <div class="checkbox-group" id="offerings-group">
-              <label class="checkbox-item" data-value="buyer_agent">
-                <input type="checkbox" name="offerings" value="buyer_agent">
-                <span>Buyer Agent</span>
+              <label class="checkbox-item" data-value="agent_development">
+                <input type="checkbox" name="offerings" value="agent_development">
+                <span>Agent Development</span>
               </label>
-              <label class="checkbox-item" data-value="sales_agent">
-                <input type="checkbox" name="offerings" value="sales_agent">
-                <span>Sales Agent</span>
-              </label>
-              <label class="checkbox-item" data-value="creative_agent">
-                <input type="checkbox" name="offerings" value="creative_agent">
-                <span>Creative Agent</span>
-              </label>
-              <label class="checkbox-item" data-value="signals_agent">
-                <input type="checkbox" name="offerings" value="signals_agent">
-                <span>Signals Agent</span>
-              </label>
-              <label class="checkbox-item" data-value="publisher">
-                <input type="checkbox" name="offerings" value="publisher">
-                <span>Publisher</span>
+              <label class="checkbox-item" data-value="system_integration">
+                <input type="checkbox" name="offerings" value="system_integration">
+                <span>System Integration</span>
               </label>
               <label class="checkbox-item" data-value="consulting">
                 <input type="checkbox" name="offerings" value="consulting">
                 <span>Consulting</span>
+              </label>
+              <label class="checkbox-item" data-value="data_services">
+                <input type="checkbox" name="offerings" value="data_services">
+                <span>Data Services</span>
+              </label>
+              <label class="checkbox-item" data-value="publisher_services">
+                <input type="checkbox" name="offerings" value="publisher_services">
+                <span>Publisher Services</span>
               </label>
               <label class="checkbox-item" data-value="other">
                 <input type="checkbox" name="offerings" value="other">
@@ -1144,6 +1141,7 @@
     let currentProfile = null;
     let tags = [];
     let agents = []; // Array of {url: string, is_public: boolean}
+    let brandHostingType = null; // 'community' | 'self-hosted' | null
     let currentResolvedBrand = null; // Resolved brand from registry for member card preview
     let agentInfo = {}; // Cache of discovered agent info by URL
     let publishers = []; // Array of {domain: string, is_public: boolean}
@@ -1756,8 +1754,19 @@
         renderTags();
       }
 
-      // Set agents
+      // Set agents and determine brand hosting type
       agents = profile.agents ? [...profile.agents] : [];
+      brandHostingType = null;
+      if (profile.primary_brand_domain) {
+        // Fetch brand hosting type asynchronously, re-render when done
+        fetch(`/api/brands/discovered/${encodeURIComponent(profile.primary_brand_domain)}/edit-status`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : null)
+          .then(editStatus => {
+            brandHostingType = editStatus?.source_type === 'brand_json' ? 'self-hosted' : 'community';
+            renderAgents(); // Re-render with hosting type known
+          })
+          .catch(() => { brandHostingType = 'community'; renderAgents(); });
+      }
       renderAgents();
       // Discover info for each agent
       agents.forEach(agent => discoverAgentInfo(agent.url));
@@ -2363,15 +2372,66 @@
           isPublic: agent.is_public,
           index: index,
           showRemoveButton: true,
-          showStatus: true
+          showStatus: true,
+          brandHostingType: brandHostingType,
         });
       }).join('');
     }
 
-    function toggleAgentVisibility(index, isPublic) {
-      if (agents[index]) {
-        agents[index].is_public = isPublic;
+    async function publishAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
+          method: 'POST', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to publish'); return; }
+
+        if (data.action === 'snippet') {
+          // Self-hosted — show the snippet to copy
+          const snippet = JSON.stringify(data.snippet, null, 2);
+          prompt('Add this to the agents array in your brand.json:', snippet);
+        }
+
+        agents[index].is_public = true;
         renderAgents();
+      } catch (err) {
+        alert('Failed to publish agent: ' + err.message);
+      }
+    }
+
+    async function unpublishAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
+          method: 'DELETE', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to unpublish'); return; }
+
+        agents[index].is_public = false;
+        renderAgents();
+      } catch (err) {
+        alert('Failed to unpublish agent: ' + err.message);
+      }
+    }
+
+    async function checkAgent(index) {
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/check`, {
+          method: 'POST', credentials: 'include'
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to check'); return; }
+
+        agents[index].is_public = data.found;
+        renderAgents();
+
+        if (data.found) {
+          alert('Agent found in your brand.json');
+        } else {
+          alert('Agent not found in your brand.json. Make sure you added the snippet to your agents array.');
+        }
+      } catch (err) {
+        alert('Failed to check: ' + err.message);
       }
     }
 

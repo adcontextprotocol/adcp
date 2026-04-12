@@ -103,7 +103,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
-import { TRAINING_AGENT_HOSTNAMES } from "./training-agent/config.js";
+import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1003,80 +1003,22 @@ export class HTTPServer {
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
     this.app.use('/api/registry', catalogApiRouter);
 
-    // Look up public agents from the member profile for a domain.
-    // Maps member AgentConfig types to brand.json agent types.
-    const AGENT_TYPE_MAP: Record<string, string> = {
-      creative: 'creative',
-      signals: 'signals',
-      sales: 'buying',
-      governance: 'governance',
-      buyer: 'buying',
-    };
-
-    async function getPublicAgentsForDomain(domain: string): Promise<Array<{ type: string; url: string; id: string; description?: string }>> {
-      try {
-        const pool = getPool();
-        const orgResult = await pool.query<{ workos_organization_id: string }>(
-          'SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = $1 LIMIT 1',
-          [domain.toLowerCase()]
-        );
-        if (orgResult.rows.length === 0) return [];
-
-        const memberDb = new MemberDatabase();
-        const profile = await memberDb.getProfileByOrgId(orgResult.rows[0].workos_organization_id);
-        if (!profile?.agents?.length) return [];
-
-        return profile.agents
-          .filter(a => a.is_public && a.url)
-          .map(a => {
-            const entry: { type: string; url: string; id: string; description?: string } = {
-              type: AGENT_TYPE_MAP[a.type || ''] || a.type || 'brand',
-              url: a.url,
-              id: a.name || a.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
-            };
-            if (a.name) entry.description = a.name;
-            return entry;
-          });
-      } catch {
-        return [];
-      }
-    }
-
-    // Public brand.json hosting — stable URL for authoritative_location pointer files.
+    // Public brand.json serving — single source of truth from the brands table.
     // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
     this.app.get('/brands/:domain/brand.json', async (req, res) => {
       const domain = req.params.domain.toLowerCase();
       try {
-        // Look up member-managed agents for this domain
-        const memberAgents = await getPublicAgentsForDomain(domain);
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-        if (hosted && hosted.is_public) {
-          const brandJson = hosted.brand_json as Record<string, unknown>;
-          // Merge member agents into hosted brand.json (member dashboard is source of truth)
-          if (memberAgents.length > 0) {
-            const existingAgents = Array.isArray(brandJson.agents) ? brandJson.agents as Array<{ type: string }> : [];
-            const memberTypes = new Set(memberAgents.map(a => a.type));
-            // Keep existing agents whose types aren't overridden by member agents
-            const merged = existingAgents.filter(a => !memberTypes.has(a.type));
-            brandJson.agents = [...merged, ...memberAgents];
-          }
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.json(brandJson);
-        }
-        const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
-        if (discovered) {
-          const brandJson: Record<string, unknown> = { name: discovered.brand_name || domain };
-          const manifest = discovered.brand_manifest as Record<string, unknown> | null;
-          if (manifest?.logos) brandJson.logos = manifest.logos;
-          if (manifest?.colors) brandJson.colors = manifest.colors;
-          if (memberAgents.length > 0) brandJson.agents = memberAgents;
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.json(brandJson);
-        }
-        return res.status(404).json({ error: 'Brand not found' });
+        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const brandJson: Record<string, unknown> = {
+          name: brand.brand_name || domain,
+          ...manifest,
+        };
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(brandJson);
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
         return res.status(500).json({ error: 'Failed to retrieve brand' });
@@ -1246,6 +1188,10 @@ export class HTTPServer {
 
     // Host-based routing: serve embedded agents at root for legacy standalone URLs
     this.app.use((req, res, next) => {
+      if (req.hostname === TRAINING_AGENT_HOSTNAME_DEPRECATED) {
+        logger.info({ path: req.path, ua: req.headers['user-agent'] }, 'deprecated testing hostname hit');
+        return res.redirect(301, 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent');
+      }
       if (TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return trainingAgentRouter(req, res, next);
       }
@@ -1824,10 +1770,7 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}#notifications`);
     });
-    this.app.get('/dashboard/api-keys', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#agents`);
-    });
+    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content redirect is handled in pre-static middleware block above
@@ -1952,7 +1895,7 @@ export class HTTPServer {
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.agentService.listAgents("sales");
+      const agents = await this.agentService.listAgents("buying");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -1966,7 +1909,7 @@ export class HTTPServer {
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
-        sales: agents.filter((a) => a.type === "sales").length,
+        buying: agents.filter((a) => a.type === "buying").length,
       };
 
       res.json({
@@ -2032,7 +1975,7 @@ export class HTTPServer {
         by_type: {
           creative: agents.filter(a => a.type === "creative").length,
           signals: agents.filter(a => a.type === "signals").length,
-          sales: agents.filter(a => a.type === "sales").length,
+          buying: agents.filter(a => a.type === "buying").length,
         }
       });
     });
@@ -2584,9 +2527,6 @@ export class HTTPServer {
 
         return res.json(brand);
       } catch (error: any) {
-        if (error?.constraint === 'hosted_brands_brand_domain_key') {
-          return res.status(409).json({ error: 'Brand already exists for this domain' });
-        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
       }
@@ -5751,6 +5691,10 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
+    this.app.get('/admin/jobs', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-jobs.html');
+    });
+
     this.app.get('/admin/certification', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-certification.html');
     });
@@ -7681,14 +7625,13 @@ Disallow: /api/admin/
         // Resolve brand data and credentials in parallel for all profiles
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
-            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-            if (hosted) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-            } else {
-              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered?.brand_manifest) {
-                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-              }
+            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (brand?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(
+                profile.primary_brand_domain,
+                brand.brand_manifest as Record<string, unknown>,
+                brand.domain_verified ?? false
+              );
             }
           }
           // Add earned credentials for org members
@@ -7716,14 +7659,13 @@ Disallow: /api/admin/
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
-            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-            if (hosted) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
-            } else {
-              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered?.brand_manifest) {
-                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-              }
+            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (brand?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(
+                profile.primary_brand_domain,
+                brand.brand_manifest as Record<string, unknown>,
+                brand.domain_verified ?? false
+              );
             }
           }
         }));
@@ -7825,14 +7767,13 @@ Disallow: /api/admin/
 
         // Resolve brand data from registry if linked
         if (profile.primary_brand_domain) {
-          const hostedBrand = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-          if (hostedBrand) {
-            profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hostedBrand.brand_json as Record<string, unknown>, hostedBrand.domain_verified);
-          } else {
-            const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-            if (discovered?.brand_manifest) {
-              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
-            }
+          const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+          if (brand?.brand_manifest) {
+            profile.resolved_brand = resolveBrandFromJson(
+              profile.primary_brand_domain,
+              brand.brand_manifest as Record<string, unknown>,
+              brand.domain_verified ?? false
+            );
           }
         }
 
@@ -8055,11 +7996,11 @@ Disallow: /api/admin/
         const tools = agentInfo.tools || [];
 
         // Detect agent type from tools
-        // Check for sales first since sales agents may also expose creative tools
+        // Check for buying first since buying agents may also expose creative tools
         let agentType = 'unknown';
         const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
         if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
-          agentType = 'sales';
+          agentType = 'buying';
         } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
           agentType = 'signals';
         } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
@@ -8106,8 +8047,8 @@ Disallow: /api/admin/
             logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
             stats.format_count = 0;
           }
-        } else if (agentType === 'sales') {
-          // Always show product and publisher counts for sales agents
+        } else if (agentType === 'buying') {
+          // Always show product and publisher counts for buying agents
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
@@ -8304,11 +8245,11 @@ Disallow: /api/admin/
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for sales agents
-      const salesAgents = await this.agentService.listAgents("sales");
-      if (salesAgents.length > 0) {
-        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
+      // Start periodic property crawler for buying agents
+      const buyingAgents = await this.agentService.listAgents("buying");
+      if (buyingAgents.length > 0) {
+        logger.debug({ buyingAgentCount: buyingAgents.length }, 'Starting property crawler');
+        this.crawler.startPeriodicCrawl(buyingAgents, 360); // Crawl every 6 hours
       }
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
@@ -8448,7 +8389,7 @@ Disallow: /api/admin/
           ]);
 
           // Warm type-specific caches
-          if (agent.type === "sales") {
+          if (agent.type === "buying") {
             await this.propertiesService.getPropertiesForAgent(agent);
           }
         } catch (error) {

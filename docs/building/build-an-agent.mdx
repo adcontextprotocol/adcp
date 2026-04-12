@@ -108,7 +108,7 @@ go run main.go &
 npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
 ```
 
-Storyboards exercise every required tool call and validate response shapes. A passing run means your agent is protocol-compliant.
+Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
 
 ```
 media_buy_seller (9 steps)

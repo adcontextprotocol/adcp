@@ -31,6 +31,8 @@ The mechanism for provisioning sandbox credentials is seller-specific and out of
 
 The storyboard runner SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
 
+If a `comply_test_controller` call references a non-sandbox account, the controller MUST return `FORBIDDEN`. Sandbox gating is enforced per-request on the account reference, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params.
+
 ## Tool definition
 
 **Schemas**: [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json) | [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json)

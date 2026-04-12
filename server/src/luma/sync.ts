@@ -13,6 +13,7 @@ import {
   listCalendars,
   listCalendarEvents,
   getEventGuests,
+  getEventHosts,
   isLumaEnabled,
   type LumaEvent,
 } from './client.js';
@@ -61,6 +62,24 @@ function inferCityFromTitle(title: string): string | null {
   const colonMatch = title.match(/:\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/);
   if (colonMatch) return colonMatch[1];
   return null;
+}
+
+/**
+ * Map Luma guest approval_status to AAO registration_status.
+ */
+export function mapLumaApprovalStatus(approvalStatus: string): 'registered' | 'waitlisted' | 'cancelled' {
+  switch (approvalStatus?.toLowerCase()) {
+    case 'approved':
+      return 'registered';
+    case 'pending_approval':
+    case 'waitlist':
+      return 'waitlisted';
+    case 'declined':
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'registered';
+  }
 }
 
 /**
@@ -188,7 +207,7 @@ export async function syncEventRegistrations(eventId: string, lumaEventId: strin
         );
         if (existing.rows.length > 0) continue;
 
-        const status = guest.approval_status === 'declined' ? 'cancelled' as const : 'registered' as const;
+        const status = mapLumaApprovalStatus(guest.approval_status);
         await eventsDb.createRegistration({
           event_id: eventId,
           email: guest.user_email,
@@ -228,6 +247,44 @@ export async function syncEventRegistrations(eventId: string, lumaEventId: strin
   } catch (err) {
     logger.warn({ err, eventId, lumaEventId }, 'Could not sync registrations from Luma');
   }
+
+  // Sync hosts as registered attendees (Luma hosts are separate from guests)
+  try {
+    const hosts = await getEventHosts(lumaEventId);
+    for (const host of hosts) {
+      if (!host.email) continue;
+      try {
+        const pool = getPool();
+        const existing = await pool.query(
+          `SELECT id FROM event_registrations
+           WHERE event_id = $1 AND LOWER(email) = LOWER($2)`,
+          [eventId, host.email]
+        );
+        if (existing.rows.length > 0) continue;
+
+        await eventsDb.createRegistration({
+          event_id: eventId,
+          email: host.email,
+          name: host.name || undefined,
+          registration_source: 'luma',
+          registration_status: 'registered',
+        });
+
+        try {
+          await eventsDb.addInvites(eventId, [host.email]);
+        } catch {
+          // Duplicate invite — safe to ignore
+        }
+
+        synced++;
+      } catch {
+        // Duplicate or other error — skip
+      }
+    }
+  } catch (err) {
+    logger.debug({ err, eventId, lumaEventId }, 'Could not sync hosts from Luma');
+  }
+
   return synced;
 }
 
