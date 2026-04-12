@@ -530,8 +530,9 @@
           window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
           return;
         }
-        currentUser = await meRes.json();
-        isAdmin = currentUser.is_admin;
+        const meData = await meRes.json();
+        currentUser = { ...meData.user, organizations: meData.organizations };
+        isAdmin = currentUser.isAdmin;
 
         if (typeof DashboardNav !== 'undefined') {
           const orgs = currentUser.organizations || [];
