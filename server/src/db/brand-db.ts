@@ -151,18 +151,32 @@ export class BrandDatabase {
    * Create a hosted brand
    */
   async createHostedBrand(input: CreateHostedBrandInput): Promise<HostedBrand> {
+    const brandName = (input.brand_json as Record<string, unknown>)?.name as string
+      || ((input.brand_json as Record<string, unknown>)?.house as Record<string, unknown>)?.name as string
+      || input.brand_domain;
     const result = await query<HostedBrand>(
-      `INSERT INTO hosted_brands (
-        workos_organization_id, created_by_user_id, created_by_email,
-        brand_domain, brand_json, is_public
-      ) VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *`,
+      `INSERT INTO brands (
+        domain, workos_organization_id, created_by_user_id, created_by_email,
+        brand_manifest, brand_name, source_type, review_status, is_public
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'community', 'approved', $7)
+      ON CONFLICT (domain) DO UPDATE SET
+        brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
+        workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
+        created_by_user_id = COALESCE(EXCLUDED.created_by_user_id, brands.created_by_user_id),
+        created_by_email = COALESCE(EXCLUDED.created_by_email, brands.created_by_email),
+        brand_name = COALESCE(EXCLUDED.brand_name, brands.brand_name),
+        is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
+        updated_at = NOW()
+      RETURNING id, workos_organization_id, created_by_user_id, created_by_email,
+        domain AS brand_domain, brand_manifest AS brand_json,
+        domain_verified, verification_token, is_public, created_at, updated_at`,
       [
+        input.brand_domain.toLowerCase(),
         input.workos_organization_id || null,
         input.created_by_user_id || null,
         input.created_by_email || null,
-        input.brand_domain,
         JSON.stringify(input.brand_json),
+        brandName,
         input.is_public ?? true,
       ]
     );
@@ -217,12 +231,13 @@ export class BrandDatabase {
    * Update a hosted brand
    */
   async updateHostedBrand(id: string, input: UpdateHostedBrandInput): Promise<HostedBrand | null> {
-    const updates: string[] = [];
+    const updates: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [];
     let paramIndex = 1;
 
+    // Map hosted_brands column names to brands table columns
     if (input.brand_json !== undefined) {
-      updates.push(`brand_json = $${paramIndex++}`);
+      updates.push(`brand_manifest = $${paramIndex++}`);
       values.push(JSON.stringify(input.brand_json));
     }
     if (input.domain_verified !== undefined) {
@@ -242,13 +257,12 @@ export class BrandDatabase {
       values.push(input.workos_organization_id);
     }
 
-    if (updates.length === 0) {
-      return this.getHostedBrandById(id);
-    }
-
     values.push(id);
     const result = await query<HostedBrand>(
-      `UPDATE hosted_brands SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      `UPDATE brands SET ${updates.join(', ')} WHERE id = $${paramIndex}
+       RETURNING id, workos_organization_id, created_by_user_id, created_by_email,
+         domain AS brand_domain, brand_manifest AS brand_json,
+         domain_verified, verification_token, is_public, created_at, updated_at`,
       values
     );
     return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
@@ -258,7 +272,11 @@ export class BrandDatabase {
    * Delete a hosted brand
    */
   async deleteHostedBrand(id: string): Promise<boolean> {
-    const result = await query('DELETE FROM hosted_brands WHERE id = $1', [id]);
+    // Clear ownership fields rather than deleting the brand entirely
+    const result = await query(
+      'UPDATE brands SET workos_organization_id = NULL, created_by_user_id = NULL, created_by_email = NULL, domain_verified = FALSE, verification_token = NULL, updated_at = NOW() WHERE id = $1',
+      [id]
+    );
     return result.rowCount !== null && result.rowCount > 0;
   }
 
@@ -267,22 +285,22 @@ export class BrandDatabase {
    */
   async generateVerificationToken(id: string): Promise<string | null> {
     const token = `adcp-brand-verify-${crypto.randomUUID()}`;
-    const result = await query<HostedBrand>(
-      'UPDATE hosted_brands SET verification_token = $1 WHERE id = $2 RETURNING *',
+    const result = await query(
+      'UPDATE brands SET verification_token = $1, updated_at = NOW() WHERE id = $2',
       [token, id]
     );
-    return result.rows[0] ? token : null;
+    return (result.rowCount ?? 0) > 0 ? token : null;
   }
 
   /**
    * List all hosted brand domains (used by crawler for brand.json scanning).
    */
   async listAllHostedBrandDomains(): Promise<string[]> {
-    const result = await query<{ brand_domain: string }>(
-      'SELECT brand_domain FROM hosted_brands',
+    const result = await query<{ domain: string }>(
+      'SELECT domain FROM brands WHERE workos_organization_id IS NOT NULL',
       []
     );
-    return result.rows.map(r => r.brand_domain);
+    return result.rows.map(r => r.domain);
   }
 
   // ========== Discovered Brands ==========
@@ -292,13 +310,13 @@ export class BrandDatabase {
    */
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
     const result = await query<DiscoveredBrand>(
-      `INSERT INTO discovered_brands (
+      `INSERT INTO brands (
         domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
         keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
         has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
       ON CONFLICT (domain) DO UPDATE SET
-        brand_id = COALESCE(EXCLUDED.brand_id, discovered_brands.brand_id),
+        brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
         house_domain = EXCLUDED.house_domain,
         brand_name = EXCLUDED.brand_name,
@@ -307,8 +325,8 @@ export class BrandDatabase {
         parent_brand = EXCLUDED.parent_brand,
         brand_agent_url = EXCLUDED.brand_agent_url,
         brand_agent_capabilities = EXCLUDED.brand_agent_capabilities,
-        has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, discovered_brands.has_brand_manifest),
-        brand_manifest = COALESCE(EXCLUDED.brand_manifest, discovered_brands.brand_manifest),
+        has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, brands.has_brand_manifest),
+        brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
         source_type = EXCLUDED.source_type,
         last_validated = NOW(),
         expires_at = EXCLUDED.expires_at

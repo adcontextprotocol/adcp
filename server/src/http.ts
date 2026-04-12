@@ -2530,9 +2530,6 @@ export class HTTPServer {
 
         return res.json(brand);
       } catch (error: any) {
-        if (error?.constraint === 'hosted_brands_brand_domain_key') {
-          return res.status(409).json({ error: 'Brand already exists for this domain' });
-        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
       }

@@ -141,7 +141,10 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-footer">
         <div class="member-contact">
-          ${member.contact_website || (brand?.contact?.domain ? `https://${brand.contact.domain}` : '') ? `<a href="${member.contact_website || `https://${brand?.contact?.domain}`}" target="_blank" onclick="event.stopPropagation()">Website</a>` : ''}
+          ${(() => {
+            const website = member.contact_website || (brand?.contact?.domain ? `https://${escapeHtmlSafe(brand.contact.domain)}` : '');
+            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" onclick="event.stopPropagation()">Website</a>` : '';
+          })()}
           ${member.linkedin_url ? `<a href="${member.linkedin_url}" target="_blank" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
         </div>
         ${viewBtn}

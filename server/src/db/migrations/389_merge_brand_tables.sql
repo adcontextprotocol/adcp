@@ -13,8 +13,10 @@ ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE discovered_brands ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 -- Backfill from existing timestamp columns
-UPDATE discovered_brands SET created_at = COALESCE(discovered_at, NOW()), updated_at = COALESCE(last_validated, discovered_at, NOW())
-WHERE created_at = NOW();
+UPDATE discovered_brands
+SET created_at = COALESCE(discovered_at, created_at),
+    updated_at = COALESCE(last_validated, discovered_at, updated_at)
+WHERE discovered_at IS NOT NULL;
 
 -- Step 2: Merge hosted_brands data into discovered_brands
 -- On conflict (same domain), hosted data takes priority for ownership/verification

@@ -205,11 +205,11 @@ async function seedDevHierarchyData(orgDb: OrganizationDatabase): Promise<void> 
   for (const entry of brandEntries) {
     try {
       await pool.query(
-        `INSERT INTO discovered_brands (domain, brand_name, house_domain, keller_type, source_type)
+        `INSERT INTO brands (domain, brand_name, house_domain, keller_type, source_type)
          VALUES ($1, $2, $3, $4, 'community')
          ON CONFLICT (domain) DO UPDATE SET
-           house_domain = COALESCE(EXCLUDED.house_domain, discovered_brands.house_domain),
-           keller_type = COALESCE(EXCLUDED.keller_type, discovered_brands.keller_type)`,
+           house_domain = COALESCE(EXCLUDED.house_domain, brands.house_domain),
+           keller_type = COALESCE(EXCLUDED.keller_type, brands.keller_type)`,
         [entry.domain, entry.brand_name, entry.house_domain, entry.keller_type]
       );
     } catch (error) {
