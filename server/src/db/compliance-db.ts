@@ -264,6 +264,8 @@ export class ComplianceDatabase {
       );
 
       // 5. Batch upsert per-storyboard statuses (single query, not N+1)
+      // Uses a SAVEPOINT so a missing table (pre-migration) doesn't roll back
+      // the entire compliance run — the run and status update still commit.
       if (input.storyboard_statuses?.length) {
         // Validate status values before sending to Postgres to surface typos
         // as clear errors instead of cryptic constraint violations inside unnest
@@ -278,37 +280,44 @@ export class ComplianceDatabase {
         const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
         const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
 
-        await client.query(
-          `INSERT INTO agent_storyboard_status (
-            agent_url, storyboard_id, status, last_tested_at,
-            last_passed_at, last_failed_at, run_id,
-            steps_passed, steps_total, triggered_by, updated_at
-          )
-          SELECT
-            $1, sb_id, sb_status, NOW(),
-            CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
-            CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
-            $4, sb_passed, sb_total, $7, NOW()
-          FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
-            AS t(sb_id, sb_status, sb_passed, sb_total)
-          ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
-            status = EXCLUDED.status,
-            last_tested_at = NOW(),
-            last_passed_at = CASE
-              WHEN EXCLUDED.status = 'passing' THEN NOW()
-              ELSE agent_storyboard_status.last_passed_at
-            END,
-            last_failed_at = CASE
-              WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
-              ELSE agent_storyboard_status.last_failed_at
-            END,
-            run_id = EXCLUDED.run_id,
-            steps_passed = EXCLUDED.steps_passed,
-            steps_total = EXCLUDED.steps_total,
-            triggered_by = EXCLUDED.triggered_by,
-            updated_at = NOW()`,
-          [input.agent_url, sbIds, sbStatuses, run.id, sbStepsPassed, sbStepsTotal, input.triggered_by ?? 'heartbeat'],
-        );
+        await client.query('SAVEPOINT storyboard_upsert');
+        try {
+          await client.query(
+            `INSERT INTO agent_storyboard_status (
+              agent_url, storyboard_id, status, last_tested_at,
+              last_passed_at, last_failed_at, run_id,
+              steps_passed, steps_total, triggered_by, updated_at
+            )
+            SELECT
+              $1, sb_id, sb_status, NOW(),
+              CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
+              CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
+              $4, sb_passed, sb_total, $7, NOW()
+            FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
+              AS t(sb_id, sb_status, sb_passed, sb_total)
+            ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
+              status = EXCLUDED.status,
+              last_tested_at = NOW(),
+              last_passed_at = CASE
+                WHEN EXCLUDED.status = 'passing' THEN NOW()
+                ELSE agent_storyboard_status.last_passed_at
+              END,
+              last_failed_at = CASE
+                WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
+                ELSE agent_storyboard_status.last_failed_at
+              END,
+              run_id = EXCLUDED.run_id,
+              steps_passed = EXCLUDED.steps_passed,
+              steps_total = EXCLUDED.steps_total,
+              triggered_by = EXCLUDED.triggered_by,
+              updated_at = NOW()`,
+            [input.agent_url, sbIds, sbStatuses, run.id, sbStepsPassed, sbStepsTotal, input.triggered_by ?? 'heartbeat'],
+          );
+          await client.query('RELEASE SAVEPOINT storyboard_upsert');
+        } catch (sbErr) {
+          await client.query('ROLLBACK TO SAVEPOINT storyboard_upsert');
+          logger.warn({ err: sbErr, agentUrl: input.agent_url }, 'Storyboard status upsert failed (table may not exist yet)');
+        }
       }
 
       await client.query('COMMIT');
