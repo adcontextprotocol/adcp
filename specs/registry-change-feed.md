@@ -55,6 +55,7 @@ Append-only within a 90-day retention window.
 | `agent.profile_updated` | Inventory profile changed (new markets, channels, etc.) | Search results may change |
 | `authorization.granted` | Agent authorized for publisher in adagents.json | New selling relationship; TMP routers must update |
 | `authorization.revoked` | Agent removed from publisher's adagents.json | Selling relationship ended; TMP routers must update |
+| `agent.compliance_changed` | Compliance status transition (heartbeat or manual) | Buyer routing decisions may need updating |
 
 ### Event Payload Examples
 
@@ -109,6 +110,25 @@ Append-only within a 90-day retention window.
 ```
 
 The authorization payload carries the full scoping model from `adagents.json` so `RegistrySync` clients can update their local `AuthorizationIndex` without fetching the full file. TMP routers consume these events to keep their hot-path authorization checks current.
+
+**agent.compliance_changed:**
+```json
+{
+  "agent_url": "https://ads.agency.example.com",
+  "previous_status": "passing",
+  "current_status": "degraded",
+  "headline": "media_buy track failing: 2 scenarios down",
+  "tracks": { "core": "pass", "media_buy": "fail", "creative": "pass" },
+  "storyboards_passing": 24,
+  "storyboards_total": 27,
+  "storyboards": [
+    { "storyboard_id": "media_buy_seller", "status": "failing", "steps_passed": 4, "steps_total": 7 },
+    { "storyboard_id": "creative_lifecycle", "status": "passing", "steps_passed": 5, "steps_total": 5 }
+  ]
+}
+```
+
+The compliance payload is self-contained for routing decisions. Track-level status tells buyers which capabilities are affected. Per-storyboard detail pinpoints which workflows broke. The operator domain is intentionally omitted — it represents a business relationship that consumers can resolve via the operator lookup endpoint (`GET /api/registry/operator?domain=...`) if they have the appropriate membership.
 
 ---
 
@@ -252,6 +272,7 @@ Events are written at the point of change, not reconstructed later:
 | Catalog governance (dispute resolved, classification changed) | `property.updated` |
 | Staleness cron (90-day inactivity) | `property.stale` |
 | Resolve reactivation (stale property resolved) | `property.reactivated` |
+| Compliance heartbeat status transition | `agent.compliance_changed` |
 
 **Seed operations** do not write individual events. A single `catalog.seed_complete` summary event is written. Consumers who need full state after a seed should use `/catalog/sync`.
 

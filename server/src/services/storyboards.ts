@@ -208,6 +208,10 @@ export function getStoryboard(id: string): Storyboard | undefined {
   return storyboards.get(id);
 }
 
+export function getAllStoryboards(): Storyboard[] {
+  return [...storyboards.values()];
+}
+
 export function getTestKit(id: string): TestKit | undefined {
   return testKits.get(id);
 }

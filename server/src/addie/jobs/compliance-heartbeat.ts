@@ -85,7 +85,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         agent.lifecycle_stage as LifecycleStage,
         'heartbeat',
       );
-      const { statusTransition } = await complianceDb.recordComplianceRun(dbInput);
+      const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -103,6 +103,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             currentStatus: statusTransition.current,
             headline: complianceResult.summary.headline,
             tracksJson: dbInput.tracks_json,
+            storyboardStatuses,
           });
         } catch (notifyError) {
           logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send compliance notification');

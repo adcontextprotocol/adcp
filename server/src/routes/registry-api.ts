@@ -61,6 +61,7 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
+import { enrichUserWithMembership } from "../utils/html-config.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -2339,7 +2340,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Agent Compliance Endpoints ──────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/compliance", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance", bulkResolveRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -2367,8 +2368,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           streak_days: 0,
           last_checked_at: null,
           headline: null,
+          storyboards_passing: 0,
+          storyboards_total: 0,
         });
       }
+
+      // Include public storyboard summary counts
+      const sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
 
       res.json({
         agent_url: agentUrl,
@@ -2381,6 +2387,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         last_failed_at: status.last_failed_at?.toISOString() || null,
         headline: status.headline,
         status_changed_at: status.status_changed_at?.toISOString() || null,
+        storyboards_passing: sbCounts.passing,
+        storyboards_total: sbCounts.total,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance status");
@@ -2388,7 +2396,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/agents/:encodedUrl/compliance/history", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance/history", bulkResolveRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -2426,6 +2434,134 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.status(500).json({ error: "Failed to get compliance history" });
     }
   });
+
+  // ── Storyboard Status (members-only) ─────────────────────────────
+
+  const memberReadMiddleware = authMiddleware ? [authMiddleware] : [];
+
+  router.get(
+    "/registry/agents/:encodedUrl/storyboard-status",
+    ...memberReadMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
+        }
+
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any).isMember) {
+          return res.status(403).json({
+            error: "Storyboard compliance detail is available to members only",
+            members_only: true,
+          });
+        }
+
+        const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+        if (metadata?.compliance_opt_out) {
+          return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
+        }
+
+        const statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+        const enriched = statuses.map(s => {
+          const sb = getStoryboard(s.storyboard_id);
+          return {
+            storyboard_id: s.storyboard_id,
+            title: sb?.title || s.storyboard_id,
+            category: sb?.category || null,
+            track: sb?.track || null,
+            status: s.status,
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+            last_tested_at: s.last_tested_at?.toISOString() || null,
+            last_passed_at: s.last_passed_at?.toISOString() || null,
+          };
+        });
+
+        res.json({
+          agent_url: agentUrl,
+          storyboards: enriched,
+          passing_count: enriched.filter(s => s.status === "passing").length,
+          total_count: enriched.length,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get storyboard status");
+        res.status(500).json({ error: "Failed to get storyboard status" });
+      }
+    },
+  );
+
+  router.post(
+    "/registry/agents/storyboard-status",
+    bulkResolveRateLimiter,
+    ...memberReadMiddleware,
+    async (req, res) => {
+      try {
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any).isMember) {
+          return res.status(403).json({
+            error: "Batch storyboard status is available to members only",
+            members_only: true,
+          });
+        }
+
+        const { agent_urls } = req.body;
+        if (!Array.isArray(agent_urls) || agent_urls.length === 0) {
+          return res.status(400).json({ error: "agent_urls must be a non-empty array" });
+        }
+        if (agent_urls.length > 100) {
+          return res.status(400).json({ error: "Maximum 100 agent URLs per request" });
+        }
+
+        const validUrls = agent_urls.filter((u: unknown) => typeof u === "string" && validateAgentUrlParam(u as string));
+
+        const metadataMap = await complianceDb.bulkGetRegistryMetadata(validUrls);
+        const nonOptedOut = validUrls.filter((u: string) => !metadataMap.get(u)?.compliance_opt_out);
+        const optedOut = new Set(validUrls.filter((u: string) => metadataMap.get(u)?.compliance_opt_out));
+
+        const statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
+
+        const results: Record<string, any> = {};
+        for (const url of validUrls) {
+          if (optedOut.has(url)) {
+            results[url] = { status: "opted_out" };
+            continue;
+          }
+          const statuses = statusMap.get(url) || [];
+          results[url] = statuses.map(s => {
+            const sb = getStoryboard(s.storyboard_id);
+            return {
+              storyboard_id: s.storyboard_id,
+              title: sb?.title || s.storyboard_id,
+              category: sb?.category || null,
+              status: s.status,
+              steps_passed: s.steps_passed,
+              steps_total: s.steps_total,
+              last_tested_at: s.last_tested_at?.toISOString() || null,
+              last_passed_at: s.last_passed_at?.toISOString() || null,
+            };
+          });
+        }
+
+        const invalidCount = agent_urls.length - validUrls.length;
+        res.json({
+          agents: results,
+          ...(invalidCount > 0 && { invalid_urls: invalidCount }),
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get batch storyboard status");
+        res.status(500).json({ error: "Failed to get batch storyboard status" });
+      }
+    },
+  );
 
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
@@ -3008,10 +3144,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           ...(auth && { auth }),
         });
 
-        // Record the run
+        // Record the run (pass storyboard ID for per-storyboard status materialization)
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
         await complianceDb.recordComplianceRun(
-          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual"),
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual", [req.params.storyboardId]),
         );
 
         // Annotate storyboard phases with comply results
