@@ -2,7 +2,10 @@
 -- Renames: sales → buying, si → brand
 -- Adds: brand, rights, measurement, buying
 
--- Migrate existing data before changing constraints
+-- Drop old constraint first so UPDATEs can write new values
+ALTER TABLE agent_contexts DROP CONSTRAINT IF EXISTS agent_contexts_agent_type_check;
+
+-- Migrate existing data
 UPDATE agent_contexts SET agent_type = 'buying' WHERE agent_type = 'sales';
 UPDATE agent_contexts SET agent_type = 'brand' WHERE agent_type = 'si';
 
@@ -10,8 +13,7 @@ UPDATE agent_contexts SET agent_type = 'brand' WHERE agent_type = 'si';
 UPDATE discovered_agents SET agent_type = 'buying' WHERE agent_type = 'sales';
 UPDATE discovered_agents SET agent_type = 'brand' WHERE agent_type = 'si';
 
--- Now safe to update the CHECK constraint
-ALTER TABLE agent_contexts DROP CONSTRAINT IF EXISTS agent_contexts_agent_type_check;
+-- Add new constraint now that data is clean
 ALTER TABLE agent_contexts ADD CONSTRAINT agent_contexts_agent_type_check
   CHECK (agent_type IN ('brand', 'rights', 'measurement', 'governance', 'creative', 'buying', 'signals', 'unknown'));
 
