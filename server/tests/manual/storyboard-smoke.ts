@@ -8,42 +8,37 @@
  *   npx tsx server/tests/manual/storyboard-smoke.ts --agent https://some-agent.example/mcp
  */
 
-import { join } from 'node:path';
-import { readdirSync } from 'node:fs';
 import {
   runStoryboard,
-  loadStoryboardFile,
+  loadBundledStoryboards,
   type StoryboardResult,
   type StoryboardStepResult,
 } from '@adcp/client/testing';
+import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
 
-const TEST_AGENT_URL = process.env.TEST_AGENT_URL || 'https://test-agent.adcontextprotocol.org/mcp';
-const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;
+const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
 
 const args = process.argv.slice(2);
 const storyboardFilter = args.includes('--storyboard') ? args[args.indexOf('--storyboard') + 1] : undefined;
 const agentUrl = args.includes('--agent') ? args[args.indexOf('--agent') + 1] : TEST_AGENT_URL;
-
-const storyboardDir = join(import.meta.dirname, '..', '..', '..', 'docs', 'storyboards');
 
 async function main() {
   console.log(`\n=== Storyboard Smoke Test ===`);
   console.log(`Agent: ${agentUrl}`);
   console.log(`Filter: ${storyboardFilter || '(all storyboards)'}\n`);
 
-  const files = readdirSync(storyboardDir)
-    .filter(f => f.endsWith('.yaml') && f !== 'schema.yaml')
-    .filter(f => !storyboardFilter || f === `${storyboardFilter}.yaml`);
+  const allStoryboards = loadBundledStoryboards()
+    .filter(sb => !storyboardFilter || sb.id === storyboardFilter);
 
-  if (files.length === 0) {
+  if (allStoryboards.length === 0) {
     console.error(`No storyboards found${storyboardFilter ? ` matching "${storyboardFilter}"` : ''}`);
     process.exit(1);
   }
 
   const results: StoryboardResult[] = [];
 
-  for (const file of files) {
-    const storyboard = loadStoryboardFile(join(storyboardDir, file));
+  for (const storyboard of allStoryboards) {
     const stepCount = storyboard.phases.reduce((s, p) => s + p.steps.length, 0);
     process.stdout.write(`  ${storyboard.id} (${stepCount} steps)... `);
 
