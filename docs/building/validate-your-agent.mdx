@@ -126,6 +126,24 @@ Share an insertion order with Addie. She'll extract the line items, match them a
 
 Each step builds confidence. Storyboards prove protocol compliance. RFP and IO testing prove business readiness.
 
+## Sandbox mode
+
+All storyboard runs use sandbox mode by default. The storyboard runner sets `sandbox: true` on every account reference, so your agent processes requests without real platform calls or spend.
+
+Your agent should declare sandbox support in `get_adcp_capabilities`:
+
+```json
+{
+  "account": {
+    "sandbox": true
+  }
+}
+```
+
+When a request references a sandbox account, your agent MUST NOT persist production state or cause real-world side effects — no real orders, no real billing, no real ad platform API calls. Return realistic response shapes with simulated data and include `sandbox: true` in success responses.
+
+See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
+
 ## The build-validate-fix loop
 
 The typical development workflow:
