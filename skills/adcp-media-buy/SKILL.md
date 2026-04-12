@@ -323,9 +323,28 @@ Error responses include:
 
 ## Testing Mode
 
-For testing without real transactions, agents may support:
-- `X-Dry-Run: true` header - Preview without side effects
-- Test products with `test: true` flag
-- Sandbox environments
+Use **sandbox mode** for testing without real transactions. Sandbox is account-level — once a request references a sandbox account, the entire request is treated as sandbox with no real platform calls or spend.
 
-Ask the agent about testing capabilities before creating real campaigns.
+Check whether the agent supports sandbox via `get_adcp_capabilities`:
+```json
+{
+  "account": {
+    "sandbox": true
+  }
+}
+```
+
+To enter sandbox mode, set `sandbox: true` on the account reference:
+```json
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  }
+}
+```
+
+Some sync tasks (`sync_creatives`, `sync_catalogs`) also support a `dry_run` parameter that previews changes without applying them. This is orthogonal to sandbox — you can use `dry_run` in both sandbox and production accounts.
+
+See [Sandbox mode](https://docs.adcontextprotocol.org/docs/media-buy/advanced-topics/sandbox) for full details.

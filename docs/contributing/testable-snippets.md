@@ -135,22 +135,25 @@ const products = await client.getProducts({
 });
 ```
 
-### 3. Use Dry Run Mode
+### 3. Use sandbox accounts
 
-When demonstrating operations that modify state (create, update, delete), use dry run mode:
+When demonstrating operations that modify state (create, update, delete), use a sandbox account reference:
 
 ```javascript
-// Example showing dry run mode usage
+// Example using sandbox account — no real campaign created
 const mediaBuy = await client.createMediaBuy({
+  account: {
+    brand: { domain: 'acme-corp.com' },
+    operator: 'acme-corp.com',
+    sandbox: true
+  },
   product_id: 'prod_123',
   budget: 10000,
   start_date: '2025-11-01',
   end_date: '2025-11-30'
-}, {
-  dryRun: true  // No actual campaign created
 });
 
-console.log('Dry run successful');
+console.log('Sandbox media buy created:', mediaBuy.media_buy_id);
 ```
 
 ### 4. Handle Async Operations
