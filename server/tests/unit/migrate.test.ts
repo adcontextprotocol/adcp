@@ -188,9 +188,9 @@ describe("Database Migrations", () => {
   });
 
   describe("collision detection", () => {
-    it("should warn on filename mismatch between disk and database", async () => {
+    it("should warn on historical filename mismatch (pre-baseline)", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([
-        "001_storyboard_status.sql",
+        "054_fix_prospect.sql",
       ] as any);
       vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
 
@@ -199,19 +199,38 @@ describe("Database Migrations", () => {
       mockPool.query
         .mockResolvedValueOnce({}) // CREATE migrations table
         .mockResolvedValueOnce({
-          rows: [{ version: 1, filename: "001_marketing_opt_in.sql" }],
+          rows: [{ version: 54, filename: "054_addie_thread_context.sql" }],
         });
 
       await runMigrations();
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Migration 1 on disk is \"001_storyboard_status.sql\" but was applied as \"001_marketing_opt_in.sql\"")
+        expect.stringContaining("Historical migration filename mismatches")
       );
-
-      // The mismatched migration should NOT be re-applied
+      // Should NOT re-apply the mismatched migration
       expect(mockPool.connect).not.toHaveBeenCalled();
 
       consoleSpy.mockRestore();
+    });
+
+    it("should throw on filename mismatch above baseline", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        "400_storyboard_status.sql",
+      ] as any);
+      vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
+
+      mockPool.query
+        .mockResolvedValueOnce({}) // CREATE migrations table
+        .mockResolvedValueOnce({
+          rows: [{ version: 400, filename: "400_marketing_opt_in.sql" }],
+        });
+
+      await expect(runMigrations()).rejects.toThrow(
+        /Migration 400 on disk is "400_storyboard_status.sql" but was applied as "400_marketing_opt_in.sql"/
+      );
+
+      // Should NOT re-apply the mismatched migration
+      expect(mockPool.connect).not.toHaveBeenCalled();
     });
   });
 

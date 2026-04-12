@@ -168,20 +168,33 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
   const appliedVersions = new Set(appliedMigrations.map((m) => m.version));
 
   // Detect filename mismatches — a sign that a migration version was
-  // claimed by a different file (numbering collision from concurrent PRs)
+  // claimed by a different file (numbering collision from concurrent PRs).
+  // Collisions above MISMATCH_BASELINE block startup; older ones are
+  // historical debt that get logged as warnings.
+  const MISMATCH_BASELINE = 389;
   const appliedByVersion = new Map(appliedMigrations.map((m) => [m.version, m.filename]));
-  const mismatches: string[] = [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
   for (const m of migrations) {
     const appliedFilename = appliedByVersion.get(m.version);
     if (appliedFilename && appliedFilename !== m.filename) {
-      mismatches.push(
-        `Migration ${m.version} on disk is "${m.filename}" but was applied as "${appliedFilename}"`
-      );
+      const msg = `Migration ${m.version} on disk is "${m.filename}" but was applied as "${appliedFilename}"`;
+      if (m.version > MISMATCH_BASELINE) {
+        errors.push(msg);
+      } else {
+        warnings.push(msg);
+      }
     }
   }
-  if (mismatches.length > 0) {
+  if (warnings.length > 0) {
     console.warn(
-      `⚠ Migration filename mismatches detected (possible numbering collision):\n${mismatches.join("\n")}`
+      `⚠ Historical migration filename mismatches (pre-${MISMATCH_BASELINE}):\n${warnings.join("\n")}`
+    );
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `Migration filename mismatches detected (possible numbering collision):\n${errors.join("\n")}\n` +
+      `Renumber the colliding migration(s) and redeploy.`
     );
   }
 
