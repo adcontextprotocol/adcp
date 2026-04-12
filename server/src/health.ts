@@ -128,7 +128,7 @@ export class HealthChecker {
     const stats: AgentStats = {};
 
     try {
-      if (agent.type === "sales") {
+      if (agent.type === "buying") {
         // Use PropertyIndex if available (populated by crawler)
         const index = getPropertyIndex();
         const auth = index.getAgentAuthorizations(agent.url);

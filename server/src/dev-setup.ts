@@ -85,7 +85,7 @@ async function seedDevMemberProfiles(): Promise<void> {
       tagline: 'Dev company for testing member features',
       description: 'A company account for testing agents, publishers, and member dashboard features.',
       offerings: '{buyer_agent,sales_agent}',
-      agents: JSON.stringify([{ url: 'https://test-agent.adcontextprotocol.org', name: 'Training Agent', type: 'sales', is_public: true }]),
+      agents: JSON.stringify([{ url: 'https://test-agent.adcontextprotocol.org', name: 'Training Agent', type: 'buying', is_public: true }]),
       isPublic: true,
     },
     {

@@ -624,6 +624,66 @@ export class BrandDatabase {
   }
 
   /**
+   * Add or remove an agent from a community brand's manifest.
+   * Used by the "publish to brand.json" flow in the member dashboard.
+   */
+  async updateManifestAgents(
+    domain: string,
+    agents: Array<{ type: string; url: string; id: string; description?: string }>,
+    editor: { user_id: string; email?: string; name?: string; summary: string }
+  ): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query<DiscoveredBrand>(
+        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        [domain.toLowerCase()]
+      );
+
+      if (result.rows.length === 0) {
+        // Create a minimal brand entry if it doesn't exist
+        await client.query(
+          `INSERT INTO discovered_brands (domain, brand_name, source_type, brand_manifest, review_status)
+           VALUES ($1, $1, 'community', $2::jsonb, 'approved')`,
+          [domain.toLowerCase(), JSON.stringify({ agents })]
+        );
+      } else {
+        const current = result.rows[0];
+        if (current.source_type === 'brand_json') {
+          throw new Error('Cannot modify agents on authoritative brand (managed via brand.json)');
+        }
+        const manifest = (current.brand_manifest as Record<string, unknown>) || {};
+        manifest.agents = agents;
+
+        // Create revision snapshot
+        const revCountResult = await client.query<{ count: string }>(
+          'SELECT COUNT(*) as count FROM brand_revisions WHERE domain = $1',
+          [domain.toLowerCase()]
+        );
+        const revisionNumber = parseInt(revCountResult.rows[0].count) + 1;
+
+        await client.query(
+          `INSERT INTO brand_revisions (domain, revision_number, snapshot, editor_user_id, editor_email, editor_name, edit_summary)
+           VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)`,
+          [domain.toLowerCase(), revisionNumber, JSON.stringify(current), editor.user_id, editor.email || null, editor.name || null, editor.summary]
+        );
+
+        await client.query(
+          'UPDATE discovered_brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
+          [JSON.stringify(manifest), domain.toLowerCase()]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Edit a discovered brand with revision tracking.
    * Rejects edits to authoritative (brand_json) or pending records.
    */

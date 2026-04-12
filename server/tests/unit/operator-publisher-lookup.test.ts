@@ -13,11 +13,11 @@ describe('OperatorLookupResult schema', () => {
         {
           url: 'https://sales.pubmatic.com/mcp',
           name: 'PubMatic Sales Agent',
-          type: 'sales',
+          type: 'buying',
           authorized_by: [
             {
               publisher_domain: 'voxmedia.com',
-              authorized_for: 'sales',
+              authorized_for: 'buying',
               source: 'adagents_json' as const,
             },
             {
@@ -74,7 +74,7 @@ describe('OperatorLookupResult schema', () => {
         {
           url: 'https://agent.test.com/mcp',
           name: 'Test Agent',
-          type: 'sales',
+          type: 'buying',
           authorized_by: [
             {
               publisher_domain: 'pub.com',
@@ -108,7 +108,7 @@ describe('PublisherLookupResult schema', () => {
       authorized_agents: [
         {
           url: 'https://sales.pubmatic.com/mcp',
-          authorized_for: 'sales',
+          authorized_for: 'buying',
           source: 'adagents_json' as const,
         },
       ],

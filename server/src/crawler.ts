@@ -319,10 +319,10 @@ export class CrawlerService {
       }
     }
 
-    // 2. Record publishers discovered from each sales agent's list_authorized_properties
-    log.debug('Processing sales agent discovered publishers');
+    // 2. Record publishers discovered from each buying agent's list_authorized_properties
+    log.debug('Processing buying agent discovered publishers');
     for (const agent of agents) {
-      if (agent.type !== "sales") continue;
+      if (agent.type !== "buying") continue;
 
       const auth = index.getAgentAuthorizations(agent.url);
       if (!auth || auth.publisher_domains.length === 0) continue;

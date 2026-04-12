@@ -506,7 +506,7 @@ registry.registerPath({
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
-      type: z.enum(["creative", "signals", "sales", "governance", "si", "unknown"]).optional(),
+      type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]).optional(),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
@@ -2265,7 +2265,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             );
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             promises.push(
               federatedIndex.getPropertiesForAgent(agent.url),
               federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -2280,7 +2280,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             enrichedAgent.stats = results[resultIndex++] as any;
           }
 
-          if (withProperties && enrichedAgent.type === "sales") {
+          if (withProperties && enrichedAgent.type === "buying") {
             const agentProperties = results[resultIndex++] as any[];
             const publisherDomains = results[resultIndex++] as string[];
 
@@ -3577,7 +3577,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let agentType = "unknown";
       const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
       if (toolNames.some((n: string) => n.includes("get_product") || n.includes("media_buy") || n.includes("create_media"))) {
-        agentType = "sales";
+        agentType = "buying";
       } else if (toolNames.some((n: string) => n.includes("signal") || n.includes("audience"))) {
         agentType = "signals";
       } else if (toolNames.some((n: string) => n.includes("creative") || n.includes("format") || n.includes("preview"))) {
@@ -3614,7 +3614,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
         }
-      } else if (agentType === "sales") {
+      } else if (agentType === "buying") {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {

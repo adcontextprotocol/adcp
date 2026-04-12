@@ -124,7 +124,7 @@ export class AgentService {
     return {
       name: config.name || profile.display_name,
       url: config.url,
-      type: (config.type as AgentType) || "sales",
+      type: (config.type as AgentType) || "buying",
       protocol: "mcp",
       description: profile.description || "",
       mcp_endpoint: config.url,

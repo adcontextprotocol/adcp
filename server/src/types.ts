@@ -1,9 +1,10 @@
-export type AgentType = "creative" | "signals" | "sales" | "governance" | "si" | "unknown";
+export type AgentType = "brand" | "rights" | "measurement" | "governance" | "creative" | "buying" | "signals" | "unknown";
 
 /**
- * Valid agent type values for runtime validation
+ * Valid agent type values for runtime validation.
+ * Matches the brand-agent-type.json schema enum (plus "unknown" for unclassified).
  */
-export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "governance", "si", "unknown"] as const;
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"] as const;
 
 /**
  * Type guard to check if a string is a valid AgentType
