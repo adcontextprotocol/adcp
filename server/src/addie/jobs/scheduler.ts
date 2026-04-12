@@ -75,6 +75,25 @@ interface RunningJob {
   name: string;
   intervalId: NodeJS.Timeout | null;
   initialTimeoutId: NodeJS.Timeout | null;
+  executing: boolean;
+  lastRunAt: Date | null;
+  lastDurationMs: number | null;
+  lastError: string | null;
+}
+
+/**
+ * Snapshot of a job's status for the admin API.
+ */
+export interface JobStatus {
+  name: string;
+  description: string;
+  interval: TimeInterval;
+  executing: boolean;
+  lastRunAt: string | null;
+  lastDurationMs: number | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  businessHours?: BusinessHoursConstraint;
 }
 
 /**
@@ -168,6 +187,10 @@ class JobScheduler {
       name,
       intervalId: null,
       initialTimeoutId: null,
+      executing: false,
+      lastRunAt: null,
+      lastDurationMs: null,
+      lastError: null,
     };
 
     const runJob = async () => {
@@ -177,11 +200,14 @@ class JobScheduler {
         return;
       }
 
+      job.executing = true;
+      const startTime = Date.now();
       try {
         const result = await config.runner(config.options ?? ({} as never));
 
         // Reset consecutive failure count on success
         this.consecutiveFailures.delete(name);
+        job.lastError = null;
 
         // Log based on shouldLogResult predicate or default to debug
         const shouldLog = config.shouldLogResult?.(result) ?? false;
@@ -193,6 +219,7 @@ class JobScheduler {
       } catch (err) {
         const failures = (this.consecutiveFailures.get(name) ?? 0) + 1;
         this.consecutiveFailures.set(name, failures);
+        job.lastError = err instanceof Error ? err.message : String(err);
 
         const threshold = config.failureThreshold ?? JobScheduler.FAILURE_THRESHOLD;
         logger.error({ err, jobName: name, consecutiveFailures: failures, threshold }, `${config.description}: failed`);
@@ -204,6 +231,10 @@ class JobScheduler {
             errorMessage: failures > 1 ? `[${failures} consecutive failures] ${msg}` : msg,
           });
         }
+      } finally {
+        job.executing = false;
+        job.lastRunAt = new Date();
+        job.lastDurationMs = Date.now() - startTime;
       }
     };
 
@@ -285,6 +316,28 @@ class JobScheduler {
    */
   getRegisteredJobs(): string[] {
     return Array.from(this.configs.keys());
+  }
+
+  /**
+   * Get status snapshot of all registered jobs for the admin API.
+   */
+  getStatus(): JobStatus[] {
+    const statuses: JobStatus[] = [];
+    for (const [name, config] of this.configs) {
+      const job = this.runningJobs.get(name);
+      statuses.push({
+        name,
+        description: config.description,
+        interval: config.interval,
+        executing: job?.executing ?? false,
+        lastRunAt: job?.lastRunAt?.toISOString() ?? null,
+        lastDurationMs: job?.lastDurationMs ?? null,
+        lastError: job?.lastError ?? null,
+        consecutiveFailures: this.consecutiveFailures.get(name) ?? 0,
+        businessHours: config.businessHours,
+      });
+    }
+    return statuses;
   }
 }
 
