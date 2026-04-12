@@ -786,8 +786,9 @@
           window.location.href = '/auth/login?returnTo=' + encodeURIComponent(window.location.pathname);
           return;
         }
-        currentUser = await meResponse.json();
-        isAdmin = currentUser.is_admin;
+        const meData = await meResponse.json();
+        currentUser = meData.user;
+        isAdmin = currentUser.isAdmin;
 
         // Load collections user can post to
         await loadCollections();

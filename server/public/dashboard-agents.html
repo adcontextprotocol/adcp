@@ -601,7 +601,7 @@
         DashboardNav.init({
           showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || profileData?.profile?.organization_name || 'My organization',
-          showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
+          showAdmin: meData?.user?.isAdmin || false,
           orgId: currentOrg?.id || null,
           orgRole: currentOrg?.role || 'member',
           isPersonal: currentOrg?.is_personal || false,

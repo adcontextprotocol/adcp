@@ -1233,7 +1233,7 @@
         DashboardNav.init({
           showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg.name,
-          showAdmin: data.isAdmin,
+          showAdmin: data.user?.isAdmin,
           orgId: currentOrg.id
         });
 

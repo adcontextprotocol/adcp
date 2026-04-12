@@ -19,7 +19,8 @@
     .page-header .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); }
 
     /* Playbook */
-    .content-playbook { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary-50) 88%, white) 0%, white 100%); border: var(--border-1) solid color-mix(in srgb, var(--color-primary-200) 60%, var(--color-border)); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-5); position: relative; }
+    .content-playbook { background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary-50) 88%, white) 0%, white 100%); border: var(--border-1) solid color-mix(in srgb, var(--color-primary-200) 60%, var(--color-border)); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-5) var(--space-5) var(--space-6); margin-bottom: var(--space-5); position: relative; overflow: hidden; }
+    .content-playbook::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--color-brand); }
     .content-playbook-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
     .content-playbook-header h2 { font-size: var(--text-lg); color: var(--color-text-heading); margin-bottom: var(--space-1); }
     .content-playbook-header p { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 68ch; }
@@ -27,15 +28,15 @@
     .playbook-dismiss { position: absolute; top: var(--space-3); right: var(--space-3); background: none; border: none; cursor: pointer; color: var(--color-text-muted); padding: var(--space-1); font-size: var(--text-lg); line-height: 1; }
     .playbook-dismiss:hover { color: var(--color-text-heading); }
     .content-playbook-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
-    .content-playbook-step { background: rgba(255,255,255,0.88); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); }
+    .content-playbook-step { background: white; border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
     .content-playbook-step strong { display: block; color: var(--color-text-heading); margin-bottom: var(--space-1); font-size: var(--text-sm); }
     .content-playbook-step p { color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
 
     /* Unified tabs (replaces scope toggle + old tabs) */
-    .tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-5); border-bottom: var(--border-2) solid var(--color-gray-200); }
-    .tab { padding: var(--space-3) var(--space-5); background: none; border: none; border-bottom: var(--border-2) solid transparent; color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); margin-bottom: -2px; }
+    .tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-5); background: var(--color-gray-100); border-radius: var(--radius-md); padding: 3px; width: fit-content; }
+    .tab { padding: var(--space-2) var(--space-5); background: none; border: none; border-radius: calc(var(--radius-md) - 2px); color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease; }
     .tab:hover { color: var(--color-text-heading); }
-    .tab.active { color: var(--color-brand); border-bottom-color: var(--color-brand); }
+    .tab.active { color: var(--color-brand); background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .tab .count { background: var(--color-gray-200); color: var(--color-text-secondary); padding: 2px var(--space-2); border-radius: var(--radius-full); font-size: var(--text-xs); }
     .tab.active .count { background: var(--color-primary-100); color: var(--color-brand); }
     .tab .count.alert { background: var(--color-warning-100); color: var(--color-warning-700); }
@@ -55,8 +56,8 @@
 
     /* Content list (card-based) */
     .content-list { display: grid; gap: var(--space-3); }
-    .content-item { border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); transition: var(--transition-all); }
-    .content-item:hover { border-color: var(--color-brand); }
+    .content-item { border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; background: white; }
+    .content-item:hover { border-color: var(--color-primary-300); background: var(--color-primary-50); box-shadow: 0 1px 4px rgba(26, 54, 180, 0.06); }
     .content-item.pending { border-left: var(--border-4) solid var(--color-warning-500); }
     .content-info { flex: 1; min-width: 0; }
     .content-info h3 { font-size: var(--text-base); margin-bottom: var(--space-1); color: var(--color-text-heading); }
@@ -70,7 +71,7 @@
     .helper-link:hover { color: var(--color-brand); border-color: color-mix(in srgb, var(--color-brand) 30%, var(--color-border)); }
 
     /* Badges */
-    .badge { display: inline-block; padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium); }
+    .badge { display: inline-block; padding: 2px var(--space-2_5); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-medium); letter-spacing: 0.01em; }
     .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
     .badge-published { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-pending_review { background: var(--color-warning-100); color: var(--color-warning-700); }
@@ -120,8 +121,10 @@
     .table-pagination button:hover:not(:disabled) { background: var(--color-gray-100); }
 
     /* Modal styles */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-start; padding: var(--space-6) var(--space-4); overflow-y: auto; }
-    .modal { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-8); max-width: 900px; width: 100%; position: relative; margin: 0 auto; box-shadow: var(--shadow-lg); }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: flex-start; padding: var(--space-6) var(--space-4); overflow-y: auto; }
+    .modal-overlay[style*="flex"] .modal { animation: modalIn 0.2s ease-out; }
+    @keyframes modalIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .modal { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-8); max-width: 900px; width: 100%; position: relative; margin: 0 auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.08); }
     .modal h2 { margin-bottom: var(--space-5); color: var(--color-text-heading); }
     .modal-close { position: absolute; top: var(--space-4); right: var(--space-4); background: none; border: none; cursor: pointer; padding: var(--space-2); color: var(--color-text-muted); }
     .modal-close:hover { color: var(--color-text-heading); }
@@ -129,7 +132,7 @@
     .form-group { margin-bottom: var(--space-5); }
     .form-group label { display: block; margin-bottom: var(--space-1); font-weight: var(--font-semibold); color: var(--color-text-heading); font-size: var(--text-sm); }
     .form-group input, .form-group select, .form-group textarea { width: 100%; padding: var(--space-2_5); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); font-size: var(--text-sm); font-family: inherit; box-sizing: border-box; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--color-brand); }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--color-brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 12%, white); }
     .form-group textarea { min-height: 120px; }
     .form-group small { display: block; margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-xs); }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
@@ -184,15 +187,40 @@
     .article-content code { background: var(--color-gray-100); padding: 2px var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-sm); }
     .article-content pre code { background: none; padding: 0; }
 
-    .empty-state { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
-    .empty-state h3 { color: var(--color-text-heading); margin-bottom: var(--space-2); }
+    .empty-state { text-align: center; padding: var(--space-12) var(--space-6); color: var(--color-text-secondary); }
+    .empty-state::before { content: ""; display: block; width: 48px; height: 48px; margin: 0 auto var(--space-4); background: var(--color-primary-100); border-radius: var(--radius-full); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23047857' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: center; background-size: 22px; }
+    .empty-state h3 { color: var(--color-text-heading); margin-bottom: var(--space-2); font-size: var(--text-lg); }
+    .empty-state p { max-width: 36ch; margin: 0 auto; line-height: var(--leading-relaxed); }
 
     /* Confirm dialog inline */
     .confirm-inline { background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
 
+    /* Participation summary */
+    .participation-summary { display: flex; gap: var(--space-5); align-items: center; padding: var(--space-4) var(--space-5); margin-bottom: var(--space-4); background: var(--color-gray-50); border-radius: var(--radius-md); border: var(--border-1) solid var(--color-gray-200); }
+    .participation-stat { text-align: center; }
+    .participation-stat .stat-number { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading); line-height: 1; }
+    .participation-stat .stat-label { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 2px; }
+    .participation-context { flex: 1; font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .participation-context strong { color: var(--color-text-heading); }
+
+    /* Value banner */
+    .value-banner { background: linear-gradient(135deg, var(--color-primary-50) 0%, white 100%); border: var(--border-1) solid var(--color-primary-200); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); display: flex; align-items: center; gap: var(--space-4); }
+    .value-banner-icon { flex-shrink: 0; width: 36px; height: 36px; background: var(--color-primary-100); border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; }
+    .value-banner-icon svg { width: 18px; height: 18px; color: var(--color-brand); }
+
+    /* Inline social drafts */
+    .social-drafts { margin-top: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); overflow: hidden; }
+    .social-drafts-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--color-gray-50); border-bottom: var(--border-1) solid var(--color-gray-200); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    .social-draft-item { padding: var(--space-3) var(--space-4); border-bottom: var(--border-1) solid var(--color-gray-100); }
+    .social-draft-item:last-child { border-bottom: none; }
+    .social-draft-label { font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-muted); margin-bottom: var(--space-1); }
+    .social-draft-text { font-size: var(--text-sm); color: var(--color-text-heading); line-height: var(--leading-relaxed); white-space: pre-wrap; }
+    .social-draft-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+    .social-draft-generating { padding: var(--space-6); text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); }
+
     @media (max-width: 900px) { .content-playbook-grid { grid-template-columns: 1fr; } }
     @media (max-width: 768px) { .markdown-editor-container { grid-template-columns: 1fr; } }
-    @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .content-item { flex-direction: column; } .content-actions { max-width: none; justify-content: flex-start; } }
+    @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .content-item { flex-direction: column; } .content-actions { max-width: none; justify-content: flex-start; } .participation-summary { flex-wrap: wrap; gap: var(--space-3); } .value-banner { flex-direction: column; text-align: center; } }
   </style>
 </head>
 <body>
@@ -206,7 +234,7 @@
     <div class="container">
       <div class="page-header">
         <h1>Content</h1>
-        <p class="subtitle">Publish perspectives, share links, and manage your contributions.</p>
+        <p class="subtitle">Share what you know with the people shaping agentic advertising.</p>
       </div>
 
       <!-- Dismissible playbook -->
@@ -215,17 +243,25 @@
         <div class="content-playbook-header">
           <div>
             <h2>Publishing workflow</h2>
-            <p>Start a perspective or external link, route it into the right collection, then promote published pieces.</p>
+            <p>From draft to published in three steps. Most pieces take under ten minutes.</p>
           </div>
           <div class="content-playbook-actions">
-            <a href="/chat?prompt=Help%20me%20brainstorm%20a%20perspective%20or%20article%20idea%20for%20AgenticAdvertising.org%20based%20on%20my%20current%20work." class="btn btn-secondary">Brainstorm with Addie</a>
+            <a href="/chat?prompt=Help%20me%20brainstorm%20a%20perspective%20or%20article%20idea%20for%20AgenticAdvertising.org%20based%20on%20my%20current%20work." class="btn btn-secondary">Not sure where to start? Talk it through.</a>
           </div>
         </div>
         <div class="content-playbook-grid">
-          <div class="content-playbook-step"><strong>1. Draft a clear point of view</strong><p>Start with a specific perspective, announcement, or external link.</p></div>
+          <div class="content-playbook-step"><strong>1. Start with one idea</strong><p>A perspective you hold, a link worth sharing, or news your peers should see.</p></div>
           <div class="content-playbook-step"><strong>2. Use the right review path</strong><p>Some collections publish directly, others require review.</p></div>
-          <div class="content-playbook-step"><strong>3. Promote the finished piece</strong><p>Use share and post-drafting actions to turn one article into broader visibility.</p></div>
+          <div class="content-playbook-step"><strong>3. Promote the finished piece</strong><p>Published pieces appear on the AAO homepage and get picked up by The Prompt newsletter.</p></div>
         </div>
+      </div>
+
+      <!-- Value banner — visible when playbook is dismissed -->
+      <div id="valueBanner" class="value-banner hidden">
+        <div class="value-banner-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>Published perspectives appear on the <strong>AAO homepage</strong>, get picked up by <strong>The Prompt newsletter</strong>, and are shared across AAO social channels. Your ideas reach the people building the future of agentic advertising.</div>
       </div>
 
       <!-- Alert banner for pending reviews -->
@@ -250,8 +286,10 @@
       <div id="panel-mine" class="tab-panel">
         <div class="card">
           <div class="section-header">
-            <button class="btn btn-primary" onclick="showCreateModal()">+ New Perspective</button>
+            <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
           </div>
+          <div id="participationSummary" class="hidden"></div>
           <div class="filter-bar">
             <select id="statusFilter" onchange="renderMyContent()">
               <option value="">All Statuses</option>
@@ -272,7 +310,8 @@
       <div id="panel-all" class="tab-panel hidden">
         <div class="card">
           <div class="section-header">
-            <button class="btn btn-primary" onclick="showCreateModal()">+ New Perspective</button>
+            <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
           </div>
           <div class="filter-bar">
             <input type="search" id="adminSearch" placeholder="Search titles..." oninput="renderAdminTable()">
@@ -401,8 +440,8 @@
           <div class="form-group" id="statusGroup">
             <label>Status</label>
             <select id="statusSelect">
-              <option value="draft">Draft</option>
               <option value="pending_review">Submit for Review</option>
+              <option value="draft">Save as Draft</option>
               <option value="published">Publish Now</option>
             </select>
             <small id="statusHint"></small>
@@ -428,6 +467,46 @@
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Quick Share Link Modal -->
+  <div id="shareLinkModal" class="modal-overlay">
+    <div class="modal" style="max-width: 520px;">
+      <button class="modal-close" onclick="closeShareLinkModal()" aria-label="Close">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <h2>Share a Link</h2>
+      <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">Found something worth sharing? Paste the URL and we'll do the rest.</p>
+      <form id="shareLinkForm" onsubmit="saveShareLink(event)">
+        <div class="form-group">
+          <label>URL</label>
+          <div class="url-input-group">
+            <input type="url" id="shareLinkUrl" required placeholder="https://..." oninput="autoFetchLink()">
+          </div>
+        </div>
+        <div id="shareLinkPreview" class="hidden">
+          <div id="shareLinkFetching" class="hidden" style="text-align: center; padding: var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">Fetching article info...</div>
+          <div id="shareLinkFields" class="hidden">
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="shareLinkTitle" required placeholder="Article title">
+            </div>
+            <div class="form-group">
+              <label>Why this matters <span style="font-weight: normal; color: var(--color-text-muted);">(one line)</span></label>
+              <input type="text" id="shareLinkTake" placeholder="Your take on why people should read this" maxlength="200">
+            </div>
+            <div class="form-group">
+              <label>Publish To</label>
+              <select id="shareLinkCollection" required></select>
+            </div>
+            <div class="modal-buttons">
+              <button type="button" class="btn btn-secondary" onclick="closeShareLinkModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="shareLinkBtn">Share</button>
+            </div>
+          </div>
         </div>
       </form>
     </div>
@@ -530,8 +609,9 @@
           window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
           return;
         }
-        currentUser = await meRes.json();
-        isAdmin = currentUser.is_admin;
+        const meData = await meRes.json();
+        currentUser = { ...meData.user, organizations: meData.organizations };
+        isAdmin = currentUser.isAdmin;
 
         if (typeof DashboardNav !== 'undefined') {
           const orgs = currentUser.organizations || [];
@@ -572,10 +652,12 @@
 
         await loadMyContent();
 
-        // Show playbook if not dismissed and user has few items
+        // Show playbook if not dismissed, or value banner if dismissed
         const dismissed = localStorage.getItem('aao_playbook_dismissed');
         if (!dismissed) {
           document.getElementById('playbook').classList.remove('hidden');
+        } else {
+          document.getElementById('valueBanner').classList.remove('hidden');
         }
 
         document.getElementById('loading').classList.add('hidden');
@@ -590,6 +672,7 @@
     function dismissPlaybook() {
       localStorage.setItem('aao_playbook_dismissed', '1');
       document.getElementById('playbook').classList.add('hidden');
+      document.getElementById('valueBanner').classList.remove('hidden');
     }
 
     // Collections
@@ -649,11 +732,63 @@
         const data = await res.json();
         myContent = data.items || [];
         document.getElementById('myCount').textContent = myContent.length;
+        renderParticipationSummary();
         if (currentTab === 'mine') renderMyContent();
       } catch (e) {
         console.error('Failed to load content:', e);
         document.getElementById('myContentList').innerHTML = '<div class="empty-state"><p>Failed to load content</p></div>';
       }
+    }
+
+    function renderParticipationSummary() {
+      const el = document.getElementById('participationSummary');
+      if (myContent.length === 0) { el.classList.add('hidden'); return; }
+
+      // Current quarter boundaries
+      const now = new Date();
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      const qStart = new Date(now.getFullYear(), qMonth, 1);
+      const qLabel = `Q${Math.floor(qMonth / 3) + 1} ${now.getFullYear()}`;
+
+      // Count items this quarter
+      const thisQ = myContent.filter(c => {
+        const d = new Date(c.published_at || c.created_at);
+        return d >= qStart;
+      });
+      const published = thisQ.filter(c => c.status === 'published').length;
+      const articles = thisQ.filter(c => c.content_type === 'article').length;
+      const links = thisQ.filter(c => c.content_type === 'link').length;
+      const totalViews = myContent.reduce((sum, c) => sum + (c.performance?.pageviews_last_30d || 0), 0);
+
+      // Don't show if nothing this quarter
+      if (thisQ.length === 0 && totalViews === 0) { el.classList.add('hidden'); return; }
+
+      let context = `<strong>${qLabel}</strong>: `;
+      const parts = [];
+      if (articles > 0) parts.push(`${articles} perspective${articles !== 1 ? 's' : ''}`);
+      if (links > 0) parts.push(`${links} link${links !== 1 ? 's' : ''} shared`);
+      if (parts.length > 0) context += parts.join(', ');
+      else context += 'no new content yet';
+
+      el.innerHTML = `
+        <div class="participation-summary">
+          ${totalViews > 0 ? `
+          <div class="participation-stat">
+            <div class="stat-number">${formatMetricCount(totalViews)}</div>
+            <div class="stat-label">views (30d)</div>
+          </div>` : ''}
+          <div class="participation-stat">
+            <div class="stat-number">${published}</div>
+            <div class="stat-label">published</div>
+          </div>
+          <div class="participation-stat">
+            <div class="stat-number">${myContent.length}</div>
+            <div class="stat-label">total</div>
+          </div>
+          <div class="participation-context">${context}</div>
+        </div>
+      `;
+      el.classList.remove('hidden');
     }
 
     async function loadAdminContent() {
@@ -692,10 +827,12 @@
       document.getElementById('panel-all').classList.toggle('hidden', tab !== 'all');
       document.getElementById('panel-review').classList.toggle('hidden', tab !== 'review');
 
-      // Show playbook only in My Content tab
+      // Show playbook/value banner only in My Content tab
       const pb = document.getElementById('playbook');
+      const vb = document.getElementById('valueBanner');
       const dismissed = localStorage.getItem('aao_playbook_dismissed');
       pb.classList.toggle('hidden', tab !== 'mine' || !!dismissed);
+      vb.classList.toggle('hidden', tab !== 'mine' || !dismissed);
 
       if (tab === 'all' && adminContent.length === 0) loadAdminContent();
     }
@@ -714,7 +851,7 @@
         const hasAny = myContent.length > 0;
         list.innerHTML = hasAny
           ? '<div class="empty-state"><h3>No matches</h3><p>Try adjusting your filters.</p></div>'
-          : '<div class="empty-state"><h3>Nothing here yet</h3><p>Write your first perspective or share a link to get started.</p><button class="btn btn-primary" onclick="showCreateModal()" style="margin-top: var(--space-4);">+ New Perspective</button></div>';
+          : '<div class="empty-state"><h3>Your first perspective</h3><p>What\'s the one thing your corner of ad tech gets wrong? Start there.</p><div style="display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);"><button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button><button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button></div></div>';
         return;
       }
       list.innerHTML = filtered.map(item => renderContentItem(item, false)).join('');
@@ -764,7 +901,10 @@
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
           ${isRejected && canEdit ? `<button class="btn btn-small btn-primary" onclick="resubmitContent('${safeId(item.id)}')">Resubmit</button>` : ''}
           ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${safeId(item.id)}')">View</button>` : ''}
-          <a class="btn btn-small btn-outline" href="${addieSocialPrompt}">${item.status === 'published' ? 'Draft social post' : 'Sharpen with Addie'}</a>
+          ${item.status === 'published'
+            ? `<button class="btn btn-small btn-outline" onclick="draftSocialPost('${safeId(item.id)}')">Draft a LinkedIn post</button>`
+            : `<a class="btn btn-small btn-outline" href="${addieSocialPrompt}">Get feedback on this draft</a>`
+          }
         `;
       }
 
@@ -775,14 +915,13 @@
           <button class="helper-link" onclick="copyLink('${esc(publishedUrl)}', this)">Copy link</button>
           ${linkedInShareUrl ? `<a class="helper-link" href="${linkedInShareUrl}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
           ${xShareUrl ? `<a class="helper-link" href="${xShareUrl}" target="_blank" rel="noopener">X</a>` : ''}
-          <a class="helper-link" href="${addieSocialPrompt}">Draft with Addie</a>
         </div>
       ` : '';
 
       const titleAction = isPendingView ? '' : (item.status === 'published' && item.slug ? `onclick="viewContent('${safeId(item.id)}')"` : `onclick="editContent('${safeId(item.id)}')"`);
 
       return `
-        <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}">
+        <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}" data-id="${safeId(item.id)}">
           <div class="content-info">
             <h3 ${titleAction}>${esc(item.title)}</h3>
             <div class="content-meta">
@@ -1109,6 +1248,69 @@
 
     function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
 
+    // Quick Share Link modal
+    let shareLinkFetchTimer = null;
+    function showShareLinkModal() {
+      document.getElementById('shareLinkForm').reset();
+      document.getElementById('shareLinkPreview').classList.add('hidden');
+      document.getElementById('shareLinkFetching').classList.add('hidden');
+      document.getElementById('shareLinkFields').classList.add('hidden');
+      // Populate collection dropdown
+      const sel = document.getElementById('shareLinkCollection');
+      sel.innerHTML = '';
+      collections.forEach(c => { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.name; sel.appendChild(o); });
+      document.getElementById('shareLinkModal').style.display = 'flex';
+    }
+    function closeShareLinkModal() { document.getElementById('shareLinkModal').style.display = 'none'; }
+
+    function autoFetchLink() {
+      clearTimeout(shareLinkFetchTimer);
+      const url = document.getElementById('shareLinkUrl').value.trim();
+      if (!url || !url.startsWith('http')) return;
+      document.getElementById('shareLinkPreview').classList.remove('hidden');
+      document.getElementById('shareLinkFetching').classList.remove('hidden');
+      document.getElementById('shareLinkFields').classList.add('hidden');
+      shareLinkFetchTimer = setTimeout(async () => {
+        try {
+          const res = await fetch('/api/content/fetch-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url }) });
+          if (res.ok) {
+            const d = await res.json();
+            document.getElementById('shareLinkTitle').value = d.title || '';
+            document.getElementById('shareLinkTake').value = '';
+          } else {
+            document.getElementById('shareLinkTitle').placeholder = 'Could not fetch title — enter manually';
+          }
+        } catch (e) {
+          console.error('Fetch error:', e);
+          document.getElementById('shareLinkTitle').placeholder = 'Could not fetch title — enter manually';
+        }
+        document.getElementById('shareLinkFetching').classList.add('hidden');
+        document.getElementById('shareLinkFields').classList.remove('hidden');
+      }, 600);
+    }
+
+    async function saveShareLink(event) {
+      event.preventDefault();
+      if (document.getElementById('shareLinkFields').classList.contains('hidden')) return;
+      const btn = document.getElementById('shareLinkBtn');
+      btn.disabled = true; btn.textContent = 'Sharing...';
+      try {
+        const data = {
+          title: document.getElementById('shareLinkTitle').value.trim(),
+          content_type: 'link',
+          external_url: document.getElementById('shareLinkUrl').value.trim(),
+          excerpt: document.getElementById('shareLinkTake').value.trim() || null,
+          collection: { slug: document.getElementById('shareLinkCollection').value },
+        };
+        const res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed'); }
+        closeShareLinkModal();
+        await loadMyContent();
+        if (canReview) await loadPendingContent();
+      } catch (e) { alert('Failed to share: ' + e.message); }
+      btn.disabled = false; btn.textContent = 'Share';
+    }
+
     function setContentType(type) {
       document.getElementById('contentTypeField').value = type;
       document.getElementById('typeArticle').classList.toggle('active', type === 'article');
@@ -1144,8 +1346,8 @@
         sel.disabled = false;
         colHint.textContent = 'Where this perspective will appear on the site';
       } else {
-        hint.textContent = 'Will be submitted for review when saved.';
-        sel.value = 'draft';
+        hint.textContent = 'Will be submitted for review.';
+        sel.value = 'pending_review';
         sel.disabled = true;
         colHint.textContent = col ? `Submissions to ${col.name} require review before publishing` : 'Where this perspective will appear on the site';
       }
@@ -1165,10 +1367,10 @@
         btn.textContent = 'Save Changes';
       } else if (statusVal === 'published') {
         btn.textContent = 'Publish';
-      } else if (!col?.canPublishDirectly && !isAdmin) {
+      } else if (statusVal === 'pending_review') {
         btn.textContent = 'Submit for Review';
       } else {
-        btn.textContent = 'Save Draft';
+        btn.textContent = 'Save as Draft';
       }
     }
 
@@ -1369,6 +1571,112 @@
       } catch (e) { alert('Failed to send back: ' + e.message); }
     }
 
+    // Inline social post drafting
+    let socialDraftTexts = {};
+
+    async function draftSocialPost(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      const publishedUrl = item.slug ? `${window.location.origin}/perspectives/${item.slug}` : '';
+      const containerId = `social-drafts-${safeId(item.id)}`;
+
+      // Check if already open — toggle off
+      const existing = document.getElementById(containerId);
+      if (existing) { existing.remove(); delete socialDraftTexts[containerId]; return; }
+
+      // Find the content item element
+      const targetItem = document.querySelector(`.content-item[data-id="${safeId(item.id)}"]`);
+      if (!targetItem) return;
+
+      const draftsEl = document.createElement('div');
+      draftsEl.id = containerId;
+      draftsEl.className = 'social-drafts';
+      draftsEl.innerHTML = '<div class="social-draft-generating">Generating posts...</div>';
+      targetItem.querySelector('.content-info').appendChild(draftsEl);
+
+      // Generate posts via Addie API
+      try {
+        const prompt = `Write two social media posts for this article. No hashtags. No emojis.
+
+Title: ${item.title}
+URL: ${publishedUrl}
+${item.excerpt ? `Summary: ${item.excerpt}` : ''}
+
+Format your response exactly like this:
+LINKEDIN:
+[LinkedIn post - 2-3 sentences, professional tone, include the URL]
+
+X:
+[X post - under 280 characters, include the URL]`;
+
+        const res = await fetch('/api/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 500 }),
+        });
+
+        if (!res.ok) throw new Error('Failed to generate');
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content || data.content || '';
+
+        // Parse LinkedIn and X posts from response
+        const linkedinMatch = text.match(/LINKEDIN:\s*\n([\s\S]*?)(?=\nX:|$)/i);
+        const xMatch = text.match(/X:\s*\n([\s\S]*?)$/i);
+        const linkedinPost = linkedinMatch ? linkedinMatch[1].trim() : text.trim();
+        const xPost = xMatch ? xMatch[1].trim() : '';
+
+        const linkedInShareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(publishedUrl)}`;
+        const xShareUrl = xPost ? `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPost)}` : '';
+
+        // Store draft text safely — never inline untrusted LLM text into onclick attrs
+        socialDraftTexts[containerId] = { linkedin: linkedinPost, x: xPost };
+
+        draftsEl.innerHTML = `
+          <div class="social-drafts-header">
+            <span>Ready to share</span>
+            <button class="btn btn-small btn-secondary" onclick="document.getElementById('${containerId}').remove()" style="padding: 2px 8px; font-size: 11px;">Close</button>
+          </div>
+          <div class="social-draft-item">
+            <div class="social-draft-label">LinkedIn</div>
+            <div class="social-draft-text">${esc(linkedinPost)}</div>
+            <div class="social-draft-actions">
+              <button class="btn btn-small btn-outline" onclick="copySocialDraft(this, '${containerId}', 'linkedin')">Copy</button>
+              <a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Open LinkedIn</a>
+            </div>
+          </div>
+          ${xPost ? `
+          <div class="social-draft-item">
+            <div class="social-draft-label">X</div>
+            <div class="social-draft-text">${esc(xPost)}</div>
+            <div class="social-draft-actions">
+              <button class="btn btn-small btn-outline" onclick="copySocialDraft(this, '${containerId}', 'x')">Copy</button>
+              <a class="btn btn-small btn-outline" href="${xShareUrl}" target="_blank" rel="noopener">Open X</a>
+            </div>
+          </div>` : ''}
+        `;
+      } catch (e) {
+        console.error('Social draft error:', e);
+        // Fall back to chat link
+        const chatPrompt = `/chat?prompt=${encodeURIComponent(`Help me turn my published article "${item.title}" into a strong LinkedIn post first, then suggest a shorter optional X version. Here is the article URL: ${publishedUrl}`)}`;
+        draftsEl.innerHTML = `
+          <div style="padding: var(--space-4); text-align: center; font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Couldn't generate posts automatically. <a href="${chatPrompt}">Draft with Addie instead.</a>
+          </div>
+        `;
+      }
+    }
+
+    function copySocialDraft(btn, containerId, platform) {
+      const text = socialDraftTexts[containerId]?.[platform];
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
     // Helpers
     function formatStatus(s) { return { draft: 'Draft', pending_review: 'Pending Review', published: 'Published', rejected: 'Needs Revisions', archived: 'Archived' }[s] || esc(s); }
     function formatDate(d) { return d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''; }
@@ -1381,11 +1689,12 @@
     document.getElementById('statusSelect').addEventListener('change', updateSaveButtonText);
     document.getElementById('excerpt').addEventListener('input', updateExcerptCount);
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeArticleModal(); closeReviewModal(); closeModal(); }
+      if (e.key === 'Escape') { closeArticleModal(); closeReviewModal(); closeModal(); closeShareLinkModal(); }
     });
     document.getElementById('articleModal').addEventListener('click', (e) => { if (e.target.id === 'articleModal') closeArticleModal(); });
     document.getElementById('reviewModal').addEventListener('click', (e) => { if (e.target.id === 'reviewModal') closeReviewModal(); });
     document.getElementById('contentModal').addEventListener('click', (e) => { if (e.target.id === 'contentModal') closeModal(); });
+    document.getElementById('shareLinkModal').addEventListener('click', (e) => { if (e.target.id === 'shareLinkModal') closeShareLinkModal(); });
 
     init();
   </script>
