@@ -1193,7 +1193,6 @@ export function createOrganizationsRouter(): Router {
 
             if (!isAdoptable) {
               await client.query('ROLLBACK');
-              client.release();
               return res.status(409).json({
                 error: 'Organization exists',
                 message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
@@ -1271,7 +1270,6 @@ export function createOrganizationsRouter(): Router {
             });
 
             await client.query('COMMIT');
-            client.release();
 
             // Record marketing communications opt-in choice (best-effort, don't block signup)
             if (typeof marketing_opt_in === 'boolean') {
@@ -1294,11 +1292,11 @@ export function createOrganizationsRouter(): Router {
           }
 
           await client.query('ROLLBACK');
-          client.release();
         } catch (adoptError) {
           await client.query('ROLLBACK').catch(() => {});
-          client.release();
           throw adoptError;
+        } finally {
+          client.release();
         }
       }
 

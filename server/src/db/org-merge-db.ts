@@ -79,7 +79,9 @@ export async function mergeOrganizations(
       'Starting organization merge'
     );
 
-    // Validate both organizations exist and fetch all needed fields
+    // Validate both organizations exist and fetch all needed fields.
+    // FOR UPDATE prevents concurrent Stripe webhooks or other merges from
+    // modifying these rows (especially stripe_customer_id) mid-transaction.
     const orgsResult = await client.query(
       `SELECT workos_organization_id, name, is_personal, prospect_notes,
               stripe_customer_id,
@@ -87,7 +89,8 @@ export async function mergeOrganizations(
               enrichment_employee_count, enrichment_revenue, enrichment_revenue_range,
               enrichment_country, enrichment_city, enrichment_description
        FROM organizations
-       WHERE workos_organization_id = ANY($1)`,
+       WHERE workos_organization_id = ANY($1)
+       FOR UPDATE`,
       [[primaryOrgId, secondaryOrgId]]
     );
 
