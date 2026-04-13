@@ -80,6 +80,12 @@
         ]
       },
       {
+        label: 'Account',
+        items: [
+          { href: '/organization#membership', label: 'Membership & billing', icon: '💳' },
+        ]
+      },
+      {
         label: 'Content',
         items: [
           { href: '/dashboard/content', label: 'Perspectives', icon: '📝' },
