@@ -43,6 +43,15 @@ import {
   PolicyHistorySchema,
   OperatorLookupResultSchema,
   PublisherLookupResultSchema,
+  AgentComplianceDetailSchema,
+  StoryboardStatusSchema,
+  RegistryMetadataSchema,
+  MonitoringSettingsSchema,
+  ComplianceRunSchema,
+  OutboundRequestSchema,
+  AgentAuthStatusSchema,
+  StoryboardSummarySchema,
+  StoryboardDetailSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -209,6 +218,7 @@ registry.registerPath({
   description:
     "Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
   tags: ["Brand Resolution"],
+  security: [{ bearerAuth: [] }],
   request: {
     body: {
       content: {
@@ -407,6 +417,7 @@ registry.registerPath({
   description:
     "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
   tags: ["Property Resolution"],
+  security: [{ bearerAuth: [] }],
   request: {
     body: {
       content: {
@@ -985,6 +996,7 @@ registry.registerPath({
   description:
     "Create or update a community-contributed policy. Requires authentication. Registry-sourced and pending-review policies cannot be edited (returns 409). Updates automatically create a revision record.",
   tags: ["Policy Registry"],
+  security: [{ bearerAuth: [] }],
   request: {
     body: {
       content: {
@@ -1242,6 +1254,834 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+// ── Agent Compliance ────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/compliance",
+  operationId: "getAgentCompliance",
+  summary: "Get agent compliance detail",
+  description:
+    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fexample.com%2Fmcp" }),
+    }),
+  },
+  responses: {
+    200: { description: "Compliance detail", content: { "application/json": { schema: AgentComplianceDetailSchema } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/storyboard-status",
+  operationId: "getAgentStoryboardStatus",
+  summary: "Get agent storyboard status",
+  description:
+    "Returns per-storyboard test results for an agent. Includes title, category, track, pass/fail status, and step counts.\n\n**Members only** — requires authentication and an active membership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fexample.com%2Fmcp" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Storyboard status for the agent",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            storyboards: z.array(StoryboardStatusSchema),
+            passing_count: z.number().int(),
+            total_count: z.number().int(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Members only", content: { "application/json": { schema: z.object({ error: z.string(), members_only: z.boolean() }) } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/storyboard-status",
+  operationId: "bulkAgentStoryboardStatus",
+  summary: "Bulk storyboard status",
+  description:
+    "Returns per-storyboard test results for multiple agents in a single request.\n\n**Members only** — requires authentication and an active membership. Maximum 100 agent URLs per request.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_urls: z.array(z.string()).max(100).openapi({ description: "Agent URLs to fetch storyboard status for" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Storyboard status keyed by agent URL",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agents: z.record(z.string(), z.union([
+              z.array(StoryboardStatusSchema),
+              z.object({ status: z.literal("opted_out") }),
+            ])),
+            invalid_urls: z.number().int().optional().openapi({ description: "Count of invalid URLs that were skipped" }),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid request body", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Members only", content: { "application/json": { schema: z.object({ error: z.string(), members_only: z.boolean() }) } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/compliance/history",
+  operationId: "getAgentComplianceHistory",
+  summary: "Get agent compliance history",
+  description:
+    "Returns a list of compliance test runs for an agent, ordered most recent first.\n\nIf the agent has opted out, returns an empty list.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      limit: z.string().optional().openapi({ description: "Max results (default 30, max 100)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Compliance run history",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            runs: z.array(ComplianceRunSchema),
+            count: z.number().int(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/lifecycle",
+  operationId: "updateAgentLifecycle",
+  summary: "Update agent lifecycle stage",
+  description:
+    "Set the lifecycle stage for an agent. Requires authentication and ownership of the agent.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Updated metadata", content: { "application/json": { schema: RegistryMetadataSchema } } },
+    400: { description: "Invalid agent URL or lifecycle stage", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/compliance/opt-out",
+  operationId: "updateAgentComplianceOptOut",
+  summary: "Update compliance opt-out",
+  description:
+    "Opt an agent in or out of public compliance reporting. Requires authentication and ownership of the agent.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            opt_out: z.boolean(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Updated metadata", content: { "application/json": { schema: RegistryMetadataSchema } } },
+    400: { description: "Invalid agent URL or opt_out value", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Agent Monitoring ────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/settings",
+  operationId: "getAgentMonitoringSettings",
+  summary: "Get monitoring settings",
+  description:
+    "Returns the monitoring configuration for an agent. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: { description: "Monitoring settings", content: { "application/json": { schema: MonitoringSettingsSchema } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/pause",
+  operationId: "updateAgentMonitoringPause",
+  summary: "Pause or resume monitoring",
+  description:
+    "Pause or resume automated compliance monitoring for an agent. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            paused: z.boolean(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Updated monitoring settings", content: { "application/json": { schema: MonitoringSettingsSchema } } },
+    400: { description: "Invalid agent URL or paused value", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/interval",
+  operationId: "updateAgentMonitoringInterval",
+  summary: "Update monitoring interval",
+  description:
+    "Set the check interval for automated compliance monitoring (6–168 hours). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            interval_hours: z.number().int().min(6).max(168),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Updated monitoring settings", content: { "application/json": { schema: MonitoringSettingsSchema } } },
+    400: { description: "Invalid agent URL or interval", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/requests",
+  operationId: "getAgentMonitoringRequests",
+  summary: "Get outbound request log",
+  description:
+    "Returns the outbound request log for an agent (compliance checks, health probes, etc.). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      limit: z.string().optional().openapi({ description: "Max results (default 50, max 200)" }),
+      since: z.string().optional().openapi({ description: "ISO 8601 timestamp to filter from" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Outbound request log",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            requests: z.array(OutboundRequestSchema),
+            count: z.number().int(),
+            total: z.number().int(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Agent Auth & Connect ────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/auth-status",
+  operationId: "getAgentAuthStatus",
+  summary: "Get agent auth status",
+  description:
+    "Returns whether an agent has stored authentication credentials and OAuth token status. Requires authentication.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: { description: "Auth status", content: { "application/json": { schema: AgentAuthStatusSchema } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/connect",
+  operationId: "connectAgent",
+  summary: "Connect agent credentials",
+  description:
+    "Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
+            auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
+            platform_type: z.string().optional().openapi({ description: "Agent platform type" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Connection result",
+      content: {
+        "application/json": {
+          schema: z.object({
+            connected: z.literal(true),
+            has_auth: z.boolean(),
+            agent_context_id: z.string(),
+            platform_type: z.string().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/applicable-storyboards",
+  operationId: "getApplicableStoryboards",
+  summary: "Get applicable storyboards for agent",
+  description:
+    "Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Applicable storyboards grouped by track",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            agent_name: z.string(),
+            tools: z.array(z.string()),
+            storyboards: z.record(z.string(), z.array(z.object({
+              id: z.string(),
+              title: z.string(),
+              summary: z.string(),
+              step_count: z.number().int(),
+            }))),
+            total_applicable: z.number().int(),
+            total_available: z.number().int(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    422: { description: "Agent requires authentication", content: { "application/json": { schema: z.object({ error: z.string(), needs_auth: z.literal(true) }) } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+    504: { description: "Connection timeout", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Storyboard Catalog ──────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/storyboards",
+  operationId: "listStoryboards",
+  summary: "List storyboards",
+  description:
+    "Returns the catalog of compliance storyboards. Optionally filter by category.",
+  tags: ["Agent Compliance"],
+  request: {
+    query: z.object({
+      category: z.string().optional().openapi({ description: "Filter by storyboard category" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Storyboard catalog",
+      content: {
+        "application/json": {
+          schema: z.object({
+            storyboards: z.array(StoryboardSummarySchema),
+            count: z.number().int(),
+          }),
+        },
+      },
+    },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/storyboards/{id}",
+  operationId: "getStoryboard",
+  summary: "Get storyboard detail",
+  description:
+    "Returns a single storyboard with its full phase and step structure, plus its test kit if available.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      id: z.string().openapi({ description: "Storyboard ID" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Storyboard detail",
+      content: {
+        "application/json": {
+          schema: z.object({
+            storyboard: StoryboardDetailSchema,
+            test_kit: z.any().nullable(),
+          }),
+        },
+      },
+    },
+    404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Brand Find & Setup ──────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/brands/find",
+  operationId: "findBrand",
+  summary: "Find brands by name",
+  description:
+    "Search for brands by name or domain. Returns matching results with basic identity info.",
+  tags: ["Brand Resolution"],
+  request: {
+    query: z.object({
+      q: z.string().min(2).openapi({ description: "Search query (min 2 characters)" }),
+      limit: z.string().optional().openapi({ description: "Max results (default 10, max 50)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Search results",
+      content: {
+        "application/json": {
+          schema: z.object({
+            results: z.array(FindCompanyResultSchema),
+          }),
+        },
+      },
+    },
+    400: { description: "Query too short", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/brands/setup-my-brand",
+  operationId: "setupMyBrand",
+  summary: "Set up a hosted brand.json",
+  description:
+    "Create or update a hosted brand.json for a domain owned by the authenticated user's organization. Returns the hosted URL and a pointer snippet for DNS setup.",
+  tags: ["Brand Resolution"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "acmecorp.com" }),
+            brand_name: z.string(),
+            logo_url: z.string().optional(),
+            brand_color: z.string().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Brand setup result",
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string(),
+            has_brand_json: z.boolean(),
+            hosted_brand_json_url: z.string(),
+            pointer_snippet: z.string().openapi({ description: "JSON string for brand.json pointer" }),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain or missing fields", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Domain not owned by user's organization", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Property Checks ─────────────────────────────────────────────
+
+registry.registerPath({
+  method: "post",
+  path: "/api/properties/check/bulk",
+  operationId: "bulkPropertyCheck",
+  summary: "Bulk property identifier check",
+  description:
+    "Check up to 10,000 property identifiers (domains, app bundle IDs, CTV store URLs) against the registry catalog. Returns a verdict for each identifier and a summary.",
+  tags: ["Property Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            identifiers: z.array(z.string()).max(10000).openapi({ description: "Property identifiers to check" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Check results with report ID",
+      content: {
+        "application/json": {
+          schema: z.object({
+            summary: z.object({
+              total: z.number().int(),
+              ready: z.number().int(),
+              known: z.number().int(),
+              ad_infra: z.number().int(),
+              unknown: z.number().int(),
+              skipped: z.number().int(),
+            }),
+            entries: z.array(z.object({
+              input: z.string(),
+              identifier: z.object({ type: z.string(), value: z.string() }),
+              verdict: z.string(),
+              classification: z.string().nullable(),
+              source: z.string().nullable(),
+              property_rid: z.string().nullable(),
+              action: z.string(),
+            })),
+            report_id: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid identifiers", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/properties/check/bulk/{reportId}",
+  operationId: "getBulkPropertyCheckReport",
+  summary: "Get bulk check report",
+  description:
+    "Retrieve a previously generated bulk property check report by ID.",
+  tags: ["Property Resolution"],
+  request: {
+    params: z.object({
+      reportId: z.string().openapi({ description: "Report UUID" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Report data",
+      content: {
+        "application/json": {
+          schema: z.object({
+            summary: z.object({
+              total: z.number().int(),
+              ready: z.number().int(),
+              known: z.number().int(),
+              ad_infra: z.number().int(),
+              unknown: z.number().int(),
+              skipped: z.number().int(),
+            }),
+            entries: z.array(z.object({
+              input: z.string(),
+              identifier: z.object({ type: z.string(), value: z.string() }),
+              verdict: z.string(),
+              classification: z.string().nullable(),
+              source: z.string().nullable(),
+              property_rid: z.string().nullable(),
+              action: z.string(),
+            })),
+          }),
+        },
+      },
+    },
+    404: { description: "Report not found or expired", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// ── Storyboard Execution ────────────────────────────────────────
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/step/{stepId}",
+  operationId: "runStoryboardStep",
+  summary: "Run a single storyboard step",
+  description:
+    "Execute a single storyboard step against an agent. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      storyboardId: z.string(),
+      stepId: z.string(),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            context: z.record(z.string(), z.unknown()).optional().openapi({ description: "Optional context object for the step" }),
+            dry_run: z.boolean().optional().openapi({ description: "Dry run mode (default: true)" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Step execution result", content: { "application/json": { schema: z.any() } } },
+    400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/storyboards/{storyboardId}/first-step",
+  operationId: "getStoryboardFirstStep",
+  summary: "Get first step preview",
+  description:
+    "Returns a preview of the first step of a storyboard. No agent call needed.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      storyboardId: z.string(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "First step preview",
+      content: {
+        "application/json": {
+          schema: z.object({
+            storyboard: z.object({ id: z.string(), title: z.string() }),
+            step: z.any(),
+          }),
+        },
+      },
+    },
+    404: { description: "Storyboard not found or has no steps", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/run",
+  operationId: "runStoryboard",
+  summary: "Run full storyboard evaluation",
+  description:
+    "Execute all steps of a storyboard against an agent and record the compliance result. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      storyboardId: z.string(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Storyboard run result with annotated phases",
+      content: {
+        "application/json": {
+          schema: z.object({
+            storyboard: z.object({
+              id: z.string(),
+              title: z.string(),
+              category: z.string(),
+              narrative: z.string().optional(),
+            }),
+            agent: z.object({
+              url: z.string(),
+              profile: z.any(),
+            }),
+            phases: z.any(),
+            summary: z.any(),
+            observations: z.any(),
+            total_duration_ms: z.number(),
+            test_kit: z.any().nullable(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/compare",
+  operationId: "compareStoryboard",
+  summary: "Compare storyboard against reference agent",
+  description:
+    "Run a storyboard against both the target agent and the public reference agent, returning side-by-side results. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      storyboardId: z.string(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Side-by-side comparison results",
+      content: {
+        "application/json": {
+          schema: z.object({
+            storyboard: z.object({ id: z.string(), title: z.string(), category: z.string() }),
+            user_agent: z.object({ url: z.string(), profile: z.any(), summary: z.any() }),
+            reference_agent: z.object({ url: z.string(), name: z.string(), profile: z.any(), summary: z.any() }),
+            phases: z.any(),
+            total_duration_ms: z.number(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 

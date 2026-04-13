@@ -69,6 +69,8 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Validation Tools": "Validate publisher adagents.json files and generate compliant configurations.",
   "Search": "Cross-entity search across brands, publishers, agents, and properties.",
   "Agent Probing": "Connect to live agents and inspect their capabilities, formats, and inventory.",
+  "Brand Discovery": "Discover and crawl brand.json files across domains.",
+  "Agent Compliance": "Agent compliance status, storyboard test results, and compliance history.",
   "Policy Registry": "Browse, resolve, and contribute governance policies for campaign compliance.",
 };
 
