@@ -558,24 +558,24 @@ export class BrandDatabase {
     }>(
       `
       SELECT
-        domain,
-        COALESCE(brand_name, brand_manifest->>'name', brand_manifest->'house'->>'name', domain) as brand_name,
-        CASE WHEN is_public = true THEN 'hosted' ELSE source_type END as source,
-        CASE WHEN is_public = true THEN true ELSE has_brand_manifest END as has_manifest,
-        CASE WHEN is_public = true THEN domain_verified ELSE true END as verified,
-        house_domain,
-        COALESCE(keller_type, 'master') as keller_type,
-        COALESCE(brand_manifest->'logos'->0->>'url', brand_manifest->'brands'->0->'logos'->0->>'url') as logo_url,
-        COALESCE(brand_manifest->'colors'->>'primary', brand_manifest->'brands'->0->'colors'->>'primary') as primary_color,
-        COALESCE(brand_manifest->'company'->'industries', brand_manifest->'brands'->0->'industries', '[]'::jsonb) as industries,
+        brands.domain,
+        COALESCE(brands.brand_name, brands.brand_manifest->>'name', brands.brand_manifest->'house'->>'name', brands.domain) as brand_name,
+        CASE WHEN brands.is_public = true THEN 'hosted' ELSE brands.source_type END as source,
+        CASE WHEN brands.is_public = true THEN true ELSE brands.has_brand_manifest END as has_manifest,
+        CASE WHEN brands.is_public = true THEN brands.domain_verified ELSE true END as verified,
+        brands.house_domain,
+        COALESCE(brands.keller_type, 'master') as keller_type,
+        COALESCE(brands.brand_manifest->'logos'->0->>'url', brands.brand_manifest->'brands'->0->'logos'->0->>'url') as logo_url,
+        COALESCE(brands.brand_manifest->'colors'->>'primary', brands.brand_manifest->'brands'->0->'colors'->>'primary') as primary_color,
+        COALESCE(brands.brand_manifest->'company'->'industries', brands.brand_manifest->'brands'->0->'industries', '[]'::jsonb) as industries,
         (SELECT COUNT(*)::int FROM brands sub WHERE sub.house_domain = brands.domain) as sub_brand_count,
-        COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\\d+$'
-          THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
+        COALESCE(CASE WHEN brands.brand_manifest->'company'->>'employees' ~ '^\\d+$'
+          THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM brands
-      WHERE (is_public = true OR review_status IS NULL OR review_status = 'approved')
-        AND ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1
-             OR brand_manifest->>'name' ILIKE $1 OR brand_manifest->'house'->>'name' ILIKE $1)
-      ORDER BY employee_count DESC, brand_name, domain
+      WHERE (brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')
+        AND ($1::text IS NULL OR brands.domain ILIKE $1 OR brands.brand_name ILIKE $1
+             OR brands.brand_manifest->>'name' ILIKE $1 OR brands.brand_manifest->'house'->>'name' ILIKE $1)
+      ORDER BY employee_count DESC, brand_name, brands.domain
       ${limitClause}
       OFFSET $2
       `,
