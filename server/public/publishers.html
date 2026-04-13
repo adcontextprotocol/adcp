@@ -219,7 +219,8 @@
       margin-right: auto;
     }
     .check-result.valid { background: var(--color-success-100); color: var(--color-success-700); }
-    .check-result.invalid { background: var(--color-gray-100); color: var(--color-text-muted); }
+    .check-result.invalid { background: var(--color-gray-100); color: var(--color-text-heading); }
+    .check-result.checking { background: var(--color-gray-100); color: var(--color-text-muted); }
 
     /* Add publisher CTA */
     .add-publisher-cta {
@@ -257,6 +258,7 @@
     @media (max-width: 768px) {
       .publisher-grid { grid-template-columns: 1fr; }
       .stats-bar { gap: var(--space-4); padding: var(--space-4); }
+      .stats-bar .stat { flex: 1 1 auto; min-width: 100px; }
     }
   </style>
 </head>
@@ -430,6 +432,8 @@
   function renderProperties() {
     const grid = document.getElementById('publishers-grid');
     const context = document.getElementById('result-context');
+    const existingLoadMore = document.getElementById('load-more');
+    if (existingLoadMore) existingLoadMore.remove();
 
     if (properties.length === 0) {
       context.textContent = '';
@@ -547,7 +551,7 @@
     const domain = input?.value?.trim();
     if (!domain) return;
 
-    resultDiv.innerHTML = '<div class="check-result" style="background: var(--color-gray-100); color: var(--color-text-muted);">Checking...</div>';
+    resultDiv.innerHTML = '<div class="check-result checking">Checking...</div>';
 
     try {
       const response = await fetch(`/api/properties/validate?domain=${encodeURIComponent(domain)}`);

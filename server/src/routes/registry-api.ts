@@ -1686,11 +1686,16 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const search = req.query.search as string;
       const source = req.query.source as string | undefined;
 
-      // Map legacy source filter to catalog source
-      const catalogSource = source === 'adagents_json' ? 'authoritative'
-        : source === 'community' ? 'contributed'
-        : source === 'enriched' ? 'enriched'
-        : undefined;
+      // Validate and map legacy source filter to catalog source
+      const SOURCE_FILTER_MAP: Record<string, string> = {
+        adagents_json: 'authoritative',
+        community: 'contributed',
+        enriched: 'enriched',
+      };
+      if (source && !(source in SOURCE_FILTER_MAP)) {
+        return res.status(400).json({ error: `Invalid source filter. Valid values: ${Object.keys(SOURCE_FILTER_MAP).join(', ')}` });
+      }
+      const catalogSource = source ? SOURCE_FILTER_MAP[source] : undefined;
 
       const [properties, catalogStats] = await Promise.all([
         catalogDb.getPropertiesForRegistry({ search, limit, offset, source: catalogSource }),
@@ -1831,7 +1836,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "domain parameter required" });
       }
 
-      const validation = await adagentsManager.validateDomain(domain);
+      let normalizedDomain: string;
+      try {
+        normalizedDomain = await validateCrawlDomain(domain);
+      } catch (err) {
+        return res.status(400).json({ error: `Invalid domain: ${(err as Error).message}` });
+      }
+
+      const validation = await adagentsManager.validateDomain(normalizedDomain);
       return res.json(validation);
     } catch (error) {
       logger.error({ error }, "Failed to validate property");

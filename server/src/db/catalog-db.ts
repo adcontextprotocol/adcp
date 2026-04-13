@@ -913,8 +913,9 @@ export class CatalogDatabase {
       `SELECT cp.property_rid, cp.source, cp.adagents_url,
               COALESCE(
                 json_agg(json_build_object('type', ci.identifier_type, 'value', ci.identifier_value)
-                ORDER BY ci.identifier_type, ci.identifier_value),
-                '[]'
+                ORDER BY ci.identifier_type, ci.identifier_value)
+                FILTER (WHERE ci.id IS NOT NULL),
+                '[]'::json
               ) AS identifiers
        FROM catalog_properties cp
        JOIN catalog_identifiers ci ON ci.property_rid = cp.property_rid AND ci.disputed = FALSE
