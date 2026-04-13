@@ -863,4 +863,111 @@ export class CatalogDatabase {
       values
     );
   }
+
+  // ─── Public Registry ────────────────────────────────────────────────────────
+
+  async getPropertiesForRegistry(options: {
+    search?: string;
+    limit?: number;
+    offset?: number;
+    source?: string;
+  }): Promise<Array<{
+    property_rid: string;
+    source: string;
+    verified: boolean;
+    identifiers: Array<{ type: string; value: string }>;
+  }>> {
+    const limit = Math.min(options.limit || 100, 5000);
+    const offset = options.offset || 0;
+    const conditions: string[] = [
+      `cp.classification = 'property'`,
+      `cp.status = 'active'`,
+    ];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (options.search) {
+      const escaped = options.search.replace(/[%_\\]/g, '\\$&');
+      conditions.push(`EXISTS (
+        SELECT 1 FROM catalog_identifiers ci2
+        WHERE ci2.property_rid = cp.property_rid
+          AND ci2.disputed = FALSE
+          AND ci2.identifier_value ILIKE $${idx++} ESCAPE '\\'
+      )`);
+      params.push(`%${escaped}%`);
+    }
+
+    if (options.source) {
+      conditions.push(`cp.source = $${idx++}`);
+      params.push(options.source);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const result = await query<{
+      property_rid: string;
+      source: string;
+      adagents_url: string | null;
+      identifiers: Array<{ type: string; value: string }>;
+    }>(
+      `SELECT cp.property_rid, cp.source, cp.adagents_url,
+              COALESCE(
+                json_agg(json_build_object('type', ci.identifier_type, 'value', ci.identifier_value)
+                ORDER BY ci.identifier_type, ci.identifier_value)
+                FILTER (WHERE ci.id IS NOT NULL),
+                '[]'::json
+              ) AS identifiers
+       FROM catalog_properties cp
+       JOIN catalog_identifiers ci ON ci.property_rid = cp.property_rid AND ci.disputed = FALSE
+       WHERE ${where}
+       GROUP BY cp.property_rid, cp.source, cp.adagents_url
+       ORDER BY cp.property_rid
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      [...params, limit, offset]
+    );
+
+    return result.rows.map(row => ({
+      property_rid: row.property_rid,
+      source: row.source,
+      verified: row.source === 'authoritative',
+      identifiers: row.identifiers,
+    }));
+  }
+
+  async getRegistryStats(search?: string): Promise<Record<string, number>> {
+    const conditions: string[] = [
+      `cp.classification = 'property'`,
+      `cp.status = 'active'`,
+    ];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (search) {
+      const escaped = search.replace(/[%_\\]/g, '\\$&');
+      conditions.push(`EXISTS (
+        SELECT 1 FROM catalog_identifiers ci
+        WHERE ci.property_rid = cp.property_rid
+          AND ci.disputed = FALSE
+          AND ci.identifier_value ILIKE $${idx++} ESCAPE '\\'
+      )`);
+      params.push(`%${escaped}%`);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const result = await query<{ source: string; count: number }>(
+      `SELECT cp.source, COUNT(DISTINCT cp.property_rid)::int AS count
+       FROM catalog_properties cp
+       WHERE ${where}
+       GROUP BY cp.source`,
+      params
+    );
+
+    const stats: Record<string, number> = { total: 0, authoritative: 0, enriched: 0, contributed: 0 };
+    for (const row of result.rows) {
+      stats[row.source] = row.count;
+      stats.total += row.count;
+    }
+    return stats;
+  }
 }

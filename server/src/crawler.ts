@@ -933,7 +933,7 @@ export class CrawlerService {
 
           // Upgrade catalog property source to discovered
           await query(
-            `UPDATE catalog_properties SET source = 'discovered', updated_at = NOW()
+            `UPDATE catalog_properties SET source = 'authoritative', updated_at = NOW()
              WHERE property_rid IN (
                SELECT property_rid FROM catalog_identifiers
                WHERE identifier_type = 'domain' AND identifier_value = $1
