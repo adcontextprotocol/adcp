@@ -52,12 +52,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   for (const agent of agentsDue) {
     const startTime = Date.now();
     try {
-      // Use the owning org's saved credentials from agent_contexts.
-      // These are credentials the owner saved when connecting through Addie.
-      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
-
-      // Pass platform_type for coherence reporting
-      const metadata = await complianceDb.getRegistryMetadata(agent.agent_url);
+      // Batch DB reads before the external HTTP call to avoid holding
+      // pool connections during the up-to-60s comply() request.
+      const [auth, metadata] = await Promise.all([
+        complianceDb.resolveOwnerAuth(agent.agent_url),
+        complianceDb.getRegistryMetadata(agent.agent_url),
+      ]);
       const platformType = metadata?.platform_type as PlatformType | undefined;
 
       const complyOptions: ComplyOptions = {

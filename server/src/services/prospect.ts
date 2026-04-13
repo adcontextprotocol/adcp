@@ -9,7 +9,7 @@ import { getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
 import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
-import { researchDomain } from './brand-enrichment.js';
+import { researchDomain, trackBackground } from './brand-enrichment.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
@@ -198,13 +198,13 @@ export async function createProspect(
         [workosOrg.id, normalizedDomain]
       );
 
-      // Auto-enrich in background (brand registry + firmographics)
-      researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
+      const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
         logger.warn(
           { err, domain: normalizedDomain, orgId: workosOrg.id },
           'Background research failed for new prospect'
         );
       });
+      trackBackground(bgPromise);
     }
 
     return {
