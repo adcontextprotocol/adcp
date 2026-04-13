@@ -1777,6 +1777,10 @@ export class HTTPServer {
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
+    // Legal page redirects — canonical paths are /legal/terms and /legal/privacy
+    this.app.get('/terms', (_req, res) => res.redirect(301, '/legal/terms'));
+    this.app.get('/privacy', (_req, res) => res.redirect(301, '/legal/privacy'));
+
     // My Content redirect is handled in pre-static middleware block above
 
     // API endpoints
