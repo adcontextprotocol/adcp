@@ -594,7 +594,7 @@
         },
         "brand-agent-type": {
           "$ref": "/schemas/enums/brand-agent-type.json",
-          "description": "Agent types declarable in brand.json (brand, rights, measurement, governance, creative, buying, signals)"
+          "description": "Agent types declarable in brand.json (brand, rights, measurement, governance, creative, sales, buying, signals)"
         },
         "right-use": {
           "$ref": "/schemas/enums/right-use.json",

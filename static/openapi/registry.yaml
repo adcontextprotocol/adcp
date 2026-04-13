@@ -330,6 +330,7 @@ components:
             - measurement
             - governance
             - creative
+            - sales
             - buying
             - signals
             - unknown
@@ -2400,6 +2401,7 @@ paths:
               - measurement
               - governance
               - creative
+              - sales
               - buying
               - signals
               - unknown

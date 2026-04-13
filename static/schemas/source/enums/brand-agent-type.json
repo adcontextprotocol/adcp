@@ -10,6 +10,7 @@
     "measurement",
     "governance",
     "creative",
+    "sales",
     "buying",
     "signals"
   ],
@@ -19,6 +20,7 @@
     "measurement": "Provides campaign measurement, attribution, and reporting services",
     "governance": "Enforces brand safety, compliance, and policy rules",
     "creative": "Manages creative asset generation, review, and approval",
+    "sales": "Sells inventory on behalf of publishers and media owners",
     "buying": "Executes media buying on behalf of the brand",
     "signals": "Provides audience signal discovery and activation"
   }

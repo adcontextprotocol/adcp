@@ -269,6 +269,7 @@ export const FederatedAgentWithDetailsSchema = z
       "measurement",
       "governance",
       "creative",
+      "sales",
       "buying",
       "signals",
       "unknown",
@@ -442,7 +443,7 @@ const AgentAuthorizationSummarySchema = z.object({
 const OperatorAgentSchema = z.object({
   url: z.string(),
   name: z.string(),
-  type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]),
+  type: z.enum(["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"]),
   authorized_by: z.array(AgentAuthorizationSummarySchema),
 });
 
