@@ -74,7 +74,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       try {
         await validateFetchUrl(new URL(url));
       } catch (err) {
-        return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid feed URL' });
+        return res.status(400).json({ error: 'Invalid feed URL' });
       }
 
       const check = await getBrandForEdit(domain, req.user!.id);
