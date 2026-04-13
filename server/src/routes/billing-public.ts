@@ -390,6 +390,21 @@ export function createPublicBillingRouter(): Router {
           });
         }
 
+        // Validate that the requested product is available for this org type.
+        // This endpoint handles membership checkout only; event and sponsorship
+        // purchases use separate flows.
+        const customerType = org.is_personal ? 'individual' : 'company';
+        const eligibleProducts = await getProductsForCustomer({
+          customerType,
+          category: 'membership',
+        });
+        if (!eligibleProducts.some(p => p.price_id === priceId)) {
+          return res.status(400).json({
+            error: "Product not available",
+            message: "This membership tier is not available for your organization. Please select a different tier.",
+          });
+        }
+
         // Dev mode: skip WorkOS membership check for dev orgs
         const isDevUserCheckout =
           isDevModeEnabled() &&
