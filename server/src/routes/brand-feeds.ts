@@ -11,7 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
-import { fetchFeed, detectFeedType, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
+import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
 
 const MAX_PROPERTIES = 500;
