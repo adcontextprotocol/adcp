@@ -38,7 +38,7 @@ export function getDatabaseConfig(): DatabaseConfig | null {
     ssl,
     maxPoolSize: process.env.DATABASE_MAX_POOL_SIZE
       ? parseInt(process.env.DATABASE_MAX_POOL_SIZE, 10)
-      : 10,
+      : 20,
     connectionTimeoutMillis: process.env.DATABASE_CONNECTION_TIMEOUT_MS
       ? parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS, 10)
       : 10000,

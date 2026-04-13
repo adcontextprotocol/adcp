@@ -115,13 +115,18 @@ export const brandCreationRateLimiter = rateLimit({
 /**
  * Rate limiter for notification endpoints (polled from nav bell)
  * Limits: 120 requests per minute per user (allows 30s polling across multiple tabs)
+ *
+ * Uses the default in-memory store instead of PostgresStore because this
+ * endpoint is polled every ~30s from every open tab. Hitting the database for
+ * every rate-limit check was saturating the connection pool and causing health
+ * check timeouts.  Cross-instance consistency is not important here — slightly
+ * exceeding the limit on one machine is harmless.
  */
 export const notificationRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('notif:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
