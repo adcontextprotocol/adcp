@@ -6,7 +6,7 @@ import crypto from 'crypto';
 // TYPES
 // =====================================================
 
-export type AgentType = 'brand' | 'rights' | 'measurement' | 'governance' | 'creative' | 'buying' | 'signals' | 'unknown';
+export type AgentType = 'brand' | 'rights' | 'measurement' | 'governance' | 'creative' | 'sales' | 'buying' | 'signals' | 'unknown';
 export type Protocol = 'mcp' | 'a2a';
 export type AuthType = 'bearer' | 'basic';
 

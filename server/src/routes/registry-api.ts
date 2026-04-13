@@ -518,7 +518,7 @@ registry.registerPath({
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
-      type: z.enum(["brand", "rights", "measurement", "governance", "creative", "buying", "signals", "unknown"]).optional(),
+      type: z.enum(["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"]).optional(),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
