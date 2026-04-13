@@ -223,8 +223,41 @@ export const AgentComplianceSchema = z
     streak_days: z.number().int(),
     last_checked_at: z.string().nullable(),
     headline: z.string().nullable(),
+    monitoring_paused: z.boolean().optional(),
+    check_interval_hours: z.number().int().optional(),
   })
   .openapi("AgentCompliance");
+
+export const AgentComplianceDetailSchema = z
+  .object({
+    agent_url: z.string(),
+    status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
+    lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
+    tracks: z.record(z.string(), z.string()).optional(),
+    streak_days: z.number().int().optional(),
+    last_checked_at: z.string().nullable().optional(),
+    last_passed_at: z.string().nullable().optional(),
+    last_failed_at: z.string().nullable().optional(),
+    headline: z.string().nullable().optional(),
+    status_changed_at: z.string().nullable().optional(),
+    storyboards_passing: z.number().int().optional(),
+    storyboards_total: z.number().int().optional(),
+  })
+  .openapi("AgentComplianceDetail");
+
+export const StoryboardStatusSchema = z
+  .object({
+    storyboard_id: z.string(),
+    title: z.string(),
+    category: z.string().nullable(),
+    track: z.string().nullable(),
+    status: z.enum(["passing", "failing", "partial", "untested"]),
+    steps_passed: z.number().int(),
+    steps_total: z.number().int(),
+    last_tested_at: z.string().nullable(),
+    last_passed_at: z.string().nullable(),
+  })
+  .openapi("StoryboardStatus");
 
 export const FederatedAgentWithDetailsSchema = z
   .object({
@@ -444,4 +477,108 @@ export const PublisherLookupResultSchema = z
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
   })
   .openapi("PublisherLookupResult");
+
+export const RegistryMetadataSchema = z
+  .object({
+    agent_url: z.string(),
+    lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
+    platform_type: z.string().nullable(),
+    compliance_opt_out: z.boolean(),
+    monitoring_paused: z.boolean(),
+    check_interval_hours: z.number().int(),
+    monitoring_paused_at: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })
+  .openapi("RegistryMetadata");
+
+export const MonitoringSettingsSchema = z
+  .object({
+    monitoring_paused: z.boolean(),
+    check_interval_hours: z.number().int(),
+    monitoring_paused_at: z.string().nullable(),
+  })
+  .openapi("MonitoringSettings");
+
+export const ComplianceRunSchema = z
+  .object({
+    id: z.string(),
+    overall_status: z.string(),
+    headline: z.string().nullable(),
+    tracks_passed: z.number().int(),
+    tracks_failed: z.number().int(),
+    tracks_skipped: z.number().int(),
+    tracks_partial: z.number().int(),
+    tracks_json: z.any(),
+    total_duration_ms: z.number().nullable(),
+    triggered_by: z.string(),
+    tested_at: z.string(),
+  })
+  .openapi("ComplianceRun");
+
+export const OutboundRequestSchema = z
+  .object({
+    id: z.string(),
+    agent_url: z.string(),
+    request_type: z.string(),
+    user_agent: z.string(),
+    response_time_ms: z.number().nullable(),
+    success: z.boolean(),
+    error_message: z.string().nullable(),
+    created_at: z.string(),
+  })
+  .openapi("OutboundRequest");
+
+export const AgentAuthStatusSchema = z
+  .object({
+    has_auth: z.boolean(),
+    agent_context_id: z.string().nullable(),
+    auth_type: z.enum(["bearer", "basic", "oauth"]).nullable(),
+    has_oauth_token: z.boolean(),
+    has_valid_oauth: z.boolean(),
+    oauth_token_expires_at: z.string().nullable(),
+  })
+  .openapi("AgentAuthStatus");
+
+export const StoryboardSummarySchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    category: z.string(),
+    summary: z.string(),
+    interaction_model: z.string(),
+    examples: z.array(z.string()),
+    phase_count: z.number().int(),
+    step_count: z.number().int(),
+  })
+  .openapi("StoryboardSummary");
+
+export const StoryboardDetailSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    category: z.string(),
+    summary: z.string(),
+    agent: z.object({
+      interaction_model: z.string(),
+      examples: z.array(z.string()).optional(),
+    }),
+    phases: z.array(
+      z.object({
+        title: z.string(),
+        steps: z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            description: z.string(),
+            expected_output: z.string(),
+          }),
+        ),
+      }),
+    ),
+    prerequisites: z.any().optional(),
+    required_tools: z.array(z.string()).optional(),
+    track: z.string().optional(),
+  })
+  .openapi("StoryboardDetail");
 
