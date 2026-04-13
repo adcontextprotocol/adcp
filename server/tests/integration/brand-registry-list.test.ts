@@ -8,13 +8,6 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
   let pool: Pool;
   let brandDb: BrandDatabase;
 
-  const TEST_DOMAINS = [
-    'hosted-brand.example.com',
-    'community-brand.example.com',
-    'private-brand.example.com',
-    'sub-brand.example.com',
-  ];
-
   beforeAll(async () => {
     pool = initializeDatabase({
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
