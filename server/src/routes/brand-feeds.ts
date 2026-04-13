@@ -11,7 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
-import { fetchFeed, detectFeedType, slugify, suggestProduct } from '../services/collection-feed-sync.js';
+import { fetchFeed, detectFeedType, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
 
 const MAX_PROPERTIES = 500;
@@ -211,17 +211,12 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const collection = collections.find(c => c.collection_id === collectionId);
       if (!collection?.feed_url) return res.status(404).json({ error: 'Feed not found' });
 
-      // Re-fetch
+      // Re-fetch and merge with removal detection + cap
       const { result: feedResult } = await fetchFeed(collection.feed_url);
-
-      // Merge installments
-      const existingById = new Map((collection.installments || []).map(i => [i.id, i]));
-      for (const inst of feedResult.installments) {
-        existingById.set(inst.id, { ...existingById.get(inst.id), ...inst });
-      }
-      collection.installments = Array.from(existingById.values())
-        .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+      collection.installments = mergeInstallments(collection.installments || [], feedResult.installments);
       collection.last_synced_at = new Date().toISOString();
+      collection.last_sync_status = 'ok';
+      collection.last_sync_error = undefined;
 
       manifest.collections = collections;
       await query(

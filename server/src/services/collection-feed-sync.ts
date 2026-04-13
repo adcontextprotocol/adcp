@@ -162,6 +162,36 @@ export function extractTopics(title: string, description?: string): string[] {
   return [...topics].slice(0, 5);
 }
 
+// ─── Shared merge logic ──────────────────────────────────────────────
+
+/**
+ * Merge new installments into existing ones with removal detection.
+ * - Existing IDs not in feed → marked status='removed'
+ * - Existing IDs in feed → updated with new data, status='active'
+ * - New IDs → appended with status='active'
+ * - Result capped at MAX_INSTALLMENTS, sorted by date descending
+ */
+export function mergeInstallments(existing: Installment[], incoming: Installment[]): Installment[] {
+  const feedIds = new Set(incoming.map(i => i.id));
+  const byId = new Map(existing.map(i => [i.id, i]));
+
+  // Mark removed
+  for (const [id, inst] of byId) {
+    if (!feedIds.has(id) && inst.status !== 'removed') {
+      byId.set(id, { ...inst, status: 'removed' });
+    }
+  }
+
+  // Update + append
+  for (const inst of incoming) {
+    byId.set(inst.id, { ...byId.get(inst.id), ...inst, status: 'active' });
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
+    .slice(0, MAX_INSTALLMENTS);
+}
+
 // ─── RSS Parser ──────────────────────────────────────────────────────
 
 const rssParser = new Parser({
@@ -515,25 +545,7 @@ async function syncBrandFeeds(row: { domain: string; brand_manifest: Record<stri
     try {
       const { result: feedResult } = await fetchFeed(collection.feed_url);
 
-      // Merge installments — update existing by ID, append new, mark removed
-      const feedIds = new Set(feedResult.installments.map(i => i.id));
-      const existingById = new Map((collection.installments || []).map(i => [i.id, i]));
-
-      // Mark installments no longer in feed as removed (don't delete — something may depend on them)
-      for (const [id, inst] of existingById) {
-        if (!feedIds.has(id) && inst.status !== 'removed') {
-          existingById.set(id, { ...inst, status: 'removed' });
-        }
-      }
-
-      // Update existing + append new from feed
-      for (const installment of feedResult.installments) {
-        existingById.set(installment.id, { ...existingById.get(installment.id), ...installment, status: 'active' });
-      }
-
-      collection.installments = Array.from(existingById.values())
-        .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
-        .slice(0, MAX_INSTALLMENTS);
+      collection.installments = mergeInstallments(collection.installments || [], feedResult.installments);
 
       collection.last_synced_at = new Date().toISOString();
       collection.last_sync_status = 'ok';
