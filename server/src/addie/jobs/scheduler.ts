@@ -156,6 +156,32 @@ class JobScheduler {
   /** Only notify Slack after this many consecutive failures. */
   private static readonly FAILURE_THRESHOLD = 2;
 
+  private static readonly MAX_CONCURRENCY = 5;
+  private activeJobs = 0;
+  private waitQueue: Array<() => void> = [];
+
+  private acquireSlot(): Promise<void> {
+    if (this.activeJobs < JobScheduler.MAX_CONCURRENCY) {
+      this.activeJobs++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.waitQueue.push(() => {
+        this.activeJobs++;
+        resolve();
+      });
+    });
+  }
+
+  private releaseSlot(): void {
+    const next = this.waitQueue.shift();
+    if (next) {
+      next();
+    } else {
+      this.activeJobs--;
+    }
+  }
+
   /**
    * Register a job configuration
    */
@@ -200,6 +226,7 @@ class JobScheduler {
         return;
       }
 
+      await this.acquireSlot();
       job.executing = true;
       const startTime = Date.now();
       try {
@@ -232,6 +259,7 @@ class JobScheduler {
           });
         }
       } finally {
+        this.releaseSlot();
         job.executing = false;
         job.lastRunAt = new Date();
         job.lastDurationMs = Date.now() - startTime;

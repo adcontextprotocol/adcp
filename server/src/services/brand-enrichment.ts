@@ -26,6 +26,17 @@ import type { BrandClassification } from './brand-classifier.js';
 
 const logger = createLogger('brand-enrichment');
 
+const _backgroundWork = new Set<Promise<unknown>>();
+
+export function trackBackground(p: Promise<unknown>): void {
+  _backgroundWork.add(p);
+  p.finally(() => _backgroundWork.delete(p));
+}
+
+export function drainBackgroundWork(): Promise<unknown[]> {
+  return Promise.allSettled([..._backgroundWork]);
+}
+
 // Generic page titles that Brandfetch sometimes returns instead of brand names
 const GENERIC_NAMES = new Set([
   'about', 'home', 'welcome', 'homepage', 'contact', 'products', 'services',
@@ -614,10 +625,10 @@ export async function expandHouse(houseDomain: string, options: {
         'Background enrichment complete'
       );
     };
-    // Fire and forget — don't await
-    enrichInBackground().catch(err => {
+    const bgPromise = enrichInBackground().catch(err => {
       logger.error({ err, houseDomain }, 'Background enrichment crashed');
     });
+    trackBackground(bgPromise);
   }
 
   logger.info(
