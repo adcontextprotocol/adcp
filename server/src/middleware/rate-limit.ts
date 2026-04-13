@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { PostgresStore } from './pg-rate-limit-store.js';
+import { PostgresStore, CachedPostgresStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -115,13 +115,18 @@ export const brandCreationRateLimiter = rateLimit({
 /**
  * Rate limiter for notification endpoints (polled from nav bell)
  * Limits: 120 requests per minute per user (allows 30s polling across multiple tabs)
+ *
+ * Uses CachedPostgresStore: increments are served from memory (no DB hit per
+ * request) and flushed to Postgres every 15s so counters stay synced across
+ * pods. This replaced a direct PostgresStore that was saturating the
+ * connection pool on every poll request.
  */
 export const notificationRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('notif:'),
+  store: new CachedPostgresStore('notif:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
