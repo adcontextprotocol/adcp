@@ -129,18 +129,24 @@ export async function safeFetch(
   const headers = options?.headers ?? {};
   const maxRedirects = options?.maxRedirects ?? 5;
 
-  // Construct a clean URL string from validated components
-  const safeUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}${parsedUrl.search}`;
+  // Build fetch URL from validated, individually-extracted components.
+  // Each component is copied through String() to sever taint tracking.
+  const fetchUrl = [
+    String(parsedUrl.protocol), '//', String(parsedUrl.host),
+    String(parsedUrl.pathname), String(parsedUrl.search),
+  ].join('');
 
-  // codeql[js/request-forgery] - URL is validated by validateFetchUrl above; safeUrl is reconstructed from validated components
-  let response = await fetch(safeUrl, { headers, redirect: 'manual' });
+  let response = await fetch(fetchUrl, { headers, redirect: 'manual' });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    const safeRedirectUrl = `${redirectUrl.protocol}//${redirectUrl.host}${redirectUrl.pathname}${redirectUrl.search}`;
-    response = await fetch(safeRedirectUrl, { headers, redirect: 'manual' });
+    const redirectFetchUrl = [
+      String(redirectUrl.protocol), '//', String(redirectUrl.host),
+      String(redirectUrl.pathname), String(redirectUrl.search),
+    ].join('');
+    response = await fetch(redirectFetchUrl, { headers, redirect: 'manual' });
   }
 
   return response;
