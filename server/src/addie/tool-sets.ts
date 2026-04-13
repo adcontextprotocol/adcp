@@ -249,10 +249,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   events: {
     name: 'events',
-    description: 'Browse upcoming events, check event registrations, get event details, and register interest in events — available to all members',
+    description: 'Browse upcoming events, check event registrations, get event details, see who is coming, and register interest in events — available to all members',
     tools: [
       'list_events',
       'get_event_details',
+      'list_event_attendees',
       'register_event_interest',
     ],
   },

@@ -390,8 +390,8 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
-- Upcoming events, event registrations, "am I registered", event details, register interest → ["events"]
-- Who is coming to an event, attendee lists, invite someone to an event, create/update events → ["events", "admin"]
+- Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
+- Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
 - Listing all members with payment/product/invoice status → ["admin"]
 - Task management, marking tasks done, checking tasks, reminders, logging conversations → ["admin"]
@@ -647,6 +647,21 @@ export class AddieRouter {
           };
         }
       }
+    }
+
+    // Event attendee queries - "who's coming to X", "attendee list for X"
+    const eventAttendeePattern =
+      /who(?:'s|\s+is)\s+(coming\s+to|going\s+to\s+(?:the|cannes|ces|dmexco)|registered\s+for|attending|signed\s+up\s+for)|attendee\s+list|guest\s+list|who\s+will\s+be\s+(?:at\s+the|there\s+(?:at|for)|coming\s+to)/i;
+    if (eventAttendeePattern.test(text)) {
+      const toolSets = ctx.isAAOAdmin ? ['events', 'admin'] : ['events'];
+      return {
+        action: 'respond',
+        tool_sets: toolSets,
+        confidence: 'high',
+        reason: 'Event attendee query',
+        decision_method: 'quick_match',
+        latency_ms: Date.now() - startTime,
+      };
     }
 
     // Admin engagement/analytics queries - route to admin tools
