@@ -153,15 +153,53 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
-  propertyLists?: Map<string, Record<string, unknown>>;
-  collectionLists?: Map<string, Record<string, unknown>>;
-  contentStandards?: Map<string, Record<string, unknown>>;
+  propertyLists: Map<string, PropertyListState>;
+  collectionLists: Map<string, CollectionListState>;
+  contentStandards: Map<string, ContentStandardState>;
   lastGetProductsContext?: {
     products: Product[];
     proposals?: Proposal[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
+}
+
+export interface PropertyListState {
+  list_id: string;
+  name: string;
+  description?: string;
+  base_properties?: unknown[];
+  filters?: Record<string, unknown>;
+  brand?: { domain: string };
+  webhook_url?: string;
+  property_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionListState {
+  list_id: string;
+  name: string;
+  description?: string;
+  base_collections?: unknown[];
+  filters?: Record<string, unknown>;
+  brand?: { domain: string };
+  webhook_url?: string;
+  collection_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContentStandardState {
+  standards_id: string;
+  name: string;
+  countries_all?: string[];
+  channels_any?: string[];
+  languages_any?: string[];
+  policy?: string;
+  calibration_exemplars?: unknown[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SignalActivationState {

@@ -7,32 +7,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { TrainingContext, ToolArgs } from './types.js';
+import type { TrainingContext, ToolArgs, PropertyListState, CollectionListState, ContentStandardState } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 
-// ── State types ──────────────────────────────────────────────────
-
-// State stored as Record<string, unknown> to match SessionState type.
-// Helper to cast for typed access within handlers.
-type ListState = Record<string, unknown>;
-
-function makePropertyList(fields: {
-  list_id: string; name: string; description?: string; base_properties?: unknown[];
-  filters?: Record<string, unknown>; brand?: { domain: string }; webhook_url?: string;
-  property_count: number; created_at: string; updated_at: string;
-}): ListState { return fields as ListState; }
-
-function makeCollectionList(fields: {
-  list_id: string; name: string; description?: string; base_collections?: unknown[];
-  filters?: Record<string, unknown>; brand?: { domain: string }; webhook_url?: string;
-  collection_count: number; created_at: string; updated_at: string;
-}): ListState { return fields as ListState; }
-
-function makeContentStandard(fields: {
-  standards_id: string; name: string; countries_all?: string[]; channels_any?: string[];
-  languages_any?: string[]; policy?: string; calibration_exemplars?: unknown[];
-  created_at: string; updated_at: string;
-}): ListState { return fields as ListState; }
+const MAX_ARRAY_INPUT = 100;
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -280,11 +258,79 @@ export const CONTENT_STANDARDS_TOOLS = [
   },
 ];
 
+// ── Input types ──────────────────────────────────────────────────
+
+interface CreateListInput extends ToolArgs {
+  name: string;
+  description?: string;
+  base_properties?: unknown[];
+  base_collections?: unknown[];
+  filters?: Record<string, unknown>;
+  brand?: { domain: string };
+}
+
+interface GetListInput extends ToolArgs {
+  list_id: string;
+  resolve?: boolean;
+}
+
+interface UpdatePropertyListInput extends ToolArgs {
+  list_id: string;
+  name?: string;
+  description?: string;
+  base_properties?: unknown[];
+  filters?: Record<string, unknown>;
+  webhook_url?: string;
+}
+
+interface UpdateCollectionListInput extends ToolArgs {
+  list_id: string;
+  name?: string;
+  description?: string;
+  base_collections?: unknown[];
+  filters?: Record<string, unknown>;
+  webhook_url?: string;
+}
+
+interface ListInput extends ToolArgs {
+  name_contains?: string;
+}
+
+interface DeleteInput extends ToolArgs {
+  list_id: string;
+}
+
+interface CreateContentStandardsInput extends ToolArgs {
+  name: string;
+  countries_all?: string[];
+  channels_any?: string[];
+  languages_any?: string[];
+  policy?: string;
+  calibration_exemplars?: unknown[];
+}
+
+interface UpdateContentStandardsInput extends ToolArgs {
+  standards_id: string;
+  name?: string;
+  policy?: string;
+  calibration_exemplars?: unknown[];
+}
+
+interface CalibrateInput extends ToolArgs {
+  standards_id: string;
+  artifacts?: Array<{ url?: string; artifact_id?: string }>;
+}
+
+interface ValidateDeliveryInput extends ToolArgs {
+  standards_id: string;
+  media_buy_id?: string;
+}
+
 // ── Property list handlers ───────────────────────────────────────
 
 export function handleCreatePropertyList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name: string; description?: string; base_properties?: unknown[]; filters?: Record<string, unknown>; brand?: { domain: string } };
+  const input = args as CreateListInput;
 
   if (!input.name) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'name is required' }] };
@@ -292,19 +338,19 @@ export function handleCreatePropertyList(args: ToolArgs, ctx: TrainingContext) {
 
   const now = new Date().toISOString();
   const listId = `pl_${randomUUID().slice(0, 8)}`;
-  const state = makePropertyList({
+  const baseProps = (input.base_properties ?? []).slice(0, MAX_ARRAY_INPUT);
+  const state: PropertyListState = {
     list_id: listId,
     name: input.name,
     description: input.description,
-    base_properties: input.base_properties,
+    base_properties: baseProps,
     filters: input.filters,
     brand: input.brand,
-    property_count: input.base_properties?.length ? countSources(input.base_properties) : 0,
+    property_count: baseProps.length ? countSources(baseProps) : 0,
     created_at: now,
     updated_at: now,
-  });
+  };
 
-  if (!session.propertyLists) session.propertyLists = new Map();
   session.propertyLists.set(listId, state);
 
   return {
@@ -315,16 +361,15 @@ export function handleCreatePropertyList(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleGetPropertyList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string; resolve?: boolean };
+  const input = args as GetListInput;
 
-  if (!session.propertyLists) return { errors: [{ code: 'NOT_FOUND', message: `Property list ${input.list_id} not found` }] };
   const list = session.propertyLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Property list ${input.list_id} not found` }] };
 
   const now = new Date().toISOString();
   return {
     list,
-    identifiers: input.resolve ? generateSampleIdentifiers(list['property_count'] as number) : undefined,
+    identifiers: input.resolve ? generateSampleIdentifiers(list.property_count) : undefined,
     resolved_at: input.resolve ? now : undefined,
     cache_valid_until: input.resolve ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
   };
@@ -332,36 +377,39 @@ export function handleGetPropertyList(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleUpdatePropertyList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: Record<string, unknown>; webhook_url?: string };
+  const input = args as UpdatePropertyListInput;
 
-  if (!session.propertyLists) return { errors: [{ code: 'NOT_FOUND', message: `Property list ${input.list_id} not found` }] };
   const list = session.propertyLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Property list ${input.list_id} not found` }] };
 
-  if (input.name !== undefined) list['name'] = input.name;
-  if (input.description !== undefined) list['description'] = input.description;
-  if (input.base_properties !== undefined) { list['base_properties'] = input.base_properties; list['property_count'] = countSources(input.base_properties); }
-  if (input.filters !== undefined) list['filters'] = input.filters;
-  if (input.webhook_url !== undefined) list['webhook_url'] = input.webhook_url || undefined;
-  list['updated_at'] = new Date().toISOString();
+  if (input.name !== undefined) list.name = input.name;
+  if (input.description !== undefined) list.description = input.description;
+  if (input.base_properties !== undefined) {
+    const clamped = input.base_properties.slice(0, MAX_ARRAY_INPUT);
+    list.base_properties = clamped;
+    list.property_count = countSources(clamped);
+  }
+  if (input.filters !== undefined) list.filters = input.filters;
+  if (input.webhook_url !== undefined) list.webhook_url = input.webhook_url === '' ? undefined : input.webhook_url;
+  list.updated_at = new Date().toISOString();
 
   return { list };
 }
 
 export function handleListPropertyLists(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name_contains?: string };
-  const lists = session.propertyLists ? Array.from(session.propertyLists.values()) : [];
+  const input = args as ListInput;
+  const lists = Array.from(session.propertyLists.values());
   const filtered = input.name_contains
-    ? lists.filter(l => (l['name'] as string).toLowerCase().includes(input.name_contains!.toLowerCase()))
+    ? lists.filter(l => l.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
     : lists;
   return { lists: filtered, pagination: { has_more: false } };
 }
 
 export function handleDeletePropertyList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string };
-  const deleted = session.propertyLists?.delete(input.list_id) ?? false;
+  const input = args as DeleteInput;
+  const deleted = session.propertyLists.delete(input.list_id);
   return { deleted, list_id: input.list_id };
 }
 
@@ -369,7 +417,7 @@ export function handleDeletePropertyList(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name: string; description?: string; base_collections?: unknown[]; filters?: Record<string, unknown>; brand?: { domain: string } };
+  const input = args as CreateListInput;
 
   if (!input.name) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'name is required' }] };
@@ -377,19 +425,19 @@ export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext)
 
   const now = new Date().toISOString();
   const listId = `cl_${randomUUID().slice(0, 8)}`;
-  const state = makeCollectionList({
+  const baseColls = (input.base_collections ?? []).slice(0, MAX_ARRAY_INPUT);
+  const state: CollectionListState = {
     list_id: listId,
     name: input.name,
     description: input.description,
-    base_collections: input.base_collections,
+    base_collections: baseColls,
     filters: input.filters,
     brand: input.brand,
-    collection_count: input.base_collections?.length ? countSources(input.base_collections) : 0,
+    collection_count: baseColls.length ? countSources(baseColls) : 0,
     created_at: now,
     updated_at: now,
-  });
+  };
 
-  if (!session.collectionLists) session.collectionLists = new Map();
   session.collectionLists.set(listId, state);
 
   return {
@@ -400,16 +448,15 @@ export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext)
 
 export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string; resolve?: boolean };
+  const input = args as GetListInput;
 
-  if (!session.collectionLists) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
   const list = session.collectionLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
 
   const now = new Date().toISOString();
   return {
     list,
-    collections: input.resolve ? generateSampleCollections(list['collection_count'] as number) : undefined,
+    collections: input.resolve ? generateSampleCollections(list.collection_count) : undefined,
     resolved_at: input.resolve ? now : undefined,
     cache_valid_until: input.resolve ? new Date(Date.now() + 168 * 60 * 60 * 1000).toISOString() : undefined,
   };
@@ -417,36 +464,39 @@ export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string; name?: string; description?: string; base_collections?: unknown[]; filters?: Record<string, unknown>; webhook_url?: string };
+  const input = args as UpdateCollectionListInput;
 
-  if (!session.collectionLists) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
   const list = session.collectionLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
 
-  if (input.name !== undefined) list['name'] = input.name;
-  if (input.description !== undefined) list['description'] = input.description;
-  if (input.base_collections !== undefined) { list['base_collections'] = input.base_collections; list['collection_count'] = countSources(input.base_collections); }
-  if (input.filters !== undefined) list['filters'] = input.filters;
-  if (input.webhook_url !== undefined) list['webhook_url'] = input.webhook_url || undefined;
-  list['updated_at'] = new Date().toISOString();
+  if (input.name !== undefined) list.name = input.name;
+  if (input.description !== undefined) list.description = input.description;
+  if (input.base_collections !== undefined) {
+    const clamped = input.base_collections.slice(0, MAX_ARRAY_INPUT);
+    list.base_collections = clamped;
+    list.collection_count = countSources(clamped);
+  }
+  if (input.filters !== undefined) list.filters = input.filters;
+  if (input.webhook_url !== undefined) list.webhook_url = input.webhook_url === '' ? undefined : input.webhook_url;
+  list.updated_at = new Date().toISOString();
 
   return { list };
 }
 
 export function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name_contains?: string };
-  const lists = session.collectionLists ? Array.from(session.collectionLists.values()) : [];
+  const input = args as ListInput;
+  const lists = Array.from(session.collectionLists.values());
   const filtered = input.name_contains
-    ? lists.filter(l => (l['name'] as string).toLowerCase().includes(input.name_contains!.toLowerCase()))
+    ? lists.filter(l => l.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
     : lists;
   return { lists: filtered, pagination: { has_more: false } };
 }
 
 export function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { list_id: string };
-  const deleted = session.collectionLists?.delete(input.list_id) ?? false;
+  const input = args as DeleteInput;
+  const deleted = session.collectionLists.delete(input.list_id);
   return { deleted, list_id: input.list_id };
 }
 
@@ -454,7 +504,7 @@ export function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext)
 
 export function handleCreateContentStandards(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name: string; countries_all?: string[]; channels_any?: string[]; languages_any?: string[]; policy?: string; calibration_exemplars?: unknown[] };
+  const input = args as CreateContentStandardsInput;
 
   if (!input.name) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'name is required' }] };
@@ -462,19 +512,18 @@ export function handleCreateContentStandards(args: ToolArgs, ctx: TrainingContex
 
   const now = new Date().toISOString();
   const standardsId = `cs_${randomUUID().slice(0, 8)}`;
-  const state = makeContentStandard({
+  const state: ContentStandardState = {
     standards_id: standardsId,
     name: input.name,
     countries_all: input.countries_all,
     channels_any: input.channels_any,
     languages_any: input.languages_any,
     policy: input.policy,
-    calibration_exemplars: input.calibration_exemplars,
+    calibration_exemplars: (input.calibration_exemplars ?? []).slice(0, MAX_ARRAY_INPUT),
     created_at: now,
     updated_at: now,
-  });
+  };
 
-  if (!session.contentStandards) session.contentStandards = new Map();
   session.contentStandards.set(standardsId, state);
 
   return { standards: state };
@@ -484,7 +533,6 @@ export function handleGetContentStandards(args: ToolArgs, ctx: TrainingContext) 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as ToolArgs & { standards_id: string };
 
-  if (!session.contentStandards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
   const standards = session.contentStandards.get(input.standards_id);
   if (!standards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
 
@@ -493,42 +541,41 @@ export function handleGetContentStandards(args: ToolArgs, ctx: TrainingContext) 
 
 export function handleUpdateContentStandards(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { standards_id: string; name?: string; policy?: string; calibration_exemplars?: unknown[] };
+  const input = args as UpdateContentStandardsInput;
 
-  if (!session.contentStandards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
   const standards = session.contentStandards.get(input.standards_id);
   if (!standards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
 
-  if (input.name !== undefined) standards['name'] = input.name;
-  if (input.policy !== undefined) standards['policy'] = input.policy;
-  if (input.calibration_exemplars !== undefined) standards['calibration_exemplars'] = input.calibration_exemplars;
-  standards['updated_at'] = new Date().toISOString();
+  if (input.name !== undefined) standards.name = input.name;
+  if (input.policy !== undefined) standards.policy = input.policy;
+  if (input.calibration_exemplars !== undefined) standards.calibration_exemplars = input.calibration_exemplars.slice(0, MAX_ARRAY_INPUT);
+  standards.updated_at = new Date().toISOString();
 
   return { standards };
 }
 
 export function handleListContentStandards(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { name_contains?: string };
-  const all = session.contentStandards ? Array.from(session.contentStandards.values()) : [];
+  const input = args as ListInput;
+  const all = Array.from(session.contentStandards.values());
   const filtered = input.name_contains
-    ? all.filter(s => (s['name'] as string).toLowerCase().includes(input.name_contains!.toLowerCase()))
+    ? all.filter(s => s.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
     : all;
   return { standards: filtered, pagination: { has_more: false } };
 }
 
 export function handleCalibrateContent(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { standards_id: string; artifacts?: Array<{ url?: string; artifact_id?: string }> };
+  const input = args as CalibrateInput;
 
-  if (!session.contentStandards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
   const standards = session.contentStandards.get(input.standards_id);
   if (!standards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
 
-  const results = (input.artifacts ?? []).map((artifact, i) => ({
+  const artifacts = (input.artifacts ?? []).slice(0, MAX_ARRAY_INPUT);
+  const results = artifacts.map((artifact, i) => ({
     artifact_id: artifact.artifact_id ?? artifact.url ?? `artifact_${i}`,
     result: i % 3 === 0 ? 'fail' : 'pass',
-    confidence: 0.85 + Math.random() * 0.15,
+    confidence: 0.85 + ((i * 7 + 3) % 15) / 100,
     explanation: i % 3 === 0
       ? 'Content does not meet the defined standards based on policy evaluation.'
       : 'Content meets the defined standards.',
@@ -539,9 +586,8 @@ export function handleCalibrateContent(args: ToolArgs, ctx: TrainingContext) {
 
 export function handleValidateContentDelivery(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as ToolArgs & { standards_id: string; media_buy_id?: string };
+  const input = args as ValidateDeliveryInput;
 
-  if (!session.contentStandards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
   const standards = session.contentStandards.get(input.standards_id);
   if (!standards) return { errors: [{ code: 'NOT_FOUND', message: `Content standards ${input.standards_id} not found` }] };
 
@@ -567,8 +613,8 @@ function countSources(sources: unknown[]): number {
     if (Array.isArray(s.identifiers)) count += s.identifiers.length;
     else if (Array.isArray(s.property_ids)) count += s.property_ids.length;
     else if (Array.isArray(s.collection_ids)) count += s.collection_ids.length;
-    else if (Array.isArray(s.tags)) count += 10; // estimate
-    else if (Array.isArray(s.genres)) count += 5; // estimate
+    else if (Array.isArray(s.tags)) count += 10;
+    else if (Array.isArray(s.genres)) count += 5;
     else count += 1;
   }
   return count;
