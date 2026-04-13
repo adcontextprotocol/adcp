@@ -33,11 +33,12 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    // PgBouncer handles connection pooling on the server side. This Pool
-    // only limits concurrency — connections are closed immediately after use
-    // (idleTimeoutMillis: 1) so we never hold stale PgBouncer sessions.
+    // PgBouncer handles connection pooling on the server side, but we still
+    // keep connections alive in the local pool to avoid connection churn.
+    // Previously idleTimeoutMillis was 1ms which forced a new PgBouncer
+    // connection for every query — hammering PgBouncer under load.
     max: config.maxPoolSize || 10,
-    idleTimeoutMillis: 1,
+    idleTimeoutMillis: config.idleTimeoutMillis ?? 30000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
     allowExitOnIdle: true,
   });

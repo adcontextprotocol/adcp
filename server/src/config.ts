@@ -11,6 +11,7 @@ export interface DatabaseConfig {
   ssl?: boolean | { rejectUnauthorized: boolean };
   maxPoolSize?: number;
   connectionTimeoutMillis?: number;
+  idleTimeoutMillis?: number;
 }
 
 /**
@@ -42,5 +43,8 @@ export function getDatabaseConfig(): DatabaseConfig | null {
     connectionTimeoutMillis: process.env.DATABASE_CONNECTION_TIMEOUT_MS
       ? parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS, 10)
       : 10000,
+    idleTimeoutMillis: process.env.DATABASE_IDLE_TIMEOUT_MS
+      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS, 10)
+      : 30000,
   };
 }
