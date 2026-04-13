@@ -158,8 +158,18 @@
     }
     .publisher-meta {
       display: flex;
-      gap: var(--space-4);
+      gap: var(--space-2);
       flex-wrap: wrap;
+    }
+    .identifier-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px var(--space-2);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
     }
     .stat-item {
       display: flex;
@@ -168,10 +178,48 @@
       font-size: var(--text-sm);
       color: var(--color-text-muted);
     }
-    .stat-value {
-      font-weight: var(--font-semibold);
-      color: var(--color-text-heading);
+
+    /* Empty state with domain check */
+    .domain-check {
+      margin-top: var(--space-4);
+      display: flex;
+      gap: var(--space-2);
+      justify-content: center;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
     }
+    .domain-check input {
+      flex: 1;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+    }
+    .domain-check button {
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .domain-check button:hover { background: var(--color-brand-hover); }
+    .check-result {
+      margin-top: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      text-align: left;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .check-result.valid { background: var(--color-success-100); color: var(--color-success-700); }
+    .check-result.invalid { background: var(--color-gray-100); color: var(--color-text-muted); }
 
     /* Add publisher CTA */
     .add-publisher-cta {
@@ -220,7 +268,7 @@
 
 <header class="page-header">
   <h1>Properties</h1>
-  <p>Publisher properties and domains in the AdCP ecosystem</p>
+  <p>Search for your property or add it to get discovered by buying agents</p>
   <div style="margin-top: var(--space-4);">
     <a href="/adagents/builder" style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-brand); text-decoration: none;">Build an adagents.json &rarr;</a>
   </div>
@@ -229,9 +277,9 @@
 <div class="container">
   <!-- Stats bar -->
   <div class="stats-bar">
-    <div class="stat"><span id="stat-total">0</span> <div class="stat-label">Total</div></div>
-    <div class="stat"><span id="stat-community">0</span> <div class="stat-label">Community</div></div>
-    <div class="stat"><span id="stat-adagents-json">0</span> <div class="stat-label">adagents.json</div></div>
+    <div class="stat"><span id="stat-total">0</span> <div class="stat-label">Total Properties</div></div>
+    <div class="stat"><span id="stat-community">0</span> <div class="stat-label">Community Submitted</div></div>
+    <div class="stat"><span id="stat-adagents-json">0</span> <div class="stat-label">Publisher Declared</div></div>
   </div>
 
   <!-- Search and filters -->
@@ -244,7 +292,7 @@
         <label>Source:</label>
         <button class="filter-btn active" data-source="all" aria-pressed="true" onclick="setSourceFilter('all')">All</button>
         <button class="filter-btn" data-source="community" aria-pressed="false" onclick="setSourceFilter('community')">Community</button>
-        <button class="filter-btn" data-source="adagents_json" aria-pressed="false" onclick="setSourceFilter('adagents_json')">adagents.json</button>
+        <button class="filter-btn" data-source="adagents_json" aria-pressed="false" onclick="setSourceFilter('adagents_json')">Publisher Declared</button>
       </div>
     </div>
   </div>
@@ -385,10 +433,26 @@
 
     if (properties.length === 0) {
       context.textContent = '';
-      const isSearch = filters.search || filters.source !== 'all';
+      const q = filters.search;
+      const looksLikeDomain = q && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(q.trim());
       grid.innerHTML = `<div class="empty-state">
-        <div class="empty-state__title">${isSearch ? 'No properties found' : 'No properties registered yet.'}</div>
-        ${isSearch ? '<p style="margin-top: var(--space-2);">Try a different search term, or <a href="/adagents/builder">build an adagents.json</a> to get listed.</p>' : ''}
+        <div class="empty-state__title">No properties found</div>
+        <p style="margin-top: var(--space-2); color: var(--color-text-muted);">
+          ${looksLikeDomain
+            ? `<strong>${escapeHtml(q)}</strong> isn't in the registry yet. Check if it has an adagents.json:`
+            : q
+              ? 'Try searching for a domain name, app name, or bundle ID.'
+              : 'No properties registered yet.'}
+        </p>
+        ${looksLikeDomain ? `
+          <div class="domain-check">
+            <input type="text" id="check-domain-input" value="${escapeHtml(q)}" placeholder="example.com">
+            <button onclick="window.checkDomain()">Check domain</button>
+          </div>
+          <div id="check-result"></div>
+        ` : `
+          <p style="margin-top: var(--space-3);"><a href="/adagents/builder" style="color: var(--color-brand); font-weight: var(--font-semibold);">Build an adagents.json</a> to get your property listed.</p>
+        `}
       </div>`;
       return;
     }
@@ -403,7 +467,7 @@
 
     grid.innerHTML = properties.map(pub => {
       const sourceLabel = {
-        'adagents_json': 'adagents.json',
+        'adagents_json': 'Declared',
         'community': 'Community',
         'enriched': 'Community',
       }[pub.source] || pub.source;
@@ -414,8 +478,10 @@
       const href = linkDomain ? `/property/view/${encodeURIComponent(linkDomain)}` : null;
       const showTypeLabel = primary.type !== 'domain';
 
-      // Show up to 3 additional identifiers beyond the primary
-      const otherIds = (pub.identifiers || []).filter(i => i.value !== primary.value).slice(0, 3);
+      // Additional identifiers as pills (skip duplicates of primary, max 3)
+      const otherIds = (pub.identifiers || [])
+        .filter(i => i.value !== primary.value)
+        .slice(0, 3);
 
       const tag = href ? 'a' : 'div';
       const hrefAttr = href ? ` href="${href}"` : '';
@@ -428,14 +494,18 @@
               <div class="publisher-domain">${escapeHtml(primary.value)}</div>
               ${showTypeLabel ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 2px;">${escapeHtml(identifierLabel(primary.type))}</div>` : ''}
             </div>
-            <span class="status-badge ${isAuthoritative ? 'valid' : 'neutral'}">
-              ${escapeHtml(sourceLabel)}
-            </span>
+            <div style="display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0;">
+              ${pub.verified ? '<span class="status-badge valid">Verified</span>' : ''}
+              <span class="status-badge ${isAuthoritative ? 'valid' : 'neutral'}">
+                ${escapeHtml(sourceLabel)}
+              </span>
+            </div>
           </div>
-          <div class="publisher-meta">
-            ${otherIds.map(id => `<div class="stat-item" style="font-size: var(--text-xs);">${escapeHtml(identifierLabel(id.type))}: ${escapeHtml(id.value)}</div>`).join('')}
-            ${pub.verified ? '<div class="stat-item" style="color: var(--color-success-700);">&#x2713; Verified</div>' : ''}
-          </div>
+          ${otherIds.length > 0 ? `
+            <div class="publisher-meta">
+              ${otherIds.map(id => `<span class="identifier-pill">${escapeHtml(identifierLabel(id.type))}: ${escapeHtml(id.value)}</span>`).join('')}
+            </div>
+          ` : ''}
         </${tag}>
       `;
     }).join('');
@@ -469,6 +539,44 @@
     const btn = document.getElementById('load-more');
     if (btn) btn.remove();
     fetchProperties(false);
+  };
+
+  window.checkDomain = async function() {
+    const input = document.getElementById('check-domain-input');
+    const resultDiv = document.getElementById('check-result');
+    const domain = input?.value?.trim();
+    if (!domain) return;
+
+    resultDiv.innerHTML = '<div class="check-result" style="background: var(--color-gray-100); color: var(--color-text-muted);">Checking...</div>';
+
+    try {
+      const response = await fetch(`/api/properties/validate?domain=${encodeURIComponent(domain)}`);
+      const data = await response.json();
+
+      if (data.valid) {
+        const agents = data.raw_data?.authorized_agents?.length || 0;
+        const props = data.raw_data?.properties?.length || 0;
+        resultDiv.innerHTML = `
+          <div class="check-result valid">
+            <strong>Valid adagents.json found!</strong><br>
+            ${props} propert${props !== 1 ? 'ies' : 'y'}, ${agents} authorized agent${agents !== 1 ? 's' : ''}<br>
+            <span style="font-size: var(--text-xs); margin-top: var(--space-1); display: block;">
+              This domain will appear in the registry after the next crawl.
+              <a href="/adagents/builder" style="color: inherit; text-decoration: underline;">Manage your listing</a>
+            </span>
+          </div>`;
+      } else {
+        resultDiv.innerHTML = `
+          <div class="check-result invalid">
+            No adagents.json found at <strong>${escapeHtml(domain)}</strong><br>
+            <span style="font-size: var(--text-xs); margin-top: var(--space-1); display: block;">
+              <a href="/adagents/builder" style="color: var(--color-brand);">Build one</a> to declare your property and get listed.
+            </span>
+          </div>`;
+      }
+    } catch {
+      resultDiv.innerHTML = '<div class="check-result invalid">Failed to check domain. Try again.</div>';
+    }
   };
 
   function escapeHtml(str) {
