@@ -7616,10 +7616,22 @@ Disallow: /api/admin/
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Resolve brand data and credentials in parallel for all profiles
-        await Promise.all(profiles.map(async (profile) => {
+        // Batch-fetch all brand data and credentials in two queries instead of N+1
+        const brandDomains = profiles
+          .map(p => p.primary_brand_domain)
+          .filter((d): d is string => !!d);
+        const orgIds = profiles.map(p => p.workos_organization_id);
+
+        const [brandsMap, credentialsMap] = await Promise.all([
+          this.brandDb.getDiscoveredBrandsByDomains(brandDomains),
+          import('./db/certification-db.js')
+            .then(({ getOrgMemberCredentialsBatch }) => getOrgMemberCredentialsBatch(orgIds))
+            .catch(() => new Map<string, any[]>()),
+        ]);
+
+        for (const profile of profiles) {
           if (profile.primary_brand_domain) {
-            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
                 profile.primary_brand_domain,
@@ -7628,12 +7640,11 @@ Disallow: /api/admin/
               );
             }
           }
-          // Add earned credentials for org members
-          try {
-            const { getOrgMemberCredentials } = await import('./db/certification-db.js');
-            (profile as any).credentials = await getOrgMemberCredentials(profile.workos_organization_id);
-          } catch { /* credentials optional */ }
-        }));
+          const creds = credentialsMap.get(profile.workos_organization_id);
+          if (creds) {
+            (profile as any).credentials = creds;
+          }
+        }
 
         res.json({ members: profiles });
       } catch (error) {
@@ -7649,11 +7660,16 @@ Disallow: /api/admin/
       try {
         const profiles = await memberDb.getCarouselProfiles();
 
-        // Resolve brand data for carousel profiles
+        // Batch-fetch all brand data in a single query to avoid pool exhaustion
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
-        await Promise.all(profiles.map(async (profile) => {
+        const brandDomains = profiles
+          .map(p => p.primary_brand_domain)
+          .filter((d): d is string => !!d);
+        const brandsMap = await this.brandDb.getDiscoveredBrandsByDomains(brandDomains);
+
+        for (const profile of profiles) {
           if (profile.primary_brand_domain) {
-            const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
                 profile.primary_brand_domain,
@@ -7662,7 +7678,7 @@ Disallow: /api/admin/
               );
             }
           }
-        }));
+        }
 
         res.json({ members: profiles });
       } catch (error) {
