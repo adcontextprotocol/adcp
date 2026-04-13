@@ -7,7 +7,7 @@ import { query, getPool } from '../db/client.js';
 import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { workos } from '../auth/workos-client.js';
-import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
+import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 
 const logger = createLogger('account-linking');
 
@@ -19,7 +19,7 @@ const sendVerificationLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('link-email-send:'),
+  store: new CachedPostgresStore('link-email-send:'),
   keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -30,7 +30,7 @@ const verifyViewLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('verify-email-view:'),
+  store: new CachedPostgresStore('verify-email-view:'),
   keyGenerator: (req) => req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -41,7 +41,7 @@ const verifyExecuteLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('verify-email-exec:'),
+  store: new CachedPostgresStore('verify-email-exec:'),
   keyGenerator: (req) => req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });

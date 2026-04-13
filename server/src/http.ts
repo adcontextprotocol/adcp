@@ -18,7 +18,7 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
-import { closeDatabase, getPool } from "./db/client.js";
+import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
@@ -2001,23 +2001,9 @@ export class HTTPServer {
       let dbError: string | null = null;
 
       try {
-        const pool = getPool();
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        const queryPromise = pool.query('SELECT 1');
-        // Prevent unhandled rejection when the timeout wins the race
-        queryPromise.catch(() => {});
-        try {
-          await Promise.race([
-            queryPromise,
-            new Promise((_, reject) => {
-              // Must exceed pool connectionTimeoutMillis (10s) to avoid
-              // false negatives when all connections are busy but the DB is healthy.
-              timer = setTimeout(() => reject(new Error('db health timeout')), 12000);
-            }),
-          ]);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
+        // Use a dedicated connection (not from the pool) so health checks
+        // succeed even when the pool is fully occupied under load.
+        await healthCheck(5000);
         checks.database = true;
       } catch (dbErr) {
         checks.database = false;
