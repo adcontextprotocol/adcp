@@ -934,9 +934,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only see published/completed events
+    // Non-admin users can only see published/completed public events
     const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
     if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+    if (!isAdmin && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1198,9 +1201,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only register interest in published events
+    // Non-admin users can only register interest in published public events
     const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
     if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+    if (!isAdmin && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1264,9 +1270,9 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    const registrations = await eventsDb.getEventRegistrations(event.id);
-    const registered = registrations.filter(r => r.registration_status === 'registered');
-    const waitlisted = registrations.filter(r => r.registration_status === 'waitlisted');
+    const attendees = await eventsDb.getEventAttendeeSummary(event.id);
+    const registered = attendees.filter(r => r.registration_status === 'registered');
+    const waitlisted = attendees.filter(r => r.registration_status === 'waitlisted');
 
     if (registered.length === 0 && waitlisted.length === 0) {
       return `No one has registered for **${event.title}** yet.`;

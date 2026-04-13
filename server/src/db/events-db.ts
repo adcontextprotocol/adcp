@@ -534,6 +534,31 @@ export class EventsDatabase {
   }
 
   /**
+   * Get attendee summary for an event (name, status, attended only).
+   * Use this instead of getEventRegistrations when full registration data is not needed.
+   */
+  async getEventAttendeeSummary(eventId: string): Promise<Array<{
+    name: string | null;
+    email: string | null;
+    registration_status: string;
+    attended: boolean;
+  }>> {
+    const result = await query<{
+      name: string | null;
+      email: string | null;
+      registration_status: string;
+      attended: boolean;
+    }>(
+      `SELECT name, email, registration_status, attended
+       FROM event_registrations
+       WHERE event_id = $1
+       ORDER BY registered_at ASC`,
+      [eventId]
+    );
+    return result.rows;
+  }
+
+  /**
    * Get registrations by user (matches by workos_user_id OR by user's email)
    * This allows registrations created via Luma import (which only have email)
    * to be associated with a user who later signs up with that email.
