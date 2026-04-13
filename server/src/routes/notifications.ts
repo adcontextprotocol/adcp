@@ -32,8 +32,15 @@ export function createNotificationRouter() {
       const count = await notificationDb.getUnreadCount(user.id);
       res.json({ count });
     } catch (error) {
-      logger.error({ err: error }, 'Get notification count error');
-      res.status(500).json({ error: 'Failed to get count' });
+      const isTimeout = error instanceof Error && error.message.includes('timeout');
+      if (isTimeout) {
+        logger.warn({ err: error }, 'Notification count timed out — returning stale/zero');
+        // Return 0 instead of 500; the next poll in 30s will retry
+        res.json({ count: 0 });
+      } else {
+        logger.error({ err: error }, 'Get notification count error');
+        res.status(500).json({ error: 'Failed to get count' });
+      }
     }
   });
 
