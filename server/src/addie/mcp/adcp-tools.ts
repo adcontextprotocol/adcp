@@ -1666,6 +1666,206 @@ export const ADCP_GOVERNANCE_PROPERTY_TOOLS: AddieTool[] = [
 ];
 
 // ============================================
+// GOVERNANCE TOOLS - Collection Lists
+// ============================================
+
+export const ADCP_GOVERNANCE_COLLECTION_TOOLS: AddieTool[] = [
+  {
+    name: 'create_collection_list',
+    description:
+      'Create a collection list for program-level brand safety. Identifies shows, series, and other content programs to include or exclude, using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching. Combines explicit program references with content rating and genre filters.',
+    usage_hints:
+      'use when the user wants to create a do-not-air list, exclude specific programs from CTV campaigns, or set up collection-level brand safety rules',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The governance agent URL (must be HTTPS)',
+        },
+        name: {
+          type: 'string',
+          description: 'Human-readable name for the list',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of the list purpose',
+        },
+        base_collections: {
+          type: 'array',
+          description: 'Collection sources to evaluate (distribution_ids, publisher_collections, or publisher_genres)',
+          items: {
+            type: 'object',
+            properties: {
+              selection_type: { type: 'string', enum: ['distribution_ids', 'publisher_collections', 'publisher_genres'] },
+              publisher_domain: { type: 'string', description: 'For publisher_collections/publisher_genres' },
+              identifiers: {
+                type: 'array',
+                description: 'For distribution_ids — platform-independent identifiers',
+                items: {
+                  type: 'object',
+                  properties: {
+                    type: { type: 'string', description: 'Distribution identifier type (imdb_id, gracenote_id, eidr_id, etc.)' },
+                    value: { type: 'string' },
+                  },
+                },
+              },
+              collection_ids: { type: 'array', items: { type: 'string' }, description: 'For publisher_collections' },
+              genres: { type: 'array', items: { type: 'string' }, description: 'For publisher_genres' },
+              genre_taxonomy: { type: 'string', description: 'For publisher_genres — required' },
+            },
+            required: ['selection_type'],
+          },
+        },
+        filters: {
+          type: 'object',
+          description: 'Filters applied when resolving the list',
+          properties: {
+            content_ratings_exclude: {
+              type: 'array',
+              description: 'Exclude collections with any of these ratings',
+              items: { type: 'object', properties: { system: { type: 'string' }, rating: { type: 'string' } }, required: ['system', 'rating'] },
+            },
+            content_ratings_include: {
+              type: 'array',
+              description: 'Include only collections with these ratings',
+              items: { type: 'object', properties: { system: { type: 'string' }, rating: { type: 'string' } }, required: ['system', 'rating'] },
+            },
+            genres_exclude: { type: 'array', items: { type: 'string' }, description: 'Exclude collections with any of these genres' },
+            genres_include: { type: 'array', items: { type: 'string' }, description: 'Include only collections with these genres' },
+            genre_taxonomy: { type: 'string', description: 'Taxonomy for genre filter values' },
+            kinds: { type: 'array', items: { type: 'string', enum: ['series', 'publication', 'event_series', 'rotation'] } },
+            exclude_distribution_ids: {
+              type: 'array',
+              items: { type: 'object', properties: { type: { type: 'string' }, value: { type: 'string' } } },
+            },
+            production_quality: { type: 'array', items: { type: 'string', enum: ['professional', 'prosumer', 'ugc'] } },
+          },
+        },
+        brand: {
+          type: 'object',
+          description: 'Brand reference — agent applies appropriate rules',
+          properties: {
+            domain: { type: 'string', description: "Brand domain" },
+            brand_id: { type: 'string' },
+          },
+          required: ['domain'],
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging',
+        },
+      },
+      required: ['agent_url', 'name'],
+    },
+  },
+  {
+    name: 'update_collection_list',
+    description:
+      'Modify an existing collection list. Can update filters, base collections, or webhook configuration.',
+    usage_hints:
+      'use when the user wants to modify a collection list, change filters, or update program exclusions',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The governance agent URL (must be HTTPS)',
+        },
+        list_id: {
+          type: 'string',
+          description: 'Collection list identifier to update',
+        },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        base_collections: { type: 'array', description: 'Replace base collection sources' },
+        filters: { type: 'object', description: 'Replace filter configuration' },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'list_id'],
+    },
+  },
+  {
+    name: 'get_collection_list',
+    description:
+      'Retrieve a collection list with optional resolution of filters. Returns metadata or resolved collection entries with distribution identifiers.',
+    usage_hints:
+      'use when the user wants to view a collection list, see what programs are included/excluded, or get the resolved list for campaign targeting',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The governance agent URL (must be HTTPS)',
+        },
+        list_id: {
+          type: 'string',
+          description: 'Collection list identifier',
+        },
+        resolve: {
+          type: 'boolean',
+          description: 'Whether to resolve filters and return collection entries (default: false)',
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum collections to return when resolved',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'list_id'],
+    },
+  },
+  {
+    name: 'list_collection_lists',
+    description:
+      'List all collection lists accessible to the authenticated principal.',
+    usage_hints:
+      'use when the user wants to see all their collection lists, browse available lists, or search for specific lists',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The governance agent URL (must be HTTPS)',
+        },
+        name_contains: {
+          type: 'string',
+          description: 'Filter by name substring',
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum results to return',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
+    name: 'delete_collection_list',
+    description:
+      'Delete a collection list.',
+    usage_hints:
+      'use when the user wants to remove a collection list they no longer need',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The governance agent URL (must be HTTPS)',
+        },
+        list_id: {
+          type: 'string',
+          description: 'Collection list identifier to delete',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'list_id'],
+    },
+  },
+];
+
+// ============================================
 // GOVERNANCE TOOLS - Content Standards
 // ============================================
 
@@ -2217,6 +2417,7 @@ export const ADCP_TOOLS: AddieTool[] = [
   ...ADCP_CREATIVE_TOOLS,
   ...ADCP_SIGNALS_TOOLS,
   ...ADCP_GOVERNANCE_PROPERTY_TOOLS,
+  ...ADCP_GOVERNANCE_COLLECTION_TOOLS,
   ...ADCP_GOVERNANCE_CONTENT_TOOLS,
   ...ADCP_SI_TOOLS,
   ...ADCP_BRAND_PROTOCOL_TOOLS,

@@ -158,7 +158,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   adcp_operations: {
     name: 'adcp_operations',
-    description: 'Execute AdCP protocol operations - discover products, create/update media buys, manage creatives, work with signals, governance (property lists, content standards), sponsored intelligence (SI), and interact with sales/creative/signals/governance/si agents',
+    description: 'Execute AdCP protocol operations - discover products, create/update media buys, manage creatives, work with signals, governance (property lists, collection lists, content standards), sponsored intelligence (SI), and interact with sales/creative/signals/governance/si agents',
     tools: [
       // Media Buy tools
       'get_products',
@@ -182,6 +182,12 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_property_list',
       'list_property_lists',
       'delete_property_list',
+      // Governance - Collection Lists
+      'create_collection_list',
+      'update_collection_list',
+      'get_collection_list',
+      'list_collection_lists',
+      'delete_collection_list',
       // Governance - Content Standards
       'create_content_standards',
       'get_content_standards',
