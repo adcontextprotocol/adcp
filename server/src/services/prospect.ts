@@ -410,9 +410,11 @@ export async function updateProspect(
 
   // Trigger enrichment if domain changed
   if (input.triggerEnrichment && input.fields.email_domain && isLushaConfigured()) {
-    enrichOrganization(orgId, input.fields.email_domain as string).catch(err => {
-      logger.warn({ err, orgId }, 'Background enrichment failed after update');
-    });
+    trackBackground(
+      enrichOrganization(orgId, input.fields.email_domain as string).catch(err => {
+        logger.warn({ err, orgId }, 'Background enrichment failed after update');
+      })
+    );
   }
 
   return {

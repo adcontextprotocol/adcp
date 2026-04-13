@@ -738,6 +738,32 @@ export async function getOrgMemberCredentials(workosOrgId: string): Promise<Publ
   return result.rows;
 }
 
+/**
+ * Batch-fetch earned credentials for multiple organizations in a single query.
+ * Returns a Map keyed by workos_organization_id.
+ */
+export async function getOrgMemberCredentialsBatch(orgIds: string[]): Promise<Map<string, PublicUserCredential[]>> {
+  const map = new Map<string, PublicUserCredential[]>();
+  if (orgIds.length === 0) return map;
+  const placeholders = orgIds.map((_, i) => `$${i + 1}`).join(', ');
+  const result = await query<PublicUserCredential & { workos_organization_id: string }>(
+    `SELECT DISTINCT ON (om.workos_organization_id, cc.tier)
+       om.workos_organization_id, uc.credential_id, cc.name AS credential_name, cc.tier, uc.awarded_at
+     FROM user_credentials uc
+     JOIN certification_credentials cc ON cc.id = uc.credential_id
+     JOIN organization_memberships om ON om.workos_user_id = uc.workos_user_id
+     WHERE om.workos_organization_id IN (${placeholders})
+     ORDER BY om.workos_organization_id, cc.tier DESC, uc.awarded_at DESC`,
+    orgIds
+  );
+  for (const row of result.rows) {
+    const existing = map.get(row.workos_organization_id) || [];
+    existing.push({ credential_id: row.credential_id, credential_name: row.credential_name, tier: row.tier, awarded_at: row.awarded_at });
+    map.set(row.workos_organization_id, existing);
+  }
+  return map;
+}
+
 // =====================================================
 // ORGANIZATION CERTIFICATION SUMMARY
 // =====================================================

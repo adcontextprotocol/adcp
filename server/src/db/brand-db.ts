@@ -368,6 +368,25 @@ export class BrandDatabase {
   }
 
   /**
+   * Batch-fetch discovered brands for multiple domains in a single query.
+   * Returns a Map keyed by lowercase domain.
+   */
+  async getDiscoveredBrandsByDomains(domains: string[]): Promise<Map<string, DiscoveredBrand>> {
+    if (domains.length === 0) return new Map();
+    const lower = domains.map(d => d.toLowerCase());
+    const placeholders = lower.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await query<DiscoveredBrand>(
+      `SELECT * FROM brands WHERE domain IN (${placeholders})`,
+      lower
+    );
+    const map = new Map<string, DiscoveredBrand>();
+    for (const row of result.rows) {
+      map.set(row.domain, this.deserializeDiscoveredBrand(row));
+    }
+    return map;
+  }
+
+  /**
    * Get discovered brand by domain + optional brand_id (brand reference lookup).
    * If brand_id is provided, looks for a brand with that brand_id under the domain.
    * If no brand_id, falls back to getDiscoveredBrandByDomain.
