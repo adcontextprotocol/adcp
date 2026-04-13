@@ -79,7 +79,6 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
 
       const check = await getBrandForEdit(domain, req.user!.id);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
-      const { brand } = check;
 
       // Fetch and parse the feed
       const { result: feedResult, feedType } = await fetchFeed(url);
