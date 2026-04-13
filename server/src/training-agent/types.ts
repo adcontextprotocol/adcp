@@ -153,6 +153,9 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
+  propertyLists?: Map<string, Record<string, unknown>>;
+  collectionLists?: Map<string, Record<string, unknown>>;
+  contentStandards?: Map<string, Record<string, unknown>>;
   lastGetProductsContext?: {
     products: Product[];
     proposals?: Proposal[];
