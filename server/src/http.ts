@@ -8340,6 +8340,12 @@ Disallow: /api/admin/
       }).catch(() => {});
     }
 
+    // Drain tracked background work before closing connections
+    const { drainBackgroundWork } = await import('./services/brand-enrichment.js');
+    logger.info('Draining background work');
+    await drainBackgroundWork();
+    logger.info('Background work drained');
+
     // Close HTTP server
     if (this.server) {
       await new Promise<void>((resolve, reject) => {

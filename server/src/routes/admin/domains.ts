@@ -10,6 +10,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
+import { trackBackground } from "../../services/brand-enrichment.js";
 import {
   addPersonalDomain,
   removePersonalDomain,
@@ -280,9 +281,11 @@ export function setupDomainRoutes(
         );
 
         // Auto-enrich the new organization in the background
-        enrichOrganization(workosOrg.id, domain).catch((err) => {
-          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
-        });
+        trackBackground(
+          enrichOrganization(workosOrg.id, domain).catch((err) => {
+            logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+          })
+        );
 
         // Link the unmapped Slack users to this new prospect
         const linkResult = await slackDb.linkSlackUsersByDomain(domain, workosOrg.id);
@@ -458,9 +461,11 @@ export function setupDomainRoutes(
             );
 
             // Auto-enrich in background
-            enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
-              logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
-            });
+            trackBackground(
+              enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
+                logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
+              })
+            );
 
             // Link unmapped Slack users to this new prospect (same as single-create)
             if (source === 'slack') {
@@ -746,9 +751,11 @@ export function setupDomainRoutes(
         );
 
         // Auto-enrich the new organization in the background
-        enrichOrganization(workosOrg.id, domain).catch((err) => {
-          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
-        });
+        trackBackground(
+          enrichOrganization(workosOrg.id, domain).catch((err) => {
+            logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+          })
+        );
 
         res.status(201).json({
           ...result.rows[0],
