@@ -181,6 +181,15 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
   // Normalize domain
   const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
 
+  // Validate domain to prevent SSRF — only allow valid domain characters
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(normalizedDomain)) {
+    return {
+      success: false,
+      domain: normalizedDomain,
+      error: 'Invalid domain format',
+    };
+  }
+
   // Check cache
   const cached = cache.get(normalizedDomain);
   if (cached && cached.expiresAt > Date.now()) {
