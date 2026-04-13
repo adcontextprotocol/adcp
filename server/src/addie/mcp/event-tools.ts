@@ -417,6 +417,20 @@ the response will suggest they share their location or join industry gathering g
       required: ['event_slug'],
     },
   },
+  {
+    name: 'list_event_attendees',
+    description: `List who is registered for an event. Use when someone asks "who's coming to [event]?", "who's registered?", "attendee list", or "who will be there?". Shows names of registered attendees for published events.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug (URL identifier) or event ID',
+        },
+      },
+      required: ['event_slug'],
+    },
+  },
 ];
 
 /**
@@ -920,9 +934,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only see published/completed events
+    // Non-admin users can only see published/completed public events
     const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
     if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+    if (!isAdmin && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1184,9 +1201,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only register interest in published events
+    // Non-admin users can only register interest in published public events
     const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
     if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+    if (!isAdmin && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1227,6 +1247,69 @@ export function createEventToolHandlers(
     logger.info({ eventId: event.id, email, contactId: contact.contactId }, 'Event interest registered via Addie');
 
     return `✅ You're on the interest list for **${event.title}**. We'll keep you posted on updates.`;
+  });
+
+  // List event attendees (available to all members)
+  handlers.set('list_event_attendees', async (input) => {
+    const eventSlug = input.event_slug as string;
+
+    let event = await eventsDb.getEventBySlug(eventSlug);
+    if (!event) {
+      event = await eventsDb.getEventById(eventSlug);
+    }
+    if (!event) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
+    // Non-admin users can only see attendees for published/completed public events
+    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
+    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+    if (!isAdmin && event.visibility === 'invite_unlisted') {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
+    const attendees = await eventsDb.getEventAttendeeSummary(event.id);
+    const registered = attendees.filter(r => r.registration_status === 'registered');
+    const waitlisted = attendees.filter(r => r.registration_status === 'waitlisted');
+
+    if (registered.length === 0 && waitlisted.length === 0) {
+      return `No one has registered for **${event.title}** yet.`;
+    }
+
+    const MAX_DISPLAY = 30;
+    let response = `## Who's coming to ${event.title}\n\n`;
+
+    if (registered.length > 0) {
+      response += `**Registered (${registered.length})**\n`;
+      for (const reg of registered.slice(0, MAX_DISPLAY)) {
+        const name = isAdmin
+          ? (reg.name || reg.email?.split('@')[0] || 'Unknown')
+          : (reg.name || 'Attendee');
+        const checkMark = isAdmin && reg.attended ? ' ✅' : '';
+        response += `• ${name}${checkMark}\n`;
+      }
+      if (registered.length > MAX_DISPLAY) {
+        response += `_...and ${registered.length - MAX_DISPLAY} more_\n`;
+      }
+      response += '\n';
+    }
+
+    if (waitlisted.length > 0) {
+      response += `**Waitlisted (${waitlisted.length})**\n`;
+      for (const reg of waitlisted.slice(0, MAX_DISPLAY)) {
+        const name = isAdmin
+          ? (reg.name || reg.email?.split('@')[0] || 'Unknown')
+          : (reg.name || 'Attendee');
+        response += `• ${name}\n`;
+      }
+      if (waitlisted.length > MAX_DISPLAY) {
+        response += `_...and ${waitlisted.length - MAX_DISPLAY} more_\n`;
+      }
+    }
+
+    return response;
   });
 
   // Check person's event status
