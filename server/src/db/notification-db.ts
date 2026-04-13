@@ -3,6 +3,13 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('notification-db');
 
+/**
+ * Short-lived in-memory cache for unread counts.
+ * Reduces DB pressure from the 30-second polling interval across many tabs/users.
+ */
+const countCache = new Map<string, { count: number; expiresAt: number }>();
+const COUNT_CACHE_TTL_MS = 10_000; // 10 seconds
+
 export interface Notification {
   id: string;
   recipient_user_id: string;
@@ -44,15 +51,28 @@ export class NotificationDatabase {
         data.url || null,
       ]
     );
+    this.invalidateCountCache(data.recipientUserId);
     return result.rows[0];
   }
 
   async getUnreadCount(userId: string): Promise<number> {
+    const cached = countCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.count;
+    }
+
     const result = await query<{ count: string }>(
       `SELECT COUNT(*) as count FROM notifications WHERE recipient_user_id = $1 AND is_read = false`,
       [userId]
     );
-    return parseInt(result.rows[0].count, 10);
+    const count = parseInt(result.rows[0].count, 10);
+    countCache.set(userId, { count, expiresAt: Date.now() + COUNT_CACHE_TTL_MS });
+    return count;
+  }
+
+  /** Invalidate cached unread count for a user (call after read/create operations). */
+  invalidateCountCache(userId: string): void {
+    countCache.delete(userId);
   }
 
   async listNotifications(
@@ -71,17 +91,14 @@ export class NotificationDatabase {
 
     const whereClause = conditions.join(' AND ');
 
-    const countResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM notifications n WHERE ${whereClause}`,
-      params.slice(0, paramIndex - 1)
-    );
-
+    // Single query with window function — avoids a second DB round-trip for the count
     params.push(limit, offset);
-    const result = await query<Notification>(
+    const result = await query<Notification & { _total: string }>(
       `SELECT n.*,
               u.first_name as actor_first_name,
               u.last_name as actor_last_name,
-              u.avatar_url as actor_avatar_url
+              u.avatar_url as actor_avatar_url,
+              COUNT(*) OVER() AS _total
        FROM notifications n
        LEFT JOIN users u ON n.actor_user_id = u.workos_user_id
        WHERE ${whereClause}
@@ -90,10 +107,12 @@ export class NotificationDatabase {
       params
     );
 
-    return {
-      notifications: result.rows,
-      total: parseInt(countResult.rows[0].count, 10),
-    };
+    const total = result.rows.length > 0 ? parseInt(result.rows[0]._total, 10) : 0;
+
+    // Strip the _total column from returned rows
+    const notifications = result.rows.map(({ _total, ...rest }) => rest as unknown as Notification);
+
+    return { notifications, total };
   }
 
   async markAsRead(notificationId: string, userId: string): Promise<boolean> {
@@ -101,7 +120,9 @@ export class NotificationDatabase {
       `UPDATE notifications SET is_read = true WHERE id = $1 AND recipient_user_id = $2 AND is_read = false`,
       [notificationId, userId]
     );
-    return (result.rowCount ?? 0) > 0;
+    const updated = (result.rowCount ?? 0) > 0;
+    if (updated) this.invalidateCountCache(userId);
+    return updated;
   }
 
   async markAllAsRead(userId: string): Promise<number> {
@@ -109,7 +130,9 @@ export class NotificationDatabase {
       `UPDATE notifications SET is_read = true WHERE recipient_user_id = $1 AND is_read = false`,
       [userId]
     );
-    return result.rowCount ?? 0;
+    const count = result.rowCount ?? 0;
+    if (count > 0) this.invalidateCountCache(userId);
+    return count;
   }
 
   async exists(userId: string, type: string, referenceId: string): Promise<boolean> {
