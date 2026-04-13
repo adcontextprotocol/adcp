@@ -74,7 +74,7 @@ import {
   createPropertyToolHandlers,
 } from "../addie/mcp/property-tools.js";
 import { AddieModelConfig } from "../config/models.js";
-import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
+import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
 import { optionalAuth } from "../middleware/auth.js";
@@ -304,7 +304,7 @@ async function buildVoiceRequestTools(
 const llmRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 200,
-  store: new PostgresStore("tavus-llm:"),
+  store: new CachedPostgresStore("tavus-llm:"),
   keyGenerator: (req) => ipKeyGenerator(req.ip || ""),
   message: { error: { message: "Too many requests" } },
   standardHeaders: true,
@@ -316,7 +316,7 @@ const llmRateLimiter = rateLimit({
 const sessionRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-  store: new PostgresStore("tavus-session:"),
+  store: new CachedPostgresStore("tavus-session:"),
   keyGenerator: (req) => (req as Request & { user?: { id: string } }).user?.id || ipKeyGenerator(req.ip || ""),
   message: { error: "Too many requests" },
   standardHeaders: true,

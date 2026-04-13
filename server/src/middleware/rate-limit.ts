@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { PostgresStore, CachedPostgresStore } from './pg-rate-limit-store.js';
+import { CachedPostgresStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -37,7 +37,7 @@ export const invitationRateLimiter = rateLimit({
   max: 10, // 10 requests per window
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('invite:'),
+  store: new CachedPostgresStore('invite:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -67,7 +67,7 @@ export const orgCreationRateLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('org:'),
+  store: new CachedPostgresStore('org:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -94,7 +94,7 @@ export const brandCreationRateLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('brand:'),
+  store: new CachedPostgresStore('brand:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -154,7 +154,7 @@ export const storyboardEvalRateLimiter = rateLimit({
   skipFailedRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('storyboard:'),
+  store: new CachedPostgresStore('storyboard:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -182,7 +182,7 @@ export const storyboardStepRateLimiter = rateLimit({
   skipFailedRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('storyboard-step:'),
+  store: new CachedPostgresStore('storyboard-step:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -209,7 +209,7 @@ export const bulkResolveRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('resolve:'),
+  store: new CachedPostgresStore('resolve:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -231,7 +231,7 @@ export const emailPrefsRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('emailprefs:'),
+  store: new CachedPostgresStore('emailprefs:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -258,7 +258,7 @@ export const adminContentWriteRateLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('admin-content:'),
+  store: new CachedPostgresStore('admin-content:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -285,7 +285,7 @@ export const logoUploadRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('logo:'),
+  store: new CachedPostgresStore('logo:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
