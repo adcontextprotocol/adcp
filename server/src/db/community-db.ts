@@ -428,9 +428,9 @@ export class CommunityDatabase {
                pr.edit_summary as summary, pr.created_at, pr.revision_number
         FROM property_revisions pr WHERE pr.editor_user_id = $1
         UNION ALL
-        SELECT 'brand_create' as contribution_type, hb.brand_domain as domain,
+        SELECT 'brand_create' as contribution_type, hb.domain as domain,
                'Created brand listing' as summary, hb.created_at, NULL as revision_number
-        FROM hosted_brands hb WHERE hb.created_by_user_id = $1
+        FROM brands hb WHERE hb.created_by_user_id = $1
         UNION ALL
         SELECT 'property_create' as contribution_type, hp.publisher_domain as domain,
                'Created property listing' as summary, hp.created_at, NULL as revision_number

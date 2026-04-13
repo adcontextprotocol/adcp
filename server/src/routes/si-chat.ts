@@ -44,9 +44,9 @@ async function getBrandProfile(memberProfileId: string): Promise<{
 } | null> {
   const result = await query(
     `SELECT mp.id, mp.display_name, mp.slug, mp.tagline, mp.description,
-            hb.brand_json
+            hb.brand_manifest AS brand_json
      FROM member_profiles mp
-     LEFT JOIN hosted_brands hb ON hb.brand_domain = mp.primary_brand_domain
+     LEFT JOIN brands hb ON hb.domain = mp.primary_brand_domain
      WHERE mp.id = $1`,
     [memberProfileId]
   );

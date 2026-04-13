@@ -620,7 +620,7 @@ export function registerAllJobs(): void {
          WHERE o.is_personal = false
            AND o.email_domain IS NOT NULL
            AND NOT EXISTS (
-             SELECT 1 FROM discovered_brands db
+             SELECT 1 FROM brands db
              WHERE db.domain = o.email_domain
            )
            AND NOT EXISTS (

@@ -145,11 +145,11 @@ export interface BrandfetchEnrichmentResult {
 }
 
 // Simple in-memory cache with short TTL (rate-limit protection only)
-// Enriched data should be saved to discovered_brands table for persistence
+// Enriched data should be saved to brands table for persistence
 const cache = new Map<string, { data: BrandfetchEnrichmentResult; expiresAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (rate-limit protection)
 
-// DB-level cache: callers should check discovered_brands.last_validated before hitting the API
+// DB-level cache: callers should check brands.last_validated before hitting the API
 export const ENRICHMENT_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Minimum Brandfetch qualityScore (0-1) to consider a result genuine vs. a placeholder

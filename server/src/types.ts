@@ -480,7 +480,7 @@ export interface DiscoveredBrand {
   discovered_at: Date;
   last_validated?: Date;
   expires_at?: Date;
-  // Merged from hosted_brands
+  // Ownership fields (set when an org claims the brand)
   workos_organization_id?: string;
   created_by_user_id?: string;
   created_by_email?: string;

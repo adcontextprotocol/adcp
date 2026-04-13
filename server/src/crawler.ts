@@ -185,8 +185,8 @@ export class CrawlerService {
 
   /**
    * Scan brand.json for each domain. Verifies pointer files pointing back to AAO
-   * (setting domain_verified on hosted_brands) and upserts live authoritative
-   * brand.json files into discovered_brands.
+   * (setting domain_verified on brands) and upserts live authoritative
+   * brand.json files into brands.
    */
   /**
    * Scan a single domain for brand.json and upsert discovered/verified brand data.

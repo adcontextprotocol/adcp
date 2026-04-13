@@ -921,7 +921,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
         // Read inside transaction with row lock to prevent concurrent insert race
         const existingResult = await client.query(
-          'SELECT * FROM hosted_brands WHERE brand_domain = $1 FOR UPDATE',
+          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
           [brandDomain]
         );
         const existing = existingResult.rows[0] || null;
@@ -955,7 +955,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             }];
           }
           await client.query(
-            'UPDATE hosted_brands SET brand_json = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
+            'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
             [JSON.stringify(bj), existing.id, targetOrgId]
           );
         } else {
@@ -969,8 +969,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             }],
           };
           await client.query(
-            `INSERT INTO hosted_brands (workos_organization_id, brand_domain, brand_json, is_public)
-             VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
+             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
+             ON CONFLICT (domain) DO UPDATE SET
+               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
+               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
+               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
+               has_brand_manifest = true,
+               updated_at = NOW()`,
             [targetOrgId, brandDomain, JSON.stringify(brandJson), true]
           );
         }

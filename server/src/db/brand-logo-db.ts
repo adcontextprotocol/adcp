@@ -203,7 +203,7 @@ export class BrandLogoDatabase {
               bl.reviewed_at, bl.deleted_at, bl.created_at, bl.updated_at,
               db.brand_name
        FROM brand_logos bl
-       LEFT JOIN discovered_brands db ON bl.domain = db.domain
+       LEFT JOIN brands db ON bl.domain = db.domain
        WHERE bl.review_status = 'pending'
        ORDER BY bl.created_at ASC
        LIMIT $1 OFFSET $2`,
