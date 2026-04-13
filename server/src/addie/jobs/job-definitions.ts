@@ -187,6 +187,20 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.feedsProcessed > 0,
   });
 
+  // Collection feed sync - syncs RSS/YouTube/Spotify feeds into brand collections
+  jobScheduler.register({
+    name: 'collection-feed-sync',
+    description: 'Collection feed sync',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    runner: async () => {
+      const { syncAllFeeds } = await import('../../services/collection-feed-sync.js');
+      const { BrandDatabase } = await import('../../db/brand-db.js');
+      return syncAllFeeds(new BrandDatabase());
+    },
+    shouldLogResult: (r: { synced: number }) => r.synced > 0,
+  });
+
   // Alert processor - sends industry alerts
   jobScheduler.register({
     name: 'alert-processor',

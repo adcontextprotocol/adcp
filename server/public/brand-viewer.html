@@ -1226,11 +1226,22 @@
             </div>
           </div>
 
-          <!-- Properties -->
+          <!-- Properties & Collections -->
           <details id="edit-section-properties" class="edit-section-group">
             <summary>Properties</summary>
             <div id="edit-properties-container"></div>
             <button type="button" onclick="addPropertyField();editFormDirty=true;updateSectionCounts();" class="btn btn-sm btn-ghost" style="width: fit-content;">+ Add Property</button>
+
+            <div style="margin-top:var(--space-4);border-top:var(--border-1) solid var(--color-border-light);padding-top:var(--space-3);">
+              <div style="font-weight:var(--font-semibold);font-size:var(--text-sm);margin-bottom:var(--space-2);">Import from feed</div>
+              <p class="edit-section-hint" style="margin-bottom:var(--space-2);">Paste a podcast RSS feed, YouTube channel, or Spotify show URL to import episodes as a collection.</p>
+              <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-2);">
+                <input type="url" id="feed-url-input" class="edit-form-input" placeholder="Paste RSS, YouTube, or Spotify URL" style="flex:1;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="importFeed()" id="import-feed-btn">Import</button>
+              </div>
+              <div id="feed-import-status" style="font-size:var(--text-sm);margin-bottom:var(--space-2);"></div>
+              <div id="feeds-list"></div>
+            </div>
           </details>
 
           <!-- Agents managed via member dashboard -->
@@ -1283,6 +1294,8 @@
               <div id="edit-collections-container" class="hidden"></div>
             </div>
           </details>
+
+          <!-- Feed import is now inside properties section -->
 
           <!-- Hidden edit summary - auto-generated on save -->
           <input type="hidden" id="edit-summary">
@@ -1365,6 +1378,15 @@
           <div class="card" style="padding:0;overflow:hidden;">
             <table class="properties-table" id="properties-table"></table>
           </div>
+        </div>
+
+        <!-- Collections -->
+        <div id="collections-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#127911;</span>
+            Collections
+          </div>
+          <div id="collections-content"></div>
         </div>
 
         <!-- Contact -->
@@ -1633,6 +1655,7 @@
 
         // Update section counts and scroll into view
         updateSectionCounts();
+        loadFeeds();
         editFormDirty = false;
         if (!form._dirtyListenersAttached) {
           const markDirty = () => { editFormDirty = true; };
@@ -1911,6 +1934,118 @@
         // Capitalize first change
         changes[0] = changes[0].charAt(0).toUpperCase() + changes[0].slice(1);
         return changes.join(', ');
+      }
+
+      async function importFeed() {
+        const input = document.getElementById('feed-url-input');
+        const status = document.getElementById('feed-import-status');
+        const btn = document.getElementById('import-feed-btn');
+        const url = input.value.trim();
+        if (!url) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Importing...';
+        status.textContent = 'Fetching feed...';
+        status.style.color = 'var(--color-text-muted)';
+
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ url }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            status.textContent = data.error || 'Failed to import';
+            status.style.color = 'var(--color-error-500)';
+            return;
+          }
+
+          input.value = '';
+          status.innerHTML = `Imported <strong>${escapeHtml(data.name)}</strong> — ${data.installment_count} episodes` +
+            (data.genre?.length ? ` · Genre: ${data.genre.join(', ')}` : '') +
+            (data.content_rating ? ` · Rating: ${data.content_rating.rating}` : '') +
+            (data.talent?.length ? ` · Host: ${data.talent.map(t => t.name).join(', ')}` : '');
+          status.style.color = 'var(--color-success-600)';
+
+          if (data.product_suggestion) {
+            status.innerHTML += `<br><span style="font-size:var(--text-xs);color:var(--color-text-muted);">Product suggestion: ${escapeHtml(data.product_suggestion.name)} (${data.product_suggestion.placement}, ${data.product_suggestion.pricing_model})</span>`;
+          }
+
+          // Feed import writes directly to DB — don't mark form dirty
+          // (saving the form with stale data would overwrite the import)
+          loadFeeds();
+        } catch (err) {
+          status.textContent = 'Failed: ' + err.message;
+          status.style.color = 'var(--color-error-500)';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Import';
+        }
+      }
+
+      async function loadFeeds() {
+        const container = document.getElementById('feeds-list');
+        if (!container || !currentDomain) return;
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds`, { credentials: 'include' });
+          if (!resp.ok) return;
+          const { feeds } = await resp.json();
+          if (!feeds?.length) { container.innerHTML = ''; return; }
+
+          container.innerHTML = feeds.map(f => `
+            <div class="edit-list-row" style="align-items:center;">
+              <div style="flex:1;min-width:200px;">
+                <strong>${escapeHtml(f.name)}</strong>
+                <div style="font-size:var(--text-xs);color:var(--color-text-muted);">
+                  ${escapeHtml(f.feed_type)} · ${f.installment_count} episodes
+                  ${f.last_sync_status === 'error' ? `<span style="color:var(--color-error-500);">· Sync error: ${escapeHtml(f.last_sync_error || 'unknown')}</span>` : ''}
+                  ${f.last_synced_at ? `· Synced ${new Date(f.last_synced_at).toLocaleDateString()}` : ''}
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="syncFeed('${escapeAttr(f.collection_id)}')">Re-sync</button>
+              <button type="button" class="edit-list-remove" onclick="removeFeed('${escapeAttr(f.collection_id)}')" title="Remove" aria-label="Remove feed">&times;</button>
+            </div>
+          `).join('');
+
+          // Update section count
+          const badge = document.querySelector('#edit-section-feeds .edit-section-count');
+          if (badge) badge.textContent = `(${feeds.length})`;
+          else {
+            const summary = document.querySelector('#edit-section-feeds summary');
+            if (summary) {
+              const b = document.createElement('span');
+              b.className = 'edit-section-count';
+              b.textContent = `(${feeds.length})`;
+              summary.appendChild(b);
+            }
+          }
+        } catch { /* feeds optional */ }
+      }
+
+      async function syncFeed(collectionId) {
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds/${encodeURIComponent(collectionId)}/sync`, {
+            method: 'POST', credentials: 'include'
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            document.getElementById('feed-import-status').textContent = `Synced — ${data.installment_count} episodes`;
+            document.getElementById('feed-import-status').style.color = 'var(--color-success-600)';
+            loadFeeds();
+          }
+        } catch { /* ignore */ }
+      }
+
+      async function removeFeed(collectionId) {
+        if (!confirm('Remove this feed?')) return;
+        try {
+          await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/feeds/${encodeURIComponent(collectionId)}`, {
+            method: 'DELETE', credentials: 'include'
+          });
+          loadFeeds();
+        } catch { /* ignore */ }
       }
 
       async function saveEdit() {
@@ -2330,6 +2465,7 @@
         renderTypography(brand.fonts);
         renderBrandInfo(brand);
         renderProperties(brand.properties);
+        renderCollections(brand.collections);
       }
 
       function renderHierarchy(house, brands) {
@@ -2711,6 +2847,70 @@
           </tbody>`;
       }
 
+      function renderCollections(collections) {
+        const section = document.getElementById('collections-section');
+        const content = document.getElementById('collections-content');
+
+        if (!collections || collections.length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        content.innerHTML = collections.map(coll => {
+          const installments = coll.installments || [];
+          const activeCount = installments.filter(i => i.status !== 'removed').length;
+          const removedCount = installments.filter(i => i.status === 'removed').length;
+
+          // Show latest 5 active installments
+          const latest = installments.filter(i => i.status !== 'removed').slice(0, 5);
+
+          const genreHtml = (coll.genre || []).map(g => `<span style="background:var(--color-bg-subtle);padding:2px 8px;border-radius:var(--radius-full);font-size:var(--text-xs);">${escapeHtml(g)}</span>`).join(' ');
+          const ratingHtml = coll.content_rating ? `<span style="background:${coll.content_rating.rating === 'explicit' ? 'var(--color-error-100)' : 'var(--color-success-100)'};padding:2px 8px;border-radius:var(--radius-full);font-size:var(--text-xs);">${escapeHtml(coll.content_rating.rating)}</span>` : '';
+          const talentHtml = (coll.talent || []).map(t => escapeHtml(t.name)).join(', ');
+          const feedBadge = coll.feed_url ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);">via ${escapeHtml(coll.feed_type || 'feed')}</span>` : '';
+
+          return `
+            <div class="card" style="margin-bottom:var(--space-3);">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-2);">
+                <div>
+                  <strong style="font-size:var(--text-base);">${escapeHtml(coll.name)}</strong>
+                  ${feedBadge}
+                  ${coll.kind ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);margin-left:var(--space-1);">${escapeHtml(coll.kind)}</span>` : ''}
+                </div>
+                <div style="font-size:var(--text-sm);color:var(--color-text-secondary);">
+                  ${activeCount} episode${activeCount !== 1 ? 's' : ''}${removedCount > 0 ? ` · ${removedCount} removed` : ''}
+                </div>
+              </div>
+              ${coll.description ? `<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin-bottom:var(--space-2);">${escapeHtml(coll.description.slice(0, 200))}</p>` : ''}
+              <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-2);">
+                ${genreHtml}${ratingHtml}
+                ${coll.language ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);">${escapeHtml(coll.language)}</span>` : ''}
+                ${talentHtml ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);">Host: ${talentHtml}</span>` : ''}
+              </div>
+              ${latest.length > 0 ? `
+                <div style="border-top:var(--border-1) solid var(--color-border-light);padding-top:var(--space-2);">
+                  <div style="font-size:var(--text-xs);font-weight:var(--font-semibold);color:var(--color-text-muted);margin-bottom:var(--space-1);">Latest episodes</div>
+                  ${latest.map(ep => `
+                    <div style="display:flex;justify-content:space-between;padding:var(--space-1) 0;font-size:var(--text-sm);">
+                      <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${ep.url && isSafeUrl(ep.url) ? `<a href="${escapeAttr(ep.url)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(ep.name)}</a>` : escapeHtml(ep.name)}
+                        ${ep.topics?.length ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);margin-left:var(--space-1);">${ep.topics.map(t => escapeHtml(t)).join(', ')}</span>` : ''}
+                      </div>
+                      <div style="flex-shrink:0;color:var(--color-text-muted);font-size:var(--text-xs);margin-left:var(--space-2);">
+                        ${ep.published_at ? new Date(ep.published_at).toLocaleDateString() : ''}
+                        ${ep.duration_seconds ? ` · ${Math.round(ep.duration_seconds / 60)}m` : ''}
+                      </div>
+                    </div>
+                  `).join('')}
+                  ${activeCount > 5 ? `<div style="font-size:var(--text-xs);color:var(--color-text-muted);padding-top:var(--space-1);">+ ${activeCount - 5} more episodes</div>` : ''}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
       function renderContact(contact) {
         const section = document.getElementById('contact-section');
         const content = document.getElementById('contact-content');
@@ -2852,7 +3052,7 @@
               </div>`;
 
             // Community-hosted brand.json URL
-            const hostedBrandJsonUrl = `https://agenticadvertising.org/brands/${encodeURIComponent(domain)}/brand.json`;
+            const hostedBrandJsonUrl = `${window.location.origin}/brands/${encodeURIComponent(domain)}/brand.json`;
             gridHtml += `
               <div class="community-info-item">
                 <div class="community-info-label">Community brand.json</div>
@@ -2910,6 +3110,11 @@
               });
               colorsHtml += '</div></div>';
               details.innerHTML += colorsHtml;
+            }
+
+            // Render collections for community brands
+            if (manifest.collections && Array.isArray(manifest.collections) && manifest.collections.length > 0) {
+              renderCollections(manifest.collections);
             }
 
             // Show helpful message if data is minimal

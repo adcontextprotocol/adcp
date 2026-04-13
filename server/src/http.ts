@@ -102,6 +102,7 @@ import { BrandLogoDatabase } from "./db/brand-logo-db.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
+import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -1122,6 +1123,9 @@ export class HTTPServer {
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
+
+    // Mount brand feed import routes (RSS, YouTube, Spotify + bulk property/collection merge)
+    this.app.use('/api', createBrandFeedsRouter({ brandDb: this.brandDb }));
 
     // Mount member profile routes
     const memberDb = new MemberDatabase();
