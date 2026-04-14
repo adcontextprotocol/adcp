@@ -34,6 +34,9 @@ export interface SlackUserMapping {
   slack_tz_offset: number | null;
   // Organization ID for unmapped users discovered via domain (from migration 160)
   pending_organization_id: string | null;
+  // Marketing opt-in captured via Slack DM before web account mapping
+  pending_marketing_opt_in: boolean | null;
+  pending_marketing_opt_in_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

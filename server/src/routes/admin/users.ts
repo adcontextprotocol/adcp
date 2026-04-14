@@ -57,6 +57,7 @@ export function createAdminUsersRouter(): Router {
         goal_key: string | null;
         goal_name: string | null;
         last_activity_at: Date | null;
+        marketing_opt_in: boolean | null;
       }>(`
         SELECT DISTINCT ON (om.workos_user_id)
           om.workos_user_id,
@@ -71,13 +72,15 @@ export function createAdminUsersRouter(): Router {
           pr.stage AS relationship_stage,
           uc.goal_key,
           uc.goal_name,
-          GREATEST(sm.last_slack_activity_at, u.updated_at) as last_activity_at
+          GREATEST(sm.last_slack_activity_at, u.updated_at) as last_activity_at,
+          ep.marketing_opt_in
         FROM organization_memberships om
         INNER JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
         LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
         LEFT JOIN person_relationships pr ON pr.workos_user_id = om.workos_user_id
         LEFT JOIN unified_contacts_with_goals uc ON uc.workos_user_id = om.workos_user_id
         LEFT JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+        LEFT JOIN user_email_preferences ep ON ep.workos_user_id = om.workos_user_id
         LEFT JOIN (
           SELECT workos_user_id, SUM(points) AS total_points
           FROM community_points
@@ -152,6 +155,7 @@ export function createAdminUsersRouter(): Router {
         goal_key: string | null;
         goal_name: string | null;
         last_activity_at: Date | null;
+        marketing_opt_in: boolean | null;
       };
 
       const unifiedUsers: UnifiedUser[] = [];
@@ -240,6 +244,7 @@ export function createAdminUsersRouter(): Router {
           goal_key: user.goal_key,
           goal_name: user.goal_name,
           last_activity_at: user.last_activity_at,
+          marketing_opt_in: user.marketing_opt_in ?? null,
         });
       }
 
@@ -338,6 +343,7 @@ export function createAdminUsersRouter(): Router {
           goal_key: engagement?.goal_key ?? null,
           goal_name: engagement?.goal_name ?? null,
           last_activity_at: engagement?.last_activity_at ?? null,
+          marketing_opt_in: slackUser.pending_marketing_opt_in ?? null,
         });
       }
 

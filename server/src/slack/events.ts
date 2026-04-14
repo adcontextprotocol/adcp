@@ -27,6 +27,7 @@ import {
 } from '../addie/index.js';
 import { triageAndCreateProspect } from '../services/prospect-triage.js';
 import { sendWelcomeSocialPosts } from '../notifications/welcome-social-posts.js';
+import { sendMarketingOptInDM } from '../notifications/marketing-optin-dm.js';
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
@@ -171,6 +172,13 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       }).catch(err => {
         logger.error({ err, userId: user.id }, 'Welcome social posts DM failed');
       });
+
+      // Send marketing opt-in DM after a delay so welcome posts arrive first
+      setTimeout(() => {
+        sendMarketingOptInDM(user.id).catch(err => {
+          logger.error({ err, userId: user.id }, 'Marketing opt-in DM failed');
+        });
+      }, 10_000);
     }
 
     // Fire-and-forget prospect triage for business emails
@@ -283,6 +291,29 @@ async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<vo
     });
 
     logger.info({ slackUserId, workosUserId, email }, 'Auto-mapped Slack user to web account by email');
+
+    // Apply any pending marketing opt-in preference captured via Slack DM
+    // Only apply if the user hasn't already made an explicit choice on the web
+    if (existingSlackMapping?.pending_marketing_opt_in != null) {
+      try {
+        const { EmailPreferencesDatabase } = await import('../db/email-preferences-db.js');
+        const emailPrefsDb = new EmailPreferencesDatabase();
+        const wasSet = await emailPrefsDb.setMarketingOptInIfNotSet({
+          workos_user_id: workosUserId,
+          email,
+          optIn: existingSlackMapping.pending_marketing_opt_in,
+        });
+        // Clear the pending flag now that it's been processed
+        await slackDb.clearPendingMarketingOptIn(slackUserId);
+        if (wasSet) {
+          logger.info({ slackUserId, workosUserId, optIn: existingSlackMapping.pending_marketing_opt_in }, 'Applied pending marketing opt-in from Slack DM');
+        } else {
+          logger.debug({ slackUserId, workosUserId }, 'Skipping pending marketing opt-in — user already has explicit preference');
+        }
+      } catch (err) {
+        logger.error({ err, slackUserId, workosUserId }, 'Failed to apply pending marketing opt-in');
+      }
+    }
 
     // Sync user to chapters based on their Slack channel memberships
     const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUserId);

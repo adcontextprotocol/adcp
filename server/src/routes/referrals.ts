@@ -140,7 +140,7 @@ export function createReferralsRouter(): Router {
       // Record marketing communications opt-in choice (best-effort, don't block referral acceptance)
       if (typeof marketing_opt_in === 'boolean') {
         try {
-          await emailPrefsDb.setMarketingOptIn({
+          await emailPrefsDb.setMarketingOptInIfNotSet({
             workos_user_id: userId,
             email: req.user!.email,
             optIn: marketing_opt_in,

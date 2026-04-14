@@ -1274,7 +1274,7 @@ export function createOrganizationsRouter(): Router {
             // Record marketing communications opt-in choice (best-effort, don't block signup)
             if (typeof marketing_opt_in === 'boolean') {
               try {
-                await emailPrefsDb.setMarketingOptIn({
+                await emailPrefsDb.setMarketingOptInIfNotSet({
                   workos_user_id: user.id,
                   email: user.email,
                   optIn: marketing_opt_in,
@@ -1440,7 +1440,7 @@ export function createOrganizationsRouter(): Router {
       // Record marketing communications opt-in choice (best-effort, don't block signup)
       if (typeof marketing_opt_in === 'boolean') {
         try {
-          await emailPrefsDb.setMarketingOptIn({
+          await emailPrefsDb.setMarketingOptInIfNotSet({
             workos_user_id: user.id,
             email: user.email,
             optIn: marketing_opt_in,
