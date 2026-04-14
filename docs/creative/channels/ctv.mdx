@@ -41,6 +41,7 @@ This format represents a 30-second SSAI pre-roll/mid-roll with an optional compa
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.streamhaus.example",
     "id": "ctv_30s_ssai_companion"
@@ -73,25 +74,29 @@ This format represents a 30-second SSAI pre-roll/mid-roll with an optional compa
       "asset_role": "hero_video",
       "required": true,
       "requirements": {
-        "duration_seconds": 30,
-        "acceptable_formats": ["mp4"],
-        "acceptable_codecs": ["h264"],
-        "acceptable_resolutions": ["1920x1080"],
-        "min_bitrate_mbps": 15,
-        "acceptable_frame_rates": ["29.97", "30"],
+        "min_duration_ms": 30000,
+        "max_duration_ms": 30000,
+        "containers": ["mp4"],
+        "codecs": ["h264"],
+        "min_width": 1920,
+        "max_width": 1920,
+        "min_height": 1080,
+        "max_height": 1080,
+        "min_bitrate_kbps": 15000,
+        "frame_rates": [29.97, 30],
         "frame_rate_type": "constant",
         "scan_type": "progressive",
-        "gop_interval_seconds_min": 1,
-        "gop_interval_seconds_max": 2,
+        "min_gop_interval_seconds": 1,
+        "max_gop_interval_seconds": 2,
         "gop_type": "closed",
         "moov_atom_position": "start",
         "audio_required": true,
-        "audio_codec": ["aac"],
-        "audio_sampling_rate_hz": [48000],
-        "audio_channels": "stereo",
-        "audio_loudness_lufs": -24,
-        "audio_loudness_tolerance_db": 2,
-        "audio_true_peak_dbfs": -2
+        "audio_codecs": ["aac"],
+        "audio_sample_rates": [48000],
+        "audio_channels": ["stereo"],
+        "loudness_lufs": -24,
+        "loudness_tolerance_db": 2,
+        "true_peak_dbfs": -2
       }
     },
     {
@@ -128,6 +133,7 @@ This format supports CSAI delivery with clickable overlay elements. The viewer n
 
 ```json
 {
+  "$schema": "/schemas/core/format.json",
   "format_id": {
     "agent_url": "https://sales.streamhaus.example",
     "id": "ctv_30s_interactive"

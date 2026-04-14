@@ -110,6 +110,28 @@ The seller has three responses:
 
 When the buyer omits `performance_standards` or `measurement_terms`, the product's defaults apply.
 
+#### Broadcast measurement terms
+
+For broadcast TV, the buyer proposes a `measurement_window` alongside the vendor — this specifies which maturation window (Live, C3, or C7) the guarantee is reconciled against:
+
+```json
+{
+  "product_id": "primetime_30s_q4",
+  "budget": 250000,
+  "pricing_option_id": "unit_rate_30s",
+  "agency_estimate_number": "EST-2026-04821",
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "videoamp.com" },
+      "measurement_window": "c7",
+      "max_variance_percent": 10
+    }
+  }
+}
+```
+
+The `measurement_window` references a `window_id` from the product's `reporting_capabilities.measurement_windows`. This tells both sides: "VideoAmp's C7 numbers are what we reconcile against." The `agency_estimate_number` is the financial reference that links the order to the agency's media plan — it travels with the order through the transaction lifecycle.
+
 ### 5. Confirmed Package: The Contract
 
 The confirmed package reflects the agreed terms — the binding contract:
@@ -139,6 +161,8 @@ The confirmed package reflects the agreed terms — the binding contract:
 When agreed `performance_standards` specify a vendor, creatives assigned to that package MUST include `tracker_script` or `tracker_pixel` URL assets from that vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED`.
 
 For example, if the agreed terms include DoubleVerify for viewability, every creative on the package must carry DV tags so viewability can be measured.
+
+**Formats without tracker support**: Not all formats accept third-party tracking assets. Broadcast TV spots, for instance, have no tracker slot — there is no pixel to fire on a television. Buyer agents should check the format's `assets` array for tracker slots before proposing performance standards that require creative-level verification. When a format does not support trackers, measurement comes from the vendor declared in `billing_measurement` (panel data, set-top box telemetry) rather than creative-embedded pixels. See [Format definitions](/docs/creative/formats#third-party-tracker-support) for details.
 
 ### 7. Breach and Resolution
 
@@ -173,6 +197,8 @@ All measurement and verification vendors are identified by domain using the stan
 - `{ "domain": "oracle.com", "brand_id": "moat" }` — MOAT
 - `{ "domain": "campaignmanager.google.com" }` — Google Campaign Manager
 - `{ "domain": "admanager.google.com" }` — Google Ad Manager
+- `{ "domain": "videoamp.com" }` — VideoAmp (broadcast/CTV measurement)
+- `{ "domain": "comscore.com" }` — Comscore (cross-platform measurement)
 
 The vendor's `brand.json` at their domain is the discovery point for their agent capabilities. Vendors declare agents in the `agents` array with `type: "measurement"`:
 

@@ -110,6 +110,11 @@
       "minItems": 1,
       "maxItems": 100
     },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

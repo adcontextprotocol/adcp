@@ -254,6 +254,7 @@
                         "pages": [
                           "docs/creative/channels/video",
                           "docs/creative/channels/ctv",
+                          "docs/creative/channels/broadcast",
                           "docs/creative/channels/display",
                           "docs/creative/channels/audio",
                           "docs/creative/channels/dooh",
@@ -730,6 +731,7 @@
                     "pages": [
                       "docs/creative/channels/video",
                       "docs/creative/channels/ctv",
+                      "docs/creative/channels/broadcast",
                       "docs/creative/channels/display",
                       "docs/creative/channels/audio",
                       "docs/creative/channels/dooh",
