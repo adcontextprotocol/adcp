@@ -113,6 +113,10 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
     if (part.inlineData) {
+      const mimeType = part.inlineData.mimeType || 'image/png';
+      if (!mimeType.startsWith('image/')) {
+        throw new Error(`Gemini returned non-image content: ${mimeType}`);
+      }
       const imageBuffer = Buffer.from(part.inlineData.data, 'base64');
       logger.info({ sizeKB: (imageBuffer.length / 1024).toFixed(0) }, 'Portrait generated');
       return { imageBuffer, promptUsed: prompt };
@@ -143,15 +147,19 @@ export async function validatePortrait(imageBuffer: Buffer): Promise<{
     `{ "valid": true/false, "issues": ["issue 1", "issue 2"] }`;
 
   try {
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'image/png',
-          data: imageBuffer.toString('base64'),
+    const result = await withGeminiRetry(
+      () => model.generateContent([
+        {
+          inlineData: {
+            mimeType: 'image/png',
+            data: imageBuffer.toString('base64'),
+          },
         },
-      },
-      validationPrompt,
-    ]);
+        validationPrompt,
+      ]),
+      undefined,
+      'validatePortrait',
+    );
 
     const text = result.response.text().trim();
     const jsonStr = text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');

@@ -12,7 +12,8 @@ describe('withGeminiRetry', () => {
   });
 
   it.each([
-    '503 Service Unavailable',
+    '503 Bad Gateway',
+    'Service Unavailable',
     '429 Too Many Requests',
     'Resource has been exhausted',
     'The model is overloaded due to high demand',
