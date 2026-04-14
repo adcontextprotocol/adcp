@@ -1,8 +1,7 @@
-import { Client, Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 import { DatabaseConfig } from "../config.js";
 
 let pool: Pool | null = null;
-let dbConfig: DatabaseConfig | null = null;
 
 /** Callback invoked on pool-level errors (set via onPoolError). */
 let poolErrorCallback: ((err: Error) => void) | null = null;
@@ -22,8 +21,6 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
   if (pool) {
     return pool;
   }
-
-  dbConfig = config;
 
   pool = new Pool({
     connectionString: config.connectionString,
@@ -83,31 +80,26 @@ export async function getClient(): Promise<PoolClient> {
 }
 
 /**
- * Perform a health check using a dedicated connection (not from the pool).
- * This ensures health checks succeed even when the pool is fully occupied.
+ * Perform a health check using the pool.
+ *
+ * Previous versions opened a dedicated pg.Client on every call, bypassing
+ * the pool. Under load this added connection churn (TCP + TLS handshake
+ * every 15 s per machine) and competed with real traffic for PgBouncer
+ * slots — causing the very timeouts it was trying to avoid.
+ *
+ * Using the pool is the correct signal: if the pool cannot serve a trivial
+ * query within the timeout, the machine genuinely cannot handle DB traffic
+ * and Fly should stop routing to it.
  */
 export async function healthCheck(timeoutMs = 5000): Promise<void> {
-  if (!dbConfig) {
-    throw new Error("Database not initialized. Call initializeDatabase() first.");
-  }
-
-  const client = new Client({
-    connectionString: dbConfig.connectionString,
-    host: dbConfig.host,
-    port: dbConfig.port,
-    database: dbConfig.database,
-    user: dbConfig.user,
-    password: dbConfig.password,
-    ssl: dbConfig.ssl,
-    connectionTimeoutMillis: timeoutMs,
-  });
-
-  try {
-    await client.connect();
-    await client.query('SELECT 1');
-  } finally {
-    await client.end().catch(() => {});
-  }
+  const p = getPool();
+  const result = await Promise.race([
+    p.query('SELECT 1'),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('health check query timed out')), timeoutMs)
+    ),
+  ]);
+  return result as unknown as void;
 }
 
 /**
