@@ -45,6 +45,6 @@ export function getDatabaseConfig(): DatabaseConfig | null {
       : 10000,
     idleTimeoutMillis: process.env.DATABASE_IDLE_TIMEOUT_MS
       ? parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS, 10)
-      : 30000,
+      : 10000,
   };
 }

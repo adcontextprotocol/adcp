@@ -34,10 +34,18 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     // keep connections alive in the local pool to avoid connection churn.
     // Previously idleTimeoutMillis was 1ms which forced a new PgBouncer
     // connection for every query — hammering PgBouncer under load.
+    // idleTimeoutMillis MUST be shorter than PgBouncer's client_idle_timeout
+    // so the Node pool proactively closes idle connections before PgBouncer
+    // kills them (which causes client_idle_timeout errors on reuse).
     max: config.maxPoolSize || 10,
-    idleTimeoutMillis: config.idleTimeoutMillis ?? 30000,
+    idleTimeoutMillis: config.idleTimeoutMillis ?? 10000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
     allowExitOnIdle: true,
+    // TCP keepalive detects dead peers (crashed machines, network partitions)
+    // but does NOT prevent PgBouncer's client_idle_timeout — that tracks
+    // protocol-level activity, not TCP-level.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 
   pool.on("error", (err) => {
