@@ -748,26 +748,44 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let firstName = result.user.firstName ?? undefined;
     let lastName = result.user.lastName ?? undefined;
 
-    // When WorkOS doesn't provide a name, resolve from our DB (which may have
-    // names backfilled from Slack or previous profile updates)
-    if (!firstName?.trim()) {
-      try {
-        const pool = getPool();
-        const nameResult = await pool.query<{
-          first_name: string | null;
-          last_name: string | null;
-        }>(
-          `SELECT first_name, last_name FROM users WHERE workos_user_id = $1`,
-          [result.user.id]
-        );
-        if (nameResult.rows.length > 0) {
-          const row = nameResult.rows[0];
-          if (row.first_name?.trim()) firstName = row.first_name;
-          if (row.last_name?.trim()) lastName = row.last_name;
+    // Verify the user exists in our local DB. This catches stale sessions
+    // from deleted/merged WorkOS accounts whose JWTs haven't expired yet.
+    // Also resolves names from local DB when WorkOS doesn't provide them.
+    try {
+      const pool = getPool();
+      const localUser = await pool.query<{
+        first_name: string | null;
+        last_name: string | null;
+      }>(
+        `SELECT first_name, last_name FROM users WHERE workos_user_id = $1`,
+        [result.user.id]
+      );
+      if (localUser.rows.length === 0) {
+        logger.warn({ userId: result.user.id, email: result.user.email, path: req.path },
+          'Authenticated user not found in local DB — forcing re-login');
+        sessionCache.delete(cacheKey);
+        if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+          const oldest = deadSessionCache.keys().next().value;
+          if (oldest) deadSessionCache.delete(oldest);
         }
-      } catch (err) {
-        logger.warn({ err, userId: result.user.id }, 'Name lookup failed — using WorkOS values');
+        deadSessionCache.set(cacheKey, Date.now());
+        if (isHtmlRequest) {
+          return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+        }
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your account could not be verified. Please log in again.',
+          login_url: '/auth/login',
+        });
       }
+      if (!firstName?.trim()) {
+        const row = localUser.rows[0];
+        if (row.first_name?.trim()) firstName = row.first_name;
+        if (row.last_name?.trim()) lastName = row.last_name;
+      }
+    } catch (err) {
+      // Fail open: DB errors should not block authenticated users
+      logger.warn({ err, userId: result.user.id }, 'Local user check failed — allowing request through');
     }
 
     const user: WorkOSUser = {
