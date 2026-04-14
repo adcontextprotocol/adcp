@@ -426,7 +426,8 @@
     "publisher_properties",
     "format_ids",
     "delivery_type",
-    "pricing_options"
+    "pricing_options",
+    "reporting_capabilities"
   ],
   "additionalProperties": true
 }

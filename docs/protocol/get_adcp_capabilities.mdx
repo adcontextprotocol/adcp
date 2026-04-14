@@ -112,7 +112,19 @@ See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-se
 
 ### media_buy
 
-Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`.
+Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
+
+:::note 3.0 breaking changes
+The following fields have been removed from the capabilities response:
+- `media_buy.reporting` — Reporting is implied by `media_buy`. Use product-level `reporting_capabilities` instead.
+- `features.content_standards` — Replaced by `media_buy.content_standards` object. Presence of the object indicates support.
+- `features.audience_targeting` — Replaced by `media_buy.audience_targeting` object. Presence of the object indicates support.
+- `features.conversion_tracking` — Replaced by `media_buy.conversion_tracking` object. Presence of the object indicates support.
+- `execution.targeting.device_platform`, `device_type` — Implied by `media_buy` support.
+- `execution.targeting.audience_include`, `audience_exclude` — Implied by `audience_targeting` object presence.
+- `execution.trusted_match.supported` — Object presence indicates support.
+- `brand.identity` — Implied by `brand` in `supported_protocols`. `get_brand_identity` is always available.
+:::
 
 #### features
 
@@ -122,12 +134,11 @@ Optional media-buy features. **If declared true, seller MUST honor requests usin
 |---------|-------------|
 | `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
-| `content_standards` | Full support for content standards configuration (see `content_standards_detail` for specifics) |
-| `audience_targeting` | Support for audience targeting and ingestion, including `sync_audiences` |
+| `catalog_management` | Supports `sync_catalogs` for catalog feed management |
 
-#### content_standards_detail
+#### content_standards
 
-When `features.content_standards` is `true`, sellers can provide additional detail about their content standards implementation. This gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.
+Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -139,10 +150,7 @@ When `features.content_standards` is `true`, sellers can provide additional deta
 
 ```json
 {
-  "features": {
-    "content_standards": true
-  },
-  "content_standards_detail": {
+  "content_standards": {
     "supports_local_evaluation": true,
     "supported_channels": ["display", "olv", "podcast"],
     "supports_webhook_delivery": true
@@ -187,19 +195,20 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
-| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
-| `geo_metros` | object | Metro area targeting with system-specific support |
-| `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `supported_geo_levels` | string[] | Geographic targeting levels: `countries`, `regions`, `metros`, `postal_areas` |
+| `supported_metro_systems` | string[] | Metro area systems: `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2` |
+| `supported_postal_systems` | string[] | Postal code systems: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz` |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
-| `device_platform` | boolean | Device platform targeting (Sec-CH-UA-Platform values) |
-| `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
-| `audience_include` | boolean | Audience inclusion targeting (requires `features.audience_targeting`) |
-| `audience_exclude` | boolean | Audience exclusion targeting (requires `features.audience_targeting`) |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
+
+Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
+
+:::note
+The per-field booleans `geo_countries`, `geo_regions` and the nested objects `geo_metros`, `geo_postal_areas` are deprecated in 3.0. Use the flattened array fields above instead.
+:::
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
@@ -212,7 +221,7 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `geometry` | boolean | Pre-computed GeoJSON geometry (buyer provides the polygon) |
 | `transport_modes` | string[] | Transport modes supported for isochrones: `driving`, `walking`, `cycling`, `public_transport` |
 
-**geo_metros** specifies which metro classification systems are supported:
+**supported_metro_systems** values:
 
 | System | Description |
 |--------|-------------|
@@ -221,7 +230,7 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `uk_itl2` | UK ITL Level 2 regions |
 | `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
 
-**geo_postal_areas** specifies which postal code systems are supported:
+**supported_postal_systems** values:
 
 | System | Description |
 |--------|-------------|
@@ -239,7 +248,7 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 
 #### audience_targeting
 
-Audience targeting capabilities. Only present when `features.audience_targeting` is `true`. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
+Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including `sync_audiences` and `audience_include`/`audience_exclude` in targeting overlays. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -401,9 +410,11 @@ This tells buyers:
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
-- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
-- `media_buy.features.content_standards: true` → Seller MUST apply content standards when provided
+- `"postal_areas"` in `supported_geo_levels` + `"us_zip"` in `supported_postal_systems` → Buyer can send US ZIP codes, seller MUST honor them
+- `"metros"` in `supported_geo_levels` + `"nielsen_dma"` in `supported_metro_systems` → Buyer can send DMA codes, seller MUST honor them
+- `media_buy.content_standards` object present → Seller MUST apply content standards when provided
+- `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
+- `media_buy.conversion_tracking` object present → Seller MUST support `sync_event_sources` and `log_event`
 - AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange (legacy — new integrations use [TMP](/docs/trusted-match))
 
 No silent ignoring. If a seller can't support a capability, they should declare `false` or omit it.
@@ -432,8 +443,8 @@ console.log(`Supported protocols: ${result.supported_protocols.join(', ')}`);
 if (result.supported_protocols.includes('media_buy')) {
   const mediaBuy = result.media_buy;
 
-  // Check feature support
-  if (mediaBuy.features?.content_standards) {
+  // Check content standards support (object presence = signal)
+  if (mediaBuy.content_standards) {
     console.log('Content standards supported');
   }
 
@@ -443,7 +454,7 @@ if (result.supported_protocols.includes('media_buy')) {
   }
 
   // Check geo targeting
-  if (mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+  if (mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip')) {
     console.log('US ZIP code targeting supported');
   }
 
@@ -497,14 +508,14 @@ async function findCompatibleSellers(sellers, requirements) {
 
     // Check geo targeting requirement
     if (requirements.postalCodeTargeting) {
-      if (!mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+      if (!mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip')) {
         continue;
       }
     }
 
-    // Check feature requirement
+    // Check content standards requirement (object presence = signal)
     if (requirements.contentStandards) {
-      if (!mediaBuy.features?.content_standards) {
+      if (!mediaBuy.content_standards) {
         continue;
       }
     }
@@ -568,7 +579,7 @@ const buy = await client.createMediaBuy({
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it
-      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
+      ...(mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip') && {
         geo_postal_areas: [{
           system: 'us_zip',
           values: ['10001', '10002', '10003', '10004', '10005']
@@ -640,9 +651,7 @@ const buy = await client.createMediaBuy({
   "media_buy": {
     "features": {
       "inline_creative_management": true,
-      "property_list_filtering": true,
-      "content_standards": false,
-      "audience_targeting": true
+      "property_list_filtering": true
     },
     "execution": {
       "axe_integrations": ["https://agentic.scope3.com"],
@@ -653,25 +662,10 @@ const buy = await client.createMediaBuy({
         "simid": true
       },
       "targeting": {
-        "geo_countries": true,
-        "geo_regions": true,
-        "geo_metros": {
-          "nielsen_dma": true,
-          "uk_itl2": false,
-          "eurostat_nuts2": false
-        },
-        "geo_postal_areas": {
-          "us_zip": true,
-          "us_zip_plus_four": false,
-          "gb_outward": true,
-          "gb_full": false,
-          "ca_fsa": true
-        },
-        "device_platform": true,
-        "device_type": true,
+        "supported_geo_levels": ["countries", "regions", "metros", "postal_areas"],
+        "supported_metro_systems": ["nielsen_dma"],
+        "supported_postal_systems": ["us_zip", "gb_outward", "ca_fsa"],
         "language": true,
-        "audience_include": true,
-        "audience_exclude": true,
         "keyword_targets": {
           "supported_match_types": ["broad", "phrase", "exact"]
         },
@@ -679,6 +673,11 @@ const buy = await client.createMediaBuy({
           "supported_match_types": ["broad", "exact"]
         }
       }
+    },
+    "content_standards": {
+      "supports_local_evaluation": true,
+      "supported_channels": ["display", "olv"],
+      "supports_webhook_delivery": false
     },
     "audience_targeting": {
       "supported_identifier_types": ["hashed_email", "hashed_phone"],

@@ -73,9 +73,8 @@ export interface PublisherProfile {
   properties: PropertyDefinition[];
   /** Optional: catalog types this publisher supports */
   catalogTypes?: string[];
-  /** Optional: reporting capabilities */
-  reportingFrequencies?: string[];
-  reportingMetrics?: string[];
+  reportingFrequencies: string[];
+  reportingMetrics: string[];
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */

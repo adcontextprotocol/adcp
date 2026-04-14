@@ -188,7 +188,7 @@ print(f"False positive rate: {false_positives / len(failures['artifacts']):.1%}"
 
 When a seller does not run a local evaluation model, all records have `local_verdict: "unevaluated"`. In this case, `failures_only` returns an empty result set — there are no failures to return.
 
-Governance agents receiving validation results where every `local_verdict` is `"unevaluated"` should treat this as **no local enforcement**. The validation still works — the verification agent evaluates the artifacts normally — but there is no drift comparison to perform. Buyers can check `content_standards_detail.supports_local_evaluation` in [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities#content_standards_detail) to know whether `failures_only` will be useful before creating a buy.
+Governance agents receiving validation results where every `local_verdict` is `"unevaluated"` should treat this as **no local enforcement**. The validation still works — the verification agent evaluates the artifacts normally — but there is no drift comparison to perform. Buyers can check `content_standards.supports_local_evaluation` in [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities#content_standards) to know whether `failures_only` will be useful before creating a buy.
 
 | `local_verdict` | `failures_only` returns? | Drift comparison possible? |
 |-----------------|--------------------------|---------------------------|

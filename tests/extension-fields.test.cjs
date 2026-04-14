@@ -197,6 +197,14 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      },
       ext: {
         roku_app_ids: ['123456', '789012']
       }
@@ -235,6 +243,14 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      },
       ext: {
         schain: {
           ver: '1.0',
@@ -281,6 +297,14 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      },
       ext: {
         roku_app_ids: ['123456'],
         ttd_uid2_enabled: true,
@@ -325,7 +349,15 @@ async function runTests() {
         pricing_model: 'cpm',
         rate: 10.00,
         currency: 'USD'
-      }]
+      }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      }
       // No ext field
     };
 
@@ -565,6 +597,14 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      },
       future_field_from_v26: 'should be allowed'  // Forward compatibility: accept unknown fields
     };
 
