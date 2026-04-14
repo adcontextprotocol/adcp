@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import type { NewsletterConfig, CustomSection } from './config.js';
 import { generateCoverForEdition } from './cover.js';
 import { sendMarketingEmail } from '../notifications/email.js';
+import { query } from '../db/client.js';
 
 const logger = createLogger('newsletter-admin');
 
@@ -334,10 +335,34 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
 
   router.get('/recipients/count', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const recipients = await config.db.getRecipients();
+      const [recipients, optInStats] = await Promise.all([
+        config.db.getRecipients(),
+        query<{ status: string; count: string }>(`
+          SELECT
+            CASE
+              WHEN marketing_opt_in = TRUE THEN 'opted_in'
+              WHEN marketing_opt_in = FALSE THEN 'opted_out'
+              ELSE 'not_asked'
+            END AS status,
+            COUNT(*)::text AS count
+          FROM user_email_preferences
+          GROUP BY status
+        `),
+      ]);
       const emailCount = recipients.length;
       const slackCount = recipients.filter(r => r.has_slack).length;
-      res.json({ emailCount, slackCount, total: emailCount });
+
+      const statsMap = Object.fromEntries(optInStats.rows.map(r => [r.status, parseInt(r.count, 10)]));
+      res.json({
+        emailCount,
+        slackCount,
+        total: emailCount,
+        optInStats: {
+          opted_in: statsMap.opted_in || 0,
+          opted_out: statsMap.opted_out || 0,
+          not_asked: statsMap.not_asked || 0,
+        },
+      });
     } catch (err) {
       logger.error({ error: err, newsletterId: config.id }, 'Failed to get recipient count');
       res.status(500).json({ error: 'Failed to get recipient count' });

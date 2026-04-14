@@ -934,4 +934,29 @@ export class SlackDatabase {
     };
   }
 
+  /**
+   * Store a pending marketing opt-in preference for a Slack user
+   * who hasn't been mapped to a web account yet.
+   */
+  async setPendingMarketingOptIn(slackUserId: string, optIn: boolean): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET pending_marketing_opt_in = $2, pending_marketing_opt_in_at = NOW(), updated_at = NOW()
+       WHERE slack_user_id = $1`,
+      [slackUserId, optIn]
+    );
+  }
+
+  /**
+   * Clear pending marketing opt-in after it has been applied to the web account.
+   */
+  async clearPendingMarketingOptIn(slackUserId: string): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET pending_marketing_opt_in = NULL, pending_marketing_opt_in_at = NULL, updated_at = NOW()
+       WHERE slack_user_id = $1`,
+      [slackUserId]
+    );
+  }
+
 }

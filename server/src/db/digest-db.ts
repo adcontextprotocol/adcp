@@ -553,6 +553,11 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
          SELECT 1 FROM user_email_preferences uep
          WHERE uep.workos_user_id = u.workos_user_id
            AND uep.global_unsubscribe = TRUE
+       )
+       AND EXISTS (
+         SELECT 1 FROM user_email_preferences uep
+         WHERE uep.workos_user_id = u.workos_user_id
+           AND uep.marketing_opt_in = TRUE
        )`,
   );
   return result.rows;

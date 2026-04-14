@@ -37,6 +37,7 @@ import type {
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
+import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
 
 /**
  * Zoom participant report CSV row structure.
@@ -1831,6 +1832,21 @@ export function createEventsRouter(): {
         { registrationId: registration.id, eventId: event.id, userId: user.id },
         "User registered for event"
       );
+
+      // Record marketing opt-in if provided and user hasn't previously chosen
+      const { marketing_opt_in } = req.body || {};
+      if (typeof marketing_opt_in === 'boolean') {
+        try {
+          const emailPrefsDb = new EmailPreferencesDatabase();
+          await emailPrefsDb.setMarketingOptInIfNotSet({
+            workos_user_id: user.id,
+            email: user.email,
+            optIn: marketing_opt_in,
+          });
+        } catch (err) {
+          logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in from event registration');
+        }
+      }
 
       // Award community points + check badges (fire-and-forget)
       const communityDb = new CommunityDatabase();
