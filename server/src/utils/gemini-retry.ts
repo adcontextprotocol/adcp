@@ -33,7 +33,11 @@ function isRetryableGeminiError(error: unknown): boolean {
     msg.includes('Resource has been exhausted') ||
     msg.includes('high demand') ||
     msg.includes('UNAVAILABLE') ||
-    msg.includes('RESOURCE_EXHAUSTED')
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('fetch failed') ||
+    msg.includes('ECONNRESET') ||
+    msg.includes('ETIMEDOUT') ||
+    msg.includes('ENOTFOUND')
   );
 }
 
