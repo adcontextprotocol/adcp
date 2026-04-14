@@ -33,12 +33,11 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     // PgBouncer owns connection pooling — we do NOT pool here.
     // We use pg.Pool only as a connection manager: it gives us pool.query()
     // (atomic connect → query → release) and pool.connect() (checkout/release
-    // for transactions). With max: 3 and a 1 s idle timeout, this is just a
-    // thin TCP cache — connections are reused briefly within request bursts
-    // then closed well before PgBouncer's client_idle_timeout can fire.
-    max: config.maxPoolSize || 3,
-    idleTimeoutMillis: config.idleTimeoutMillis ?? 1000,
-    connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
+    // for transactions). These values are hardcoded — env var overrides
+    // re-introduce a second pool that conflicts with PgBouncer's idle timeouts.
+    max: 3,
+    idleTimeoutMillis: 1000,
+    connectionTimeoutMillis: 10000,
     allowExitOnIdle: true,
   });
 

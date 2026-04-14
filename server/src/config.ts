@@ -37,14 +37,11 @@ export function getDatabaseConfig(): DatabaseConfig | null {
   return {
     connectionString,
     ssl,
-    maxPoolSize: process.env.DATABASE_MAX_POOL_SIZE
-      ? parseInt(process.env.DATABASE_MAX_POOL_SIZE, 10)
-      : 3,
-    connectionTimeoutMillis: process.env.DATABASE_CONNECTION_TIMEOUT_MS
-      ? parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS, 10)
-      : 10000,
-    idleTimeoutMillis: process.env.DATABASE_IDLE_TIMEOUT_MS
-      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS, 10)
-      : 1000,
+      // PgBouncer owns connection pooling. These are intentionally low and
+    // NOT configurable via env vars — overriding them re-introduces a
+    // second pool that conflicts with PgBouncer's idle timeouts.
+    maxPoolSize: 3,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 1000,
   };
 }
