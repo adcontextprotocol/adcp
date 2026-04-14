@@ -242,7 +242,7 @@ export function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { list_id: string; add?: unknown[]; remove?: unknown[]; name?: string };
+  const req = args as { list_id: string; add?: unknown[]; remove?: unknown[]; name?: string; description?: string; base_properties?: unknown[] };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
@@ -254,27 +254,40 @@ export function handleUpdatePropertyList(
     state.name = req.name;
   }
 
-  const existingDomains = new Set(extractDomains(state.baseProperties));
-
-  if (req.add) {
-    if (state.baseProperties.length + req.add.length > MAX_PROPERTIES_PER_LIST) {
-      return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
-    }
-    for (const p of req.add) {
-      const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
-      if (domain && !existingDomains.has(domain)) {
-        state.baseProperties.push(p);
-        existingDomains.add(domain);
-      }
-    }
+  if (req.description !== undefined) {
+    state.description = req.description;
   }
 
-  if (req.remove) {
-    const removeDomains = new Set(extractDomains(req.remove));
-    state.baseProperties = state.baseProperties.filter(p => {
-      const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
-      return !domain || !removeDomains.has(domain);
-    });
+  // Replace mode: base_properties replaces entire list
+  if (req.base_properties) {
+    if (req.base_properties.length > MAX_PROPERTIES_PER_LIST) {
+      return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
+    }
+    state.baseProperties = req.base_properties;
+  } else {
+    // Incremental mode: add/remove
+    const existingDomains = new Set(extractDomains(state.baseProperties));
+
+    if (req.add) {
+      if (state.baseProperties.length + req.add.length > MAX_PROPERTIES_PER_LIST) {
+        return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
+      }
+      for (const p of req.add) {
+        const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
+        if (domain && !existingDomains.has(domain)) {
+          state.baseProperties.push(p);
+          existingDomains.add(domain);
+        }
+      }
+    }
+
+    if (req.remove) {
+      const removeDomains = new Set(extractDomains(req.remove));
+      state.baseProperties = state.baseProperties.filter(p => {
+        const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
+        return !domain || !removeDomains.has(domain);
+      });
+    }
   }
 
   state.propertyCount = state.baseProperties.length;
@@ -366,6 +379,7 @@ export function handleValidatePropertyDelivery(
   const totalImpressions = compliantImpressions + nonCompliantImpressions;
 
   return {
+    compliant: nonCompliantRecords === 0,
     list_id: req.list_id,
     summary: {
       total_records: records.length,
