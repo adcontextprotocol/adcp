@@ -153,6 +153,8 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
+  propertyLists: Map<string, PropertyListState>;
+  contentStandards: Map<string, ContentStandardsState>;
   usageRecords: UsageRecord[];
   lastGetProductsContext?: {
     products: Product[];
@@ -362,4 +364,39 @@ export interface GovernanceOutcomeState {
   committedBudget: number;
   findings: GovernanceFinding[];
   timestamp: string;
+}
+
+// ── Property governance types ─────────────────────────────────────
+
+export interface PropertyListState {
+  listId: string;
+  name: string;
+  description?: string;
+  listType?: string;
+  principal?: string;
+  baseProperties: unknown[];
+  filters?: unknown;
+  brand?: unknown;
+  webhookUrl?: string;
+  cacheDurationHours: number;
+  propertyCount: number;
+  authToken: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Content standards types ───────────────────────────────────────
+
+export interface ContentStandardsState {
+  standardsId: string;
+  scope: {
+    countriesAll?: string[];
+    channelsAny?: string[];
+    languagesAny?: string[];
+    description?: string;
+  };
+  policy: string;
+  calibrationExemplars?: { pass?: unknown[]; fail?: unknown[] };
+  createdAt: string;
+  updatedAt: string;
 }
