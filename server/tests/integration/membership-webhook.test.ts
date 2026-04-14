@@ -6,7 +6,7 @@
  * broke all organization_membership webhooks in production).
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
@@ -15,10 +15,13 @@ import {
   consumeInvitationSeatType,
   findSuccessorForPromotion,
   setMembershipRole,
+  autoLinkByVerifiedDomain,
 } from '../../src/db/membership-db.js';
+import type { WorkOS } from '@workos-inc/node';
 import type { Pool } from 'pg';
 
 const TEST_ORG_ID = 'org_webhook_membership_test';
+const TEST_AUTOLINK_ORG_ID = 'org_autolink_test';
 const TEST_USER_1 = 'user_wh_test_1';
 const TEST_USER_2 = 'user_wh_test_2';
 
@@ -365,6 +368,150 @@ describe('Membership webhook DB operations', () => {
         [TEST_USER_1, TEST_ORG_ID],
       );
       expect(row.rows[0].role).toBe('member');
+    });
+  });
+
+  // =========================================================================
+  // AUTO-LINK BY VERIFIED DOMAIN
+  // =========================================================================
+
+  describe('autoLinkByVerifiedDomain', () => {
+    const AUTOLINK_USER = 'user_autolink_1';
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+      await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+    });
+
+    afterAll(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+      await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_AUTOLINK_ORG_ID]);
+    });
+
+    function makeWorkOSMock(opts?: { shouldFail?: boolean; errorCode?: string }) {
+      return {
+        userManagement: {
+          createOrganizationMembership: opts?.shouldFail
+            ? vi.fn().mockRejectedValue(Object.assign(new Error('fail'), { code: opts.errorCode }))
+            : vi.fn().mockResolvedValue({ id: 'om_auto_1' }),
+        },
+      } as unknown as WorkOS;
+    }
+
+    async function seedOrgWithVerifiedDomain(domain: string, subscriptionStatus = 'active', canceled = false) {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, subscription_status, subscription_canceled_at, created_at, updated_at)
+         VALUES ($1, 'AutoLink Corp', $2, $3, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET subscription_status = $2, subscription_canceled_at = $3`,
+        [TEST_AUTOLINK_ORG_ID, subscriptionStatus, canceled ? new Date() : null],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+         ON CONFLICT (domain) DO UPDATE SET verified = true`,
+        [TEST_AUTOLINK_ORG_ID, domain],
+      );
+    }
+
+    it('creates membership when email domain matches verified domain with active subscription', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+
+      expect(result).not.toBeNull();
+      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+      expect(result!.organizationName).toBe('AutoLink Corp');
+      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith({
+        userId: AUTOLINK_USER,
+        organizationId: TEST_AUTOLINK_ORG_ID,
+        roleSlug: 'owner', // no existing admin/owner
+      });
+    });
+
+    it('assigns member role when org already has an admin', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      // Add an existing owner
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
+         VALUES ('user_existing_owner', $1, 'boss@autolink.com', 'owner', 'contributor', NOW(), NOW(), NOW())`,
+        [TEST_AUTOLINK_ORG_ID],
+      );
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+
+      expect(result).not.toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith(
+        expect.objectContaining({ roleSlug: 'member' }),
+      );
+    });
+
+    it('returns null when no matching verified domain exists', async () => {
+      const workos = makeWorkOSMock();
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@nomatch.com');
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+    });
+
+    it('returns null when domain exists but subscription is not active', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com', 'canceled');
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when subscription is active but canceled', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com', 'active', true);
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when domain exists but is not verified', async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+         VALUES ($1, 'Unverified Corp', 'active', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [TEST_AUTOLINK_ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, 'unverified.com', false, true, 'manual', NOW(), NOW())
+         ON CONFLICT (domain) DO UPDATE SET verified = false`,
+        [TEST_AUTOLINK_ORG_ID],
+      );
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@unverified.com');
+      expect(result).toBeNull();
+    });
+
+    it('handles membership_already_exists gracefully', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      const workos = makeWorkOSMock({ shouldFail: true, errorCode: 'organization_membership_already_exists' });
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).not.toBeNull();
+      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+    });
+
+    it('returns null on other WorkOS errors', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      const workos = makeWorkOSMock({ shouldFail: true, errorCode: 'internal_error' });
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).toBeNull();
+    });
+
+    it('handles email with no domain gracefully', async () => {
+      const workos = makeWorkOSMock();
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'nodomain');
+      expect(result).toBeNull();
     });
   });
 });
