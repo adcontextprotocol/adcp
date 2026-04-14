@@ -37,7 +37,9 @@ function isRetryableGeminiError(error: unknown): boolean {
     msg.includes('fetch failed') ||
     msg.includes('ECONNRESET') ||
     msg.includes('ETIMEDOUT') ||
-    msg.includes('ENOTFOUND')
+    msg.includes('ENOTFOUND') ||
+    msg.includes('aborted') ||
+    error.name === 'AbortError'
   );
 }
 
