@@ -18,7 +18,7 @@ export const COLLECTION_LIST_TOOLS = [
   {
     name: 'create_collection_list',
     description: 'Create a collection list for program-level brand safety. Uses distribution identifiers for cross-publisher matching.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
@@ -35,7 +35,7 @@ export const COLLECTION_LIST_TOOLS = [
   {
     name: 'get_collection_list',
     description: 'Retrieve a collection list with optional resolution.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
@@ -67,7 +67,7 @@ export const COLLECTION_LIST_TOOLS = [
   {
     name: 'list_collection_lists',
     description: 'List collection lists for the authenticated principal.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
@@ -78,8 +78,8 @@ export const COLLECTION_LIST_TOOLS = [
   },
   {
     name: 'delete_collection_list',
-    description: 'Delete a collection list.',
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    description: 'Delete a collection list. Cannot be undone.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
