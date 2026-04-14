@@ -77,13 +77,16 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
   prompt += `Do not include any text, words, labels, or logos in the image. Square aspect ratio.`;
 
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({
-    model: 'gemini-3.1-flash-image-preview',
-    generationConfig: {
-      // @ts-expect-error - responseModalities not in SDK types yet
-      responseModalities: ['TEXT', 'IMAGE'],
+  const model = ai.getGenerativeModel(
+    {
+      model: 'gemini-3.1-flash-image-preview',
+      generationConfig: {
+        // @ts-expect-error - responseModalities not in SDK types yet
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
     },
-  });
+    { timeout: 120_000 },
+  );
 
   // Build content parts
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -129,7 +132,7 @@ export async function validatePortrait(imageBuffer: Buffer): Promise<{
   issues: string[];
 }> {
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' }, { timeout: 30_000 });
 
   const validationPrompt =
     `Analyze this portrait illustration for quality. Check: ` +
