@@ -164,14 +164,14 @@ export class EmailDatabase {
       RETURNING *`,
       [
         emailEvent.id,
-        data.link_name?.slice(0, 500) || null,
+        data.link_name || null,
         data.destination_url,
-        data.ip_address?.slice(0, 100) || null,
+        data.ip_address || null,
         data.user_agent || null,
         data.referrer || null,
-        data.utm_source?.slice(0, 500) || null,
-        data.utm_medium?.slice(0, 500) || null,
-        data.utm_campaign?.slice(0, 500) || null,
+        data.utm_source || null,
+        data.utm_medium || null,
+        data.utm_campaign || null,
       ]
     );
 
