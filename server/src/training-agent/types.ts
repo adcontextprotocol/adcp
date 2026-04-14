@@ -167,6 +167,7 @@ export interface SessionState {
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   propertyLists: Map<string, PropertyListState>;
+  collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
@@ -176,6 +177,19 @@ export interface SessionState {
   };
   createdAt: Date;
   lastAccessedAt: Date;
+}
+
+export interface CollectionListState {
+  list_id: string;
+  name: string;
+  description?: string;
+  base_collections?: unknown[];
+  filters?: Record<string, unknown>;
+  brand?: { domain: string };
+  webhook_url?: string;
+  collection_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SignalActivationState {

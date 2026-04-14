@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/collection/create-collection-list-response.json",
+  "title": "Create Collection List Response",
+  "description": "Response payload for create_collection_list task",
+  "type": "object",
+  "properties": {
+    "list": {
+      "$ref": "/schemas/collection/collection-list.json",
+      "description": "The created collection list"
+    },
+    "auth_token": {
+      "type": "string",
+      "description": "Token that can be shared with sellers to authorize fetching this list. Store this - it is only returned at creation time."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["list", "auth_token"],
+  "additionalProperties": false
+}

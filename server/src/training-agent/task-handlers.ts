@@ -148,6 +148,14 @@ import {
   handleSyncGovernance,
 } from './account-handlers.js';
 import {
+  COLLECTION_LIST_TOOLS,
+  handleCreateCollectionList,
+  handleGetCollectionList,
+  handleUpdateCollectionList,
+  handleListCollectionLists,
+  handleDeleteCollectionList,
+} from './inventory-governance-handlers.js';
+import {
   CATALOG_EVENT_TOOLS,
   handleSyncCatalogs,
   handleSyncEventSources,
@@ -703,9 +711,10 @@ const TOOLS = [
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
   ...GOVERNANCE_TOOLS,
-  ...BRAND_TOOLS,
   ...PROPERTY_TOOLS,
+  ...COLLECTION_LIST_TOOLS,
   ...CONTENT_STANDARDS_TOOLS,
+  ...BRAND_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
   {
     name: 'report_usage',
@@ -2754,6 +2763,11 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_property_list: handleUpdatePropertyList,
   delete_property_list: handleDeletePropertyList,
   validate_property_delivery: handleValidatePropertyDelivery,
+  create_collection_list: handleCreateCollectionList,
+  get_collection_list: handleGetCollectionList,
+  update_collection_list: handleUpdateCollectionList,
+  list_collection_lists: handleListCollectionLists,
+  delete_collection_list: handleDeleteCollectionList,
   create_content_standards: handleCreateContentStandards,
   list_content_standards: handleListContentStandards,
   get_content_standards: handleGetContentStandards,

@@ -34,6 +34,7 @@ function createSession(): SessionState {
     governanceChecks: new Map(),
     governanceOutcomes: new Map(),
     propertyLists: new Map(),
+    collectionLists: new Map(),
     contentStandards: new Map(),
     rightsGrants: new Map(),
     creatives: new Map(),
