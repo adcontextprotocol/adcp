@@ -630,7 +630,10 @@ export class AddieRouter {
    */
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
     const startTime = Date.now();
-    const text = ctx.message.toLowerCase().trim();
+    // Normalize smart quotes (Slack converts ' to \u2018/\u2019 and " to \u201C/\u201D)
+    const text = ctx.message.toLowerCase().trim()
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
 
     // In threads, brief messages ("yes", "done", "ok") are responses to
     // something Addie said — let the LLM router see them with thread context.

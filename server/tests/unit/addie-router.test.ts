@@ -331,6 +331,17 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan!.action).toBe('respond');
     });
 
+    it('should match Slack smart quotes in "who\u2019s coming to"', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: "who\u2019s coming to the amsterdam meetup tonight" }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['events']);
+      }
+    });
+
     it('should NOT match "who is going to fix this bug"', () => {
       const plan = router.quickMatch(
         makeCtx({ message: 'who is going to fix this bug?' }),
