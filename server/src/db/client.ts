@@ -67,6 +67,11 @@ export function getPool(): Pool {
   return pool;
 }
 
+// PgBouncer can kill idle connections between pool checkout and query execution.
+// When this happens pg destroys the dead connection internally, so a single
+// retry on a fresh connection is safe for standalone queries (NOT transactions).
+const RETRYABLE_RE = /client_idle_timeout|Connection terminated|ECONNRESET|EPIPE|connection reset/i;
+
 /**
  * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
  * with the params array -- never concatenate user input into the text argument.
@@ -76,7 +81,15 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<QueryResult<T>> {
   const pool = getPool();
-  return pool.query<T>(text, params);
+  try {
+    return await pool.query<T>(text, params);
+  } catch (err) {
+    if (err instanceof Error && RETRYABLE_RE.test(err.message)) {
+      console.warn("Retrying query after transient PgBouncer disconnect:", err.message);
+      return pool.query<T>(text, params);
+    }
+    throw err;
+  }
 }
 
 /**
