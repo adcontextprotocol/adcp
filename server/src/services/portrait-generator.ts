@@ -85,7 +85,7 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
         responseModalities: ['TEXT', 'IMAGE'],
       },
     },
-    { timeout: 120_000 },
+    { timeout: 180_000 },
   );
 
   // Build content parts
@@ -106,7 +106,7 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
 
   const result = await withGeminiRetry(
     () => model.generateContent(parts),
-    undefined,
+    { initialDelayMs: 5000, maxDelayMs: 30000 },
     'generatePortrait',
   );
   const response = result.response;

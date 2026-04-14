@@ -251,7 +251,13 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
       });
     } catch (err) {
       logger.error({ err }, 'Portrait generation failed');
-      res.status(500).json({ error: 'Portrait generation failed' });
+      const isTransient =
+        err instanceof Error &&
+        (err.name === 'AbortError' || err.message.includes('aborted') || err.message.includes('503'));
+      res.status(isTransient ? 503 : 500).json({
+        error: 'Portrait generation failed',
+        retryable: isTransient,
+      });
     }
   });
 
