@@ -30,22 +30,16 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    // PgBouncer handles connection pooling on the server side, but we still
-    // keep connections alive in the local pool to avoid connection churn.
-    // Previously idleTimeoutMillis was 1ms which forced a new PgBouncer
-    // connection for every query — hammering PgBouncer under load.
-    // idleTimeoutMillis MUST be shorter than PgBouncer's client_idle_timeout
-    // so the Node pool proactively closes idle connections before PgBouncer
-    // kills them (which causes client_idle_timeout errors on reuse).
-    max: config.maxPoolSize || 10,
-    idleTimeoutMillis: config.idleTimeoutMillis ?? 10000,
+    // PgBouncer owns connection pooling — we do NOT pool here.
+    // We use pg.Pool only as a connection manager: it gives us pool.query()
+    // (atomic connect → query → release) and pool.connect() (checkout/release
+    // for transactions). With max: 3 and a 1 s idle timeout, this is just a
+    // thin TCP cache — connections are reused briefly within request bursts
+    // then closed well before PgBouncer's client_idle_timeout can fire.
+    max: config.maxPoolSize || 3,
+    idleTimeoutMillis: config.idleTimeoutMillis ?? 1000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
     allowExitOnIdle: true,
-    // TCP keepalive detects dead peers (crashed machines, network partitions)
-    // but does NOT prevent PgBouncer's client_idle_timeout — that tracks
-    // protocol-level activity, not TCP-level.
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
   });
 
   pool.on("error", (err) => {
@@ -67,11 +61,6 @@ export function getPool(): Pool {
   return pool;
 }
 
-// PgBouncer can kill idle connections between pool checkout and query execution.
-// When this happens pg destroys the dead connection internally, so a single
-// retry on a fresh connection is safe for standalone queries (NOT transactions).
-const RETRYABLE_RE = /client_idle_timeout|Connection terminated|ECONNRESET|EPIPE|connection reset/i;
-
 /**
  * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
  * with the params array -- never concatenate user input into the text argument.
@@ -81,15 +70,7 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<QueryResult<T>> {
   const pool = getPool();
-  try {
-    return await pool.query<T>(text, params);
-  } catch (err) {
-    if (err instanceof Error && RETRYABLE_RE.test(err.message)) {
-      console.warn("Retrying query after transient PgBouncer disconnect:", err.message);
-      return pool.query<T>(text, params);
-    }
-    throw err;
-  }
+  return pool.query<T>(text, params);
 }
 
 /**
