@@ -10,6 +10,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
+import { trackBackground } from "../../services/brand-enrichment.js";
 import {
   addPersonalDomain,
   removePersonalDomain,
@@ -280,9 +281,11 @@ export function setupDomainRoutes(
         );
 
         // Auto-enrich the new organization in the background
-        enrichOrganization(workosOrg.id, domain).catch((err) => {
-          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
-        });
+        trackBackground(
+          enrichOrganization(workosOrg.id, domain).catch((err) => {
+            logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+          })
+        );
 
         // Link the unmapped Slack users to this new prospect
         const linkResult = await slackDb.linkSlackUsersByDomain(domain, workosOrg.id);
@@ -458,9 +461,11 @@ export function setupDomainRoutes(
             );
 
             // Auto-enrich in background
-            enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
-              logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
-            });
+            trackBackground(
+              enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
+                logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
+              })
+            );
 
             // Link unmapped Slack users to this new prospect (same as single-create)
             if (source === 'slack') {
@@ -746,9 +751,11 @@ export function setupDomainRoutes(
         );
 
         // Auto-enrich the new organization in the background
-        enrichOrganization(workosOrg.id, domain).catch((err) => {
-          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
-        });
+        trackBackground(
+          enrichOrganization(workosOrg.id, domain).catch((err) => {
+            logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+          })
+        );
 
         res.status(201).json({
           ...result.rows[0],
@@ -1578,7 +1585,7 @@ export function setupDomainRoutes(
 
     if (emailDomainLabels.length > 0) {
       const houseResult = await pool.query<{ domain: string; house_domain: string }>(
-        `SELECT domain, house_domain FROM discovered_brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
+        `SELECT domain, house_domain FROM brands WHERE domain = ANY($1) AND house_domain IS NOT NULL`,
         [emailDomainLabels]
       );
       for (const row of houseResult.rows) {
@@ -1586,7 +1593,7 @@ export function setupDomainRoutes(
       }
 
       const subResult = await pool.query<{ house_domain: string; sub_count: string }>(
-        `SELECT house_domain, COUNT(*) as sub_count FROM discovered_brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
+        `SELECT house_domain, COUNT(*) as sub_count FROM brands WHERE house_domain = ANY($1) GROUP BY house_domain`,
         [emailDomainLabels]
       );
       for (const row of subResult.rows) {
@@ -1756,7 +1763,7 @@ Respond with ONLY a JSON array, one entry per cluster:
             UNION
             SELECT LOWER(brand_domain) FROM brand_domain_aliases
             UNION
-            SELECT LOWER(db.domain) FROM discovered_brands db
+            SELECT LOWER(db.domain) FROM brands db
               JOIN organizations o ON o.email_domain = db.house_domain
               WHERE db.house_domain IS NOT NULL
           ),
@@ -1938,7 +1945,7 @@ Respond with ONLY a JSON array, one entry per cluster:
 
         // 6. Related domains - find organizations with domains that share a root domain
         // e.g., yahooinc.com and advertising.yahoo.com should be grouped together
-        // 6a. Brand hierarchy matches: orgs sharing a house_domain in discovered_brands
+        // 6a. Brand hierarchy matches: orgs sharing a house_domain in brands
         const brandHierarchyResult = await pool.query(`
           WITH house_groups AS (
             SELECT
@@ -1950,7 +1957,7 @@ Respond with ONLY a JSON array, one entry per cluster:
                 'subscription_status', o.subscription_status,
                 'domains', ARRAY[o.email_domain]
               )) AS organizations
-            FROM discovered_brands db
+            FROM brands db
             JOIN organizations o ON o.email_domain = db.domain OR o.email_domain = db.house_domain
             WHERE db.house_domain IS NOT NULL
               AND o.is_personal = false
@@ -2012,6 +2019,8 @@ Respond with ONLY a JSON array, one entry per cluster:
             FROM org_domains
             WHERE domain IS NOT NULL
               AND LOWER(SUBSTRING(domain FROM '([^.]+\\.[^.]+)$')) NOT IN (${freeEmailPlaceholders})
+              -- Exclude country-code TLDs that produce false matches
+              AND SUBSTRING(domain FROM '([^.]+\\.[^.]+)$') !~ '^(co|com|net|org|ac|gov|edu)\\.[a-z]{2}$'
           ),
           root_groups AS (
             SELECT
@@ -2056,15 +2065,19 @@ Respond with ONLY a JSON array, one entry per cluster:
             relatedDomainsRows.push(row);
           }
         }
-        // Only include heuristic matches for domains not already covered by brand registry
+        // Only include heuristic matches for domains not already covered by brand registry or domain conflicts
         const brandOrgIds = new Set<string>();
         for (const row of [...brandHierarchyResult.rows, ...brandAliasResult.rows]) {
           for (const org of row.organizations) {
             brandOrgIds.add(org.org_id);
           }
         }
+        // Domains already surfaced in domain_conflicts — don't duplicate them in related_domains
+        const conflictDomains = new Set<string>(
+          conflictResult.rows.map((r: { email_domain: string }) => r.email_domain.toLowerCase())
+        );
         for (const row of rootHeuristicResult.rows) {
-          if (!seenGroupKeys.has(row.group_key)) {
+          if (!seenGroupKeys.has(row.group_key) && !conflictDomains.has(row.group_key.toLowerCase())) {
             // Skip heuristic groups where all orgs are already covered by brand matches
             const hasUncoveredOrg = row.organizations.some(
               (org: { org_id: string }) => !brandOrgIds.has(org.org_id)
@@ -2111,11 +2124,11 @@ Respond with ONLY a JSON array, one entry per cluster:
                 OR o1.normalized_name LIKE '%' || o2.normalized_name
                 OR o2.normalized_name LIKE o1.normalized_name || '%'
                 OR o2.normalized_name LIKE '%' || o1.normalized_name
-                -- Or high trigram similarity (0.4+ catches typos and variations)
-                OR similarity(o1.normalized_name, o2.normalized_name) >= 0.4
+                -- Trigram similarity: require 0.6+ to avoid noise on short names
+                OR similarity(o1.normalized_name, o2.normalized_name) >= 0.6
               )
-            WHERE LENGTH(o1.normalized_name) >= 3
-              AND LENGTH(o2.normalized_name) >= 3
+            WHERE LENGTH(o1.normalized_name) >= 5
+              AND LENGTH(o2.normalized_name) >= 5
             GROUP BY o1.normalized_name
             HAVING COUNT(DISTINCT o1.workos_organization_id) > 1
           )
@@ -2335,10 +2348,7 @@ Respond with ONLY a JSON array, one entry per cluster:
               AND o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [org_id];
@@ -2352,10 +2362,7 @@ Respond with ONLY a JSON array, one entry per cluster:
             WHERE o.email_domain IS NOT NULL
               AND o.is_personal = false
               AND od.domain IS NULL
-            ON CONFLICT (domain) DO UPDATE SET
-              workos_organization_id = EXCLUDED.workos_organization_id,
-              is_primary = true,
-              updated_at = NOW()
+            ON CONFLICT (domain) DO NOTHING
             RETURNING workos_organization_id, domain
           `;
           params = [];

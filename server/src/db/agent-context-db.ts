@@ -6,7 +6,7 @@ import crypto from 'crypto';
 // TYPES
 // =====================================================
 
-export type AgentType = 'sales' | 'creative' | 'signals' | 'unknown';
+export type AgentType = 'brand' | 'rights' | 'measurement' | 'governance' | 'creative' | 'sales' | 'buying' | 'signals' | 'unknown';
 export type Protocol = 'mcp' | 'a2a';
 export type AuthType = 'bearer' | 'basic';
 
@@ -788,7 +788,7 @@ export class AgentContextDatabase {
    */
   inferAgentType(tools: string[]): AgentType {
     if (tools.includes('get_products') || tools.includes('create_media_buy')) {
-      return 'sales';
+      return 'buying';
     }
     if (tools.includes('list_creative_formats') && !tools.includes('get_products')) {
       return 'creative';

@@ -4,6 +4,7 @@ import {
   createDigest,
   getDigestByDate,
   setReviewMessage,
+  updateDigestContent,
   markSent,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
@@ -18,6 +19,7 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
 import { publishDigestAsPerspective } from '../services/digest-publisher.js';
+import { generateCoverForEdition } from '../../newsletters/cover.js';
 import { markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('weekly-digest');
@@ -171,6 +173,25 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
     .map((item) => item.suggestionId!);
   if (includedSuggestionIds.length > 0) {
     await markSuggestionsIncluded(includedSuggestionIds, editionDate);
+  }
+
+  // Generate cover image (non-blocking — draft still goes up for review if this fails)
+  try {
+    const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
+    const subject = generateDigestSubject(content);
+    const coverResult = await generateCoverForEdition(
+      thePromptConfig, digest.id, subject, content.openingTake, editionDate, content.dateFlavor,
+    );
+    if (coverResult) {
+      content.coverImageUrl = coverResult.coverImageUrl;
+      const updated = await updateDigestContent(digest.id, content);
+      if (!updated) {
+        logger.warn({ editionDate }, 'Could not attach cover URL — digest status may have changed');
+      }
+      logger.info({ editionDate, sizeKB: (coverResult.imageBuffer.length / 1024).toFixed(0) }, 'Cover image generated for The Prompt');
+    }
+  } catch (err) {
+    logger.warn({ error: err, editionDate }, 'Failed to generate cover image — proceeding without it');
   }
 
   // Post to Editorial working group channel for review

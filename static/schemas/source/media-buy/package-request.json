@@ -81,6 +81,18 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "measurement_terms": {
+      "$ref": "/schemas/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "/schemas/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",
@@ -97,6 +109,11 @@
       },
       "minItems": 1,
       "maxItems": 100
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

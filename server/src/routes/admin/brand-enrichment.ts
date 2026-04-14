@@ -238,12 +238,12 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           `SELECT
             COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL) as total_with_domain,
             COUNT(*) FILTER (WHERE EXISTS (
-              SELECT 1 FROM discovered_brands db
+              SELECT 1 FROM brands db
               WHERE db.domain = o.email_domain
                OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             )) as mapped,
             COUNT(*) FILTER (WHERE o.email_domain IS NOT NULL AND NOT EXISTS (
-              SELECT 1 FROM discovered_brands db
+              SELECT 1 FROM brands db
               WHERE db.domain = o.email_domain
                OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
             )) as unmapped
@@ -264,7 +264,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
   );
 
   // GET /api/admin/brand-enrichment/unmapped-orgs
-  // Organizations with a domain not in discovered_brands
+  // Organizations with a domain not in brands
   apiRouter.get(
     '/brand-enrichment/unmapped-orgs',
     requireAuth,
@@ -287,7 +287,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
            WHERE o.is_personal = false
              AND o.email_domain IS NOT NULL
              AND NOT EXISTS (
-               SELECT 1 FROM discovered_brands db
+               SELECT 1 FROM brands db
                WHERE db.domain = o.email_domain
                OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
              )
@@ -327,7 +327,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
            WHERE o.is_personal = false
              AND o.email_domain IS NOT NULL
              AND NOT EXISTS (
-               SELECT 1 FROM discovered_brands db
+               SELECT 1 FROM brands db
                WHERE db.domain = o.email_domain
                OR EXISTS (SELECT 1 FROM brand_domain_aliases bda WHERE bda.alias_domain = o.email_domain AND bda.brand_domain = db.domain)
              )
@@ -424,7 +424,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         }
 
         const existing = await query(
-          `SELECT domain FROM discovered_brands WHERE domain = $1`,
+          `SELECT domain FROM brands WHERE domain = $1`,
           [domain]
         );
         if (existing.rows.length === 0) {
@@ -449,13 +449,13 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         if (setClauses.length > 0) {
           params.push(domain);
           const result = await query(
-            `UPDATE discovered_brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, house_domain, keller_type, brand_name, source_type`,
+            `UPDATE brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, house_domain, keller_type, brand_name, source_type`,
             params
           );
           brandRow = result.rows[0];
         } else {
           const result = await query(
-            `SELECT domain, house_domain, keller_type, brand_name, source_type FROM discovered_brands WHERE domain = $1`,
+            `SELECT domain, house_domain, keller_type, brand_name, source_type FROM brands WHERE domain = $1`,
             [domain]
           );
           brandRow = result.rows[0];

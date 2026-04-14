@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-window.json",
+  "title": "Measurement Window",
+  "description": "A measurement maturation window for broadcast and linear TV. Broadcast measurement is not delayed data — it matures over time as time-shifted (DVR) viewing accumulates. Each window represents a defined accumulation period after the live broadcast.",
+  "type": "object",
+  "properties": {
+    "window_id": {
+      "type": "string",
+      "maxLength": 50,
+      "description": "Identifier for this measurement window. Standard values: 'live' (real-time viewers only), 'c3' (live + 3 days time-shifted), 'c7' (live + 7 days time-shifted). Sellers may define custom windows for other accumulation periods.",
+      "examples": [
+        "live",
+        "c3",
+        "c7"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable description of what this window measures",
+      "examples": [
+        "Live broadcast impressions only",
+        "Live plus 3 days of time-shifted viewing",
+        "Live plus 7 days of time-shifted viewing"
+      ]
+    },
+    "duration_days": {
+      "type": "integer",
+      "description": "Number of days after live broadcast included in this window. 0 = live only, 3 = live + 3 days DVR, 7 = live + 7 days DVR.",
+      "minimum": 0
+    },
+    "expected_availability_days": {
+      "type": "integer",
+      "description": "Expected number of days after broadcast before this window's data is available from the measurement vendor. For example, C7 window data from VideoAmp typically arrives ~22 days after broadcast (7-day accumulation + ~15-day processing).",
+      "minimum": 0
+    },
+    "is_guarantee_basis": {
+      "type": "boolean",
+      "description": "Whether this window is the basis for delivery guarantees and reconciliation. A product typically has one guarantee basis window (e.g., C7 for most US broadcast). Buyers reconcile against the guarantee basis window's final numbers."
+    }
+  },
+  "required": [
+    "window_id",
+    "duration_days"
+  ],
+  "additionalProperties": true
+}

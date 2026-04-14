@@ -92,6 +92,15 @@
       "enum": ["date_range", "lifetime_only"],
       "description": "Whether delivery data can be filtered to arbitrary date ranges. 'date_range' means the platform supports start_date/end_date parameters. 'lifetime_only' means the platform returns campaign lifetime totals and date range parameters are not accepted.",
       "default": "date_range"
+    },
+    "measurement_windows": {
+      "type": "array",
+      "description": "Measurement maturation windows available for this product. Used by broadcast and linear TV sellers where measurement accumulates over time (Live, C3, C7). Each window defines an accumulation period and expected data availability. When present, delivery reports reference a specific window_id. Digital-only sellers typically omit this.",
+      "items": {
+        "$ref": "/schemas/core/measurement-window.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     }
   },
   "required": [

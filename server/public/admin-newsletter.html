@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
+  <title>Admin - Newsletter</title>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    :root { --nl-primary: #0d9488; --nl-light: #f0fdfa; --nl-dark: #1a1a2e; }
+
+    .nl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .nl-header h1 { margin: 0; font-size: 24px; color: var(--nl-primary); }
+    .nl-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .status-draft { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #d1fae5; color: #065f46; }
+    .status-sent { background: #dbeafe; color: #1e40af; }
+    .recipient-count { font-size: 13px; color: #666; padding: 4px 10px; background: #f1f5f9; border-radius: 12px; }
+
+    .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); position: relative; }
+    .section.hidden-section { opacity: 0.5; }
+    .section h2 { font-size: 16px; color: var(--color-text-heading, #1a1a2e); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px; }
+    .section-hint { font-size: 12px; color: var(--color-text-muted, #888); font-weight: normal; margin-top: 2px; }
+    .count { font-size: 12px; color: var(--color-text-muted, #888); font-weight: normal; }
+    .section-toggle { position: absolute; top: 16px; right: 16px; }
+    .section-toggle label { font-size: 12px; color: #888; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+
+    .editable { padding: 8px 12px; border: 1px solid transparent; border-radius: 4px; min-height: 20px; line-height: 1.5; cursor: pointer; }
+    .editable:hover { border-color: #d1d5db; }
+    .editable[contenteditable="true"] { border-color: var(--nl-primary); outline: none; background: var(--nl-light); }
+
+    .item-card { padding: 12px; border: 1px solid var(--color-border, #e5e5e5); border-radius: 6px; margin-bottom: 8px; }
+    .item-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; margin-right: 8px; }
+    .badge-decided { background: #065f46; } .badge-open { background: #d97706; } .badge-review { background: #6366f1; }
+    .badge-breaking { background: #dc2626; } .badge-custom { background: var(--nl-primary); } .badge-official { background: #2563eb; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--color-text-muted, #888); }
+    .empty-state h2 { color: var(--color-text-heading, #1a1a2e); }
+    .subject-line { padding: 12px 16px; background: #f8f9fa; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #1a1a2e; color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; z-index: 1000; }
+    .toast.show { opacity: 1; }
+
+    .btn-nl { background: var(--nl-primary); color: white; }
+    .btn-nl:hover { filter: brightness(0.9); }
+    .btn-outline { background: transparent; border: 1px solid #d1d5db; color: #374151; }
+    .btn-outline:hover { background: #f9fafb; }
+    .btn-sm { font-size: 12px; padding: 4px 10px; }
+    .btn-danger { background: #dc2626; color: white; }
+
+    .custom-section-card { border: 2px dashed var(--nl-primary); border-radius: 8px; padding: 16px; margin-bottom: 16px; background: var(--nl-light); }
+    .custom-section-card h3 { margin: 0 0 8px 0; font-size: 15px; color: var(--nl-primary); }
+    .custom-section-body { white-space: pre-wrap; font-size: 14px; color: #333; line-height: 1.6; }
+
+    .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; resize: vertical; box-sizing: border-box; }
+    .paste-area:focus { border-color: var(--nl-primary); outline: none; }
+
+    .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; }
+    .mode-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; color: #666; cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; }
+    .mode-tab.active { color: var(--nl-primary); border-bottom-color: var(--nl-primary); }
+
+    .instruction-bar { position: sticky; bottom: 0; padding: 12px 16px; background: #fff; border-top: 1px solid #e5e5e5; display: flex; gap: 8px; }
+    .instruction-bar input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .instruction-bar input:focus { border-color: var(--nl-primary); outline: none; }
+
+    .cover-preview { max-width: 300px; border-radius: 6px; margin-top: 8px; }
+
+    .section-content a { color: var(--nl-primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container" style="padding: 24px;">
+    <div class="nl-header">
+      <div>
+        <h1 id="nlTitle">Newsletter</h1>
+        <p id="nlSubtitle" style="color:#666;font-size:14px;margin:4px 0 0 0;"></p>
+      </div>
+      <div class="nl-actions" id="headerActions"></div>
+    </div>
+
+    <div id="loading" style="text-align:center;padding:40px;color:#888;">Loading...</div>
+    <div id="emptyState" style="display:none;" class="empty-state">
+      <h2>No draft this cycle</h2>
+      <p>Generate a new draft to start editing.</p>
+      <button class="btn btn-nl" onclick="generateDraft(event)">Generate Draft</button>
+    </div>
+
+    <div id="editorContent" style="display:none;">
+      <div class="mode-tabs">
+        <button class="mode-tab active" onclick="switchMode('edit')">Edit Sections</button>
+        <button class="mode-tab" onclick="switchMode('paste')">Paste Content</button>
+      </div>
+
+      <!-- Paste mode -->
+      <div id="pasteMode" style="display:none;">
+        <div class="section">
+          <h2>Paste Your Newsletter</h2>
+          <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Subject line override (optional)</label>
+            <input type="text" id="pasteSubject" placeholder="Leave blank to auto-generate" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;box-sizing:border-box;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Status line</label>
+            <input type="text" id="pasteStatusLine" placeholder="One-sentence summary" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;box-sizing:border-box;">
+          </div>
+          <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Body</label>
+          <textarea id="pasteBody" class="paste-area" placeholder="Paste your newsletter content here..."></textarea>
+          <div style="margin-top:12px;display:flex;gap:8px;">
+            <button class="btn btn-nl" onclick="submitPaste()">Replace Content</button>
+            <button class="btn btn-outline" onclick="switchMode('edit')">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit mode -->
+      <div id="editMode">
+        <div id="subjectLine" class="subject-line"></div>
+
+        <!-- Cover -->
+        <div class="section" id="coverSection">
+          <h2>Cover Image</h2>
+          <div id="coverPreview"><em style="color:#888;">No cover image</em></div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="regenerateCover()">Regenerate Cover</button>
+        </div>
+
+        <!-- Editable text fields rendered dynamically -->
+        <div id="editableFields"></div>
+
+        <!-- Sections rendered from uiConfig -->
+        <div id="sectionsContainer"></div>
+
+        <!-- Custom sections -->
+        <div id="customSectionsContainer"></div>
+
+        <!-- Add section -->
+        <div id="addSectionBar" style="display:flex;gap:8px;align-items:center;padding:12px 16px;background:#f8f9fa;border-radius:6px;border:1px dashed #d1d5db;margin-bottom:16px;">
+          <button class="btn btn-outline btn-sm" onclick="showAddSection()">+ Add Section</button>
+          <span style="font-size:12px;color:#888;">Add a custom section</span>
+        </div>
+        <div id="addSectionForm" style="display:none;" class="section">
+          <h2>Add Custom Section</h2>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Title</label>
+            <input type="text" id="newSectionTitle" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;box-sizing:border-box;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Body (markdown)</label>
+            <textarea id="newSectionBody" class="paste-area" style="min-height:120px;"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-nl btn-sm" onclick="saveCustomSection()">Add</button>
+            <button class="btn btn-outline btn-sm" onclick="hideAddSection()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instruction bar (shown for newsletters with LLM editing) -->
+    <div id="instructionBar" class="instruction-bar" style="display:none;">
+      <input type="text" id="instructionInput" placeholder="Tell the editor what to change..." onkeydown="if(event.key==='Enter')applyInstruction()">
+      <button class="btn btn-nl btn-sm" onclick="applyInstruction()">Apply</button>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script>
+    // Determine newsletter ID from URL: /admin/newsletters/:id
+    const pathParts = window.location.pathname.split('/');
+    const NL_ID = pathParts[pathParts.length - 1];
+    const API_BASE = `/api/admin/newsletters/${NL_ID}`;
+
+    let currentDigest = null;
+    let currentSubject = '';
+    let uiConfig = null;
+    let recipientCount = null;
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function toast(msg, duration = 3000) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    async function api(path, opts = {}) {
+      return AdminSidebar.fetch(API_BASE + path, {
+        headers: { 'Content-Type': 'application/json', ...opts.headers },
+        ...opts,
+      });
+    }
+
+    // ─── Mode switching ─────────────────────────────────────────────
+
+    function switchMode(mode) {
+      document.querySelectorAll('.mode-tab').forEach((t, i) => {
+        t.classList.toggle('active', (mode === 'edit' && i === 0) || (mode === 'paste' && i === 1));
+      });
+      document.getElementById('editMode').style.display = mode === 'edit' ? 'block' : 'none';
+      document.getElementById('pasteMode').style.display = mode === 'paste' ? 'block' : 'none';
+    }
+
+    // ─── Load ───────────────────────────────────────────────────────
+
+    async function loadEdition() {
+      try {
+        const [editionRes, countRes] = await Promise.all([
+          api('/editions/current'),
+          api('/recipients/count'),
+        ]);
+        const data = await editionRes.json();
+        const countData = await countRes.json().catch(() => null);
+        if (countData) recipientCount = countData;
+
+        document.getElementById('loading').style.display = 'none';
+
+        if (!data.digest) {
+          document.getElementById('emptyState').style.display = 'block';
+          return;
+        }
+
+        currentDigest = data.digest;
+        currentSubject = data.subject || '';
+        uiConfig = data.uiConfig;
+        applyConfig();
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('editorContent').style.display = 'block';
+        render();
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Failed to load: ' + esc(err.message);
+      }
+    }
+
+    function applyConfig() {
+      if (!uiConfig) return;
+      // Apply palette
+      document.documentElement.style.setProperty('--nl-primary', uiConfig.palette.primary);
+      document.documentElement.style.setProperty('--nl-light', uiConfig.palette.light);
+      document.documentElement.style.setProperty('--nl-dark', uiConfig.palette.dark);
+      // Title
+      document.getElementById('nlTitle').textContent = uiConfig.name;
+      document.getElementById('nlSubtitle').textContent = `${uiConfig.author}'s editor`;
+      document.title = `Admin - ${uiConfig.name}`;
+      if (uiConfig.icon) document.querySelector('link[rel="icon"]').href = uiConfig.icon;
+      // Instruction bar
+      document.getElementById('instructionBar').style.display = uiConfig.hasInstructionEditing ? 'flex' : 'none';
+      if (uiConfig.hasInstructionEditing) {
+        document.getElementById('instructionInput').placeholder = `Tell ${uiConfig.author} what to change...`;
+      }
+    }
+
+    // ─── Render ─────────────────────────────────────────────────────
+
+    function render() {
+      if (!currentDigest || !uiConfig) return;
+      const c = currentDigest.content;
+      const status = currentDigest.status;
+      const hidden = new Set(c.hiddenSections || []);
+
+      // Header
+      const badge = recipientCount ? `<span class="recipient-count">${recipientCount.emailCount} recipients</span>` : '';
+      document.getElementById('headerActions').innerHTML = `
+        ${badge}
+        <span class="status-badge status-${esc(status)}">${esc(status)}</span>
+        ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendTest()">Send Test</button>` : ''}
+        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+      `;
+
+      // Subject
+      document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> ${esc(currentSubject)}`;
+
+      // Cover
+      const coverEl = document.getElementById('coverPreview');
+      if (c.coverImageUrl) {
+        coverEl.innerHTML = `<img src="${esc(c.coverImageUrl)}" alt="Cover" class="cover-preview" onerror="this.style.display='none'">`;
+      } else {
+        coverEl.innerHTML = '<em style="color:#888;">No cover image</em>';
+      }
+
+      // Editable fields
+      const fieldsEl = document.getElementById('editableFields');
+      fieldsEl.innerHTML = '';
+      for (const field of uiConfig.editableFields) {
+        const label = field.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+        const val = c[field] || '';
+        fieldsEl.innerHTML += `
+          <div class="section">
+            <h2>${esc(label)}</h2>
+            <div class="editable" contenteditable="false" onclick="startEdit(this, '${field}')">${esc(val) || '<em style="color:#888;">Click to edit</em>'}</div>
+          </div>`;
+      }
+
+      // Sections from uiConfig — cherry-pick interface
+      const container = document.getElementById('sectionsContainer');
+      container.innerHTML = '';
+      let halfBuffer = [];
+      for (const sec of uiConfig.sections) {
+        const isHidden = hidden.has(sec.key);
+        const hasCandidates = sec.candidateCount > 0;
+        const hasIncluded = sec.includedCount > 0;
+
+        // Build candidate pool HTML with include/dismiss buttons per item
+        let candidatePoolHtml = '';
+        if (hasCandidates) {
+          candidatePoolHtml = `
+            <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Available (${sec.candidateCount})</span>
+                <button class="btn btn-outline btn-sm" onclick="includeAll('${sec.key}')">Include All</button>
+              </div>
+              <div class="candidate-pool" data-section="${sec.key}">${sec.candidateHtml}</div>
+            </div>`;
+        }
+
+        const card = `
+          <div class="section${isHidden ? ' hidden-section' : ''}" id="section_${sec.key}">
+            <div class="section-toggle">
+              <label><input type="checkbox" ${isHidden ? '' : 'checked'} onchange="toggleSection('${sec.key}', this.checked)"> Include in email</label>
+            </div>
+            <h2>${esc(sec.label)} ${hasIncluded ? `<span class="count">(${sec.includedCount} included)</span>` : ''}</h2>
+            ${sec.hint ? `<p class="section-hint">${esc(sec.hint)}</p>` : ''}
+            <div class="included-items section-content" data-section="${sec.key}">${sec.includedHtml}</div>
+            ${candidatePoolHtml}
+          </div>`;
+
+        if (sec.layout === 'half') {
+          halfBuffer.push(card);
+          if (halfBuffer.length === 2) {
+            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+            halfBuffer = [];
+          }
+        } else {
+          if (halfBuffer.length > 0) {
+            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+            halfBuffer = [];
+          }
+          container.innerHTML += card;
+        }
+      }
+      if (halfBuffer.length > 0) {
+        container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+      }
+
+      // Add action buttons to each item card
+      if (status === 'draft') {
+        // Included items get a "Remove" button
+        document.querySelectorAll('.included-items .item-card[data-id]').forEach(card => {
+          const id = card.getAttribute('data-id');
+          const section = card.closest('[data-section]')?.getAttribute('data-section');
+          if (id && section) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline btn-sm';
+            btn.style.cssText = 'float:right;margin-top:-4px;';
+            btn.textContent = 'Remove';
+            btn.onclick = () => unincludeItem(section, id);
+            card.prepend(btn);
+          }
+        });
+        // Candidate items get "Include" and "Dismiss" buttons
+        document.querySelectorAll('.candidate-pool .item-card[data-id]').forEach(card => {
+          const id = card.getAttribute('data-id');
+          const section = card.closest('[data-section]')?.getAttribute('data-section');
+          if (id && section) {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'float:right;display:flex;gap:4px;margin-top:-4px;';
+            const incBtn = document.createElement('button');
+            incBtn.className = 'btn btn-nl btn-sm';
+            incBtn.textContent = 'Include';
+            incBtn.onclick = () => includeItem(section, id);
+            const disBtn = document.createElement('button');
+            disBtn.className = 'btn btn-outline btn-sm';
+            disBtn.textContent = 'Dismiss';
+            disBtn.onclick = () => dismissItem(section, id);
+            wrap.appendChild(incBtn);
+            wrap.appendChild(disBtn);
+            card.prepend(wrap);
+          }
+        });
+      }
+
+      // Custom sections
+      const customEl = document.getElementById('customSectionsContainer');
+      customEl.innerHTML = '';
+      for (const cs of (c.customSections || [])) {
+        customEl.innerHTML += `
+          <div class="custom-section-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3><span class="item-badge badge-custom">CUSTOM</span> ${esc(cs.title || 'Untitled')}</h3>
+              <button class="btn btn-danger btn-sm" onclick="deleteCustomSection('${esc(cs.id)}')">Remove</button>
+            </div>
+            <div class="custom-section-body">${esc(cs.body)}</div>
+          </div>`;
+      }
+    }
+
+    function updateFromResponse(data) {
+      if (data.digest) currentDigest = data.digest;
+      if (data.subject) currentSubject = data.subject;
+      if (data.uiConfig) uiConfig = data.uiConfig;
+      render();
+    }
+
+    // ─── Inline editing ─────────────────────────────────────────────
+
+    function startEdit(el, field) {
+      if (currentDigest?.status !== 'draft') return;
+      el.innerHTML = esc(currentDigest.content[field] || '');
+      el.contentEditable = 'true';
+      el.focus();
+
+      function save() {
+        el.contentEditable = 'false';
+        el.removeEventListener('blur', save);
+        el.removeEventListener('keydown', onKey);
+        const value = el.textContent.trim();
+        api('/editions/' + currentDigest.id + '/edit', {
+          method: 'POST',
+          body: JSON.stringify({ field, value }),
+        }).then(r => r.json()).then(data => {
+          updateFromResponse(data);
+          toast('Saved');
+        }).catch(() => toast('Save failed'));
+      }
+
+      function onKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { el.contentEditable = 'false'; el.removeEventListener('blur', save); el.removeEventListener('keydown', onKey); render(); }
+      }
+
+      el.addEventListener('blur', save);
+      el.addEventListener('keydown', onKey);
+    }
+
+    // ─── Cherry-pick actions ───────────────────────────────────────
+
+    async function includeItem(sectionKey, itemId) {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/include-item', {
+          method: 'POST', body: JSON.stringify({ sectionKey, itemId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Included');
+      } catch (err) { toast('Include failed: ' + esc(err.message)); }
+    }
+
+    async function dismissItem(sectionKey, itemId) {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/dismiss-item', {
+          method: 'POST', body: JSON.stringify({ sectionKey, itemId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Dismissed');
+      } catch (err) { toast('Dismiss failed: ' + esc(err.message)); }
+    }
+
+    async function unincludeItem(sectionKey, itemId) {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/uninclude-item', {
+          method: 'POST', body: JSON.stringify({ sectionKey, itemId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Removed from included');
+      } catch (err) { toast('Remove failed: ' + esc(err.message)); }
+    }
+
+    async function includeAll(sectionKey) {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/include-all', {
+          method: 'POST', body: JSON.stringify({ sectionKey }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('All included');
+      } catch (err) { toast('Include all failed: ' + esc(err.message)); }
+    }
+
+    // ─── Section toggles ────────────────────────────────────────────
+
+    async function toggleSection(key, visible) {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/toggle-section', {
+          method: 'POST', body: JSON.stringify({ section: key, visible }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast(visible ? 'Section included' : 'Section hidden');
+      } catch (err) { toast('Toggle failed: ' + esc(err.message)); }
+    }
+
+    // ─── Custom sections ────────────────────────────────────────────
+
+    function showAddSection() {
+      document.getElementById('addSectionForm').style.display = 'block';
+      document.getElementById('addSectionBar').style.display = 'none';
+      document.getElementById('newSectionTitle').focus();
+    }
+
+    function hideAddSection() {
+      document.getElementById('addSectionForm').style.display = 'none';
+      document.getElementById('addSectionBar').style.display = 'flex';
+      document.getElementById('newSectionTitle').value = '';
+      document.getElementById('newSectionBody').value = '';
+    }
+
+    async function saveCustomSection() {
+      const title = document.getElementById('newSectionTitle').value.trim();
+      const body = document.getElementById('newSectionBody').value.trim();
+      if (!body) { toast('Body is required'); return; }
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/custom-sections', {
+          method: 'POST', body: JSON.stringify({ title, body, position: (currentDigest.content.customSections || []).length }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        hideAddSection();
+        updateFromResponse(data);
+        toast('Section added');
+      } catch (err) { toast('Save failed: ' + esc(err.message)); }
+    }
+
+    async function deleteCustomSection(sectionId) {
+      if (!confirm('Remove this custom section?')) return;
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/custom-sections/' + sectionId, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Section removed');
+      } catch (err) { toast('Remove failed: ' + esc(err.message)); }
+    }
+
+    // ─── Paste mode ─────────────────────────────────────────────────
+
+    async function submitPaste() {
+      const statusLine = document.getElementById('pasteStatusLine').value.trim();
+      const body = document.getElementById('pasteBody').value.trim();
+      const emailSubject = document.getElementById('pasteSubject').value.trim();
+      if (!body) { toast('Body is required'); return; }
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/paste-content', {
+          method: 'POST', body: JSON.stringify({ statusLine: statusLine || undefined, body, emailSubject: emailSubject || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        switchMode('edit');
+        updateFromResponse(data);
+        toast('Content replaced');
+      } catch (err) { toast('Paste failed: ' + esc(err.message)); }
+    }
+
+    // ─── Instruction editing ────────────────────────────────────────
+
+    async function applyInstruction() {
+      const input = document.getElementById('instructionInput');
+      const instruction = input.value.trim();
+      if (!instruction) return;
+      input.disabled = true;
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/edit', {
+          method: 'POST', body: JSON.stringify({ instruction }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        input.value = '';
+        updateFromResponse(data);
+        if (data.summary) toast(data.summary, 5000);
+      } catch (err) { toast('Edit failed: ' + esc(err.message)); }
+      input.disabled = false;
+      input.focus();
+    }
+
+    // ─── Cover ──────────────────────────────────────────────────────
+
+    async function regenerateCover() {
+      toast('Generating cover...');
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/regenerate-cover', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        if (data.coverImageUrl) currentDigest.content.coverImageUrl = data.coverImageUrl;
+        render();
+        toast('Cover regenerated');
+      } catch (err) { toast('Cover failed: ' + esc(err.message)); }
+    }
+
+    // ─── Actions ────────────────────────────────────────────────────
+
+    async function generateDraft(evt) {
+      const btn = evt.target;
+      btn.disabled = true; btn.textContent = 'Generating...';
+      try {
+        const res = await api('/editions/generate', { method: 'POST' });
+        const data = await res.json();
+        if (res.status === 409 && data.digest) {
+          currentDigest = data.digest;
+          currentSubject = data.subject || '';
+          uiConfig = data.uiConfig || uiConfig;
+          applyConfig();
+          document.getElementById('emptyState').style.display = 'none';
+          document.getElementById('editorContent').style.display = 'block';
+          render();
+          toast('Edition already exists — loaded for editing');
+          return;
+        }
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || '';
+        uiConfig = data.uiConfig || uiConfig;
+        applyConfig();
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('editorContent').style.display = 'block';
+        render();
+        toast('Draft generated');
+      } catch (err) {
+        toast('Generate failed: ' + esc(err.message));
+        btn.disabled = false; btn.textContent = 'Generate Draft';
+      }
+    }
+
+    async function approveEdition() {
+      const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients.` : '';
+      if (!confirm('Approve this edition?' + count + ' It will be sent on the next scheduled run.')) return;
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/approve', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        render();
+        toast('Approved');
+      } catch (err) { toast('Approve failed: ' + esc(err.message)); }
+    }
+
+    async function sendTest() {
+      const email = prompt('Send test email to:');
+      if (!email) return;
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/test-send', {
+          method: 'POST', body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast('Test sent to ' + email);
+      } catch (err) { toast('Send failed: ' + esc(err.message)); }
+    }
+
+    loadEdition();
+  </script>
+</body>
+</html>

@@ -123,8 +123,14 @@ const hooks: pino.LoggerOptions['hooks'] = {
   },
 };
 
+/** Process role resolved from FLY_PROCESS_GROUP; available to all modules. */
+export const processRole = process.env.FLY_PROCESS_GROUP || 'worker';
+
 export const logger = pino({
   level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
+
+  // Tag every log line with the process role so web vs worker is always visible
+  base: { processRole },
 
   hooks,
 

@@ -5,7 +5,7 @@
  * delivery are logged but never propagated.
  */
 
-import { createLogger } from '../logger.js';
+import { createLogger, processRole } from '../logger.js';
 import { getErrorChannel } from '../db/system-settings-db.js';
 import { sendChannelMessage } from '../slack/client.js';
 
@@ -148,10 +148,11 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
 
   recentErrors.set(throttleKey, now);
 
+  const quoted = ctx.errorMessage.substring(0, 500).split('\n').map(line => `> ${line}`).join('\n');
   const lines = [
-    `:rotating_light: *System error: ${ctx.source}*`,
+    `:rotating_light: *System error: ${ctx.source}* [${processRole}]`,
     '',
-    `> ${ctx.errorMessage.substring(0, 500)}`,
+    quoted,
   ];
 
   await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });

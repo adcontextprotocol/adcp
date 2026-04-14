@@ -42,6 +42,20 @@ describe("Database Migrations", () => {
       );
     });
 
+    it("should reject duplicate version numbers", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        "001_first.sql",
+        "001_second.sql",
+      ] as any);
+
+      vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
+      mockPool.query.mockResolvedValue({ rows: [] });
+
+      await expect(runMigrations()).rejects.toThrow(
+        /Duplicate migration version 1/
+      );
+    });
+
     it("should accept valid migration filenames", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([
         "001_initial.sql",
@@ -70,7 +84,7 @@ describe("Database Migrations", () => {
     it("should skip already applied migrations", async () => {
       mockPool.query
         .mockResolvedValueOnce({}) // CREATE migrations table
-        .mockResolvedValueOnce({ rows: [{ version: 1 }] }); // Already applied
+        .mockResolvedValueOnce({ rows: [{ version: 1, filename: "001_test.sql" }] }); // Already applied
 
       await runMigrations();
 
@@ -163,13 +177,60 @@ describe("Database Migrations", () => {
 
       mockPool.query
         .mockResolvedValueOnce({}) // CREATE table
-        .mockResolvedValueOnce({ rows: [{ version: 1 }, { version: 2 }] });
+        .mockResolvedValueOnce({ rows: [{ version: 1, filename: "001_test.sql" }, { version: 2, filename: "002_test.sql" }] });
 
       await runMigrations();
 
       expect(mockPool.query).toHaveBeenCalledWith(
-        "SELECT version FROM schema_migrations ORDER BY version"
+        "SELECT version, filename FROM schema_migrations ORDER BY version"
       );
+    });
+  });
+
+  describe("collision detection", () => {
+    it("should warn on historical filename mismatch (pre-baseline)", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        "054_fix_prospect.sql",
+      ] as any);
+      vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
+
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      mockPool.query
+        .mockResolvedValueOnce({}) // CREATE migrations table
+        .mockResolvedValueOnce({
+          rows: [{ version: 54, filename: "054_addie_thread_context.sql" }],
+        });
+
+      await runMigrations();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Historical migration filename mismatches")
+      );
+      // Should NOT re-apply the mismatched migration
+      expect(mockPool.connect).not.toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
+    });
+
+    it("should throw on filename mismatch above baseline", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        "400_storyboard_status.sql",
+      ] as any);
+      vi.mocked(fs.readFile).mockResolvedValue("CREATE TABLE test;");
+
+      mockPool.query
+        .mockResolvedValueOnce({}) // CREATE migrations table
+        .mockResolvedValueOnce({
+          rows: [{ version: 400, filename: "400_marketing_opt_in.sql" }],
+        });
+
+      await expect(runMigrations()).rejects.toThrow(
+        /Migration 400 on disk is "400_storyboard_status.sql" but was applied as "400_marketing_opt_in.sql"/
+      );
+
+      // Should NOT re-apply the mismatched migration
+      expect(mockPool.connect).not.toHaveBeenCalled();
     });
   });
 

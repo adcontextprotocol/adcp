@@ -35,6 +35,20 @@ For information about format IDs and how to reference formats, see [Creative For
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
 | `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 | `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
+
+### Pricing response fields
+
+When the creative agent charges and `account` is provided, the response includes pricing fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pricing_option_id` | string | Which rate card pricing option was applied |
+| `vendor_cost` | number | Cost incurred for this build. May be 0 for CPM-priced creatives where cost accrues at serve time. |
+| `currency` | string | ISO 4217 currency code |
+| `consumption` | object | Structured consumption details — `tokens`, `images_generated`, `renders`, `duration_seconds`. See [`creative-consumption.json`](https://adcontextprotocol.org/schemas/latest/core/creative-consumption.json). Informational for cost verification; `vendor_cost` is the billing source of truth. |
+
+For async builds (`status: "working"` with `context_id` polling), pricing fields appear on the final completed response only.
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
@@ -175,7 +189,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
         "content": "<script src=\"https://cdn.example.com/frameworks/js/sdk.js\"></script><script>AdSDK.createBanner({clickTag:'https://publisher.example.com/click/abc123',width:300,height:250,id:'ft_88201_{CACHEBUSTER}'});</script>"
       },
       "clickthrough_url": {
-        "url": "https://acmecorp.example.com/holiday-sale"
+        "url": "https://acmecorp.example.com/holiday-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -237,7 +251,7 @@ Generate creatives for multiple formats in a single call using `target_format_id
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://acmecorp.com/spring"
+        "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -265,7 +279,7 @@ The response uses `creative_manifests` (array) instead of `creative_manifest` (s
           "height": 250
         },
         "headline": { "asset_type": "text", "content": "Spring Collection Now Available" },
-        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.com/spring" }
+        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}" }
       }
     },
     {
@@ -304,6 +318,61 @@ To refine a single format from a multi-format build, call `build_creative` again
 Multi-format requests with `include_preview: true` generate one default preview per format. Custom `preview_inputs` are only supported with single-format requests. For multi-format builds where you need context-specific previews (device variants, different contexts), use a separate `preview_creative` batch call after building.
 </Note>
 
+### Paid build with pricing
+
+When the creative agent charges and `account` is provided, the response includes pricing fields. The agent selects the applicable pricing option server-side based on the account's rate card and the work performed — the buyer does not pass `pricing_option_id` in the request.
+
+**Per-unit pricing (transformation agent)**:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "account": { "account_id": "acct_acme_creative" },
+  "creative_id": "cr_hero_banner",
+  "target_format_id": {
+    "agent_url": "https://creative.example.com",
+    "id": "display_728x90"
+  }
+}
+```
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.example.com",
+      "id": "display_728x90"
+    },
+    "assets": {
+      "ad_tag": {
+        "content": "<div data-adcp-creative='cr_hero_banner' style='width:728px;height:90px;'>...</div>"
+      }
+    }
+  },
+  "pricing_option_id": "po_standard_per_format",
+  "vendor_cost": 2.00,
+  "currency": "USD",
+  "consumption": {
+    "renders": 1
+  }
+}
+```
+
+The `pricing_option_id` corresponds to one of the options from [`list_creatives`](/docs/creative/task-reference/list_creatives#pricing). The buyer passes it in [`report_usage`](/docs/accounts/tasks/report_usage) for reconciliation.
+
+**CPM pricing (ad server)** — `vendor_cost` is 0 at build time because cost accrues when impressions are served:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": { "..." : "..." },
+  "pricing_option_id": "po_video_cpm",
+  "vendor_cost": 0,
+  "currency": "USD"
+}
+```
+
 ## Response format
 
 ### Single-format response
@@ -335,7 +404,7 @@ When the request uses `target_format_id`, the response contains a single creativ
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -564,7 +633,7 @@ Generate a creative from scratch using a generative format:
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -597,7 +666,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/spring"
+        "url": "https://mybrand.example.com/spring?campaign={MEDIA_BUY_ID}"
       }
     }
   },
@@ -630,7 +699,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/spring"
+        "url": "https://mybrand.example.com/spring?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -700,7 +769,7 @@ Adapt a creative for mobile with specific design changes:
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/new"
+        "url": "https://mybrand.example.com/new?campaign={MEDIA_BUY_ID}"
       }
     }
   }
@@ -1155,7 +1224,7 @@ To refine, pass the previous response's `creative_manifest` back as input with a
       },
       "clickthrough_url": {
         "asset_type": "url",
-        "url": "https://mybrand.com/winter-sale"
+        "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}"
       }
     }
   }

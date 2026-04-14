@@ -196,7 +196,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
             // Use targeted UPDATE to only patch logos, preserving all other DB fields
             downloadAndCacheLogos(domain, logos).then((hosted) => {
               return query(
-                `UPDATE discovered_brands
+                `UPDATE brands
                  SET brand_manifest = brand_manifest || $2::jsonb
                  WHERE domain = $1`,
                 [domain, JSON.stringify({ logos: hosted })]

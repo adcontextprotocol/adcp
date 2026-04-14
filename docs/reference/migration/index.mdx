@@ -10,7 +10,7 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades).
 
 <Info>
-**Starting from v2?** See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for the 7 minimum requirements to pass comply testing before working through this full migration.
+**Starting from v2?** See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for the 8 minimum requirements to pass storyboard testing before working through this full migration.
 </Info>
 
 ## Migration checklist
@@ -40,9 +40,12 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
 | Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
 | Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
+| Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
+| Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
+| Capabilities | `compliance_testing` protocol in `supported_protocols` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
 
 <Warning>
-**Comply-blocking requirement:** `buying_mode` on `get_products` is checked by comply testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+`buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
 </Warning>
 
 ## New in v3 — required vs optional

@@ -29,6 +29,16 @@ import {
   type ComplianceTrack,
   type PlatformType,
 } from '../services/compliance-testing.js';
+import {
+  loadBundledStoryboards,
+  getStoryboardById,
+  runStoryboard,
+  runStoryboardStep,
+  createTestClient,
+  type Storyboard,
+  type StoryboardContext,
+  type StoryboardStepResult,
+} from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import {
   findExistingProposalOrFeed,
@@ -273,6 +283,12 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
   }
 
   return { type: 'bearer', token: resolved.authToken };
+}
+
+function isAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message;
+  return msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication');
 }
 
 // Channel alias map — normalize buyer language to AdCP channel identifiers
@@ -902,6 +918,67 @@ export const MEMBER_TOOLS: AddieTool[] = [
         execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
       },
       required: ['agent_url', 'line_items'],
+    },
+  },
+  // ============================================
+  // STORYBOARD TOOLS (discover, recommend, run)
+  // ============================================
+  {
+    name: 'recommend_storyboards',
+    description:
+      'Connect to an agent, discover its tools, and return which storyboards apply. This is the first step when a developer pastes a URL. No configuration needed — storyboards self-select based on agent tools.',
+    usage_hints: 'use for "test this URL", "what can I test?", "which storyboards apply?", pasted agent URL, or any first-time agent testing. This should be the FIRST tool called when someone wants to test an agent.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
+    name: 'get_storyboard_detail',
+    description:
+      'Show the full structure of a storyboard — phases, steps, what each step tests, and what passing looks like. Use this before running a storyboard so the developer understands what will be tested.',
+    usage_hints: 'use when developer wants to understand a storyboard before running it, or asks "what does this test?", "show me the steps"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
+      },
+      required: ['storyboard_id'],
+    },
+  },
+  {
+    name: 'run_storyboard',
+    description:
+      'Run a complete storyboard against an agent and return step-by-step results. Each step shows pass/fail, validations, and what the agent returned. Use after recommend_storyboards and optionally get_storyboard_detail.',
+    usage_hints: 'use for "run this storyboard", "test media_buy_seller", "execute the test". Always call recommend_storyboards first to discover applicable storyboards.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to test' },
+        storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
+        dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
+      },
+      required: ['agent_url', 'storyboard_id'],
+    },
+  },
+  {
+    name: 'run_storyboard_step',
+    description:
+      'Run a single step of a storyboard. Returns the result plus a preview of the next step. Use this for step-by-step debugging — lets the developer see each request/response and decide whether to continue. Pass the context from the previous step result to maintain state.',
+    usage_hints: 'use for "run one step at a time", "step through the test", "debug step by step". Start with step_id from get_storyboard_detail or from the previous step\'s next.step_id.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to test' },
+        storyboard_id: { type: 'string', description: 'Storyboard ID' },
+        step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
+        context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
+        dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
+      },
+      required: ['agent_url', 'storyboard_id', 'step_id'],
     },
   },
   // ============================================
@@ -2025,7 +2102,7 @@ export function createMemberToolHandlers(
     }
 
     if (coAuthorEmails && coAuthorEmails.length > 0) {
-      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${result.id}`;
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/dashboard/content`;
     }
 
     return response;
@@ -2965,30 +3042,26 @@ export function createMemberToolHandlers(
     };
     if (tracks) complyOptions.tracks = tracks;
 
-    // Use provided platform_type, or look up stored one from registry metadata
+    // platform_type is optional — storyboards self-select based on agent tools.
+    // If provided, it adds advisory coherence checking but doesn't gate execution.
+    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
     let effectivePlatformType = platformType;
-    let wasStoredPlatformType = false;
     if (!effectivePlatformType) {
       try {
         const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
-        if (metadata?.platform_type) {
+        if (metadata?.platform_type && validPlatformTypes.has(metadata.platform_type)) {
           effectivePlatformType = metadata.platform_type as PlatformType;
-          wasStoredPlatformType = true;
         }
       } catch { /* ignore lookup failures */ }
     }
-
-    // If user provided platform_type and it wasn't already stored, save it
-    if (platformType && !wasStoredPlatformType) {
+    if (platformType && validPlatformTypes.has(platformType as string)) {
       try {
         await complianceDb.upsertRegistryMetadata(resolved.resolvedUrl, { platform_type: platformType });
       } catch { /* ignore save failures */ }
     }
-    if (!effectivePlatformType) {
-      const types = getAllPlatformTypes();
-      return `I need to know what type of agent this is to run a meaningful compliance check. What platform type is this agent?\n\n${types.map(t => `- \`${t}\``).join('\n')}\n\nOnce you tell me, I'll save it and run the check.`;
+    if (effectivePlatformType) {
+      complyOptions.platform_type = effectivePlatformType;
     }
-    complyOptions.platform_type = effectivePlatformType;
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
@@ -3001,7 +3074,7 @@ export function createMemberToolHandlers(
             await agentContextDb.recordTest({
               agent_context_id: context.id,
               scenario: 'quality_evaluation',
-              overall_passed: result.summary.tracks_failed === 0 && !result.v3_gate_failed,
+              overall_passed: result.overall_status === 'passing',
               steps_passed: result.summary.tracks_passed,
               steps_failed: result.summary.tracks_failed,
               total_duration_ms: result.total_duration_ms,
@@ -3097,6 +3170,280 @@ export function createMemberToolHandlers(
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
       throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
+    }
+  });
+
+  // ── Storyboard tools ────────────────────────────────────────────────
+
+  handlers.set('recommend_storyboards', async (input) => {
+    const agentUrl = input.agent_url as string;
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    // Connect and discover tools
+    const authOption = buildAuthOption(resolved);
+    let agentTools: string[];
+    try {
+      const client = createTestClient(resolved.resolvedUrl, 'mcp', {
+        ...(authOption && { auth: authOption }),
+      });
+      const agentInfo = await client.getAgentInfo();
+      agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
+    } catch (error) {
+      if (isAuthError(error)) {
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      throw new ToolError(`Could not connect to agent at ${resolved.resolvedUrl}: ${msg}`);
+    }
+
+    // Match storyboards to agent tools
+    const allStoryboards = loadBundledStoryboards();
+    const applicable = allStoryboards.filter(sb => {
+      if (!sb.required_tools?.length) return true;
+      return sb.required_tools.some(tool => agentTools.includes(tool));
+    });
+
+    // Group by track
+    const byTrack = new Map<string, typeof applicable>();
+    for (const sb of applicable) {
+      const track = sb.track || 'general';
+      if (!byTrack.has(track)) byTrack.set(track, []);
+      byTrack.get(track)!.push(sb);
+    }
+
+    let output = `## Agent: ${resolved.resolvedUrl}\n\n`;
+    output += `**Tools discovered:** ${agentTools.length} (${agentTools.join(', ')})\n`;
+    output += `**Applicable storyboards:** ${applicable.length} of ${allStoryboards.length}\n\n`;
+
+    if (applicable.length === 0) {
+      output += `No storyboards match this agent's tools. This agent may not implement any AdCP tasks yet.\n`;
+      return output;
+    }
+
+    // Recommend a starting storyboard (prefer core, then media_buy, then first available)
+    const startOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'signals', 'si', 'audiences'];
+    let recommended: Storyboard | undefined;
+    for (const track of startOrder) {
+      const trackSbs = byTrack.get(track);
+      if (trackSbs?.length) { recommended = trackSbs[0]; break; }
+    }
+    if (!recommended) recommended = applicable[0];
+
+    output += `### Recommended starting point\n\n`;
+    output += `**${recommended.title}** (\`${recommended.id}\`)\n`;
+    output += `${recommended.summary}\n\n`;
+
+    output += `### All applicable storyboards\n\n`;
+    for (const [track, storyboards] of byTrack) {
+      output += `**${track}**\n`;
+      for (const sb of storyboards) {
+        const stepCount = sb.phases.reduce((sum, p) => sum + p.steps.length, 0);
+        output += `- \`${sb.id}\` — ${sb.title} (${stepCount} steps)\n`;
+      }
+      output += '\n';
+    }
+
+    output += `Use \`get_storyboard_detail\` to see what a storyboard tests, or \`run_storyboard\` to execute one.`;
+    if (resolved.source === 'saved') output = '_Using saved credentials._\n\n' + output;
+
+    return output;
+  });
+
+  handlers.set('get_storyboard_detail', async (input) => {
+    const storyboardId = input.storyboard_id as string;
+
+    const sb = getStoryboardById(storyboardId);
+    if (!sb) {
+      const all = loadBundledStoryboards();
+      const ids = all.map(s => `\`${s.id}\``).join(', ');
+      return `Storyboard "${storyboardId}" not found. Available: ${ids}`;
+    }
+
+    let output = `## ${sb.title}\n\n`;
+    output += `**ID:** \`${sb.id}\`\n`;
+    output += `**Track:** ${sb.track || 'general'}\n`;
+    output += `**Summary:** ${sb.summary}\n\n`;
+    if (sb.narrative) {
+      output += `${sb.narrative}\n\n`;
+    }
+
+    for (const phase of sb.phases) {
+      output += `### ${phase.title}\n`;
+      if (phase.narrative) output += `${phase.narrative}\n`;
+      output += '\n';
+
+      for (const step of phase.steps) {
+        output += `**${step.id}** — ${step.title}\n`;
+        output += `  Task: \`${step.task}\`\n`;
+        if (step.requires_tool) output += `  Requires: \`${step.requires_tool}\`\n`;
+        if (step.expect_error) output += `  Expects: error response\n`;
+        if (step.narrative) output += `  ${step.narrative}\n`;
+        if (step.expected) output += `  Expected: ${step.expected}\n`;
+        if (step.validations?.length) {
+          output += `  Validations:\n`;
+          for (const v of step.validations) {
+            output += `    - ${v.description} (${v.check}${v.path ? ` at ${v.path}` : ''})\n`;
+          }
+        }
+        output += '\n';
+      }
+    }
+
+    const firstStep = sb.phases[0]?.steps[0];
+    if (firstStep) {
+      output += `Ready to run? Use \`run_storyboard\` with \`storyboard_id: "${sb.id}"\`, or \`run_storyboard_step\` with \`step_id: "${firstStep.id}"\` to go step by step.`;
+    }
+
+    return output;
+  });
+
+  handlers.set('run_storyboard', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const storyboardId = input.storyboard_id as string;
+    const dryRun = input.dry_run !== false;
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const sb = getStoryboardById(storyboardId);
+    if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    try {
+      const authOption = buildAuthOption(resolved);
+      const result = await runStoryboard(resolved.resolvedUrl, sb, {
+        dry_run: dryRun,
+        ...(authOption && { auth: authOption }),
+      });
+
+      let output = '';
+      if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+
+      output += `## ${result.storyboard_title}\n\n`;
+      output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
+      output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
+
+      for (const phase of result.phases) {
+        output += `### ${phase.phase_title} ${phase.passed ? '[PASS]' : '[FAIL]'}\n\n`;
+
+        for (const step of phase.steps) {
+          const icon = step.skipped ? 'SKIP' : step.passed ? 'PASS' : 'FAIL';
+          output += `- **${step.title}** [${icon}] — \`${step.task}\` (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
+
+          if (!step.passed && !step.skipped) {
+            if (step.error) {
+              output += `  Error: ${step.error}\n`;
+            }
+            for (const v of step.validations.filter(v => !v.passed)) {
+              output += `  Failed: ${v.description}${v.error ? ` — ${v.error}` : ''}\n`;
+            }
+          }
+        }
+        output += '\n';
+      }
+
+      output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
+      if (dryRun) output += ` This was a dry run — no production state was modified.`;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId }, 'Addie: run_storyboard failed');
+      if (isAuthError(error)) {
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      throw new ToolError(`Failed to run storyboard ${storyboardId}: ${msg}`);
+    }
+  });
+
+  handlers.set('run_storyboard_step', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const storyboardId = input.storyboard_id as string;
+    const stepId = input.step_id as string;
+    const context = (input.context as StoryboardContext) || {};
+    const dryRun = input.dry_run !== false;
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const sb = getStoryboardById(storyboardId);
+    if (!sb) return `Storyboard "${storyboardId}" not found.`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    try {
+      const authOption = buildAuthOption(resolved);
+      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, stepId, {
+        context,
+        dry_run: dryRun,
+        ...(authOption && { auth: authOption }),
+      });
+
+      let output = '';
+      if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+
+      const icon = result.skipped ? 'SKIP' : result.passed ? 'PASS' : 'FAIL';
+      output += `## Step: ${result.title} [${icon}]\n\n`;
+      output += `**Task:** \`${result.task}\`\n`;
+      output += `**Duration:** ${(result.duration_ms / 1000).toFixed(1)}s\n`;
+
+      if (result.skipped) {
+        output += `\nSkipped — agent does not have the required tool.\n`;
+      } else {
+        if (result.validations.length > 0) {
+          output += `\n**Validations:**\n`;
+          for (const v of result.validations) {
+            output += `- ${v.passed ? 'PASS' : 'FAIL'}: ${v.description}${v.error ? ` — ${v.error}` : ''}\n`;
+          }
+        }
+
+        if (result.error) {
+          output += `\n**Error:** ${result.error}\n`;
+        }
+
+        if (result.response) {
+          const responseStr = JSON.stringify(result.response, null, 2);
+          if (responseStr.length <= 2000) {
+            output += `\n**Response:**\n\`\`\`json\n${responseStr}\n\`\`\`\n`;
+          } else {
+            output += `\n**Response:** (${responseStr.length} chars, truncated)\n\`\`\`json\n${responseStr.slice(0, 2000)}\n...\n\`\`\`\n`;
+          }
+        }
+      }
+
+      if (result.next) {
+        output += `\n### Next step\n`;
+        output += `**${result.next.title}** (\`${result.next.step_id}\`) — \`${result.next.task}\`\n`;
+        if (result.next.narrative) output += `${result.next.narrative}\n`;
+        output += `\nTo continue, call \`run_storyboard_step\` with \`step_id: "${result.next.step_id}"\` and pass the context below.\n`;
+      } else {
+        output += `\nThis was the last step in the storyboard.\n`;
+      }
+
+      // Include context for the next step call
+      output += `\n<context>\n${JSON.stringify(result.context)}\n</context>`;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId, stepId }, 'Addie: run_storyboard_step failed');
+      if (isAuthError(error)) {
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      // Return step-not-found as a message so the AI can self-correct with valid step IDs
+      if (msg.includes('not found in storyboard')) {
+        return `**Error:** ${msg}`;
+      }
+      throw new ToolError(`Failed to run step ${stepId}: ${msg}`);
     }
   });
 

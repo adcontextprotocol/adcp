@@ -25,7 +25,7 @@ import { workos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
-import { researchDomain } from '../services/brand-enrichment.js';
+import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
@@ -781,17 +781,21 @@ export function createWorkOSWebhooksRouter(): Router {
                 // Assess prospect value and notify Slack
                 if (process.env.ANTHROPIC_API_KEY) {
                   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
-                  triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
-                    logger.error({ err, domain }, 'Prospect triage failed for new website user');
-                  });
+                  trackBackground(
+                    triageAndNotify(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
+                      logger.error({ err, domain }, 'Prospect triage failed for new website user');
+                    })
+                  );
                 }
                 // Classify brand hierarchy before the user finishes onboarding
                 const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
                   && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
                 if (isValidDomain && !isFreeEmailDomain(domain)) {
-                  researchDomain(domain).catch(err => {
-                    logger.warn({ err, domain }, 'Background domain research failed for new user');
-                  });
+                  trackBackground(
+                    researchDomain(domain).catch(err => {
+                      logger.warn({ err, domain }, 'Background domain research failed for new user');
+                    })
+                  );
                 }
               }
             }
@@ -821,9 +825,11 @@ export function createWorkOSWebhooksRouter(): Router {
             // Auto-research the primary domain for brand registry coverage
             const primaryDomain = newOrg.domains.length > 0 ? newOrg.domains[0].domain : null;
             if (primaryDomain) {
-              researchDomain(primaryDomain, { org_id: newOrg.id }).catch(err => {
-                logger.warn({ err, orgId: newOrg.id, domain: primaryDomain }, 'Background research failed for new org');
-              });
+              trackBackground(
+                researchDomain(primaryDomain, { org_id: newOrg.id }).catch(err => {
+                  logger.warn({ err, orgId: newOrg.id, domain: primaryDomain }, 'Background research failed for new org');
+                })
+              );
             }
             break;
           }
@@ -854,6 +860,19 @@ export function createWorkOSWebhooksRouter(): Router {
               await deleteSingleOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
             } else {
               await upsertOrganizationDomain(domainData as OrganizationDomainEventData & { domain: string });
+
+              // Enqueue verified domains for adagents.json discovery
+              if (event.event === 'organization_domain.verified') {
+                const pool = getPool();
+                pool.query(
+                  `INSERT INTO catalog_crawl_queue (identifier_type, identifier_value)
+                   VALUES ('domain', $1)
+                   ON CONFLICT (identifier_type, identifier_value) DO NOTHING`,
+                  [domainData.domain.toLowerCase().trim()]
+                ).catch(err => {
+                  logger.warn({ err, domain: domainData.domain }, 'Failed to enqueue domain for crawl');
+                });
+              }
             }
             break;
           }

@@ -79,7 +79,9 @@ export async function mergeOrganizations(
       'Starting organization merge'
     );
 
-    // Validate both organizations exist and fetch all needed fields
+    // Validate both organizations exist and fetch all needed fields.
+    // FOR UPDATE prevents concurrent Stripe webhooks or other merges from
+    // modifying these rows (especially stripe_customer_id) mid-transaction.
     const orgsResult = await client.query(
       `SELECT workos_organization_id, name, is_personal, prospect_notes,
               stripe_customer_id,
@@ -87,7 +89,8 @@ export async function mergeOrganizations(
               enrichment_employee_count, enrichment_revenue, enrichment_revenue_range,
               enrichment_country, enrichment_city, enrichment_description
        FROM organizations
-       WHERE workos_organization_id = ANY($1)`,
+       WHERE workos_organization_id = ANY($1)
+       FOR UPDATE`,
       [[primaryOrgId, secondaryOrgId]]
     );
 
@@ -141,6 +144,11 @@ export async function mergeOrganizations(
         );
       } else if (resolution === 'use_secondary') {
         // Replace primary's customer with secondary's
+        // Clear secondary first to avoid unique constraint violation
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1`,
+          [secondaryOrgId]
+        );
         await client.query(
           `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
           [secondaryOrg.stripe_customer_id, primaryOrgId]
@@ -170,6 +178,11 @@ export async function mergeOrganizations(
       }
     } else if (secondaryHasStripe && !primaryHasStripe) {
       // Only secondary has Stripe - move it to primary
+      // Clear secondary first to avoid unique constraint violation
+      await client.query(
+        `UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1`,
+        [secondaryOrgId]
+      );
       await client.query(
         `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
         [secondaryOrg.stripe_customer_id, primaryOrgId]

@@ -169,11 +169,18 @@
       margin-bottom: var(--space-1);
       color: var(--color-text-heading);
     }
+    .content-info h3[onclick] {
+      cursor: pointer;
+    }
+    .content-info h3[onclick]:hover {
+      color: var(--color-primary);
+      text-decoration: underline;
+    }
     .content-meta {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       flex-wrap: wrap;
       align-items: center;
       margin-bottom: var(--space-2);
@@ -227,9 +234,9 @@
       text-decoration: none;
       display: inline-flex;
       align-items: center;
-      gap: var(--space-1.5);
+      gap: var(--space-1_5);
     }
-    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
@@ -257,7 +264,7 @@
       display: inline-flex;
       align-items: center;
       gap: var(--space-1);
-      padding: var(--space-1.5) var(--space-3);
+      padding: var(--space-1_5) var(--space-3);
       border-radius: var(--radius-full);
       border: var(--border-1) solid var(--color-border);
       background: white;
@@ -281,7 +288,7 @@
     }
     .filter-bar {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       margin-bottom: var(--space-5);
       flex-wrap: wrap;
     }
@@ -334,7 +341,7 @@
     .form-group select,
     .form-group textarea {
       width: 100%;
-      padding: var(--space-2.5);
+      padding: var(--space-2_5);
       border: var(--border-1) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
@@ -368,7 +375,7 @@
     }
     .modal-buttons {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       justify-content: flex-end;
       margin-top: var(--space-6);
       padding-top: var(--space-5);
@@ -376,7 +383,7 @@
     }
     .type-toggle {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
       margin-bottom: var(--space-6);
     }
     .type-toggle button {
@@ -396,7 +403,7 @@
     }
     .url-input-group {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-2_5);
     }
     .url-input-group input { flex: 1; }
     .markdown-editor-container {
@@ -438,9 +445,9 @@
       color: var(--color-gray-400);
       font-style: italic;
     }
-    .preview-pane h1 { font-size: var(--text-2xl); margin-top: var(--space-5); margin-bottom: var(--space-2.5); }
+    .preview-pane h1 { font-size: var(--text-2xl); margin-top: var(--space-5); margin-bottom: var(--space-2_5); }
     .preview-pane h1:first-child { margin-top: 0; }
-    .preview-pane h2 { font-size: var(--text-xl); margin-top: var(--space-5); margin-bottom: var(--space-2.5); }
+    .preview-pane h2 { font-size: var(--text-xl); margin-top: var(--space-5); margin-bottom: var(--space-2_5); }
     .preview-pane p { margin-bottom: var(--space-3); line-height: var(--leading-relaxed); }
     .char-count {
       font-size: var(--text-xs);
@@ -779,8 +786,9 @@
           window.location.href = '/auth/login?returnTo=' + encodeURIComponent(window.location.pathname);
           return;
         }
-        currentUser = await meResponse.json();
-        isAdmin = currentUser.is_admin;
+        const meData = await meResponse.json();
+        currentUser = meData.user;
+        isAdmin = currentUser.isAdmin;
 
         // Load collections user can post to
         await loadCollections();
@@ -1022,13 +1030,13 @@
       let actions = '';
       if (isPendingView) {
         actions = `
-          <button class="btn btn-small btn-success" onclick="showReviewModal('${item.id}')">Review</button>
+          <button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>
         `;
       } else {
         const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
         actions = `
-          ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${item.id}')">Edit</button>` : ''}
-          ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${item.id}')">View</button>` : ''}
+          ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
+          ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${safeId(item.id)}')">View</button>` : ''}
           ${item.status === 'published' && linkedInShareUrl ? `<a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Share on LinkedIn</a>` : ''}
           <a class="btn btn-small btn-outline" href="${addieSocialPrompt}">${item.status === 'published' ? 'Draft LinkedIn post' : 'Sharpen with Addie'}</a>
           ${item.status === 'published' && xShareUrl ? `<a class="btn btn-small btn-outline" href="${xShareUrl}" target="_blank" rel="noopener">Optional: X</a>` : ''}
@@ -1044,10 +1052,14 @@
         </div>
       ` : '';
 
+      const titleAction = item.status === 'published' && item.slug
+        ? `onclick="viewContent('${safeId(item.id)}')"`
+        : `onclick="editContent('${safeId(item.id)}')"`;
+
       return `
         <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}">
           <div class="content-info">
-            <h3>${escapeHtml(item.title)}</h3>
+            <h3 ${isPendingView ? '' : titleAction}>${escapeHtml(item.title)}</h3>
             <div class="content-meta">
               ${statusBadge}
               ${typeBadge}
@@ -1388,6 +1400,11 @@
       return new Intl.NumberFormat('en-US', {
         notation: value >= 1000 ? 'compact' : 'standard'
       }).format(value);
+    }
+
+    function safeId(id) {
+      if (typeof id === 'string' && /^[a-f0-9-]+$/i.test(id)) return id;
+      return '';
     }
 
     function escapeHtml(text) {

@@ -1,5 +1,5 @@
-# Use Node.js 20 Alpine for building
-FROM node:20-alpine AS builder
+# Use Node.js 22 Alpine for building
+FROM node:22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -82,7 +82,7 @@ CLONE
 RUN sh /repos/clone.sh
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Set working directory
 WORKDIR /app
@@ -100,6 +100,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/server/src/db/migrations ./dist/db/migrations
 COPY --from=builder /app/server/src/creative-agent/reference-formats.json ./dist/creative-agent/
+COPY --from=builder /app/server/src/addie/rules/*.md ./dist/addie/rules/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
 

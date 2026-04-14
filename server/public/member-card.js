@@ -3,8 +3,17 @@
  * Single source of truth for member card display
  */
 
-// Offering labels - shared across all pages
+// Service labels - what members offer to others
+// Agent capabilities (buying, creative, etc.) are derived from brand.json
 const offeringLabels = {
+  // New service types
+  agent_development: 'Agent Development',
+  system_integration: 'System Integration',
+  consulting: 'Consulting',
+  data_services: 'Data Services',
+  publisher_services: 'Publisher Services',
+  other: 'Other',
+  // Legacy types (still in DB, shown until migrated)
   buyer_agent: 'Buyer Agent',
   sales_agent: 'Sales Agent',
   creative_agent: 'Creative Agent',
@@ -12,8 +21,7 @@ const offeringLabels = {
   si_agent: 'SI Agent',
   governance_agent: 'Governance Agent',
   data_provider: 'Data Provider',
-  consulting: 'Consulting',
-  other: 'Other'
+  publisher: 'Publisher',
 };
 
 /**
@@ -26,15 +34,33 @@ const offeringLabels = {
  */
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
+  const brand = member.resolved_brand;
+
+  // Name: prefer brand.json, fallback to profile
+  const displayName = brand?.name || member.display_name;
 
   const taglineText = member.tagline || '';
-  const truncatedDesc = member.description
-    ? (member.description.length > 200 ? member.description.substring(0, 200) + '...' : member.description)
-    : '';
+  // Description: prefer brand.json, fallback to profile
+  const rawDesc = brand?.description || member.description || '';
+  const truncatedDesc = rawDesc.length > 200 ? rawDesc.substring(0, 200) + '...' : rawDesc;
 
-  const offeringsHtml = (member.offerings || [])
+  // Agent types from brand.json (what they operate)
+  const agentTypes = brand?.agent_types || [];
+  const agentTypeLabelsForCard = {
+    brand: 'Brand', rights: 'Rights', measurement: 'Measurement',
+    governance: 'Governance', creative: 'Creative', buying: 'Buying', signals: 'Signals'
+  };
+  const operatesHtml = agentTypes
+    .map(t => `<span class="offering-tag operates-tag">${agentTypeLabelsForCard[t] || t} Agent</span>`)
+    .join('');
+
+  // Services from member profile (what they offer to others)
+  const servicesHtml = (member.offerings || [])
+    .filter(o => !['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'governance_agent', 'publisher'].includes(o))
     .map(o => `<span class="offering-tag">${offeringLabels[o] || o}</span>`)
     .join('');
+
+  const offeringsHtml = operatesHtml + servicesHtml;
 
   const clickHandler = isPreview ? '' : `onclick="viewMember('${member.slug}')"`;
   const viewBtn = isPreview
@@ -49,19 +75,19 @@ function renderMemberCard(member, options = {}) {
       : '<span class="visibility-badge private"><span class="dot"></span> Private</span>';
   }
 
-  // Agent count badge - show if member has registered agents
-  const agentCount = (member.agents || []).length;
+  // Agent count from brand.json agent_types
+  const agentCount = agentTypes.length;
   const agentBadge = agentCount > 0
     ? `<span class="agent-badge">${agentCount} Agent${agentCount > 1 ? 's' : ''}</span>`
     : '';
 
-  // Publisher count badge - show if member has registered publishers
-  const publisherCount = (member.publishers || []).length;
-  const publisherBadge = publisherCount > 0
-    ? `<span class="publisher-badge">${publisherCount} Publisher${publisherCount > 1 ? 's' : ''}</span>`
+  // Property count from brand.json
+  const propertyCount = brand?.property_count || 0;
+  const publisherBadge = propertyCount > 0
+    ? `<span class="publisher-badge">${propertyCount} Propert${propertyCount > 1 ? 'ies' : 'y'}</span>`
     : '';
 
-  // Data provider count badge - show if member has registered data providers
+  // Data provider badge (keep from profile for now — not derivable from brand.json)
   const dataProviderCount = (member.data_providers || []).length;
   const dataProviderBadge = dataProviderCount > 0
     ? `<span class="data-provider-badge">${dataProviderCount} Data Provider${dataProviderCount > 1 ? 's' : ''}</span>`
@@ -91,13 +117,13 @@ function renderMemberCard(member, options = {}) {
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
-        ${member.resolved_brand?.logo_url
-          ? `<img src="${escapeHtmlSafe(member.resolved_brand.logo_url)}" alt="${escapeHtmlSafe(member.display_name)}" class="member-logo">`
-          : `<div class="member-logo-placeholder">${escapeHtmlSafe(member.display_name.charAt(0))}</div>`
+        ${brand?.logo_url
+          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo">`
+          : `<div class="member-logo-placeholder">${escapeHtmlSafe(displayName.charAt(0))}</div>`
         }
         <div class="member-info">
           <div class="member-name-row">
-            <div class="member-name">${escapeHtmlSafe(member.display_name)}</div>
+            <div class="member-name">${escapeHtmlSafe(displayName)}</div>
             ${foundingBadge}
             ${credentialBadges}
             ${agentBadge}
@@ -115,7 +141,10 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-footer">
         <div class="member-contact">
-          ${member.contact_website ? `<a href="${member.contact_website}" target="_blank" onclick="event.stopPropagation()">Website</a>` : ''}
+          ${(() => {
+            const website = member.contact_website || (brand?.contact?.domain ? `https://${escapeHtmlSafe(brand.contact.domain)}` : '');
+            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" onclick="event.stopPropagation()">Website</a>` : '';
+          })()}
           ${member.linkedin_url ? `<a href="${member.linkedin_url}" target="_blank" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
         </div>
         ${viewBtn}
@@ -377,16 +406,24 @@ function injectMemberCardStyles() {
 // ============================================
 
 const agentTypeLabels = {
+  brand: 'Brand Agent',
+  rights: 'Rights Agent',
+  measurement: 'Measurement Agent',
+  governance: 'Governance Agent',
   creative: 'Creative Agent',
-  sales: 'Sales Agent',
+  buying: 'Buying Agent',
   signals: 'Signals Agent',
   unknown: 'Agent'
 };
 
 const agentTypeColors = {
+  brand: { bg: '#ede9fe', color: '#6d28d9' },
+  rights: { bg: '#fce7f3', color: '#be185d' },
+  measurement: { bg: '#e0f2fe', color: '#0369a1' },
+  governance: { bg: '#fef3c7', color: '#b45309' },
   creative: { bg: '#dbeafe', color: '#1d4ed8' },
-  sales: { bg: '#dcfce7', color: '#15803d' },
-  signals: { bg: '#fef3c7', color: '#b45309' },
+  buying: { bg: '#dcfce7', color: '#15803d' },
+  signals: { bg: '#fef9c3', color: '#a16207' },
   unknown: { bg: '#f3f4f6', color: '#6b7280' }
 };
 
@@ -410,7 +447,8 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     index = 0,
     showRemoveButton = false,
     showStatus = true,
-    compact = false
+    compact = false,
+    brandHostingType = null,
   } = options;
 
   // Handle error state
@@ -463,7 +501,7 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
   if (agentType === 'creative') {
     const count = agentInfo.stats?.format_count ?? 0;
     statsHtml = `<span class="agent-stat">${count} format${count !== 1 ? 's' : ''}</span>`;
-  } else if (agentType === 'sales') {
+  } else if (agentType === 'buying') {
     const productCount = agentInfo.stats?.product_count ?? 0;
     const publisherCount = agentInfo.stats?.publisher_count ?? 0;
     statsHtml = `
@@ -473,23 +511,34 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     `;
   }
 
-  // Visibility badge (for list views)
+  // Visibility badge
   const visibilityBadge = showVisibilityToggle
     ? (isPublic
-        ? '<span class="agent-visibility-badge public">Public</span>'
+        ? '<span class="agent-visibility-badge public">Published</span>'
         : '<span class="agent-visibility-badge private">Private</span>')
     : '';
 
-  // Visibility toggle (for edit mode)
-  const visibilityToggle = showVisibilityToggle ? `
-    <div class="agent-card-visibility">
-      <label>
-        <input type="checkbox" ${isPublic ? 'checked' : ''} onchange="toggleAgentVisibility(${index}, this.checked)">
-        <span class="toggle"></span>
-        Show in member directory
-      </label>
-    </div>
-  ` : '';
+  // Publish/unpublish controls (replaces old toggle)
+  let visibilityToggle = '';
+  if (showVisibilityToggle && brandHostingType) {
+    if (brandHostingType === 'community') {
+      visibilityToggle = isPublic
+        ? `<div class="agent-card-visibility">
+            <button type="button" class="btn btn-sm btn-ghost" onclick="unpublishAgent(${index})" style="color:var(--color-error-500);">Remove from brand.json</button>
+          </div>`
+        : `<div class="agent-card-visibility">
+            <button type="button" class="btn btn-sm btn-primary" onclick="publishAgent(${index})">Publish to brand.json</button>
+          </div>`;
+    } else if (brandHostingType === 'self-hosted') {
+      visibilityToggle = `<div class="agent-card-visibility">
+        <button type="button" class="btn btn-sm ${isPublic ? 'btn-ghost' : 'btn-primary'}" onclick="${isPublic ? `checkAgent(${index})` : `publishAgent(${index})`}">${isPublic ? 'Re-check brand.json' : 'Show snippet'}</button>
+      </div>`;
+    }
+  } else if (showVisibilityToggle && !brandHostingType) {
+    visibilityToggle = `<div class="agent-card-visibility" style="font-size:var(--text-xs);color:var(--color-text-muted);">
+      Set a primary brand domain to publish
+    </div>`;
+  }
 
   // Status badge
   const statusHtml = showStatus ? `

@@ -1,6 +1,6 @@
 ---
 title: Schemas and SDKs
-description: "AdCP JSON schemas and SDKs for JavaScript and Python. Download schemas from GitHub or fetch at runtime. Includes setup for AI coding agents using Cursor, Windsurf, and Claude."
+description: "AdCP JSON schemas and SDKs for JavaScript, Python, and Go. Download schemas from GitHub or fetch at runtime. Includes setup for AI coding agents using Cursor, Windsurf, and Claude."
 "og:title": "AdCP — Schemas and SDKs"
 ---
 
@@ -34,7 +34,7 @@ Point your AI coding agent to **[https://docs.adcontextprotocol.org/mcp](https:/
 
 ## Client SDKs
 
-AdCP provides official SDKs for JavaScript/TypeScript and Python. These work for both client and server implementations.
+AdCP provides official SDKs for JavaScript/TypeScript, Python, and Go. These work for both client and server implementations.
 
 ### JavaScript / TypeScript
 
@@ -88,9 +88,30 @@ products = client.get_products(
 - [PyPI Package](https://pypi.org/project/adcp/)
 - [GitHub Repository](https://github.com/adcontextprotocol/adcp-python)
 
+### Go
+
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+The Go SDK provides typed tool registration, response builders, and a compliance test controller. Types are generated from canonical AdCP schemas.
+
+| Component | Import |
+|-----------|--------|
+| Tool registration | `adcp.AddTool(server, name, desc, handler)` |
+| HTTP server | `adcp.Serve(createAgent)` |
+| Response builders | `adcp.ProductsResponse(data)`, `adcp.MediaBuyResponse(data)`, etc. |
+| Test controller | `adcp.RegisterTestController(server, store)` |
+| Skills | [github.com/adcontextprotocol/adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills) |
+
+See the [Go SDK README](https://github.com/adcontextprotocol/adcp-go) for the full API reference.
+
+**Resources:**
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-go)
+
 ## CLI Tools
 
-Both SDKs include command-line tools for testing and development.
+The JavaScript and Python SDKs include command-line tools for testing and development.
 
 ### JavaScript CLI
 

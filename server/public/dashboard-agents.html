@@ -214,6 +214,10 @@
       font-weight: var(--font-semibold);
       color: var(--color-primary-600);
       text-decoration: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
     }
     .agent-action-link:hover {
       text-decoration: underline;
@@ -226,6 +230,49 @@
     .agent-auth-status {
       font-size: var(--text-xs);
       color: var(--color-text-muted);
+    }
+
+    .agent-connect-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      align-items: flex-end;
+      padding: var(--space-3) 0;
+    }
+    .agent-connect-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .agent-connect-form input,
+    .agent-connect-form select {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+    }
+    .agent-connect-form input { min-width: 260px; }
+    .agent-connect-save,
+    .agent-oauth-start {
+      background: var(--color-primary-600);
+      color: white;
+      border: none;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .agent-connect-save:hover,
+    .agent-oauth-start:hover { background: var(--color-primary-700); }
+    .agent-connect-save:disabled,
+    .agent-oauth-start:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-oauth-start { align-self: flex-end; }
+    .agent-connect-msg {
+      font-size: var(--text-xs);
+      margin-top: var(--space-1);
     }
 
     .agent-lifecycle-select {
@@ -290,6 +337,95 @@
 
     .storyboard-picker-title { font-weight: 600; font-size: var(--text-sm); }
     .storyboard-picker-summary { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
+
+    .storyboard-map-tools {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-3);
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .storyboard-map-tools code {
+      background: var(--color-gray-100);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: var(--text-xs);
+    }
+    .storyboard-track-group { margin-bottom: var(--space-4); }
+    .storyboard-track-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-2);
+      color: var(--color-text-primary);
+    }
+    .storyboard-track-count {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      font-weight: normal;
+    }
+    .storyboard-map-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-1);
+    }
+    .storyboard-map-item-title { font-size: var(--text-sm); font-weight: 500; }
+    .storyboard-map-item-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; }
+    .storyboard-map-actions button {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+    }
+    .storyboard-map-actions button:hover { border-color: var(--color-primary-500); color: var(--color-primary-600); }
+    .storyboard-map-actions .btn-run {
+      background: var(--color-primary-600);
+      color: white;
+      border-color: var(--color-primary-600);
+    }
+    .storyboard-map-actions .btn-run:hover { background: var(--color-primary-700); }
+
+    .step-runner { margin-top: var(--space-3); }
+    .step-runner-current {
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
+    }
+    .step-runner-current h4 { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-1); }
+    .step-runner-current .step-narrative { font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-2); }
+    .step-runner-result {
+      padding: var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      margin-top: var(--space-2);
+    }
+    .step-runner-result--pass { background: var(--color-success-50, #ecfdf5); border: 1px solid var(--color-success-200, #a7f3d0); }
+    .step-runner-result--fail { background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); }
+    .step-runner-result--skip { background: var(--color-gray-50, #f9fafb); border: 1px solid var(--color-gray-200, #e5e7eb); }
+    .step-runner-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+    .step-runner-actions button {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: none;
+    }
+    .step-run-btn { background: var(--color-primary-600); color: white; }
+    .step-run-btn:hover { background: var(--color-primary-700); }
+    .step-run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .step-next-btn { background: var(--color-gray-200); color: var(--color-text-primary); }
+    .step-next-btn:hover { background: var(--color-gray-300); }
 
     .storyboard-phase {
       margin-bottom: var(--space-4);
@@ -460,16 +596,18 @@
 
         const profileData = await profileRes.json();
 
+        const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+        const showSwitcher = orgs.length > 1 || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: orgs.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || profileData?.profile?.organization_name || 'My organization',
-          showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
+          showAdmin: meData?.user?.isAdmin || false,
           orgId: currentOrg?.id || null,
           orgRole: currentOrg?.role || 'member',
           isPersonal: currentOrg?.is_personal || false,
         });
 
-        if (orgs.length > 1) {
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             const url = new URL(window.location);
@@ -485,13 +623,15 @@
           const results = await Promise.allSettled(
             agents.map(async (agent) => {
               const encoded = encodeURIComponent(agent.url);
-              const [statusRes, historyRes] = await Promise.all([
+              const [statusRes, historyRes, authRes] = await Promise.all([
                 fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
                 fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
+                fetch(`/api/registry/agents/${encoded}/auth-status`, { credentials: 'include' }),
               ]);
               const status = statusRes.ok ? await statusRes.json() : null;
               const history = historyRes.ok ? await historyRes.json() : null;
-              return { url: agent.url, status, history };
+              const authStatus = authRes.ok ? await authRes.json() : null;
+              return { url: agent.url, status, history, authStatus };
             }),
           );
           for (const r of results) {
@@ -530,6 +670,27 @@
       `;
     }
 
+    function buildConnectForm(escapedUrl, platformTypeOptions, agentContextId) {
+      const contextIdAttr = agentContextId ? ' data-agent-context-id="' + agentContextId + '"' : '';
+      return '<div class="agent-connect-form" data-agent-url="' + escapedUrl + '"' + contextIdAttr + '>' +
+        '<label>Auth type<select name="auth_type" class="auth-type-select">' +
+          '<option value="oauth">OAuth (recommended)</option>' +
+          '<option value="bearer">Bearer token</option>' +
+          '<option value="basic">Basic auth</option>' +
+        '</select></label>' +
+        '<div class="auth-token-fields" style="display:none;">' +
+          '<label>Auth token<input type="password" name="auth_token" placeholder="Bearer token or API key" autocomplete="off"></label>' +
+          '<label>Platform type<select name="platform_type"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+          '<button class="agent-connect-save">Save</button>' +
+        '</div>' +
+        '<div class="auth-oauth-fields">' +
+          '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">Securely authorize via the agent\'s OAuth flow. No tokens to copy.</p>' +
+          '<label>Platform type<select name="platform_type_oauth"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+          '<button class="agent-oauth-start">Authorize</button>' +
+        '</div>' +
+      '</div>';
+    }
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -542,13 +703,35 @@
         `;
       }
 
+      const platformTypes = [
+        ['display_ad_server', 'Display ad server'],
+        ['video_ad_server', 'Video ad server'],
+        ['social_platform', 'Social platform'],
+        ['pmax_platform', 'Performance max'],
+        ['dsp', 'DSP'],
+        ['retail_media', 'Retail media'],
+        ['search_platform', 'Search platform'],
+        ['audio_platform', 'Audio platform'],
+        ['creative_transformer', 'Creative transformer'],
+        ['creative_library', 'Creative library'],
+        ['creative_ad_server', 'Creative ad server'],
+        ['si_platform', 'SI platform'],
+        ['ai_ad_network', 'AI ad network'],
+        ['ai_platform', 'AI platform'],
+        ['generative_dsp', 'Generative DSP'],
+      ];
+      const platformTypeOptions = platformTypes.map(([val, label]) =>
+        '<option value="' + val + '">' + label + '</option>'
+      ).join('');
+
       return agents.map(agent => {
         const data = complianceMap?.get(agent.url);
         const cs = data?.status;
         const history = data?.history;
         const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+        const authInfo = data?.authStatus;
         const hasData = cs && cs.status && cs.status !== 'unknown';
-        const hasAuth = cs?.has_compliance_auth;
+        const hasAuth = authInfo?.has_auth;
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
 
@@ -562,11 +745,9 @@
                 <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
               </div>
             </div>
-            <div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
-              ${hasAuth
-                ? 'Auth configured. Compliance check will run on the next heartbeat cycle.'
-                : 'Connect this agent through <a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '">Addie</a> to save credentials and start compliance monitoring.'}
-            </div>
+            ${hasAuth
+              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
+              : buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -624,16 +805,39 @@
             ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
+            <div class="agent-monitoring-controls" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); margin-top: var(--space-3);">
+              <label class="agent-toggle" title="Pause automated compliance and health checks">
+                <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
+                <span class="agent-toggle-label">Pause automated checks</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary);">
+                Check every
+                <select class="monitoring-interval-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''} style="font-size: var(--text-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm, 4px); border: 1px solid var(--border-subtle);${cs.monitoring_paused ? ' opacity: 0.4;' : ''}">
+                  <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
+                  <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
+                  <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
+                  <option value="48" ${(cs.check_interval_hours || 12) === 48 ? 'selected' : ''}>48h</option>
+                  <option value="72" ${(cs.check_interval_hours || 12) === 72 ? 'selected' : ''}>72h</option>
+                  <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
+                </select>
+              </label>
+              ${cs.monitoring_paused ? '<span style="font-size: var(--text-xs); color: var(--color-warning-700, #b45309);">Compliance status will not update while paused</span>' : ''}
+            </div>
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+                ${!hasAuth ? '<button class="agent-connect-toggle agent-action-link" data-card-id="' + cardId + '" data-agent-url="' + escapeHtml(agent.url) + '">Connect agent</button>' : ''}
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
+                <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
+            ${!hasAuth ? '<div id="' + cardId + '-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">' +
+              buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id) +
+              '</div>' : ''}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
+            <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
           </div>
         `;
       }).join('');
@@ -668,6 +872,277 @@
         } catch {
           checkbox.checked = !checkbox.checked;
         }
+      }
+    });
+
+    // Connect agent toggle
+    document.addEventListener('click', function(e) {
+      const toggle = e.target.closest('.agent-connect-toggle');
+      if (!toggle) return;
+      const cardId = toggle.dataset.cardId;
+      const panel = document.getElementById(cardId + '-connect');
+      if (panel) {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    // Connect agent save
+    document.addEventListener('click', async function(e) {
+      const saveBtn = e.target.closest('.agent-connect-save');
+      if (!saveBtn) return;
+      const form = saveBtn.closest('.agent-connect-form');
+      if (!form) return;
+
+      const agentUrl = form.dataset.agentUrl;
+      const authToken = form.querySelector('[name="auth_token"]').value.trim();
+      const authType = form.querySelector('[name="auth_type"]').value;
+      const platformType = form.querySelector('[name="platform_type"]').value;
+
+      if (!authToken) {
+        form.querySelector('[name="auth_token"]').focus();
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const body = { auth_token: authToken, auth_type: authType };
+        if (platformType) body.platform_type = platformType;
+
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to connect');
+        }
+
+        // Replace the form with a success message and reload after a moment
+        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected. Compliance check will run on the next heartbeat cycle.</div>';
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        let msg = form.querySelector('.agent-connect-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.className = 'agent-connect-msg';
+          form.appendChild(msg);
+        }
+        msg.style.color = 'var(--color-error-600)';
+        msg.textContent = err.message;
+      }
+    });
+
+    // Auth type toggle — show/hide token vs OAuth fields
+    document.addEventListener('change', function(e) {
+      const select = e.target.closest('.auth-type-select');
+      if (!select) return;
+      const form = select.closest('.agent-connect-form');
+      if (!form) return;
+      const tokenFields = form.querySelector('.auth-token-fields');
+      const oauthFields = form.querySelector('.auth-oauth-fields');
+      if (select.value === 'oauth') {
+        tokenFields.style.display = 'none';
+        oauthFields.style.display = '';
+      } else {
+        tokenFields.style.display = '';
+        oauthFields.style.display = 'none';
+      }
+    });
+
+    // OAuth authorize button
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-oauth-start');
+      if (!btn) return;
+      const form = btn.closest('.agent-connect-form');
+      if (!form) return;
+
+      const agentUrl = form.dataset.agentUrl;
+      let agentContextId = form.dataset.agentContextId;
+      const platformType = form.querySelector('[name="platform_type_oauth"]')?.value;
+
+      btn.disabled = true;
+      btn.textContent = 'Starting OAuth...';
+
+      try {
+        // Ensure agent context exists (connect without token)
+        if (!agentContextId) {
+          const body = {};
+          if (platformType) body.platform_type = platformType;
+          const connectRes = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(body),
+          });
+          if (!connectRes.ok) {
+            const data = await connectRes.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to create agent context');
+          }
+          const connectData = await connectRes.json();
+          agentContextId = connectData.agent_context_id;
+          if (!agentContextId) {
+            throw new Error('Failed to create agent context');
+          }
+        } else if (platformType) {
+          // Save platform type even if context already exists
+          await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ platform_type: platformType }),
+          });
+        }
+
+        // Redirect to OAuth flow
+        window.location.href = '/api/oauth/agent/start?agent_context_id=' + encodeURIComponent(agentContextId);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Authorize';
+        let msg = form.querySelector('.agent-connect-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.className = 'agent-connect-msg';
+          form.appendChild(msg);
+        }
+        msg.style.color = 'var(--color-error-600)';
+        msg.textContent = err.message;
+      }
+    });
+
+    // Monitoring pause toggle
+    document.addEventListener('change', async function(e) {
+      const toggle = e.target.closest('.monitoring-pause-toggle');
+      if (toggle) {
+        const agentUrl = toggle.dataset.agentUrl;
+        const controlsRow = toggle.closest('.agent-monitoring-controls');
+        const intervalSelect = controlsRow ? controlsRow.querySelector('.monitoring-interval-select') : null;
+
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/pause`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ paused: toggle.checked }),
+          });
+          if (!res.ok) {
+            toggle.checked = !toggle.checked;
+          } else {
+            // Update interval dropdown disabled state
+            if (intervalSelect) {
+              intervalSelect.disabled = toggle.checked;
+              intervalSelect.style.opacity = toggle.checked ? '0.4' : '1';
+            }
+            // Show/hide pause warning
+            if (controlsRow) {
+              let warning = controlsRow.querySelector('.pause-warning');
+              if (toggle.checked && !warning) {
+                warning = document.createElement('span');
+                warning.className = 'pause-warning';
+                warning.style.cssText = 'font-size: var(--text-xs); color: var(--color-warning-700, #b45309);';
+                warning.textContent = 'Compliance status will not update while paused';
+                controlsRow.appendChild(warning);
+              } else if (!toggle.checked && warning) {
+                warning.remove();
+              }
+            }
+          }
+        } catch {
+          toggle.checked = !toggle.checked;
+        }
+      }
+    });
+
+    // Capture initial value for interval selects on focus (before change fires)
+    document.addEventListener('focus', function(e) {
+      const select = e.target.closest('.monitoring-interval-select');
+      if (select) {
+        select.dataset.previousValue = select.value;
+      }
+    }, true);
+
+    // Monitoring interval change
+    document.addEventListener('change', async function(e) {
+      const select = e.target.closest('.monitoring-interval-select');
+      if (select) {
+        const agentUrl = select.dataset.agentUrl;
+        const previousValue = select.dataset.previousValue;
+        select.dataset.previousValue = select.value;
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/interval`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ interval_hours: parseInt(select.value, 10) }),
+          });
+          if (!res.ok) {
+            select.value = previousValue;
+          }
+        } catch {
+          select.value = previousValue;
+        }
+      }
+    });
+
+    // View outbound requests log
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-requests-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      const cardId = btn.dataset.cardId;
+      const panel = document.getElementById(cardId + '-requests');
+      if (!panel) return;
+
+      if (panel.style.display !== 'none') {
+        panel.style.display = 'none';
+        return;
+      }
+
+      panel.style.display = 'block';
+      panel.innerHTML = '<div style="padding: var(--space-3); color: var(--text-secondary);">Loading requests...</div>';
+
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+
+        if (data.requests.length === 0) {
+          panel.innerHTML = '<div style="padding: var(--space-3); color: var(--text-secondary);">No outbound requests recorded yet.</div>';
+          return;
+        }
+
+        const rows = data.requests.map(function(r) {
+          const time = new Date(r.created_at).toLocaleString();
+          const status = r.success
+            ? '<span style="color: var(--green-600);">OK</span>'
+            : '<span style="color: var(--red-600);">ERR</span>';
+          const duration = r.response_time_ms != null ? r.response_time_ms + 'ms' : '-';
+          const ua = r.user_agent ? r.user_agent.split(' ')[0] : '-';
+          return '<tr>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(time) + '</td>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(r.request_type) + '</td>'
+            + '<td style="padding: 4px 8px;" title="' + escapeHtml(r.user_agent || '') + '">' + escapeHtml(ua) + '</td>'
+            + '<td style="padding: 4px 8px;">' + status + '</td>'
+            + '<td style="padding: 4px 8px;">' + escapeHtml(duration) + '</td>'
+            + (r.error_message ? '<td style="padding: 4px 8px; color: var(--text-secondary); font-size: var(--text-xs);">' + escapeHtml(r.error_message) + '</td>' : '<td></td>')
+            + '</tr>';
+        }).join('');
+
+        panel.innerHTML = '<div style="padding: var(--space-3);"><div style="font-weight: 600; margin-bottom: var(--space-2);">Outbound Requests (' + escapeHtml(String(data.total)) + ' total)</div>'
+          + '<table style="width: 100%; font-size: var(--text-sm); border-collapse: collapse;">'
+          + '<thead><tr style="text-align: left; color: var(--text-secondary);"><th style="padding: 4px 8px;">Time</th><th style="padding: 4px 8px;">Type</th><th style="padding: 4px 8px;">User-Agent</th><th style="padding: 4px 8px;">Status</th><th style="padding: 4px 8px;">Duration</th><th style="padding: 4px 8px;">Error</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody></table></div>';
+      } catch {
+        panel.innerHTML = '<div style="padding: var(--space-3); color: var(--red-600);">Failed to load requests.</div>';
       }
     });
 
@@ -800,29 +1275,106 @@
         }
       }
 
-      // Shared: render the storyboard picker into a panel
-      async function renderStoryboardPicker(panel, agentUrl, cardId) {
+      // Shared: render the storyboard map into a panel
+      async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
-        panel.innerHTML = '<em>Loading storyboards...</em>';
+        panel.innerHTML = '<em>Discovering agent capabilities...</em>';
+        if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
+
         try {
-          const res = await fetch('/api/storyboards', { credentials: 'include' });
-          const data = await res.json();
-          if (!data.storyboards || data.storyboards.length === 0) {
-            panel.innerHTML = '<em>No storyboards available yet.</em>';
-            return;
-          }
-          let html = '<div class="storyboard-picker">';
-          for (const sb of data.storyboards) {
-            html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-            html += '<div>';
-            html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-            html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+          // Try the tool-based resolution endpoint first
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
+
+          if (res.ok) {
+            const data = await res.json();
+            let html = '';
+
+            // Show detected tools
+            if (data.tools && data.tools.length > 0) {
+              html += '<div class="storyboard-map-tools">Tools detected: ';
+              html += data.tools.map(t => '<code>' + escapeHtml(t) + '</code>').join(' ');
+              html += '</div>';
+            }
+
+            if (data.total_applicable === 0) {
+              html += '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">';
+              html += 'No applicable storyboards found. Your agent may not expose AdCP tools yet.';
+              html += '</div>';
+              panel.innerHTML = html;
+              return;
+            }
+
+            // Render track groups
+            const trackLabels = { core: 'Core', products: 'Products', media_buy: 'Media Buy', creative: 'Creative', governance: 'Governance', campaign_governance: 'Campaign Governance', signals: 'Signals', si: 'Sponsored Intelligence', audiences: 'Audiences', error_handling: 'Error Handling', general: 'General' };
+            const trackOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'campaign_governance', 'signals', 'si', 'audiences', 'error_handling', 'general'];
+
+            const sortedTracks = Object.keys(data.storyboards).sort((a, b) => {
+              const ai = trackOrder.indexOf(a);
+              const bi = trackOrder.indexOf(b);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+
+            for (const track of sortedTracks) {
+              const storyboards = data.storyboards[track];
+              const label = trackLabels[track] || track;
+              html += '<div class="storyboard-track-group">';
+              html += '<div class="storyboard-track-header"><span>' + escapeHtml(label) + '</span><span class="storyboard-track-count">' + storyboards.length + ' storyboard' + (storyboards.length === 1 ? '' : 's') + '</span></div>';
+
+              for (const sb of storyboards) {
+                html += '<div class="storyboard-map-item">';
+                html += '<div>';
+                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title) + '</div>';
+                html += '<div class="storyboard-map-item-meta">' + sb.step_count + ' steps</div>';
+                html += '</div>';
+                html += '<div class="storyboard-map-actions">';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" style="border:none;background:none;padding:0;font-size:var(--text-xs);color:var(--color-primary-600);cursor:pointer;">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Run step by step</button>';
+                html += '</div>';
+                html += '</div>';
+              }
+              html += '</div>';
+            }
+
+            // Show what's not applicable
+            const notApplicable = data.total_available - data.total_applicable;
+            if (notApplicable > 0) {
+              html += '<details style="margin-top:var(--space-2);">';
+              html += '<summary style="font-size:var(--text-xs);color:var(--color-text-tertiary);cursor:pointer;">Other capabilities (' + notApplicable + ' storyboards not matched)</summary>';
+              html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);padding:var(--space-2) 0;">These storyboards require tools your agent doesn\'t expose yet. Implement the required tools to unlock them.</div>';
+              html += '</details>';
+            }
+
+            panel.innerHTML = html;
+          } else {
+            // Check if auth is needed
+            const errBody = await res.json().catch(() => ({}));
+            if (errBody.needs_auth) {
+              panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Save an auth token using the connect form above, then try again.</div>';
+              return;
+            }
+
+            // Fallback to flat list if agent can't be reached
+            panel.innerHTML = '<em>Loading storyboards...</em>';
+            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
+            const data = await fallback.json();
+            if (!data.storyboards || data.storyboards.length === 0) {
+              panel.innerHTML = '<em>No storyboards available yet.</em>';
+              return;
+            }
+            let html = '<div style="font-size:var(--text-xs);color:var(--color-warning-600);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
+            html += '<div class="storyboard-picker">';
+            for (const sb of data.storyboards) {
+              html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
+              html += '<div>';
+              html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
+              html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+              html += '</div>';
+              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
+              html += '</div>';
+            }
             html += '</div>';
-            html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.phase_count + ' phases, ' + sb.step_count + ' steps</span>';
-            html += '</div>';
+            panel.innerHTML = html;
           }
-          html += '</div>';
-          panel.innerHTML = html;
         } catch {
           panel.innerHTML = '<em>Failed to load storyboards.</em>';
         }
@@ -840,7 +1392,9 @@
           panel.style.display = 'none';
           return;
         }
-        await renderStoryboardPicker(panel, agentUrl, cardId);
+        let agentTracks = null;
+        try { agentTracks = JSON.parse(storyboardBtn.dataset.agentTracks || 'null'); } catch {}
+        await renderStoryboardPicker(panel, agentUrl, cardId, agentTracks);
         return;
       }
 
@@ -912,7 +1466,122 @@
         const agentUrl = backBtn.dataset.agentUrl;
         const cardId = backBtn.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
-        if (panel) await renderStoryboardPicker(panel, agentUrl, cardId);
+        if (panel) {
+          let tracks = null;
+          try { tracks = JSON.parse(panel.dataset.agentTracks || 'null'); } catch {}
+          await renderStoryboardPicker(panel, agentUrl, cardId, tracks);
+        }
+        return;
+      }
+
+      // Step-by-step storyboard button (from map view)
+      const stepBtn = e.target.closest('.storyboard-step-btn');
+      if (stepBtn) {
+        const storyboardId = stepBtn.dataset.storyboardId;
+        const agentUrl = stepBtn.dataset.agentUrl;
+        const cardId = stepBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        // Fetch first step preview
+        panel.innerHTML = '<em>Loading first step...</em>';
+        try {
+          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
+          const data = await res.json();
+          if (!res.ok) { panel.innerHTML = '<em>' + escapeHtml(data.error || 'Failed') + '</em>'; return; }
+
+          renderStepRunner(panel, agentUrl, cardId, storyboardId, data.storyboard.title, data.step, null);
+        } catch {
+          panel.innerHTML = '<em>Failed to load storyboard step.</em>';
+        }
+        return;
+      }
+
+      // Run step button (inside step runner)
+      const runStepBtn = e.target.closest('.step-run-btn');
+      if (runStepBtn) {
+        const agentUrl = runStepBtn.dataset.agentUrl;
+        const cardId = runStepBtn.dataset.cardId;
+        const storyboardId = runStepBtn.dataset.storyboardId;
+        const stepId = runStepBtn.dataset.stepId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        let context = null;
+        try { context = JSON.parse(runStepBtn.dataset.context || 'null'); } catch {}
+
+        runStepBtn.disabled = true;
+        runStepBtn.textContent = 'Running...';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard/' + encodeURIComponent(storyboardId) + '/step/' + encodeURIComponent(stepId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ context, dry_run: true }),
+          });
+          const result = await res.json();
+          if (!res.ok) {
+            runStepBtn.disabled = false;
+            runStepBtn.textContent = 'Run this step';
+            const resultEl = panel.querySelector('.step-runner-result');
+            if (resultEl) { resultEl.className = 'step-runner-result step-runner-result--fail'; resultEl.innerHTML = '<strong>Error:</strong> ' + escapeHtml(result.error || 'Request failed'); }
+            return;
+          }
+
+          // Render result and next step
+          const resultEl = panel.querySelector('.step-runner-result');
+          const cls = result.skipped ? 'skip' : result.passed ? 'pass' : 'fail';
+          const label = result.skipped ? 'SKIPPED' : result.passed ? 'PASS' : 'FAIL';
+          if (resultEl) {
+            let rhtml = '<strong>' + label + '</strong> (' + result.duration_ms + 'ms)';
+            if (result.error) rhtml += '<div style="margin-top:var(--space-1);color:var(--color-error-700);">' + escapeHtml(result.error) + '</div>';
+            if (result.validations) {
+              for (const v of result.validations) {
+                if (!v.passed) {
+                  rhtml += '<div style="margin-top:2px;color:var(--color-error-600);">' + escapeHtml(v.description || v.check);
+                  if (v.error) rhtml += ': ' + escapeHtml(v.error);
+                  rhtml += '</div>';
+                }
+              }
+            }
+            resultEl.className = 'step-runner-result step-runner-result--' + cls;
+            resultEl.innerHTML = rhtml;
+          }
+
+          // Show next step button or "done"
+          const actionsEl = panel.querySelector('.step-runner-actions');
+          if (actionsEl) {
+            if (result.next) {
+              actionsEl.innerHTML = '<button class="step-next-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-next-step=\'' + JSON.stringify(result.next).replace(/'/g, '&#39;') + '\' data-context=\'' + JSON.stringify(result.context || {}).replace(/'/g, '&#39;') + '\'>Next: ' + escapeHtml(result.next.title) + ' →</button>';
+            } else {
+              actionsEl.innerHTML = '<span style="font-size:var(--text-xs);color:var(--color-success-600);font-weight:600;">Storyboard complete</span>';
+            }
+          }
+        } catch {
+          runStepBtn.disabled = false;
+          runStepBtn.textContent = 'Run this step';
+        }
+        return;
+      }
+
+      // Next step button (inside step runner)
+      const nextStepBtn = e.target.closest('.step-next-btn');
+      if (nextStepBtn) {
+        const agentUrl = nextStepBtn.dataset.agentUrl;
+        const cardId = nextStepBtn.dataset.cardId;
+        const storyboardId = nextStepBtn.dataset.storyboardId;
+        const panel = document.getElementById(cardId + '-storyboard');
+        if (!panel) return;
+
+        let nextStep = null;
+        let context = null;
+        try { nextStep = JSON.parse(nextStepBtn.dataset.nextStep || 'null'); } catch {}
+        try { context = JSON.parse(nextStepBtn.dataset.context || 'null'); } catch {}
+
+        if (nextStep) {
+          renderStepRunner(panel, agentUrl, cardId, storyboardId, null, nextStep, context);
+        }
         return;
       }
 
@@ -1007,6 +1676,7 @@
           }
 
           panel.innerHTML = html;
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch {
           progressEl.textContent = 'Failed to run storyboard evaluation.';
           runBtn.disabled = false;
@@ -1079,6 +1749,7 @@
           }
 
           panel.innerHTML = html;
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch {
           progressEl.textContent = 'Failed to run comparison.';
           compareBtn.disabled = false;
@@ -1087,6 +1758,38 @@
         return;
       }
     });
+
+    function renderStepRunner(panel, agentUrl, cardId, storyboardId, storyboardTitle, step, context) {
+      let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
+      if (storyboardTitle) {
+        html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(storyboardTitle) + '</strong> — Step by step</div>';
+      }
+      html += '<div class="step-runner">';
+      html += '<div class="step-runner-current">';
+      html += '<h4>' + escapeHtml(step.title) + '</h4>';
+      html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);margin-bottom:var(--space-1);">Task: <code>' + escapeHtml(step.task) + '</code></div>';
+      if (step.narrative) {
+        html += '<div class="step-narrative">' + escapeHtml(step.narrative).replace(/\n/g, '<br>') + '</div>';
+      }
+      if (step.expected) {
+        html += '<details style="margin-top:var(--space-2);"><summary style="font-size:var(--text-xs);cursor:pointer;color:var(--color-text-tertiary);">Expected response</summary>';
+        html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);padding:var(--space-1) 0;white-space:pre-wrap;">' + escapeHtml(step.expected) + '</div>';
+        html += '</details>';
+      }
+      if (step.sample_request && Object.keys(step.sample_request).length > 0) {
+        html += '<details style="margin-top:var(--space-1);"><summary style="font-size:var(--text-xs);cursor:pointer;color:var(--color-text-tertiary);">Sample request</summary>';
+        html += '<pre style="font-size:var(--text-xs);background:var(--color-gray-50);padding:var(--space-2);border-radius:var(--radius-sm);overflow-x:auto;max-height:200px;">' + escapeHtml(JSON.stringify(step.sample_request, null, 2)) + '</pre>';
+        html += '</details>';
+      }
+      html += '<div class="step-runner-result"></div>';
+      html += '<div class="step-runner-actions">';
+      html += '<button class="step-run-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-storyboard-id="' + escapeHtml(storyboardId) + '" data-step-id="' + escapeHtml(step.step_id) + '" data-context=\'' + JSON.stringify(context || {}).replace(/'/g, '&#39;') + '\'>Run this step</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      panel.innerHTML = html;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
     function escapeHtml(str) {
       if (!str) return '';

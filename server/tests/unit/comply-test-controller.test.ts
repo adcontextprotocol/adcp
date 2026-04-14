@@ -96,6 +96,31 @@ async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>
   return creativeId;
 }
 
+/** Create a media buy with creatives assigned so it reaches active/pending_start status. */
+async function createMediaBuyWithCreatives(server: ReturnType<typeof createTrainingAgentServer>): Promise<string> {
+  const mediaBuyId = await createMediaBuy(server);
+  const creativeId = await syncCreative(server);
+
+  // Discover the package ID from the buy
+  const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+    account: ACCOUNT,
+    brand: BRAND,
+    status_filter: ['pending_creatives'],
+  });
+  const buy = (buys as any).media_buys?.find((b: any) => b.media_buy_id === mediaBuyId);
+  const packageId = buy?.packages?.[0]?.package_id;
+
+  // Assign the creative to the buy's package
+  await simulateCallTool(server, 'sync_creatives', {
+    account: ACCOUNT,
+    brand: BRAND,
+    creatives: [{ creative_id: creativeId, name: 'Test Creative' }],
+    assignments: [{ creative_id: creativeId, package_id: packageId, media_buy_id: mediaBuyId }],
+  });
+
+  return mediaBuyId;
+}
+
 describe('comply_test_controller', () => {
   let server: ReturnType<typeof createTrainingAgentServer>;
 
@@ -122,8 +147,8 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(result.success).toBe(true);
-      const scenarios = result.scenarios as Record<string, unknown>;
-      expect(Object.keys(scenarios)).toEqual([
+      const scenarios = result.scenarios as string[];
+      expect(scenarios).toEqual([
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
@@ -131,11 +156,6 @@ describe('comply_test_controller', () => {
         'simulate_delivery',
         'simulate_budget_spend',
       ]);
-      // Each scenario includes parameter documentation
-      const creative = scenarios.force_creative_status as Record<string, unknown>;
-      expect(creative.required_params).toContain('creative_id');
-      expect(creative.required_params).toContain('status');
-      expect(creative.valid_statuses).toContain('approved');
     });
   });
 
@@ -395,9 +415,9 @@ describe('comply_test_controller', () => {
 
   describe('force_media_buy_status', () => {
     it('transitions media buy through valid states', async () => {
-      const mediaBuyId = await createMediaBuy(server);
+      const mediaBuyId = await createMediaBuyWithCreatives(server);
 
-      // Training agent creates buys as 'active'. Pause it.
+      // Buy with creatives and current dates starts as 'active'. Pause it.
       const { result: r1 } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_media_buy_status',
         params: { media_buy_id: mediaBuyId, status: 'paused' },
@@ -450,10 +470,10 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('INVALID_TRANSITION');
     });
 
-    it('rejects rejected from active (only valid from pending_activation)', async () => {
-      const mediaBuyId = await createMediaBuy(server);
+    it('rejects rejected from active (only valid from pending_creatives or pending_start)', async () => {
+      const mediaBuyId = await createMediaBuyWithCreatives(server);
 
-      // Try to reject from active — rejected is only valid from pending_activation
+      // Buy with creatives is active — rejected is not valid from active
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_media_buy_status',
         params: { media_buy_id: mediaBuyId, status: 'rejected', rejection_reason: 'Test' },
@@ -476,7 +496,7 @@ describe('comply_test_controller', () => {
     });
 
     it('cancels a media buy from active', async () => {
-      const mediaBuyId = await createMediaBuy(server);
+      const mediaBuyId = await createMediaBuyWithCreatives(server);
 
       // Cancel from active (active → canceled is valid)
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
@@ -621,7 +641,7 @@ describe('comply_test_controller', () => {
     });
 
     it('rejects delivery simulation for terminal media buy', async () => {
-      const mediaBuyId = await createMediaBuy(server);
+      const mediaBuyId = await createMediaBuyWithCreatives(server);
 
       // Complete the media buy (terminal state)
       await simulateCallTool(server, 'comply_test_controller', {

@@ -69,6 +69,14 @@
         "$ref": "/schemas/core/rights-constraint.json"
       }
     },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Clearcast clock number). When present, overrides creative-level identifiers. Use when different format versions of the same source creative have distinct Ad-IDs (e.g., the :15 and :30 cuts).",
+      "items": {
+        "$ref": "/schemas/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."

@@ -14,6 +14,10 @@ primary_region = 'iad'
   release_command_timeout = "15m"
   strategy = "rolling"
 
+[processes]
+  web = "node dist/index.js"
+  worker = "node dist/index.js"
+
 [env]
   PORT = "8080"
   BASE_URL = "https://agenticadvertising.org"
@@ -30,11 +34,11 @@ primary_region = 'iad'
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 2
-  processes = ["app"]
+  processes = ["web"]
 
   [[http_service.checks]]
     interval = "15s"
-    timeout = "5s"
+    timeout = "20s"
     grace_period = "60s"
     method = "GET"
     path = "/health"
@@ -44,8 +48,27 @@ primary_region = 'iad'
     [http_service.checks.headers]
       User-Agent = "Fly Health Check"
 
-[machine]
+# Worker health check (no public traffic, just keeps Fly from killing it)
+[[checks]]
+  name = "worker-health"
+  port = 8080
+  type = "http"
+  interval = "15s"
+  timeout = "20s"
+  grace_period = "60s"
+  method = "GET"
+  path = "/health"
+  processes = ["worker"]
+
+[[vm]]
+  processes = ["web"]
   memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[[vm]]
+  processes = ["worker"]
+  memory = "2gb"
   cpu_kind = "shared"
   cpus = 1
 

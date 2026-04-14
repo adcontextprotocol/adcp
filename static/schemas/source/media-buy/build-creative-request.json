@@ -47,6 +47,10 @@
       "minItems": 1,
       "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account for billing, and can enforce account-level quotas or entitlements. Required by creative agents that charge for their services."
+    },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."

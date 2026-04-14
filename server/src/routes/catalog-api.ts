@@ -358,7 +358,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
           await client.query('COMMIT');
           return idx;
         } catch (err) {
-          await client.query('ROLLBACK');
+          await client.query('ROLLBACK').catch(() => {});
           throw err;
         } finally {
           client.release();
@@ -415,7 +415,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
           await client.query('COMMIT');
           return propIdx;
         } catch (err) {
-          await client.query('ROLLBACK');
+          await client.query('ROLLBACK').catch(() => {});
           throw err;
         } finally {
           client.release();
@@ -506,7 +506,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
           await client.query('COMMIT');
           return propIdx;
         } catch (err) {
-          await client.query('ROLLBACK');
+          await client.query('ROLLBACK').catch(() => {});
           throw err;
         } finally {
           client.release();

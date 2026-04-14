@@ -11,14 +11,14 @@ As a buyer agent, you receive Context Match and Identity Match requests from TMP
 
 ## What You Build
 
-A buyer agent exposes a single HTTP/2 endpoint. The router sends JSON POST requests with a `type` field that distinguishes message types:
+A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /context` for Context Match and `POST /identity` for Identity Match. The router dispatches by path:
 
 | Message type | Receives | Returns |
 |---|---|---|
 | `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
 | `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + TTL |
 
-Your handler dispatches on the `type` field. Both message types must respond in under 50ms. The router enforces this budget and will skip slow providers.
+Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
 The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides Go types, request parsing, and response builders for both endpoints.
 
@@ -153,7 +153,7 @@ Because Identity Match runs across all publishers using TMP, a user who saw your
 
 ## Provider Registration
 
-Provider registration is an out-of-band process. After establishing a media buy via `create_media_buy`, coordinate with the publisher to provide your TMP endpoint URL. This typically involves a commercial agreement and may require legal review, since the publisher will be sending content signals and identity tokens to your endpoint. The publisher then configures your provider entry in their router (see [router deployment](/docs/trusted-match/router-architecture#deployment)).
+Provider registration is an out-of-band process. After establishing a media buy via `create_media_buy`, coordinate with the publisher to provide your TMP base URL. This typically involves a commercial agreement and may require legal review, since the publisher will be sending content signals and identity tokens to your endpoints. The publisher then configures your provider entry in their router (see [router deployment](/docs/trusted-match/router-architecture#deployment)).
 
 ```json
 {
@@ -220,4 +220,4 @@ TMP does not define an impression callback — the buyer learns about impression
 | **You return** | Bid price | Offer (creative manifest) or eligible package IDs + TTL |
 | **Auction** | Exchange runs auction | No auction — publisher joins locally |
 | **Frequency** | Per-DSP only | Cross-publisher via Identity Match |
-| **Integration** | Per-exchange SSP adapter | Single endpoint, any surface |
+| **Integration** | Per-exchange SSP adapter | Two endpoints (context + identity), any surface |

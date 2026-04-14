@@ -19,7 +19,7 @@ const VALID_OPS = new Set([
 
 const MAX_EDIT_DEPTH = 2;
 const MAX_BATCH_EDITS = 5;
-const MAX_TEXT_LENGTH = 500;
+const MAX_TEXT_LENGTH = 2000;
 
 /**
  * Apply an editorial instruction to the digest content.

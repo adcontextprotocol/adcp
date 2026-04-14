@@ -202,13 +202,13 @@
 :root {
   --space-0:   0;
   --space-px:  1px;
-  --space-0.5: 0.125rem;   /* 2px */
+  --space-0_5: 0.125rem;   /* 2px */
   --space-1:   0.25rem;    /* 4px */
-  --space-1.5: 0.375rem;   /* 6px */
+  --space-1_5: 0.375rem;   /* 6px */
   --space-2:   0.5rem;     /* 8px - base unit */
-  --space-2.5: 0.625rem;   /* 10px */
+  --space-2_5: 0.625rem;   /* 10px */
   --space-3:   0.75rem;    /* 12px */
-  --space-3.5: 0.875rem;   /* 14px */
+  --space-3_5: 0.875rem;   /* 14px */
   --space-4:   1rem;       /* 16px */
   --space-5:   1.25rem;    /* 20px */
   --space-6:   1.5rem;     /* 24px */
@@ -361,7 +361,7 @@
      8.1 Buttons
      ----------------------------------------------------------------------------- */
   --btn-padding-x: var(--space-5);
-  --btn-padding-y: var(--space-2.5);
+  --btn-padding-y: var(--space-2_5);
   --btn-padding-x-sm: var(--space-3);
   --btn-padding-y-sm: var(--space-2);
   --btn-padding-x-lg: var(--space-8);
@@ -1732,7 +1732,7 @@ html {
   .btn-sm,
   .ds-btn-sm {
     min-height: 40px;
-    padding: var(--space-2.5) var(--space-4);
+    padding: var(--space-2_5) var(--space-4);
     font-size: var(--text-sm);
   }
 

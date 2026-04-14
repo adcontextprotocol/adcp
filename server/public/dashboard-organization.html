@@ -467,12 +467,12 @@
     .group-rec-item:last-child { border-bottom: none; }
 
     .group-rec-info { flex: 1; min-width: 0; }
-    .group-rec-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-0.5); }
+    .group-rec-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-0_5); }
     .group-rec-reason { font-size: var(--text-xs); color: var(--color-text-muted); }
 
     .group-rec-badge {
       display: inline-flex;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--badge-radius);
       font-size: 10px; font-weight: var(--font-semibold);
       text-transform: uppercase; letter-spacing: var(--tracking-wide);
@@ -607,7 +607,7 @@
     }
 
     .timeline-date { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
-    .timeline-transition { font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium); margin-bottom: var(--space-0.5); }
+    .timeline-transition { font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium); margin-bottom: var(--space-0_5); }
     .timeline-trigger { font-size: var(--text-xs); color: var(--color-text-secondary); }
     .timeline-empty { font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; padding: var(--space-6) 0; }
 
@@ -636,7 +636,7 @@
 
     .status-badge {
       display: inline-flex;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--badge-radius);
       font-size: 10px; font-weight: var(--font-semibold);
       text-transform: uppercase; letter-spacing: var(--tracking-wide);
@@ -696,7 +696,7 @@
       font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading);
     }
     .welcome-checklist-item .wc-desc {
-      font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-0.5);
+      font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-0_5);
     }
 
     /* Upgrade teaser card */
@@ -768,7 +768,7 @@
       .content-table, .content-table tbody, .content-table tr, .content-table td { display: block; }
       .content-table tr { padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border); }
       .content-table td { padding: var(--space-1) var(--space-3); border-bottom: none; }
-      .content-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0.5); }
+      .content-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0_5); }
 
       .health-score-layout { flex-direction: column; align-items: flex-start; }
       .health-signal-grid { grid-template-columns: repeat(2, 1fr); }
@@ -777,7 +777,7 @@
       .people-table, .people-table tbody, .people-table tr, .people-table td { display: block; }
       .people-table tr { padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border); }
       .people-table td { padding: var(--space-1) var(--space-3); border-bottom: none; }
-      .people-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0.5); }
+      .people-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0_5); }
 
       .champion-grid { grid-template-columns: 1fr; }
     }
@@ -849,17 +849,19 @@
 
         const data = await engRes.json();
         const profileData = profileRes.ok ? await profileRes.json() : null;
+        const hasPersonalWorkspace = orgs.some(o => o.is_personal);
+        const showSwitcher = orgs.length > 1 || !hasPersonalWorkspace;
         DashboardNav.init({
-          showOrgSwitcher: orgs.length > 1,
+          showOrgSwitcher: showSwitcher,
           currentOrgName: currentOrg?.name || data.organization_name || 'My organization',
-          showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
+          showAdmin: meData?.user?.isAdmin || false,
           orgId: currentOrg?.id || null,
           orgRole: currentOrg?.role || 'member',
           isPersonal: currentOrg?.is_personal || false,
         });
 
-        // Set up org switcher callback for multi-org users
-        if (orgs.length > 1) {
+        // Set up org switcher
+        if (showSwitcher) {
           DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
             const url = new URL(window.location);

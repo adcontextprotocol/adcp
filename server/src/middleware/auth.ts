@@ -37,6 +37,13 @@ const SESSION_CACHE_TTL_MS = 60 * 1000;
 const authFailureLog = new Map<string, number>();
 const AUTH_FAILURE_LOG_SUPPRESS_MS = 5 * 60 * 1000;
 
+// Negative cache: sessions confirmed dead (e.g. invalid_grant) skip the expensive
+// WorkOS refresh + DB fallback on subsequent requests. TTL kept short so users who
+// log in again aren't blocked.
+const deadSessionCache = new Map<string, number>();
+const DEAD_SESSION_TTL_MS = 60 * 1000;
+const DEAD_SESSION_MAX_SIZE = 50_000;
+
 /** Log at warn the first time a stale session is seen; demote repeats to debug. */
 function warnOncePerSession(
   cacheKey: string,
@@ -69,6 +76,9 @@ setInterval(() => {
   }
   for (const [key, ts] of authFailureLog.entries()) {
     if (now - ts > AUTH_FAILURE_LOG_SUPPRESS_MS) authFailureLog.delete(key);
+  }
+  for (const [key, ts] of deadSessionCache.entries()) {
+    if (now - ts > DEAD_SESSION_TTL_MS) deadSessionCache.delete(key);
   }
 }, 5 * 60 * 1000);
 
@@ -144,6 +154,7 @@ function hashSessionCookie(cookie: string): string {
 export function invalidateSessionCache(sessionCookie: string): void {
   const cacheKey = hashSessionCookie(sessionCookie);
   sessionCache.delete(cacheKey);
+  deadSessionCache.delete(cacheKey);
   logger.debug({ cacheKey }, 'Session cache invalidated');
 }
 
@@ -539,6 +550,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const cached = sessionCache.get(cacheKey);
     const now = Date.now();
 
+    // Fast-reject sessions already known to be dead (invalid_grant, etc.)
+    const deadAt = deadSessionCache.get(cacheKey);
+    if (deadAt) {
+      if (now - deadAt < DEAD_SESSION_TTL_MS) {
+        logger.debug({ path: req.path }, 'Rejected dead session from cache');
+        if (isHtmlRequest) {
+          return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+        }
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your session has expired. Please log in again.',
+          login_url: '/auth/login',
+        });
+      }
+      deadSessionCache.delete(cacheKey);
+    }
+
     if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
@@ -692,8 +720,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         'Session invalid (repeated — suppressed)',
       );
 
-      // Remove any stale cache entry
+      // Remove any stale positive cache entry and mark session as dead
+      // so subsequent requests skip the expensive WorkOS refresh + DB fallback
       sessionCache.delete(cacheKey);
+      // LRU eviction: delete oldest entry when at capacity
+      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+        const oldest = deadSessionCache.keys().next().value;
+        if (oldest) deadSessionCache.delete(oldest);
+      }
+      deadSessionCache.set(cacheKey, Date.now());
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -713,26 +748,44 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let firstName = result.user.firstName ?? undefined;
     let lastName = result.user.lastName ?? undefined;
 
-    // When WorkOS doesn't provide a name, resolve from our DB (which may have
-    // names backfilled from Slack or previous profile updates)
-    if (!firstName?.trim()) {
-      try {
-        const pool = getPool();
-        const nameResult = await pool.query<{
-          first_name: string | null;
-          last_name: string | null;
-        }>(
-          `SELECT first_name, last_name FROM users WHERE workos_user_id = $1`,
-          [result.user.id]
-        );
-        if (nameResult.rows.length > 0) {
-          const row = nameResult.rows[0];
-          if (row.first_name?.trim()) firstName = row.first_name;
-          if (row.last_name?.trim()) lastName = row.last_name;
+    // Verify the user exists in our local DB. This catches stale sessions
+    // from deleted/merged WorkOS accounts whose JWTs haven't expired yet.
+    // Also resolves names from local DB when WorkOS doesn't provide them.
+    try {
+      const pool = getPool();
+      const localUser = await pool.query<{
+        first_name: string | null;
+        last_name: string | null;
+      }>(
+        `SELECT first_name, last_name FROM users WHERE workos_user_id = $1`,
+        [result.user.id]
+      );
+      if (localUser.rows.length === 0) {
+        logger.warn({ userId: result.user.id, email: result.user.email, path: req.path },
+          'Authenticated user not found in local DB — forcing re-login');
+        sessionCache.delete(cacheKey);
+        if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+          const oldest = deadSessionCache.keys().next().value;
+          if (oldest) deadSessionCache.delete(oldest);
         }
-      } catch (err) {
-        logger.warn({ err, userId: result.user.id }, 'Name lookup failed — using WorkOS values');
+        deadSessionCache.set(cacheKey, Date.now());
+        if (isHtmlRequest) {
+          return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+        }
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your account could not be verified. Please log in again.',
+          login_url: '/auth/login',
+        });
       }
+      if (!firstName?.trim()) {
+        const row = localUser.rows[0];
+        if (row.first_name?.trim()) firstName = row.first_name;
+        if (row.last_name?.trim()) lastName = row.last_name;
+      }
+    } catch (err) {
+      // Fail open: DB errors should not block authenticated users
+      logger.warn({ err, userId: result.user.id }, 'Local user check failed — allowing request through');
     }
 
     const user: WorkOSUser = {
@@ -1290,6 +1343,15 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     const cached = sessionCache.get(cacheKey);
     const now = Date.now();
 
+    // Fast-reject sessions already known to be dead
+    const deadAt = deadSessionCache.get(cacheKey);
+    if (deadAt) {
+      if (now - deadAt < DEAD_SESSION_TTL_MS) {
+        return next(); // optional auth: just proceed without user
+      }
+      deadSessionCache.delete(cacheKey);
+    }
+
     if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
@@ -1386,6 +1448,17 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           logger.debug({ err: dbError }, 'Failed to look up shared session (optional auth)');
         }
       }
+    }
+
+    if (!result.authenticated || !('user' in result) || !result.user) {
+      // All refresh attempts failed — mark session as dead to avoid
+      // expensive retries on every subsequent request
+      // LRU eviction: delete oldest entry when at capacity
+      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+        const oldest = deadSessionCache.keys().next().value;
+        if (oldest) deadSessionCache.delete(oldest);
+      }
+      deadSessionCache.set(cacheKey, Date.now());
     }
 
     if (result.authenticated && 'user' in result && result.user) {

@@ -119,6 +119,25 @@ interface TalentEntry {
   exclusion_reasons?: Record<string, string | { reason: string; suggestions?: string[] }>;
 }
 
+/** Advertiser brand — brand identity without talent rights */
+interface BrandEntry {
+  brand_id: string;
+  house: House;
+  names: LocalizedName[];
+  description: string;
+  industries: string[];
+  keller_type: string;
+  tagline: string;
+  logos: Logo[];
+  colors?: Record<string, string>;
+  fonts?: Record<string, string | { family: string; files?: Array<{ url: string; weight?: number; weight_range?: [number, number]; style?: string }>; opentype_features?: string[]; fallbacks?: string[] }>;
+  tone: Tone;
+  voice_synthesis?: VoiceSynthesis;
+  visual_guidelines?: VisualGuidelines;
+}
+
+type AnyBrand = TalentEntry | BrandEntry;
+
 // ── Seed data ─────────────────────────────────────────────────────
 
 const HOUSE: House = {
@@ -427,6 +446,39 @@ const TALENT: TalentEntry[] = [
 
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
+// ── Advertiser brand seed data ───────────────────────────────────
+// These are fictional brands from the storyboard test kits.
+// They have brand identity data but no talent rights.
+
+const ADVERTISER_BRANDS: BrandEntry[] = [
+  {
+    brand_id: 'acme_outdoor',
+    house: { domain: 'acme-outdoor.example.com', name: 'Acme Outdoor' },
+    names: [{ en: 'Acme Outdoor' }],
+    description: 'Premium outdoor gear for every adventure. From trail to summit, we make gear that performs.',
+    industries: ['retail'],
+    keller_type: 'master',
+    tagline: 'Built for the Trail',
+    logos: [
+      { url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/logo-primary.png', variant: 'primary' },
+      { url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/logo-icon.png', variant: 'icon' },
+    ],
+    colors: { primary: '#1B5E20', secondary: '#FF6F00', accent: '#FDD835', background: '#FAFAFA', text: '#212121' },
+    fonts: { heading: 'Montserrat', body: 'Open Sans' },
+    tone: {
+      voice: 'Confident and adventurous, but never pretentious. We talk to people who do things, not people who buy things.',
+      attributes: ['active', 'direct', 'warm'],
+      dos: ['Use action verbs', 'Reference real outdoor activities', 'Keep it short'],
+      donts: ['Use superlatives without evidence', 'Talk down to the reader', 'Use corporate jargon'],
+    },
+  },
+];
+
+const BRAND_MAP = new Map<string, AnyBrand>([
+  ...TALENT.map(t => [t.brand_id, t] as [string, AnyBrand]),
+  ...ADVERTISER_BRANDS.map(b => [b.brand_id, b] as [string, AnyBrand]),
+]);
+
 // Fields that are always returned (public, not selectable)
 const PUBLIC_FIELDS = ['description', 'industries', 'keller_type', 'logos', 'tagline'] as const;
 const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voice_synthesis', 'assets', 'rights'] as const;
@@ -437,7 +489,7 @@ const ALL_FIELDS = [...PUBLIC_FIELDS, ...AUTHORIZED_FIELDS] as const;
 export const BRAND_TOOLS = [
   {
     name: 'get_brand_identity',
-    description: 'Get brand identity data from the talent roster. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka.',
+    description: 'Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka, acme_outdoor.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -518,6 +570,35 @@ export const BRAND_TOOLS = [
       required: ['rights_id'],
     },
   },
+  {
+    name: 'creative_approval',
+    description: 'Submit a generated creative for brand approval. The brand agent reviews the creative against identity guidelines and rights grant terms. Returns approved, rejected, or pending_review.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        rights_id: { type: 'string', description: 'Rights grant this creative was produced under' },
+        rights_grant_id: { type: 'string', description: 'Alias for rights_id' },
+        creative_url: { type: 'string', description: 'URL where the creative asset can be retrieved for review' },
+        creative_id: { type: 'string', description: 'Buyer-assigned creative identifier' },
+        creative_format: { type: 'string', description: 'Format of the creative being submitted' },
+        creative: {
+          type: 'object',
+          description: 'Creative object with creative_id, format, and assets',
+          properties: {
+            creative_id: { type: 'string' },
+            format: { type: 'string' },
+            assets: { type: 'array' },
+          },
+        },
+        description: { type: 'string', description: 'Description of the creative for reviewer context' },
+        metadata: { type: 'object', description: 'Additional creative metadata' },
+        idempotency_key: { type: 'string', description: 'Client-generated key for safe retries' },
+      },
+      required: ['rights_id', 'creative_url'],
+    },
+  },
 ];
 
 // ── Handlers ──────────────────────────────────────────────────────
@@ -535,7 +616,7 @@ export function handleGetBrandIdentity(
   const fields = req.fields;
   const authorized = req.authorized ?? false;
 
-  const talent = TALENT_MAP.get(brandId);
+  const talent = BRAND_MAP.get(brandId);
   if (!talent) {
     return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
   }
@@ -1000,6 +1081,45 @@ export function handleUpdateRights(
     },
     implementation_date: new Date().toISOString(),
     ...(paused !== undefined && { paused }),
+    sandbox: true,
+  };
+}
+
+export function handleCreativeApproval(
+  args: ToolArgs,
+  _ctx: TrainingContext,
+) {
+  const req = args as {
+    rights_id?: string;
+    rights_grant_id?: string;
+    creative_url?: string;
+    creative_id?: string;
+    creative_format?: string;
+    creative?: { creative_id?: string; format?: string; assets?: Array<{ asset_type?: string; url?: string }> };
+    description?: string;
+  };
+
+  const rightsId = req.rights_id || req.rights_grant_id;
+  if (!rightsId) {
+    return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+  }
+
+  const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;
+  if (!creativeUrl) {
+    return { errors: [{ code: 'invalid_request', message: 'creative_url or creative.assets[].url is required' }] };
+  }
+
+  const creativeId = req.creative_id || req.creative?.creative_id || 'sandbox_creative';
+  const creativeFormat = req.creative_format || req.creative?.format;
+
+  return {
+    status: 'approved',
+    rights_id: rightsId,
+    creative_id: creativeId,
+    creative_url: creativeUrl,
+    ...(creativeFormat ? { creative_format: creativeFormat } : {}),
+    approved_at: new Date().toISOString(),
+    conditions: ['Sandbox approval — not valid for production distribution'],
     sandbox: true,
   };
 }

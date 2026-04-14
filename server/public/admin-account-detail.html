@@ -658,6 +658,7 @@
             <h1>
               <span id="accountName">Loading...</span>
               <span id="memberBadge" class="member-badge prospect">Prospect</span>
+              <span id="membershipTierBadge" class="member-badge" style="display: none; background: var(--color-gray-200); color: var(--color-text-heading);"></span>
               <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
             </h1>
             <div id="inheritedMembershipNotice" style="display: none; margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-brand); font-weight: 500;"></div>
@@ -1515,6 +1516,20 @@
             : '');
       }
 
+      // Membership tier badge
+      const tierBadge = document.getElementById('membershipTierBadge');
+      const TIER_LABELS = {
+        individual_professional: 'Professional',
+        individual_academic: 'Explorer',
+        company_standard: 'Builder',
+        company_icl: 'Partner',
+        company_leader: 'Leader',
+      };
+      if (a.membership_tier && TIER_LABELS[a.membership_tier]) {
+        tierBadge.textContent = TIER_LABELS[a.membership_tier];
+        tierBadge.style.display = '';
+      }
+
       // Header subtitle (company type, revenue tier, employees, location)
       const subtitleParts = [];
       if (a.company_type) subtitleParts.push(formatCompanyType(a.company_type));
@@ -2336,6 +2351,9 @@
                       ${escapeHtml(o.subscription_status || 'prospect')}
                     </span>
                   </span>
+                  <button class="btn btn-sm btn-secondary" onclick="openMergeModal('${escapeHtml(accountData.workos_organization_id)}', '${escapeHtml(o.org_id)}')">
+                    Merge
+                  </button>
                 </li>
               `).join('')}
             </ul>
@@ -3108,7 +3126,7 @@
             <div style="font-weight: var(--font-semibold); margin-bottom: var(--space-2);">${escapeHtml(member)}</div>
             ${insights.map(insight => `
               <div style="display: flex; gap: var(--space-2); padding: var(--space-1) 0; font-size: var(--text-sm);">
-                <span style="background: var(--color-primary-100); color: var(--color-primary-700); padding: var(--space-0.5) var(--space-1.5); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">
+                <span style="background: var(--color-primary-100); color: var(--color-primary-700); padding: var(--space-0_5) var(--space-1_5); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">
                   ${escapeHtml(insight.insight_type)}
                 </span>
                 <span>${escapeHtml(insight.value)}</span>

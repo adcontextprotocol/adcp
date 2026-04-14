@@ -130,7 +130,7 @@ describe('MCP response unwrapping for evaluator', () => {
             product_id: 'PROD-001',
             budget: 5000,
             pricing_option_id: 'PO-001',
-            status: 'pending_activation',
+            status: 'pending_start',
           },
         ],
       };

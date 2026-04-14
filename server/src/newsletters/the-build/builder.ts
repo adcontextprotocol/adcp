@@ -10,6 +10,7 @@
 
 import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
+import { generateDateFlavor } from '../cover.js';
 import { query } from '../../db/client.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from '../../addie/services/wg-digest-builder.js';
 import type { WgDigestContent } from '../../db/wg-digest-db.js';
@@ -19,6 +20,7 @@ import type {
   BuildRelease,
   BuildHelpItem,
   BuildContributor,
+  BuildEvent,
 } from '../../db/build-db.js';
 
 const logger = createLogger('build-builder');
@@ -46,37 +48,51 @@ export async function buildBuildContent(): Promise<BuildContent> {
     }
   }
 
-  // Build decisions first so we can deduplicate help-needed
-  const [decisions, whatShipped, contributorSpotlight] = await Promise.all([
+  // Build all candidate pools in parallel
+  const [decisions, whatShipped, contributorSpotlight, events] = await Promise.all([
     buildDecisionsSection(wgEntries),
     buildReleasesSection(),
     buildContributorSpotlight(),
+    buildEventsSection(),
   ]);
 
   const decisionUrls = new Set(decisions.map((d) => d.url));
   const helpNeeded = await buildHelpNeededSection(wgEntries, decisionUrls);
 
-  const statusLine = await generateStatusLine(decisions, whatShipped, helpNeeded, contributorSpotlight);
+  const [statusLine, dateFlavor] = await Promise.all([
+    generateStatusLine(decisions, whatShipped, helpNeeded, contributorSpotlight),
+    generateDateFlavor(),
+  ]);
 
+  // Section arrays start empty — editor cherry-picks from candidatePool
   const content: BuildContent = {
     contentVersion: 1,
     statusLine,
-    decisions,
-    whatShipped,
-    deepDive: null, // Curated by admin, not auto-generated
-    helpNeeded,
-    contributorSpotlight,
+    decisions: [],
+    whatShipped: [],
+    deepDive: null,
+    helpNeeded: [],
+    contributorSpotlight: [],
+    dateFlavor: dateFlavor || undefined,
     generatedAt: new Date().toISOString(),
+    candidatePool: {
+      decisions,
+      whatShipped,
+      helpNeeded,
+      contributorSpotlight,
+      events,
+    },
   };
 
   logger.info(
     {
-      decisionCount: decisions.length,
-      releaseCount: whatShipped.length,
-      helpCount: helpNeeded.length,
-      spotlightCount: contributorSpotlight.length,
+      candidateDecisions: decisions.length,
+      candidateReleases: whatShipped.length,
+      candidateHelp: helpNeeded.length,
+      candidateSpotlights: contributorSpotlight.length,
+      candidateEvents: events.length,
     },
-    'The Build content built',
+    'The Build candidate pool built',
   );
 
   return content;
@@ -86,6 +102,10 @@ export async function buildBuildContent(): Promise<BuildContent> {
  * Check if there's enough content to justify sending.
  */
 export function hasBuildMinimumContent(content: BuildContent): boolean {
+  const pool = content.candidatePool;
+  if (pool) {
+    return (pool.decisions?.length || 0) + (pool.whatShipped?.length || 0) + (pool.helpNeeded?.length || 0) + (pool.events?.length || 0) >= 2;
+  }
   return content.decisions.length + content.whatShipped.length + content.helpNeeded.length >= 2;
 }
 
@@ -160,7 +180,8 @@ async function buildDecisionsSection(wgEntries: WgEntry[]): Promise<BuildDecisio
   // Use LLM to classify candidates as decisions, proposals, or noise
   if (!isLLMConfigured()) {
     // Fallback: treat meetings as decided, threads as under review
-    return candidates.slice(0, 8).map((c) => ({
+    return candidates.slice(0, 8).map((c, i) => ({
+      id: `decision_${c.workingGroupId}_${i}`,
       workingGroup: c.workingGroup,
       workingGroupId: c.workingGroupId,
       title: c.title,
@@ -201,6 +222,7 @@ Only include items that are NOT noise. Be conservative — if unclear, classify 
         const candidate = candidates[c.index - 1];
         if (!candidate) return null;
         return {
+          id: `decision_${candidate.workingGroupId}_${c.index}`,
           workingGroup: candidate.workingGroup,
           workingGroupId: candidate.workingGroupId,
           title: c.title || candidate.title,
@@ -212,7 +234,8 @@ Only include items that are NOT noise. Be conservative — if unclear, classify 
       .filter((d): d is NonNullable<typeof d> => d !== null);
   } catch {
     logger.warn('Failed to parse LLM decision classification, using source-based fallback');
-    return candidates.slice(0, 8).map((c) => ({
+    return candidates.slice(0, 8).map((c, i) => ({
+      id: `decision_${c.workingGroupId}_fallback_${i}`,
       workingGroup: c.workingGroup,
       workingGroupId: c.workingGroupId,
       title: c.title,
@@ -254,9 +277,12 @@ async function buildReleasesSection(): Promise<BuildRelease[]> {
       const isBreaking = row.title.toLowerCase().includes('breaking') ||
         (row.addie_notes || '').toLowerCase().includes('breaking');
       const versionMatch = row.title.match(/v?(\d+\.\d+\.\d+)/);
+      const repo = row.relevance_tags?.[0] || 'adcontextprotocol';
+      const version = versionMatch?.[1] || '';
       return {
-        repo: row.relevance_tags?.[0] || 'adcontextprotocol',
-        version: versionMatch?.[1] || '',
+        id: `release_${repo}_${version || row.created_at.toISOString().split('T')[0]}`,
+        repo,
+        version,
         releaseDate: row.created_at.toISOString().split('T')[0],
         summary: row.summary || row.title,
         releaseUrl: row.source_url,
@@ -288,6 +314,7 @@ async function buildHelpNeededSection(wgEntries: WgEntry[], decisionUrls: Set<st
 
       if (lower.includes('help') || lower.includes('review') || lower.includes('feedback') || lower.includes('volunteer') || lower.includes('input needed') || lower.includes('looking for')) {
         items.push({
+          id: `help_${entry.groupId}_${items.length}`,
           title: thread.summary.slice(0, 120),
           url: thread.threadUrl,
           source: entry.groupName,
@@ -323,6 +350,7 @@ async function buildContributorSpotlight(): Promise<BuildContributor[]> {
     );
 
     return result.rows.map((row) => ({
+      id: `contributor_${row.slug}`,
       name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Community member',
       contribution: `Published "${row.title}"`,
       url: `/perspectives/${row.slug}`,
@@ -372,4 +400,61 @@ Content this cycle:
   });
 
   return result.text;
+}
+
+// ─── Events ───────────────────────────────────────────────────────────
+
+async function buildEventsSection(): Promise<BuildEvent[]> {
+  try {
+    // Recent completed events with recaps + upcoming published events
+    const result = await query<{
+      id: number;
+      title: string;
+      slug: string;
+      start_time: Date;
+      end_time: Date | null;
+      status: string;
+      recap_html: string | null;
+      recap_video_url: string | null;
+    }>(
+      `SELECT id, title, slug, start_time, end_time, status, recap_html, recap_video_url
+       FROM events
+       WHERE (
+         (status = 'completed' AND end_time >= NOW() - INTERVAL '30 days')
+         OR (status = 'published' AND start_time >= NOW() - INTERVAL '1 day')
+       )
+       ORDER BY start_time DESC
+       LIMIT 10`,
+    );
+
+    return result.rows.map((row) => {
+      const isUpcoming = row.status === 'published';
+      const hasRecap = !!row.recap_html;
+      let recapExcerpt: string | undefined;
+      if (hasRecap && row.recap_html) {
+        // Strip HTML tags iteratively for a plain text excerpt
+        let text = row.recap_html;
+        let prev = '';
+        while (text !== prev) {
+          prev = text;
+          text = text.replace(/<[^>]+>/g, '');
+        }
+        recapExcerpt = text.slice(0, 200).trim();
+      }
+      return {
+        id: `event_${row.id}`,
+        title: row.title,
+        slug: row.slug,
+        startTime: row.start_time.toISOString(),
+        endTime: row.end_time?.toISOString(),
+        status: isUpcoming ? 'upcoming' as const : 'completed' as const,
+        hasRecap,
+        recapExcerpt,
+        recapVideoUrl: row.recap_video_url || undefined,
+      };
+    });
+  } catch {
+    logger.warn('Failed to fetch events for The Build');
+    return [];
+  }
 }

@@ -322,6 +322,71 @@ describe('stripe-client', () => {
       });
       expect(mockStripeInstance.customers.create).toHaveBeenCalled();
     });
+
+    test('skips email-matched customer that belongs to a different org', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customers: {
+          search: vi.fn<any>().mockResolvedValue({ data: [] }),
+          list: vi.fn<any>().mockResolvedValue({
+            data: [{ id: 'cus_other_org', metadata: { workos_organization_id: 'org_different' } }],
+          }),
+          update: vi.fn<any>(),
+          create: vi.fn<any>().mockResolvedValue({ id: 'cus_new_for_this_org' }),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createStripeCustomer({
+        email: 'shared@example.com',
+        name: 'Org B',
+        metadata: { workos_organization_id: 'org_requesting' },
+      });
+
+      expect(result).toBe('cus_new_for_this_org');
+      expect(mockStripeInstance.customers.list).toHaveBeenCalled();
+      // Should not update the skipped customer
+      expect(mockStripeInstance.customers.update).not.toHaveBeenCalled();
+      // Should create a new one
+      expect(mockStripeInstance.customers.create).toHaveBeenCalledWith({
+        email: 'shared@example.com',
+        name: 'Org B',
+        metadata: { workos_organization_id: 'org_requesting' },
+      });
+    });
+
+    test('skips email-matched customer with no org metadata when requesting org is set', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customers: {
+          search: vi.fn<any>().mockResolvedValue({ data: [] }),
+          list: vi.fn<any>().mockResolvedValue({
+            data: [{ id: 'cus_orphan', metadata: {} }],
+          }),
+          update: vi.fn<any>(),
+          create: vi.fn<any>().mockResolvedValue({ id: 'cus_brand_new' }),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createStripeCustomer({
+        email: 'shared@example.com',
+        name: 'Org C',
+        metadata: { workos_organization_id: 'org_requesting' },
+      });
+
+      expect(result).toBe('cus_brand_new');
+      expect(mockStripeInstance.customers.update).not.toHaveBeenCalled();
+      expect(mockStripeInstance.customers.create).toHaveBeenCalled();
+    });
   });
 
   describe('createCustomerPortalSession', () => {

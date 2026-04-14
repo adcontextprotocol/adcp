@@ -367,6 +367,16 @@
           Sign in or create a free account to accept this invitation and lock in your discount.
         </div>
 
+        <!-- Marketing opt-in (shown alongside accept button) -->
+        <div id="marketingOptInRow" style="display:none; margin-bottom: var(--space-4);">
+          <label style="display: flex; align-items: flex-start; gap: var(--space-3); background: var(--color-gray-50); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); font-size: var(--text-sm); cursor: pointer;" onclick="document.getElementById('marketingOptIn').click(); event.stopPropagation();">
+            <input type="checkbox" id="marketingOptIn" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer; flex-shrink: 0;" onclick="event.stopPropagation();">
+            <span style="cursor: pointer; line-height: var(--leading-normal);" onclick="event.stopPropagation();">
+              Keep me updated on news, events, and workshops (optional)
+            </span>
+          </label>
+        </div>
+
         <!-- CTA — swapped between sign-in and accept based on auth state -->
         <a id="ctaSignIn" href="#" class="btn-signin" style="display:none;">
           Sign in to accept invitation
@@ -507,6 +517,7 @@
           document.getElementById('ctaDashboard').style.display = '';
         } else {
           // Logged in and no existing referral — show accept button
+          document.getElementById('marketingOptInRow').style.display = '';
           document.getElementById('ctaAccept').style.display = '';
           document.getElementById('finePrint').style.display = '';
         }
@@ -521,10 +532,13 @@
         btn.disabled = true;
         btn.textContent = 'Accepting...';
 
+        var marketingOptIn = document.getElementById('marketingOptIn').checked;
+
         fetch('/api/referral/' + encodeURIComponent(code) + '/accept', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ marketing_opt_in: marketingOptIn }),
         })
           .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
           .then(function (r) {

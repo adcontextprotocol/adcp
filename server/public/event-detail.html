@@ -545,13 +545,14 @@
         const sponsors = data.sponsors || [];
         const registrationCount = data.registration_count || 0;
         const industryGathering = data.industry_gathering || null;
+        const myRegistration = data.my_registration || null;
 
         document.title = `${event.title} | AgenticAdvertising.org`;
 
         // Update meta tags
         updateMetaTags(event);
 
-        renderEvent(event, sponsors, registrationCount, industryGathering);
+        renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -582,7 +583,7 @@
       }
     }
 
-    function renderEvent(event, sponsors, registrationCount, industryGathering) {
+    function renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration) {
       const startDate = new Date(event.start_time);
       const endDate = event.end_time ? new Date(event.end_time) : null;
       const eventTimezone = event.timezone || 'America/New_York';
@@ -681,7 +682,16 @@
             </div>
 
             <div class="event-actions">
-              ${isPast ? `
+              ${myRegistration && myRegistration.status === 'registered' ? `
+                <span class="btn" style="background: var(--color-success-100); color: var(--color-success-700); cursor: default; font-weight: 600;">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 12.5l-4-4 1.4-1.4L6.5 9.7l5.6-5.6 1.4 1.4z"/></svg>
+                  You're going!
+                </span>
+              ` : myRegistration && myRegistration.status === 'waitlisted' ? `
+                <span class="btn" style="background: var(--color-warning-100); color: var(--color-warning-700); cursor: default; font-weight: 600;">
+                  You're on the waitlist
+                </span>
+              ` : isPast ? `
                 <span class="btn btn-outline" style="cursor: default;">Event Has Ended</span>
               ` : event.external_registration_url ? `
                 <a href="${escapeHtml(event.external_registration_url)}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
@@ -704,6 +714,9 @@
                   Register Now
                 </button>
               `}
+              ${registrationCount > 0 ? `
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">${registrationCount} ${registrationCount === 1 ? 'person' : 'people'} attending</span>
+              ` : ''}
 
               ${event.sponsorship_enabled && event.stripe_product_id && !isPast ? `
                 <a href="#sponsorship" class="btn btn-outline">Become a Sponsor</a>
@@ -721,6 +734,38 @@
             <div class="event-description">${renderDescription(event.description)}</div>
           </div>
         `;
+      }
+
+      // Event recap (past events with recap content)
+      if (event.recap_html || event.recap_video_url) {
+        html += `<div class="event-section">`;
+        html += `<h2 class="section-title">Event Recap</h2>`;
+
+        // Video embed
+        if (event.recap_video_url) {
+          const videoUrl = event.recap_video_url;
+          const ytMatch = videoUrl.match(/^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+          if (ytMatch) {
+            html += `<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: var(--radius-md); margin-bottom: var(--space-4);">
+              <iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe>
+            </div>`;
+          } else {
+            // Only render link for https URLs (block javascript: and other protocols)
+            try {
+              const parsed = new URL(videoUrl);
+              if (parsed.protocol === 'https:') {
+                html += `<p style="margin-bottom: var(--space-4);"><a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener" class="btn btn-secondary">Watch Recording</a></p>`;
+              }
+            } catch { /* invalid URL, skip */ }
+          }
+        }
+
+        // Recap HTML content
+        if (event.recap_html) {
+          html += `<div class="event-description">${DOMPurify.sanitize(event.recap_html)}</div>`;
+        }
+
+        html += `</div>`;
       }
 
       // Email interest form (upcoming events only)

@@ -28,6 +28,7 @@ const ALLOWED_CONTENT_TYPES = new Set([
 ]);
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024; // 5 MB
+const LOGO_DOWNLOAD_TIMEOUT_MS = 30_000; // 30 seconds
 
 const brandLogoDb = new BrandLogoDatabase();
 
@@ -104,7 +105,7 @@ export async function downloadAndCacheLogos(
     try {
       const response = await axios.get<ArrayBuffer>(logo.url, {
         responseType: 'arraybuffer',
-        timeout: 10000,
+        timeout: LOGO_DOWNLOAD_TIMEOUT_MS,
         maxContentLength: MAX_LOGO_BYTES,
         maxBodyLength: MAX_LOGO_BYTES,
         headers: { 'User-Agent': 'AgenticAdvertising/1.0' },

@@ -52,14 +52,9 @@ export class FederatedIndexService {
     // Get discovered agents
     const discoveredAgents = await this.db.getAllDiscoveredAgents(type);
 
-    // Get authorizations to find which domain discovered each agent
-    const allAuths = new Map<string, AgentPublisherAuthorization>();
-    for (const agent of discoveredAgents) {
-      const auths = await this.db.getDomainsForAgent(agent.agent_url);
-      if (auths.length > 0) {
-        allAuths.set(agent.agent_url, auths[0]); // Use first authorization as source
-      }
-    }
+    // Bulk-fetch first authorization for all discovered agents in a single query
+    const agentUrls = discoveredAgents.map(a => a.agent_url);
+    const allAuths = await this.db.bulkGetFirstAuthForAgents(agentUrls);
 
     // Merge: registered takes precedence
     const result: FederatedAgent[] = Array.from(registeredAgents.values());
@@ -202,6 +197,27 @@ export class FederatedIndexService {
   async getDomainsForAgent(agentUrl: string): Promise<string[]> {
     const authorizations = await this.db.getDomainsForAgent(agentUrl);
     return authorizations.map(auth => auth.publisher_domain);
+  }
+
+  /**
+   * Get full authorization records for an agent (publisher domain, source, authorized_for).
+   */
+  async getAuthorizationsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
+    return this.db.getDomainsForAgent(agentUrl);
+  }
+
+  /**
+   * Get full authorization records for a domain (agent URL, source, authorized_for).
+   */
+  async getAuthorizationsForDomain(domain: string): Promise<AgentPublisherAuthorization[]> {
+    return this.db.getAgentsForDomain(domain);
+  }
+
+  /**
+   * Check whether a domain has a valid adagents.json (from cached crawl data).
+   */
+  async hasValidAdagents(domain: string): Promise<boolean | null> {
+    return this.db.hasValidAdagents(domain);
   }
 
   /**

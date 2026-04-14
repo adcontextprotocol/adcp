@@ -325,11 +325,14 @@ components:
         type:
           type: string
           enum:
-            - creative
-            - signals
-            - sales
+            - brand
+            - rights
+            - measurement
             - governance
-            - si
+            - creative
+            - sales
+            - buying
+            - signals
             - unknown
         protocol:
           type: string
@@ -516,6 +519,10 @@ components:
           type:
             - string
             - "null"
+        monitoring_paused:
+          type: boolean
+        check_interval_hours:
+          type: integer
       required:
         - status
         - lifecycle_stage
@@ -629,6 +636,128 @@ components:
         - domain
         - authorized_agents
         - sales_agents_claiming
+    OperatorLookupResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: pubmatic.com
+        member:
+          type:
+            - object
+            - "null"
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+                enum:
+                  - brand
+                  - rights
+                  - measurement
+                  - governance
+                  - creative
+                  - buying
+                  - signals
+                  - unknown
+              authorized_by:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    publisher_domain:
+                      type: string
+                    authorized_for:
+                      type: string
+                    source:
+                      type: string
+                      enum:
+                        - adagents_json
+                        - agent_claim
+                  required:
+                    - publisher_domain
+                    - source
+            required:
+              - url
+              - name
+              - type
+              - authorized_by
+      required:
+        - domain
+        - member
+        - agents
+    PublisherLookupResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: voxmedia.com
+        member:
+          type:
+            - object
+            - "null"
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        adagents_valid:
+          type:
+            - boolean
+            - "null"
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              name:
+                type: string
+              identifiers:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyIdentifier"
+              tags:
+                type: array
+                items:
+                  type: string
+        authorized_agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              authorized_for:
+                type: string
+              source:
+                type: string
+                enum:
+                  - adagents_json
+                  - agent_claim
+            required:
+              - url
+              - source
+      required:
+        - domain
+        - member
+        - adagents_valid
+        - properties
+        - authorized_agents
     PublisherPropertySelector:
       type: object
       properties:
@@ -985,6 +1114,400 @@ components:
         - policy_id
         - total
         - revisions
+    AgentComplianceDetail:
+      type: object
+      properties:
+        agent_url:
+          type: string
+        status:
+          type: string
+          enum:
+            - passing
+            - degraded
+            - failing
+            - unknown
+            - opted_out
+        lifecycle_stage:
+          type: string
+          enum:
+            - development
+            - testing
+            - production
+            - deprecated
+        tracks:
+          type: object
+          additionalProperties:
+            type: string
+        streak_days:
+          type: integer
+        last_checked_at:
+          type:
+            - string
+            - "null"
+        last_passed_at:
+          type:
+            - string
+            - "null"
+        last_failed_at:
+          type:
+            - string
+            - "null"
+        headline:
+          type:
+            - string
+            - "null"
+        status_changed_at:
+          type:
+            - string
+            - "null"
+        storyboards_passing:
+          type: integer
+        storyboards_total:
+          type: integer
+      required:
+        - agent_url
+        - status
+        - lifecycle_stage
+    StoryboardStatus:
+      type: object
+      properties:
+        storyboard_id:
+          type: string
+        title:
+          type: string
+        category:
+          type:
+            - string
+            - "null"
+        track:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - passing
+            - failing
+            - partial
+            - untested
+        steps_passed:
+          type: integer
+        steps_total:
+          type: integer
+        last_tested_at:
+          type:
+            - string
+            - "null"
+        last_passed_at:
+          type:
+            - string
+            - "null"
+      required:
+        - storyboard_id
+        - title
+        - category
+        - track
+        - status
+        - steps_passed
+        - steps_total
+        - last_tested_at
+        - last_passed_at
+    ComplianceRun:
+      type: object
+      properties:
+        id:
+          type: string
+        overall_status:
+          type: string
+        headline:
+          type:
+            - string
+            - "null"
+        tracks_passed:
+          type: integer
+        tracks_failed:
+          type: integer
+        tracks_skipped:
+          type: integer
+        tracks_partial:
+          type: integer
+        tracks_json: {}
+        total_duration_ms:
+          type:
+            - number
+            - "null"
+        triggered_by:
+          type: string
+        tested_at:
+          type: string
+      required:
+        - id
+        - overall_status
+        - headline
+        - tracks_passed
+        - tracks_failed
+        - tracks_skipped
+        - tracks_partial
+        - total_duration_ms
+        - triggered_by
+        - tested_at
+    RegistryMetadata:
+      type: object
+      properties:
+        agent_url:
+          type: string
+        lifecycle_stage:
+          type: string
+          enum:
+            - development
+            - testing
+            - production
+            - deprecated
+        platform_type:
+          type:
+            - string
+            - "null"
+        compliance_opt_out:
+          type: boolean
+        monitoring_paused:
+          type: boolean
+        check_interval_hours:
+          type: integer
+        monitoring_paused_at:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - agent_url
+        - lifecycle_stage
+        - platform_type
+        - compliance_opt_out
+        - monitoring_paused
+        - check_interval_hours
+        - monitoring_paused_at
+        - created_at
+        - updated_at
+    MonitoringSettings:
+      type: object
+      properties:
+        monitoring_paused:
+          type: boolean
+        check_interval_hours:
+          type: integer
+        monitoring_paused_at:
+          type:
+            - string
+            - "null"
+      required:
+        - monitoring_paused
+        - check_interval_hours
+        - monitoring_paused_at
+    OutboundRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_url:
+          type: string
+        request_type:
+          type: string
+        user_agent:
+          type: string
+        response_time_ms:
+          type:
+            - number
+            - "null"
+        success:
+          type: boolean
+        error_message:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+      required:
+        - id
+        - agent_url
+        - request_type
+        - user_agent
+        - response_time_ms
+        - success
+        - error_message
+        - created_at
+    AgentAuthStatus:
+      type: object
+      properties:
+        has_auth:
+          type: boolean
+        agent_context_id:
+          type:
+            - string
+            - "null"
+        auth_type:
+          type:
+            - string
+            - "null"
+          enum:
+            - bearer
+            - basic
+            - oauth
+            - null
+        has_oauth_token:
+          type: boolean
+        has_valid_oauth:
+          type: boolean
+        oauth_token_expires_at:
+          type:
+            - string
+            - "null"
+      required:
+        - has_auth
+        - agent_context_id
+        - auth_type
+        - has_oauth_token
+        - has_valid_oauth
+        - oauth_token_expires_at
+    StoryboardSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        summary:
+          type: string
+        interaction_model:
+          type: string
+        examples:
+          type: array
+          items:
+            type: string
+        phase_count:
+          type: integer
+        step_count:
+          type: integer
+      required:
+        - id
+        - title
+        - category
+        - summary
+        - interaction_model
+        - examples
+        - phase_count
+        - step_count
+    StoryboardDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        summary:
+          type: string
+        agent:
+          type: object
+          properties:
+            interaction_model:
+              type: string
+            examples:
+              type: array
+              items:
+                type: string
+          required:
+            - interaction_model
+        phases:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              steps:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: string
+                    description:
+                      type: string
+                    expected_output:
+                      type: string
+                  required:
+                    - id
+                    - title
+                    - description
+                    - expected_output
+            required:
+              - title
+              - steps
+        prerequisites: {}
+        required_tools:
+          type: array
+          items:
+            type: string
+        track:
+          type: string
+      required:
+        - id
+        - title
+        - category
+        - summary
+        - agent
+        - phases
+    FindCompanyResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanySearchResult"
+      required:
+        - results
+    CompanySearchResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: coca-cola.com
+        canonical_domain:
+          type: string
+          example: coca-cola.com
+        brand_name:
+          type: string
+          example: The Coca-Cola Company
+        house_domain:
+          type: string
+          example: coca-cola.com
+        keller_type:
+          type: string
+          enum:
+            - master
+            - sub_brand
+            - endorsed
+            - independent
+        parent_brand:
+          type: string
+        brand_agent_url:
+          type: string
+        source:
+          type: string
+          example: community
+      required:
+        - domain
+        - canonical_domain
+        - brand_name
+        - source
 paths:
   /api:
     get:
@@ -1172,6 +1695,8 @@ paths:
       description: Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.
       tags:
         - Brand Resolution
+      security:
+        - bearerAuth: []
       requestBody:
         content:
           application/json:
@@ -1583,6 +2108,8 @@ paths:
       description: Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
       tags:
         - Property Resolution
+      security:
+        - bearerAuth: []
       requestBody:
         content:
           application/json:
@@ -1869,11 +2396,14 @@ paths:
         - schema:
             type: string
             enum:
-              - creative
-              - signals
-              - sales
+              - brand
+              - rights
+              - measurement
               - governance
-              - si
+              - creative
+              - sales
+              - buying
+              - signals
               - unknown
           required: false
           name: type
@@ -2079,6 +2609,60 @@ paths:
                   - agent_url
                   - domains
                   - count
+  /api/registry/operator:
+    get:
+      operationId: lookupOperator
+      summary: Operator lookup
+      description: Given a domain, returns the agents this entity operates and which publishers trust them.
+      tags:
+        - Lookups & Authorization
+      parameters:
+        - schema:
+            type: string
+            example: pubmatic.com
+          required: true
+          name: domain
+          in: query
+      responses:
+        "200":
+          description: Operator lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorLookupResult"
+        "400":
+          description: Missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/publisher:
+    get:
+      operationId: lookupPublisher
+      summary: Publisher lookup
+      description: Given a domain, returns the inventory this entity publishes and which agents it authorizes.
+      tags:
+        - Lookups & Authorization
+      parameters:
+        - schema:
+            type: string
+            example: voxmedia.com
+          required: true
+          name: domain
+          in: query
+      responses:
+        "200":
+          description: Publisher lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublisherLookupResult"
+        "400":
+          description: Missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -2892,6 +3476,8 @@ paths:
       description: Create or update a community-contributed policy. Requires authentication. Registry-sourced and pending-review policies cannot be edited (returns 409). Updates automatically create a revision record.
       tags:
         - Policy Registry
+      security:
+        - bearerAuth: []
       requestBody:
         content:
           application/json:
@@ -3432,6 +4018,1652 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/brand-crawl-request:
+    post:
+      operationId: requestBrandCrawl
+      summary: Request brand.json re-crawl
+      description: |-
+        Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: examplebrand.com
+                  description: Domain to re-crawl brand.json for
+              required:
+                - domain
+      responses:
+        "202":
+          description: Brand crawl request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Brand crawl request accepted
+                  domain:
+                    type: string
+                required:
+                  - message
+                  - domain
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
+  /api/registry/agents/{encodedUrl}/compliance:
+    get:
+      operationId: getAgentCompliance
+      summary: Get agent compliance detail
+      description: |-
+        Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.
+
+        If the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+            example: https%3A%2F%2Fexample.com%2Fmcp
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Compliance detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentComplianceDetail"
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/storyboard-status:
+    get:
+      operationId: getAgentStoryboardStatus
+      summary: Get agent storyboard status
+      description: |-
+        Returns per-storyboard test results for an agent. Includes title, category, track, pass/fail status, and step counts.
+
+        **Members only** — requires authentication and an active membership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+            example: https%3A%2F%2Fexample.com%2Fmcp
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Storyboard status for the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  storyboards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StoryboardStatus"
+                  passing_count:
+                    type: integer
+                  total_count:
+                    type: integer
+                required:
+                  - agent_url
+                  - storyboards
+                  - passing_count
+                  - total_count
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Members only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  members_only:
+                    type: boolean
+                required:
+                  - error
+                  - members_only
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/storyboard-status:
+    post:
+      operationId: bulkAgentStoryboardStatus
+      summary: Bulk storyboard status
+      description: |-
+        Returns per-storyboard test results for multiple agents in a single request.
+
+        **Members only** — requires authentication and an active membership. Maximum 100 agent URLs per request.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agent_urls:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 100
+                  description: Agent URLs to fetch storyboard status for
+              required:
+                - agent_urls
+      responses:
+        "200":
+          description: Storyboard status keyed by agent URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: object
+                    additionalProperties:
+                      anyOf:
+                        - type: array
+                          items:
+                            $ref: "#/components/schemas/StoryboardStatus"
+                        - type: object
+                          properties:
+                            status:
+                              type: string
+                              enum:
+                                - opted_out
+                          required:
+                            - status
+                  invalid_urls:
+                    type: integer
+                    description: Count of invalid URLs that were skipped
+                required:
+                  - agents
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Members only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  members_only:
+                    type: boolean
+                required:
+                  - error
+                  - members_only
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/compliance/history:
+    get:
+      operationId: getAgentComplianceHistory
+      summary: Get agent compliance history
+      description: |-
+        Returns a list of compliance test runs for an agent, ordered most recent first.
+
+        If the agent has opted out, returns an empty list.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Max results (default 30, max 100)
+          required: false
+          description: Max results (default 30, max 100)
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Compliance run history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  runs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ComplianceRun"
+                  count:
+                    type: integer
+                required:
+                  - agent_url
+                  - runs
+                  - count
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/lifecycle:
+    put:
+      operationId: updateAgentLifecycle
+      summary: Update agent lifecycle stage
+      description: Set the lifecycle stage for an agent. Requires authentication and ownership of the agent.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lifecycle_stage:
+                  type: string
+                  enum:
+                    - development
+                    - testing
+                    - production
+                    - deprecated
+              required:
+                - lifecycle_stage
+      responses:
+        "200":
+          description: Updated metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistryMetadata"
+        "400":
+          description: Invalid agent URL or lifecycle stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/compliance/opt-out:
+    put:
+      operationId: updateAgentComplianceOptOut
+      summary: Update compliance opt-out
+      description: Opt an agent in or out of public compliance reporting. Requires authentication and ownership of the agent.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                opt_out:
+                  type: boolean
+              required:
+                - opt_out
+      responses:
+        "200":
+          description: Updated metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistryMetadata"
+        "400":
+          description: Invalid agent URL or opt_out value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/settings:
+    get:
+      operationId: getAgentMonitoringSettings
+      summary: Get monitoring settings
+      description: Returns the monitoring configuration for an agent. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Monitoring settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringSettings"
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/pause:
+    put:
+      operationId: updateAgentMonitoringPause
+      summary: Pause or resume monitoring
+      description: Pause or resume automated compliance monitoring for an agent. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paused:
+                  type: boolean
+              required:
+                - paused
+      responses:
+        "200":
+          description: Updated monitoring settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringSettings"
+        "400":
+          description: Invalid agent URL or paused value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/interval:
+    put:
+      operationId: updateAgentMonitoringInterval
+      summary: Update monitoring interval
+      description: Set the check interval for automated compliance monitoring (6–168 hours). Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interval_hours:
+                  type: integer
+                  minimum: 6
+                  maximum: 168
+              required:
+                - interval_hours
+      responses:
+        "200":
+          description: Updated monitoring settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringSettings"
+        "400":
+          description: Invalid agent URL or interval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/requests:
+    get:
+      operationId: getAgentMonitoringRequests
+      summary: Get outbound request log
+      description: Returns the outbound request log for an agent (compliance checks, health probes, etc.). Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Max results (default 50, max 200)
+          required: false
+          description: Max results (default 50, max 200)
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: ISO 8601 timestamp to filter from
+          required: false
+          description: ISO 8601 timestamp to filter from
+          name: since
+          in: query
+      responses:
+        "200":
+          description: Outbound request log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OutboundRequest"
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                required:
+                  - agent_url
+                  - requests
+                  - count
+                  - total
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/auth-status:
+    get:
+      operationId: getAgentAuthStatus
+      summary: Get agent auth status
+      description: Returns whether an agent has stored authentication credentials and OAuth token status. Requires authentication.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentAuthStatus"
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/connect:
+    put:
+      operationId: connectAgent
+      summary: Connect agent credentials
+      description: Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                auth_token:
+                  type: string
+                  maxLength: 4096
+                  description: Bearer or basic auth token
+                auth_type:
+                  type: string
+                  enum:
+                    - bearer
+                    - basic
+                  description: "Auth type (default: bearer)"
+                platform_type:
+                  type: string
+                  description: Agent platform type
+      responses:
+        "200":
+          description: Connection result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                    enum:
+                      - true
+                  has_auth:
+                    type: boolean
+                  agent_context_id:
+                    type: string
+                  platform_type:
+                    type: string
+                required:
+                  - connected
+                  - has_auth
+                  - agent_context_id
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/applicable-storyboards:
+    get:
+      operationId: getApplicableStoryboards
+      summary: Get applicable storyboards for agent
+      description: Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Applicable storyboards grouped by track
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  agent_name:
+                    type: string
+                  tools:
+                    type: array
+                    items:
+                      type: string
+                  storyboards:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          title:
+                            type: string
+                          summary:
+                            type: string
+                          step_count:
+                            type: integer
+                        required:
+                          - id
+                          - title
+                          - summary
+                          - step_count
+                  total_applicable:
+                    type: integer
+                  total_available:
+                    type: integer
+                required:
+                  - agent_url
+                  - agent_name
+                  - tools
+                  - storyboards
+                  - total_applicable
+                  - total_available
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Agent requires authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  needs_auth:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - error
+                  - needs_auth
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/storyboards:
+    get:
+      operationId: listStoryboards
+      summary: List storyboards
+      description: Returns the catalog of compliance storyboards. Optionally filter by category.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: Filter by storyboard category
+          required: false
+          description: Filter by storyboard category
+          name: category
+          in: query
+      responses:
+        "200":
+          description: Storyboard catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storyboards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StoryboardSummary"
+                  count:
+                    type: integer
+                required:
+                  - storyboards
+                  - count
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/storyboards/{id}:
+    get:
+      operationId: getStoryboard
+      summary: Get storyboard detail
+      description: Returns a single storyboard with its full phase and step structure, plus its test kit if available.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: Storyboard ID
+          required: true
+          description: Storyboard ID
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Storyboard detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storyboard:
+                    $ref: "#/components/schemas/StoryboardDetail"
+                  test_kit: {}
+                required:
+                  - storyboard
+        "404":
+          description: Storyboard not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/brands/find:
+    get:
+      operationId: findBrand
+      summary: Find brands by name
+      description: Search for brands by name or domain. Returns matching results with basic identity info.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            minLength: 2
+            description: Search query (min 2 characters)
+          required: true
+          description: Search query (min 2 characters)
+          name: q
+          in: query
+        - schema:
+            type: string
+            description: Max results (default 10, max 50)
+          required: false
+          description: Max results (default 10, max 50)
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FindCompanyResult"
+                required:
+                  - results
+        "400":
+          description: Query too short
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/brands/setup-my-brand:
+    post:
+      operationId: setupMyBrand
+      summary: Set up a hosted brand.json
+      description: Create or update a hosted brand.json for a domain owned by the authenticated user's organization. Returns the hosted URL and a pointer snippet for DNS setup.
+      tags:
+        - Brand Resolution
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: acmecorp.com
+                brand_name:
+                  type: string
+                logo_url:
+                  type: string
+                brand_color:
+                  type: string
+              required:
+                - domain
+                - brand_name
+      responses:
+        "200":
+          description: Brand setup result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                  has_brand_json:
+                    type: boolean
+                  hosted_brand_json_url:
+                    type: string
+                  pointer_snippet:
+                    type: string
+                    description: JSON string for brand.json pointer
+                required:
+                  - domain
+                  - has_brand_json
+                  - hosted_brand_json_url
+                  - pointer_snippet
+        "400":
+          description: Invalid domain or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Domain not owned by user's organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/properties/check/bulk:
+    post:
+      operationId: bulkPropertyCheck
+      summary: Bulk property identifier check
+      description: Check up to 10,000 property identifiers (domains, app bundle IDs, CTV store URLs) against the registry catalog. Returns a verdict for each identifier and a summary.
+      tags:
+        - Property Resolution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifiers:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10000
+                  description: Property identifiers to check
+              required:
+                - identifiers
+      responses:
+        "200":
+          description: Check results with report ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      ready:
+                        type: integer
+                      known:
+                        type: integer
+                      ad_infra:
+                        type: integer
+                      unknown:
+                        type: integer
+                      skipped:
+                        type: integer
+                    required:
+                      - total
+                      - ready
+                      - known
+                      - ad_infra
+                      - unknown
+                      - skipped
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: string
+                        identifier:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            value:
+                              type: string
+                          required:
+                            - type
+                            - value
+                        verdict:
+                          type: string
+                        classification:
+                          type:
+                            - string
+                            - "null"
+                        source:
+                          type:
+                            - string
+                            - "null"
+                        property_rid:
+                          type:
+                            - string
+                            - "null"
+                        action:
+                          type: string
+                      required:
+                        - input
+                        - identifier
+                        - verdict
+                        - classification
+                        - source
+                        - property_rid
+                        - action
+                  report_id:
+                    type: string
+                required:
+                  - summary
+                  - entries
+                  - report_id
+        "400":
+          description: Invalid identifiers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/properties/check/bulk/{reportId}:
+    get:
+      operationId: getBulkPropertyCheckReport
+      summary: Get bulk check report
+      description: Retrieve a previously generated bulk property check report by ID.
+      tags:
+        - Property Resolution
+      parameters:
+        - schema:
+            type: string
+            description: Report UUID
+          required: true
+          description: Report UUID
+          name: reportId
+          in: path
+      responses:
+        "200":
+          description: Report data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      ready:
+                        type: integer
+                      known:
+                        type: integer
+                      ad_infra:
+                        type: integer
+                      unknown:
+                        type: integer
+                      skipped:
+                        type: integer
+                    required:
+                      - total
+                      - ready
+                      - known
+                      - ad_infra
+                      - unknown
+                      - skipped
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: string
+                        identifier:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            value:
+                              type: string
+                          required:
+                            - type
+                            - value
+                        verdict:
+                          type: string
+                        classification:
+                          type:
+                            - string
+                            - "null"
+                        source:
+                          type:
+                            - string
+                            - "null"
+                        property_rid:
+                          type:
+                            - string
+                            - "null"
+                        action:
+                          type: string
+                      required:
+                        - input
+                        - identifier
+                        - verdict
+                        - classification
+                        - source
+                        - property_rid
+                        - action
+                required:
+                  - summary
+                  - entries
+        "404":
+          description: Report not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/step/{stepId}:
+    post:
+      operationId: runStoryboardStep
+      summary: Run a single storyboard step
+      description: Execute a single storyboard step against an agent. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+          required: true
+          name: storyboardId
+          in: path
+        - schema:
+            type: string
+          required: true
+          name: stepId
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: object
+                  additionalProperties: {}
+                  description: Optional context object for the step
+                dry_run:
+                  type: boolean
+                  description: "Dry run mode (default: true)"
+      responses:
+        "200":
+          description: Step execution result
+          content:
+            application/json:
+              schema: {}
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Storyboard not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/storyboards/{storyboardId}/first-step:
+    get:
+      operationId: getStoryboardFirstStep
+      summary: Get first step preview
+      description: Returns a preview of the first step of a storyboard. No agent call needed.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: storyboardId
+          in: path
+      responses:
+        "200":
+          description: First step preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storyboard:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                    required:
+                      - id
+                      - title
+                  step: {}
+                required:
+                  - storyboard
+        "404":
+          description: Storyboard not found or has no steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/run:
+    post:
+      operationId: runStoryboard
+      summary: Run full storyboard evaluation
+      description: Execute all steps of a storyboard against an agent and record the compliance result. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+          required: true
+          name: storyboardId
+          in: path
+      responses:
+        "200":
+          description: Storyboard run result with annotated phases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storyboard:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      category:
+                        type: string
+                      narrative:
+                        type: string
+                    required:
+                      - id
+                      - title
+                      - category
+                  agent:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      profile: {}
+                    required:
+                      - url
+                  phases: {}
+                  summary: {}
+                  observations: {}
+                  total_duration_ms:
+                    type: number
+                  test_kit: {}
+                required:
+                  - storyboard
+                  - agent
+                  - total_duration_ms
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Storyboard not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/compare:
+    post:
+      operationId: compareStoryboard
+      summary: Compare storyboard against reference agent
+      description: Run a storyboard against both the target agent and the public reference agent, returning side-by-side results. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+          required: true
+          name: storyboardId
+          in: path
+      responses:
+        "200":
+          description: Side-by-side comparison results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storyboard:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      category:
+                        type: string
+                    required:
+                      - id
+                      - title
+                      - category
+                  user_agent:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      profile: {}
+                      summary: {}
+                    required:
+                      - url
+                  reference_agent:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      name:
+                        type: string
+                      profile: {}
+                      summary: {}
+                    required:
+                      - url
+                      - name
+                  phases: {}
+                  total_duration_ms:
+                    type: number
+                required:
+                  - storyboard
+                  - user_agent
+                  - reference_agent
+                  - total_duration_ms
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Storyboard not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 tags:
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
@@ -3449,5 +5681,9 @@ tags:
     description: Cross-entity search across brands, publishers, agents, and properties.
   - name: Agent Probing
     description: Connect to live agents and inspect their capabilities, formats, and inventory.
+  - name: Brand Discovery
+    description: Discover and crawl brand.json files across domains.
+  - name: Agent Compliance
+    description: Agent compliance status, storyboard test results, and compliance history.
   - name: Policy Registry
     description: Browse, resolve, and contribute governance policies for campaign compliance.

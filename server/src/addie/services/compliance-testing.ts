@@ -1,460 +1,181 @@
+/**
+ * Compliance testing — thin adapter over @adcp/client's compliance module.
+ *
+ * Re-exports the client's comply(), types, platform profiles, and briefs.
+ * Adds complianceResultToDbInput() for recording results in the database.
+ */
+
 import {
-  testAllScenarios,
-  DEFAULT_SCENARIOS,
   setAgentTesterLogger,
-  type TestOptions,
-  type TestResult,
-  type TestScenario,
-  type AgentProfile,
+  comply,
+  type ComplyOptions,
+  type ComplianceResult,
+  type ComplianceTrack,
+  type TrackResult,
+  type AdvisoryObservation,
+  type PlatformType,
+  type SampleBrief,
+  type PlatformProfile,
+  getAllPlatformTypes,
+  getPlatformProfile,
+  SAMPLE_BRIEFS,
+  getBriefsByVertical,
+  filterToKnownScenarios,
 } from '@adcp/client/testing';
 
+import type {
+  TrackSummaryEntry,
+  OverallRunStatus,
+  RecordComplianceRunInput,
+  StoryboardStatusEntry,
+  LifecycleStage,
+  TriggeredBy,
+} from '../../db/compliance-db.js';
+
+import { getStoryboard, getAllStoryboards } from '../../services/storyboards.js';
+import type { Storyboard } from '../../services/storyboards.js';
+
+// ── Re-exports ────────────────────────────────────────────────────
+
 export { setAgentTesterLogger };
-
-export type ComplianceTrack =
-  | 'core'
-  | 'products'
-  | 'media_buy'
-  | 'creative'
-  | 'reporting'
-  | 'governance'
-  | 'signals'
-  | 'si'
-  | 'audiences';
-
-export type PlatformType =
-  | 'display_ad_server'
-  | 'video_ad_server'
-  | 'social_platform'
-  | 'pmax_platform'
-  | 'dsp'
-  | 'retail_media'
-  | 'search_platform'
-  | 'audio_platform'
-  | 'creative_transformer'
-  | 'creative_library'
-  | 'creative_ad_server'
-  | 'si_platform'
-  | 'ai_ad_network'
-  | 'ai_platform'
-  | 'generative_dsp';
-
-export interface ComplyOptions extends TestOptions {
-  tracks?: ComplianceTrack[];
-  platform_type?: PlatformType;
-  timeout_ms?: number;
-}
-
-export interface PlatformProfile {
-  label: string;
-  expected_tracks: ComplianceTrack[];
-  expected_tools: string[];
-  expected_channels: string[];
-}
-
-export interface SampleBrief {
-  name: string;
-  vertical: string;
-  brief: string;
-}
-
-export interface ComplianceObservation {
-  severity: 'error' | 'warning' | 'suggestion' | 'info';
-  category: string;
-  message: string;
-  evidence?: unknown;
-}
-
-export interface ComplianceTrackResult {
-  track: ComplianceTrack;
-  label: string;
-  status: 'pass' | 'fail' | 'partial' | 'skip';
-  scenarios: TestResult[];
-  duration_ms: number;
-}
-
-export interface PlatformCoherenceFinding {
-  severity: 'error' | 'warning' | 'suggestion' | 'info';
-  expected: string;
-  actual: string;
-  guidance: string;
-}
-
-export interface PlatformCoherence {
-  label: string;
-  coherent: boolean;
-  expected_tracks: ComplianceTrack[];
-  missing_tracks: ComplianceTrack[];
-  findings: PlatformCoherenceFinding[];
-}
-
-export interface ComplyResult {
-  agent_profile: AgentProfile;
-  tracks: ComplianceTrackResult[];
-  summary: {
-    headline: string;
-    tracks_passed: number;
-    tracks_failed: number;
-    tracks_partial: number;
-    tracks_skipped: number;
-  };
-  observations: ComplianceObservation[];
-  total_duration_ms: number;
-  dry_run: boolean;
-  platform_coherence?: PlatformCoherence;
-  v3_gate_failed?: boolean;
-}
-
-const TRACK_LABELS: Record<ComplianceTrack, string> = {
-  core: 'Core protocol',
-  products: 'Product discovery',
-  media_buy: 'Media buy flow',
-  creative: 'Creative workflows',
-  reporting: 'Reporting',
-  governance: 'Governance',
-  signals: 'Signals',
-  si: 'Sponsored intelligence',
-  audiences: 'Audience sync',
+export { comply, getAllPlatformTypes, getPlatformProfile, SAMPLE_BRIEFS, getBriefsByVertical, filterToKnownScenarios };
+export type {
+  ComplyOptions,
+  ComplianceResult,
+  ComplianceTrack,
+  TrackResult,
+  AdvisoryObservation,
+  PlatformType,
+  SampleBrief,
+  PlatformProfile,
 };
 
-export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
-  core: ['health_check', 'discovery', 'capability_discovery'],
-  products: ['behavior_analysis', 'response_consistency', 'schema_compliance'],
-  media_buy: [
-    'create_media_buy',
-    'full_sales_flow',
-    'pricing_edge_cases',
-    'error_handling',
-    'validation',
-    'temporal_validation',
-  ],
-  creative: ['creative_sync', 'creative_inline', 'creative_flow'],
-  reporting: ['deterministic_delivery'],
-  governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
-  signals: ['signals_flow'],
-  si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
-  audiences: ['sync_audiences'],
-};
+// ── DB Adapter ────────────────────────────────────────────────────
 
-export const SAMPLE_BRIEFS: SampleBrief[] = [
-  {
-    name: 'Retail launch brief',
-    vertical: 'retail',
-    brief: 'Retail brand launching a seasonal promotion and looking for broad-reach placements with product detail support and measurable sales outcomes.',
-  },
-  {
-    name: 'Travel demand brief',
-    vertical: 'travel',
-    brief: 'Travel advertiser promoting summer bookings and seeking premium placements that can drive consideration and booking intent.',
-  },
-  {
-    name: 'Finance acquisition brief',
-    vertical: 'finance',
-    brief: 'Financial services brand looking for compliant customer acquisition inventory with strong audience targeting and trusted environments.',
-  },
-  {
-    name: 'Automotive launch brief',
-    vertical: 'automotive',
-    brief: 'Auto advertiser launching a new vehicle and looking for video and high-impact display inventory that can support awareness and dealer traffic.',
-  },
-  {
-    name: 'Technology demand gen brief',
-    vertical: 'technology',
-    brief: 'B2B technology brand seeking qualified demand-generation inventory with audience targeting, premium editorial context, and measurable engagement.',
-  },
-];
-
-const PLATFORM_PROFILES: Record<PlatformType, PlatformProfile> = {
-  display_ad_server: {
-    label: 'Display ad server',
-    expected_tracks: ['core', 'products', 'media_buy'],
-    expected_tools: ['get_products', 'create_media_buy'],
-    expected_channels: ['display'],
-  },
-  video_ad_server: {
-    label: 'Video ad server',
-    expected_tracks: ['core', 'products', 'media_buy'],
-    expected_tools: ['get_products', 'create_media_buy'],
-    expected_channels: ['olv', 'ctv'],
-  },
-  social_platform: {
-    label: 'Social platform',
-    expected_tracks: ['core', 'products', 'media_buy', 'creative'],
-    expected_tools: ['get_products', 'create_media_buy', 'sync_creatives'],
-    expected_channels: ['social'],
-  },
-  pmax_platform: {
-    label: 'Performance max platform',
-    expected_tracks: ['core', 'products', 'media_buy', 'creative'],
-    expected_tools: ['get_products', 'create_media_buy', 'sync_creatives'],
-    expected_channels: ['display', 'olv', 'native'],
-  },
-  dsp: {
-    label: 'DSP',
-    expected_tracks: ['core', 'products', 'media_buy', 'audiences'],
-    expected_tools: ['get_products', 'create_media_buy', 'sync_audiences'],
-    expected_channels: ['display', 'olv', 'ctv', 'audio'],
-  },
-  retail_media: {
-    label: 'Retail media platform',
-    expected_tracks: ['core', 'products', 'media_buy', 'audiences'],
-    expected_tools: ['get_products', 'create_media_buy', 'sync_audiences'],
-    expected_channels: ['display', 'native'],
-  },
-  search_platform: {
-    label: 'Search platform',
-    expected_tracks: ['core', 'products', 'media_buy'],
-    expected_tools: ['get_products', 'create_media_buy'],
-    expected_channels: ['search'],
-  },
-  audio_platform: {
-    label: 'Audio platform',
-    expected_tracks: ['core', 'products', 'media_buy'],
-    expected_tools: ['get_products', 'create_media_buy'],
-    expected_channels: ['audio', 'podcast', 'streaming_audio'],
-  },
-  creative_transformer: {
-    label: 'Creative transformer',
-    expected_tracks: ['core', 'creative'],
-    expected_tools: ['build_creative'],
-    expected_channels: [],
-  },
-  creative_library: {
-    label: 'Creative library',
-    expected_tracks: ['core', 'creative'],
-    expected_tools: ['build_creative'],
-    expected_channels: [],
-  },
-  creative_ad_server: {
-    label: 'Creative ad server',
-    expected_tracks: ['core', 'creative'],
-    expected_tools: ['build_creative', 'preview_creative'],
-    expected_channels: ['display', 'olv'],
-  },
-  si_platform: {
-    label: 'Sponsored intelligence platform',
-    expected_tracks: ['core', 'si'],
-    expected_tools: ['si_initiate_session'],
-    expected_channels: [],
-  },
-  ai_ad_network: {
-    label: 'AI ad network',
-    expected_tracks: ['core', 'products', 'media_buy', 'creative'],
-    expected_tools: ['get_products', 'create_media_buy', 'build_creative'],
-    expected_channels: ['display', 'native', 'olv'],
-  },
-  ai_platform: {
-    label: 'AI platform',
-    expected_tracks: ['core', 'products', 'creative'],
-    expected_tools: ['get_products', 'build_creative'],
-    expected_channels: ['display', 'native'],
-  },
-  generative_dsp: {
-    label: 'Generative DSP',
-    expected_tracks: ['core', 'products', 'media_buy', 'creative', 'audiences'],
-    expected_tools: ['get_products', 'create_media_buy', 'build_creative', 'sync_audiences'],
-    expected_channels: ['display', 'native', 'olv', 'social'],
-  },
-};
-
-export function getBriefsByVertical(vertical: string): SampleBrief[] {
-  const normalized = vertical.trim().toLowerCase();
-  return SAMPLE_BRIEFS.filter((brief) => brief.vertical === normalized);
+/**
+ * Map the client's OverallStatus to the DB's OverallRunStatus.
+ * The client has 'auth_required' and 'unreachable' which we map to 'failing'.
+ */
+function mapOverallStatus(status: string): OverallRunStatus {
+  switch (status) {
+    case 'passing': return 'passing';
+    case 'partial': return 'partial';
+    case 'failing':
+    case 'auth_required':
+    case 'unreachable':
+    default:
+      return 'failing';
+  }
 }
 
-export function getAllPlatformTypes(): PlatformType[] {
-  return Object.keys(PLATFORM_PROFILES) as PlatformType[];
-}
+// ── Storyboard Status Derivation ─────────────────────────────────
 
-export function getPlatformProfile(platformType: PlatformType): PlatformProfile | undefined {
-  return PLATFORM_PROFILES[platformType];
-}
-
-export function buildScenarioList(tracks?: ComplianceTrack[]): TestScenario[] {
-  const requestedTracks = tracks?.length ? tracks : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
-  const scenarios = new Set<TestScenario>();
-  for (const track of requestedTracks) {
-    for (const scenario of TRACK_SCENARIOS[track]) {
-      scenarios.add(scenario);
+/**
+ * Derive per-storyboard pass/fail from a compliance result.
+ *
+ * Maps scenario results back to storyboard steps via comply_scenario.
+ * For explicit runs (storyboardIds provided), only those storyboards
+ * are evaluated. For heartbeat runs, all storyboards with matching
+ * scenarios are evaluated.
+ */
+export function deriveStoryboardStatuses(
+  result: ComplianceResult,
+  storyboardIds?: string[],
+): StoryboardStatusEntry[] {
+  // Build scenario → passed map from all track results
+  const scenarioResults = new Map<string, boolean>();
+  for (const track of result.tracks) {
+    for (const s of track.scenarios) {
+      scenarioResults.set(s.scenario, s.overall_passed);
     }
   }
-  // Start with DEFAULT_SCENARIOS order for shared scenarios, then append
-  // track-specific scenarios that aren't in DEFAULT_SCENARIOS.
-  const ordered = DEFAULT_SCENARIOS.filter((scenario) => scenarios.has(scenario));
-  for (const scenario of scenarios) {
-    if (!ordered.includes(scenario)) ordered.push(scenario);
-  }
-  return ordered;
-}
 
-function buildTrackResults(
-  requestedTracks: ComplianceTrack[],
-  scenarioResults: TestResult[],
-): ComplianceTrackResult[] {
-  const resultByScenario = new Map<TestScenario, TestResult>();
-  for (const result of scenarioResults) {
-    resultByScenario.set(result.scenario, result);
-  }
+  if (scenarioResults.size === 0) return [];
 
-  return requestedTracks.map((track) => {
-    const scenarios = TRACK_SCENARIOS[track]
-      .map((scenario) => resultByScenario.get(scenario))
-      .filter((result): result is TestResult => Boolean(result));
+  const storyboardsToCheck: Storyboard[] = storyboardIds
+    ? storyboardIds.map(id => getStoryboard(id)).filter((s): s is Storyboard => !!s)
+    : getAllStoryboards();
 
-    if (scenarios.length === 0) {
-      return {
-        track,
-        label: TRACK_LABELS[track],
-        status: 'skip',
-        scenarios: [],
-        duration_ms: 0,
-      };
+  const entries: StoryboardStatusEntry[] = [];
+
+  for (const sb of storyboardsToCheck) {
+    // Collect steps with comply_scenario
+    const testableSteps: Array<{ stepId: string; scenario: string }> = [];
+    for (const phase of sb.phases) {
+      for (const step of phase.steps) {
+        if (step.comply_scenario) {
+          testableSteps.push({ stepId: step.id, scenario: step.comply_scenario });
+        }
+      }
     }
 
-    const passed = scenarios.filter((scenario) => scenario.overall_passed).length;
-    const failed = scenarios.length - passed;
-    let status: ComplianceTrackResult['status'];
-    if (failed === 0) {
-      status = 'pass';
-    } else if (passed === 0) {
-      status = 'fail';
+    if (testableSteps.length === 0) continue;
+
+    // Only include storyboards where at least one scenario was tested
+    const testedCount = testableSteps.filter(s => scenarioResults.has(s.scenario)).length;
+    if (testedCount === 0 && !storyboardIds) continue;
+
+    const passedCount = testableSteps.filter(s => scenarioResults.get(s.scenario) === true).length;
+    const totalSteps = testableSteps.length;
+
+    let status: StoryboardStatusEntry['status'];
+    if (testedCount === 0) {
+      status = 'untested';
+    } else if (passedCount === totalSteps) {
+      status = 'passing';
+    } else if (passedCount === 0) {
+      status = 'failing';
     } else {
       status = 'partial';
     }
 
-    return {
-      track,
-      label: TRACK_LABELS[track],
+    entries.push({
+      storyboard_id: sb.id,
       status,
-      scenarios,
-      duration_ms: scenarios.reduce((sum, scenario) => sum + scenario.total_duration_ms, 0),
-    };
-  });
-}
-
-function buildObservations(trackResults: ComplianceTrackResult[]): ComplianceObservation[] {
-  const observations: ComplianceObservation[] = [];
-
-  for (const track of trackResults) {
-    if (track.status === 'fail') {
-      observations.push({
-        severity: 'error',
-        category: track.track,
-        message: `${track.label} failed across all attempted scenarios.`,
-      });
-    } else if (track.status === 'partial') {
-      observations.push({
-        severity: 'warning',
-        category: track.track,
-        message: `${track.label} is only partially implemented.`,
-      });
-    }
-
-    for (const scenario of track.scenarios) {
-      const failedSteps = (scenario.steps ?? []).filter((step) => !step.passed);
-      for (const step of failedSteps.slice(0, 2)) {
-        observations.push({
-          severity: 'warning',
-          category: track.track,
-          message: `${scenario.scenario}: ${step.step}${step.error ? ` — ${step.error}` : ''}`,
-          evidence: step.response_preview,
-        });
-      }
-    }
-  }
-
-  return observations;
-}
-
-function buildPlatformCoherence(
-  platformType: PlatformType | undefined,
-  trackResults: ComplianceTrackResult[],
-): PlatformCoherence | undefined {
-  if (!platformType) return undefined;
-
-  const profile = getPlatformProfile(platformType);
-  if (!profile) return undefined;
-
-  const trackStatus = new Map(trackResults.map((track) => [track.track, track.status]));
-  const missingTracks = profile.expected_tracks.filter((track) => {
-    const status = trackStatus.get(track);
-    return status === undefined || status === 'skip';
-  });
-
-  const findings: PlatformCoherenceFinding[] = [];
-  for (const track of profile.expected_tracks) {
-    const status = trackStatus.get(track);
-    if (status === 'fail') {
-      findings.push({
-        severity: 'error',
-        expected: `${TRACK_LABELS[track]} should pass`,
-        actual: 'Track failed',
-        guidance: `Prioritize the ${TRACK_LABELS[track].toLowerCase()} gaps before positioning this agent as a ${profile.label}.`,
-      });
-    } else if (status === 'partial') {
-      findings.push({
-        severity: 'warning',
-        expected: `${TRACK_LABELS[track]} should be complete`,
-        actual: 'Track is only partially passing',
-        guidance: `Close the remaining ${TRACK_LABELS[track].toLowerCase()} gaps to align with ${profile.label} expectations.`,
-      });
-    }
-  }
-
-  return {
-    label: profile.label,
-    coherent: missingTracks.length === 0 && findings.length === 0,
-    expected_tracks: profile.expected_tracks,
-    missing_tracks: missingTracks,
-    findings,
-  };
-}
-
-export async function comply(agentUrl: string, options: ComplyOptions = {}): Promise<ComplyResult> {
-  const requestedTracks = options.tracks?.length
-    ? options.tracks
-    : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
-
-  const suite = await testAllScenarios(agentUrl, {
-    ...options,
-    scenarios: buildScenarioList(requestedTracks),
-  });
-
-  const trackResults = buildTrackResults(requestedTracks, suite.results);
-  const tracks_passed = trackResults.filter((track) => track.status === 'pass').length;
-  const tracks_failed = trackResults.filter((track) => track.status === 'fail').length;
-  const tracks_partial = trackResults.filter((track) => track.status === 'partial').length;
-  const tracks_skipped = trackResults.filter((track) => track.status === 'skip').length;
-
-  const observations = buildObservations(trackResults);
-  const headline = `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`;
-
-  // Hard-fail agents that do not support v3
-  const agentVersion = suite.agent_profile.adcp_version;
-  const v3GateFailed = !agentVersion || agentVersion === 'v2';
-  if (v3GateFailed) {
-    observations.push({
-      severity: 'error',
-      category: 'v3_readiness',
-      message:
-        'Agent does not support AdCP v3. Comply testing requires v3 protocol support. See the v3 readiness checklist: https://adcontextprotocol.org/docs/reference/migration/v3-readiness',
-      evidence: { detected_version: agentVersion ?? 'unknown' },
+      steps_passed: passedCount,
+      steps_total: totalSteps,
     });
   }
 
+  return entries;
+}
+
+// ── DB Adapter ────────────────────────────────────────────────────
+
+/**
+ * Convert a ComplianceResult from @adcp/client into the shape expected
+ * by ComplianceDatabase.recordComplianceRun().
+ */
+export function complianceResultToDbInput(
+  result: ComplianceResult,
+  agentUrl: string,
+  lifecycleStage: LifecycleStage,
+  triggeredBy: TriggeredBy = 'manual',
+  storyboardIds?: string[],
+): RecordComplianceRunInput {
+  const tracksJson: TrackSummaryEntry[] = result.tracks.map((t: TrackResult) => ({
+    track: t.track,
+    status: t.status === 'expected' ? 'skip' as const : t.status,
+    scenario_count: t.scenarios.length,
+    passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
+    duration_ms: t.duration_ms,
+  }));
+
   return {
-    agent_profile: suite.agent_profile,
-    tracks: trackResults,
-    summary: {
-      headline: v3GateFailed ? `v3 required — ${headline}` : headline,
-      tracks_passed,
-      tracks_failed,
-      tracks_partial,
-      tracks_skipped,
-    },
-    observations,
-    total_duration_ms: suite.total_duration_ms,
-    dry_run: suite.dry_run,
-    platform_coherence: buildPlatformCoherence(options.platform_type, trackResults),
-    v3_gate_failed: v3GateFailed || undefined,
+    agent_url: agentUrl,
+    lifecycle_stage: lifecycleStage,
+    overall_status: mapOverallStatus(result.overall_status),
+    headline: result.summary.headline,
+    total_duration_ms: result.total_duration_ms,
+    tracks_json: tracksJson,
+    tracks_passed: result.summary.tracks_passed,
+    tracks_failed: result.summary.tracks_failed,
+    tracks_skipped: result.summary.tracks_skipped,
+    tracks_partial: result.summary.tracks_partial,
+    agent_profile_json: result.agent_profile,
+    observations_json: result.observations,
+    triggered_by: triggeredBy,
+    dry_run: result.dry_run,
+    storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
   };
 }

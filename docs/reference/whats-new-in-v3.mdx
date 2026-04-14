@@ -25,7 +25,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
 | **Collections and installments** | No content programming model | `shows` on products with distribution IDs, installment lifecycle, break-based inventory |
 | **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
-| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) with broadcast TV support (Ad-ID, measurement windows, spot formats) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Sandbox discovery** | Mixed capability locations | `require_operator_auth` for auth model, `account.sandbox` for sandbox support, sandbox in natural account references |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
@@ -253,6 +253,38 @@ This page covers the full v2 → v3 shift. If you already adopted `3.0.0-rc.1`, 
 Creative compliance now includes disclosure persistence semantics in addition to position and duration, allowing formats to declare which persistence modes they can enforce. Campaign governance also lands in rc.2 with `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`, plus `governance_context` for canonical plan extraction. `sync_governance` provides a dedicated task for syncing governance agent endpoints to accounts, replacing the previous approach of embedding `governance_agents` on `sync_accounts` and `list_accounts` requests.
 
 For the exhaustive rc.2 change list, see the [Release Notes](/docs/reference/release-notes#version-300-rc2) and [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-rc2).
+
+---
+
+## rc.3 to 3.0 highlights
+
+### Broadcast TV support
+
+Linear TV sellers can now fully participate in AdCP. This release adds the protocol primitives that distinguish broadcast from digital:
+
+- **Ad-ID identifiers** — `industry_identifiers` on creative assets and manifests, with `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`). Broadcast creatives are identified by Ad-ID, which ties spots to rotation instructions and traffic systems.
+- **Broadcast spot formats** — Reference formats for :15, :30, and :60 spots. Video file only — no VAST, no impression trackers, no clickthrough URLs. The absence of tracker asset slots in a format signals that third-party pixel tracking is not supported.
+- **Agency Estimate Number** — `agency_estimate_number` on media buys and packages. The financial reference that links broadcast orders to agency media plans and billing.
+- **Measurement windows** — `measurement_windows` on `reporting_capabilities` for Live, C3, and C7 maturation. `measurement_window` on `billing_measurement` declares which window the guarantee is reconciled against.
+- **Delivery data completeness** — `is_final` and `measurement_window` on per-package delivery data. Buyers know whether numbers are provisional or closed, and which measurement window they represent. Applies to any channel with maturing data (broadcast, podcast, long-tail content).
+
+<Card title="Broadcast TV" icon="arrow-right" href="/docs/creative/channels/broadcast">
+  Channel guide covering spot formats, Ad-ID, measurement windows, and how broadcast differs from CTV.
+</Card>
+
+### Structured video requirements
+
+Format `requirements` for video assets now use schema-defined field names that match `video-asset-requirements.json`. Creative agents can mechanically validate assets against format requirements without interpreting freeform fields.
+
+New fields on `video-asset-requirements.json`: `frame_rate_type`, `scan_type`, `gop_type`, `min_gop_interval_seconds`, `max_gop_interval_seconds`, `moov_atom_position`, `audio_codecs`, `audio_sample_rates`, `audio_channels`, `loudness_lufs`, `loudness_tolerance_db`, `true_peak_dbfs`.
+
+### Third-party tracker transparency
+
+Whether a format supports third-party measurement is determined by whether its assets include a tracker slot (`tracker_pixel` or `tracker_script`). Buyer agents should check format assets before proposing performance standards that require creative-level verification. Formats without tracker slots (broadcast, some DOOH) rely on measurement vendors declared in `billing_measurement`.
+
+<Card title="Format definitions" icon="arrow-right" href="/docs/creative/formats#third-party-tracker-support">
+  How to determine tracker support from format asset definitions.
+</Card>
 
 ---
 
@@ -573,6 +605,9 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `report_usage.kind` and `report_usage.operator_id` | Removed |
 | `catalog` (singular) on Package | `catalogs` (array) |
 | `account_resolution` capability | `require_operator_auth` determines account model |
+| `X-Dry-Run` HTTP header | `sandbox: true` on account reference |
+| `X-Test-Session-ID` HTTP header | Removed — sandbox accounts provide test isolation |
+| `X-Mock-Time` HTTP header | Removed |
 | `delete_content_standards` task | Archive via `update_content_standards` instead |
 | `get_property_features` task | Property list filters + `get_adcp_capabilities` for feature discovery |
 | `tone` as string on brand.json | Object only: `{ voice, attributes, dos, donts }` |
@@ -615,6 +650,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Migrate brand `tone` from string to object format (`{ voice, attributes, dos, donts }`)
     - [ ] Remove `account_resolution` reads — use `require_operator_auth` instead
     - [ ] Read sandbox support from `account.sandbox` instead of `media_buy.features.sandbox`
+    - [ ] Remove `X-Dry-Run`, `X-Test-Session-ID`, and `X-Mock-Time` header handling — use `sandbox: true` on account references instead
     - [ ] Add `type: "dooh"` inside `flat_rate.parameters` when DOOH parameters are provided
     - [ ] Treat `list_creatives` and `sync_creatives` as Creative Protocol operations
     - [ ] Remove `delete_content_standards` calls — archive via `update_content_standards`
@@ -641,6 +677,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Declare `supported_pricing_models` in `get_adcp_capabilities`
     - [ ] Support `time_budget` on `get_products` and return `incomplete` when work cannot finish in budget
     - [ ] Declare sandbox support in `account.sandbox`, not `media_buy.features.sandbox`
+    - [ ] Stop checking for `X-Dry-Run` header — honor `sandbox: true` on account references instead
     - [ ] Support `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time`
   </Accordion>
 

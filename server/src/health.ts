@@ -2,6 +2,8 @@ import type { Agent, AgentHealth, AgentStats } from "./types.js";
 import { Cache } from "./cache.js";
 import { getPropertyIndex } from "@adcp/client";
 import { FormatsService } from "./formats.js";
+import { AAO_UA_HEALTH_CHECK } from "./config/user-agents.js";
+import { logOutboundRequest } from "./db/outbound-log-db.js";
 
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
@@ -28,11 +30,20 @@ export class HealthChecker {
     const protocol = agent.protocol || "mcp";
 
     // Only try the protocol the agent declares
-    if (protocol === "a2a") {
-      return await this.tryA2A(agent, startTime);
-    } else {
-      return await this.tryMCP(agent, startTime);
-    }
+    const health = protocol === "a2a"
+      ? await this.tryA2A(agent, startTime)
+      : await this.tryMCP(agent, startTime);
+
+    logOutboundRequest({
+      agent_url: agent.url,
+      request_type: 'health_check',
+      user_agent: AAO_UA_HEALTH_CHECK,
+      response_time_ms: health.response_time_ms ?? (Date.now() - startTime),
+      success: health.online,
+      error_message: health.error,
+    });
+
+    return health;
   }
 
   private async tryMCP(agent: Agent, startTime: number): Promise<AgentHealth> {
@@ -44,7 +55,7 @@ export class HealthChecker {
         name: "Health Checker",
         agent_uri: agent.url,
         protocol: "mcp",
-      }]);
+      }], { userAgent: AAO_UA_HEALTH_CHECK });
       const client = multiClient.agent("health-check");
 
       const agentInfo = await client.getAgentInfo();
@@ -71,6 +82,7 @@ export class HealthChecker {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
       const response = await fetch(agentCardUrl, {
+        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
         signal: AbortSignal.timeout(5000),
       });
 
@@ -116,7 +128,7 @@ export class HealthChecker {
     const stats: AgentStats = {};
 
     try {
-      if (agent.type === "sales") {
+      if (agent.type === "buying") {
         // Use PropertyIndex if available (populated by crawler)
         const index = getPropertyIndex();
         const auth = index.getAgentAuthorizations(agent.url);

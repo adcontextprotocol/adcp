@@ -19,6 +19,9 @@ export interface AgentRegistryMetadata {
   lifecycle_stage: LifecycleStage;
   platform_type: string | null;
   compliance_opt_out: boolean;
+  monitoring_paused: boolean;
+  check_interval_hours: number;
+  monitoring_paused_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -66,6 +69,16 @@ export interface AgentComplianceStatus {
   updated_at: Date;
 }
 
+export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
+const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
+
+export interface StoryboardStatusEntry {
+  storyboard_id: string;
+  status: StoryboardStatus;
+  steps_passed: number;
+  steps_total: number;
+}
+
 export interface RecordComplianceRunInput {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
@@ -81,6 +94,7 @@ export interface RecordComplianceRunInput {
   observations_json?: any;
   triggered_by?: TriggeredBy;
   dry_run?: boolean;
+  storyboard_statuses?: StoryboardStatusEntry[];
 }
 
 // =====================================================
@@ -149,6 +163,7 @@ export class ComplianceDatabase {
   async recordComplianceRun(input: RecordComplianceRunInput): Promise<{
     run: ComplianceRun;
     statusTransition: { previous: ComplianceStatus; current: ComplianceStatus } | null;
+    storyboardStatuses: StoryboardStatusEntry[];
   }> {
     const client = await getClient();
 
@@ -248,6 +263,63 @@ export class ComplianceDatabase {
         ],
       );
 
+      // 5. Batch upsert per-storyboard statuses (single query, not N+1)
+      // Uses a SAVEPOINT so a missing table (pre-migration) doesn't roll back
+      // the entire compliance run — the run and status update still commit.
+      if (input.storyboard_statuses?.length) {
+        // Validate status values before sending to Postgres to surface typos
+        // as clear errors instead of cryptic constraint violations inside unnest
+        for (const sb of input.storyboard_statuses) {
+          if (!VALID_STORYBOARD_STATUSES.has(sb.status)) {
+            throw new Error(`Invalid storyboard status "${sb.status}" for ${sb.storyboard_id}`);
+          }
+        }
+
+        const sbIds = input.storyboard_statuses.map(s => s.storyboard_id);
+        const sbStatuses = input.storyboard_statuses.map(s => s.status);
+        const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
+        const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
+
+        await client.query('SAVEPOINT storyboard_upsert');
+        try {
+          await client.query(
+            `INSERT INTO agent_storyboard_status (
+              agent_url, storyboard_id, status, last_tested_at,
+              last_passed_at, last_failed_at, run_id,
+              steps_passed, steps_total, triggered_by, updated_at
+            )
+            SELECT
+              $1, sb_id, sb_status, NOW(),
+              CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
+              CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
+              $4, sb_passed, sb_total, $7, NOW()
+            FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
+              AS t(sb_id, sb_status, sb_passed, sb_total)
+            ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
+              status = EXCLUDED.status,
+              last_tested_at = NOW(),
+              last_passed_at = CASE
+                WHEN EXCLUDED.status = 'passing' THEN NOW()
+                ELSE agent_storyboard_status.last_passed_at
+              END,
+              last_failed_at = CASE
+                WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
+                ELSE agent_storyboard_status.last_failed_at
+              END,
+              run_id = EXCLUDED.run_id,
+              steps_passed = EXCLUDED.steps_passed,
+              steps_total = EXCLUDED.steps_total,
+              triggered_by = EXCLUDED.triggered_by,
+              updated_at = NOW()`,
+            [input.agent_url, sbIds, sbStatuses, run.id, sbStepsPassed, sbStepsTotal, input.triggered_by ?? 'heartbeat'],
+          );
+          await client.query('RELEASE SAVEPOINT storyboard_upsert');
+        } catch (sbErr) {
+          await client.query('ROLLBACK TO SAVEPOINT storyboard_upsert');
+          logger.warn({ err: sbErr, agentUrl: input.agent_url }, 'Storyboard status upsert failed (table may not exist yet)');
+        }
+      }
+
       await client.query('COMMIT');
 
       const row = statusResult.rows[0];
@@ -255,7 +327,7 @@ export class ComplianceDatabase {
         ? { previous: row.previous_status as ComplianceStatus, current: row.status as ComplianceStatus }
         : null;
 
-      return { run, statusTransition: transition };
+      return { run, statusTransition: transition, storyboardStatuses: input.storyboard_statuses ?? [] };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -326,6 +398,7 @@ export class ComplianceDatabase {
   /**
    * Find agents that are due for a compliance check based on their lifecycle stage.
    * Joins federated agents (from discovered_agents + member profiles) with metadata and status.
+   * Respects owner-configured check_interval_hours and monitoring_paused.
    */
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
     agent_url: string;
@@ -348,22 +421,126 @@ export class ComplianceDatabase {
       WHERE
         COALESCE(m.lifecycle_stage, 'production') IN ('production', 'testing')
         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+        AND COALESCE(m.monitoring_paused, FALSE) = FALSE
         AND (
           s.last_checked_at IS NULL
-          OR (
-            COALESCE(m.lifecycle_stage, 'production') = 'production'
-            AND s.last_checked_at < NOW() - INTERVAL '12 hours'
-          )
-          OR (
-            COALESCE(m.lifecycle_stage, 'production') = 'testing'
-            AND s.last_checked_at < NOW() - INTERVAL '24 hours'
-          )
+          OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
+            CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
+          ))
         )
       ORDER BY s.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
       [limit],
     );
     return result.rows;
+  }
+
+  // ----- Monitoring Settings -----
+
+  async getMonitoringSettings(agentUrl: string): Promise<{
+    monitoring_paused: boolean;
+    check_interval_hours: number;
+    monitoring_paused_at: Date | null;
+  }> {
+    const result = await query(
+      `SELECT monitoring_paused, check_interval_hours, monitoring_paused_at
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    if (result.rows.length === 0) {
+      return { monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null };
+    }
+    return result.rows[0];
+  }
+
+  async updateMonitoringPaused(agentUrl: string, paused: boolean): Promise<void> {
+    await query(
+      `INSERT INTO agent_registry_metadata (agent_url, monitoring_paused, monitoring_paused_at)
+       VALUES ($1, $2, CASE WHEN $2 THEN NOW() ELSE NULL END)
+       ON CONFLICT (agent_url) DO UPDATE SET
+         monitoring_paused = $2,
+         monitoring_paused_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+         updated_at = NOW()`,
+      [agentUrl, paused],
+    );
+  }
+
+  async updateCheckInterval(agentUrl: string, intervalHours: number): Promise<void> {
+    await query(
+      `INSERT INTO agent_registry_metadata (agent_url, check_interval_hours)
+       VALUES ($1, $2)
+       ON CONFLICT (agent_url) DO UPDATE SET
+         check_interval_hours = $2,
+         updated_at = NOW()`,
+      [agentUrl, intervalHours],
+    );
+  }
+
+  // ----- Storyboard Status Queries -----
+
+  async getStoryboardStatuses(agentUrl: string): Promise<Array<{
+    storyboard_id: string;
+    status: string;
+    last_tested_at: Date | null;
+    last_passed_at: Date | null;
+    last_failed_at: Date | null;
+    steps_passed: number;
+    steps_total: number;
+    triggered_by: string | null;
+  }>> {
+    const result = await query(
+      `SELECT storyboard_id, status, last_tested_at, last_passed_at, last_failed_at,
+              steps_passed, steps_total, triggered_by
+       FROM agent_storyboard_status
+       WHERE agent_url = $1
+       ORDER BY storyboard_id`,
+      [agentUrl],
+    );
+    return result.rows;
+  }
+
+  async getStoryboardStatusCounts(agentUrl: string): Promise<{ passing: number; total: number }> {
+    const result = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'passing') AS passing,
+         COUNT(*) AS total
+       FROM agent_storyboard_status
+       WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    const row = result.rows[0];
+    return { passing: parseInt(row?.passing ?? '0'), total: parseInt(row?.total ?? '0') };
+  }
+
+  async bulkGetStoryboardStatuses(agentUrls: string[]): Promise<Map<string, Array<{
+    storyboard_id: string;
+    status: string;
+    last_tested_at: Date | null;
+    last_passed_at: Date | null;
+    steps_passed: number;
+    steps_total: number;
+  }>>> {
+    if (agentUrls.length === 0) return new Map();
+
+    const result = await query(
+      `SELECT agent_url, storyboard_id, status, last_tested_at, last_passed_at,
+              steps_passed, steps_total
+       FROM agent_storyboard_status
+       WHERE agent_url = ANY($1)
+       ORDER BY agent_url, storyboard_id`,
+      [agentUrls],
+    );
+
+    const map = new Map<string, Array<{
+      storyboard_id: string; status: string;
+      last_tested_at: Date | null; last_passed_at: Date | null;
+      steps_passed: number; steps_total: number;
+    }>>();
+    for (const row of result.rows) {
+      if (!map.has(row.agent_url)) map.set(row.agent_url, []);
+      map.get(row.agent_url)!.push(row);
+    }
+    return map;
   }
 
   // ----- Helpers -----
@@ -378,13 +555,16 @@ export class ComplianceDatabase {
   ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
     try {
       const result = await query(
-        `SELECT ac.organization_id, ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type
+        `SELECT ac.organization_id,
+                ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
+                ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
+                ac.oauth_token_expires_at
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
          WHERE ac.agent_url = $1
            AND mp.agents @> $2::jsonb
-           AND ac.auth_token_encrypted IS NOT NULL
+           AND (ac.auth_token_encrypted IS NOT NULL OR ac.oauth_access_token_encrypted IS NOT NULL)
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
@@ -393,17 +573,39 @@ export class ComplianceDatabase {
       const row = result.rows[0];
       if (!row) return undefined;
 
-      const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, row.organization_id);
+      // Prefer static token when available
+      if (row.auth_token_encrypted) {
+        const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, row.organization_id);
 
-      if (row.auth_type === 'basic') {
-        const decoded = Buffer.from(token, 'base64').toString();
-        const colonIndex = decoded.indexOf(':');
-        if (colonIndex >= 0) {
-          return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
+        if (row.auth_type === 'basic') {
+          const decoded = Buffer.from(token, 'base64').toString();
+          const colonIndex = decoded.indexOf(':');
+          if (colonIndex >= 0) {
+            return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
+          }
         }
+
+        return { type: 'bearer', token };
       }
 
-      return { type: 'bearer', token };
+      // Fall back to OAuth access token
+      if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {
+        // Check expiration with 5-minute buffer
+        if (row.oauth_token_expires_at) {
+          const expiresAt = new Date(row.oauth_token_expires_at);
+          if (expiresAt.getTime() - Date.now() <= 5 * 60 * 1000) {
+            logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon for compliance auth');
+            return undefined;
+          }
+        } else {
+          logger.debug({ agentUrl }, 'OAuth token has no expiration recorded');
+        }
+
+        const token = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, row.organization_id);
+        return { type: 'bearer', token };
+      }
+
+      return undefined;
     } catch (error) {
       logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
       return undefined;

@@ -478,6 +478,24 @@
       margin-bottom: var(--space-1);
     }
 
+    /* Marketing opt-in prompt */
+    .marketing-optin-banner {
+      background: var(--color-primary-50);
+      border: 1px solid var(--color-primary-200);
+      border-radius: calc(var(--card-radius) + 2px);
+      padding: var(--space-5) var(--space-6);
+      margin-bottom: var(--space-5);
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .marketing-optin-banner .milestone-body { flex: 1; }
+    .marketing-optin-banner .milestone-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
     .milestone-detail {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -810,12 +828,12 @@
     .group-rec-item:last-child { border-bottom: none; }
 
     .group-rec-info { flex: 1; min-width: 0; }
-    .group-rec-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-0.5); }
+    .group-rec-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-0_5); }
     .group-rec-reason { font-size: var(--text-xs); color: var(--color-text-muted); }
 
     .group-rec-badge {
       display: inline-flex;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--badge-radius);
       font-size: 10px; font-weight: var(--font-semibold);
       text-transform: uppercase; letter-spacing: var(--tracking-wide);
@@ -976,7 +994,7 @@
     }
 
     .timeline-date { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
-    .timeline-transition { font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium); margin-bottom: var(--space-0.5); }
+    .timeline-transition { font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium); margin-bottom: var(--space-0_5); }
     .timeline-trigger { font-size: var(--text-xs); color: var(--color-text-secondary); }
     .timeline-empty { font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; padding: var(--space-6) 0; }
 
@@ -1230,7 +1248,7 @@
 
     .status-badge {
       display: inline-flex;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--badge-radius);
       font-size: 10px; font-weight: var(--font-semibold);
       text-transform: uppercase; letter-spacing: var(--tracking-wide);
@@ -1390,10 +1408,58 @@
           latestPerspectives: Array.isArray(perspectivesData) ? perspectivesData : [],
           journey: journeyData,
         });
+
+        // Check marketing opt-in status (non-blocking)
+        checkMarketingOptIn();
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
           '<p>Failed to load member hub. <a href="/member-hub">Try again</a></p>';
+      }
+    }
+
+    async function checkMarketingOptIn() {
+      try {
+        const res = await fetch('/api/email-preferences', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.marketing_opt_in !== null && data.marketing_opt_in !== undefined) return;
+
+        // User has never been asked — show the banner
+        const slot = document.getElementById('marketing-optin-slot');
+        if (!slot) return;
+        slot.innerHTML = `
+          <div class="marketing-optin-banner" id="marketing-optin-banner">
+            <div class="milestone-icon">📬</div>
+            <div class="milestone-body">
+              <div class="milestone-title">Stay in the loop?</div>
+              <div class="milestone-detail">Get updates on news, events, and workshops from AgenticAdvertising.org.</div>
+              <div class="milestone-actions">
+                <button class="btn btn-primary btn-sm" onclick="setMarketingOptIn(true)">Yes, keep me updated</button>
+                <button class="btn btn-ghost btn-sm" onclick="setMarketingOptIn(false)">No thanks</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        // Silently ignore — this is a non-critical prompt
+      }
+    }
+
+    async function setMarketingOptIn(optIn) {
+      try {
+        const res = await fetch('/api/email-preferences/marketing-opt-in', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opt_in: optIn }),
+        });
+        if (!res.ok) throw new Error('Request failed');
+        const banner = document.getElementById('marketing-optin-banner');
+        if (banner) banner.remove();
+      } catch (e) {
+        // Leave banner visible so user can retry
+        console.error('Failed to save marketing preference:', e);
       }
     }
 
@@ -1515,9 +1581,14 @@
         ${renderMilestoneBanner(journey?.recent_milestone)}
         ${renderWhatChanged(journey?.what_changed)}
 
+        <div id="marketing-optin-slot"></div>
+
         <div class="hub-action-grid">
           ${renderQuickActions(current_group_count, contentItems, seatType)}
         </div>
+
+        <!-- Upcoming events -->
+        <div id="hub-events"></div>
 
         <!-- Tier progress + social proof -->
         ${renderSocialProof(journey?.community_stats)}
@@ -2345,6 +2416,51 @@
         .map(function (part) { return part.charAt(0).toUpperCase(); })
         .join('') || 'AA';
     }
+
+    // Load upcoming events into the hub
+    (async function loadHubEvents() {
+      try {
+        const res = await fetch('/api/events?upcoming=true');
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = (data.events || []).slice(0, 4);
+        if (events.length === 0) return;
+
+        const container = document.getElementById('hub-events');
+        if (!container) return;
+
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        let html = '<div class="hub-card" style="grid-column: 1 / -1;">';
+        html += '<div class="hub-card-header"><h3 class="hub-card-title">Upcoming Events</h3>';
+        html += '<a href="/events" class="hub-card-link">View all →</a></div>';
+        html += '<div style="display: grid; gap: var(--space-3);">';
+
+        for (const event of events) {
+          const startDate = new Date(event.start_time);
+          const isToday = startDate.toDateString() === now.toDateString();
+          const isTomorrow = startDate.toDateString() === tomorrow.toDateString();
+          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          const urgencyBadge = isToday ? '<span style="background: var(--color-error-100); color: var(--color-error-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Today!</span> '
+            : isTomorrow ? '<span style="background: var(--color-warning-100); color: var(--color-warning-700); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Tomorrow</span> '
+            : '';
+
+          const location = event.venue_city || (event.event_format === 'virtual' ? 'Virtual' : '');
+
+          html += '<a href="/events/' + escapeHtml(event.slug) + '" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-border); text-decoration: none; color: inherit; transition: border-color 0.15s;">';
+          html += '<div style="text-align: center; min-width: 48px;"><div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase;">' + startDate.toLocaleDateString('en-US', { month: 'short' }) + '</div><div style="font-size: var(--text-xl); font-weight: 700; color: var(--color-text-heading);">' + startDate.getDate() + '</div></div>';
+          html += '<div style="flex: 1; min-width: 0;"><div style="font-weight: 600; color: var(--color-text-heading);">' + urgencyBadge + escapeHtml(event.title) + '</div>';
+          html += '<div style="font-size: var(--text-sm); color: var(--color-text-secondary);">' + timeStr + (location ? ' · ' + escapeHtml(location) : '') + '</div></div>';
+          html += '</a>';
+        }
+
+        html += '</div></div>';
+        container.innerHTML = html;
+      } catch (err) {
+        // Silently fail — events section is supplementary
+      }
+    })();
   </script>
 </body>
 </html>

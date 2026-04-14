@@ -5,6 +5,7 @@
  * by integration tests against a real PostgreSQL instance.
  */
 
+import type { WorkOS } from '@workos-inc/node';
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
 
@@ -195,4 +196,78 @@ export async function setMembershipRole(
      WHERE workos_user_id = $1 AND workos_organization_id = $2`,
     [userId, organizationId, role],
   );
+}
+
+// ── Auto-link by verified domain ────────────────────────────────────
+
+export interface DomainLinkResult {
+  organizationId: string;
+  organizationName: string;
+  role: string;
+}
+
+/**
+ * When a user has no WorkOS organization memberships, check whether their
+ * email domain matches a verified domain on an organization with an active
+ * subscription. If so, create the WorkOS membership automatically.
+ *
+ * This closes the gap where a subscription is purchased for an org but the
+ * user was never added as a member in WorkOS (e.g. webhook failure, manual
+ * provisioning that skipped the membership step).
+ */
+export async function autoLinkByVerifiedDomain(
+  workos: WorkOS,
+  userId: string,
+  email: string,
+): Promise<DomainLinkResult | null> {
+  const pool = getPool();
+  const emailDomain = email.split('@')[1]?.toLowerCase();
+  if (!emailDomain) return null;
+
+  // Find an org with a verified domain matching the user's email and an active subscription
+  const result = await pool.query<{
+    workos_organization_id: string;
+    org_name: string;
+    has_admin: boolean;
+  }>(`
+    SELECT
+      od.workos_organization_id,
+      o.name AS org_name,
+      EXISTS (
+        SELECT 1 FROM organization_memberships om
+        WHERE om.workos_organization_id = od.workos_organization_id
+          AND om.role IN ('admin', 'owner')
+      ) AS has_admin
+    FROM organization_domains od
+    JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+    WHERE LOWER(od.domain) = $1
+      AND od.verified = true
+      AND o.subscription_status = 'active'
+      AND o.subscription_canceled_at IS NULL
+    LIMIT 1
+  `, [emailDomain]);
+
+  if (result.rows.length === 0) return null;
+
+  const { workos_organization_id: orgId, org_name: orgName, has_admin: hasAdmin } = result.rows[0];
+  const role = hasAdmin ? 'member' : 'owner';
+
+  try {
+    await workos.userManagement.createOrganizationMembership({
+      userId,
+      organizationId: orgId,
+      roleSlug: role,
+    });
+
+    logger.info({ userId, email, orgId, orgName, role }, 'Auto-linked user to organization via verified domain');
+    return { organizationId: orgId, organizationName: orgName, role };
+  } catch (err: any) {
+    if (err?.code === 'organization_membership_already_exists') {
+      // Membership exists but wasn't returned by list — return as success
+      logger.info({ userId, orgId }, 'Auto-link skipped: membership already exists in WorkOS');
+      return { organizationId: orgId, organizationName: orgName, role: 'member' };
+    }
+    logger.warn({ err, userId, orgId }, 'Failed to auto-link user to organization');
+    return null;
+  }
 }

@@ -2,6 +2,8 @@ import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
 import { is401Error, AuthenticationRequiredError } from "@adcp/client";
+import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
+import { logOutboundRequest } from "./db/outbound-log-db.js";
 
 const logger = createLogger('capabilities');
 
@@ -66,9 +68,18 @@ export class CapabilityDiscovery {
       return cached;
     }
 
+    const startTime = Date.now();
     try {
       const protocol = agent.protocol || "mcp";
       const tools = await this.discoverTools(agent.url, protocol);
+
+      logOutboundRequest({
+        agent_url: agent.url,
+        request_type: 'discovery',
+        user_agent: AAO_UA_DISCOVERY,
+        response_time_ms: Date.now() - startTime,
+        success: true,
+      });
 
       const profile: AgentCapabilityProfile = {
         agent_url: agent.url,
@@ -93,6 +104,15 @@ export class CapabilityDiscovery {
       this.cache.set(agent.url, profile);
       return profile;
     } catch (error: any) {
+      logOutboundRequest({
+        agent_url: agent.url,
+        request_type: 'discovery',
+        user_agent: AAO_UA_DISCOVERY,
+        response_time_ms: Date.now() - startTime,
+        success: false,
+        error_message: error.message,
+      });
+
       const isOAuthError = error instanceof AuthenticationRequiredError;
       const errorProfile: AgentCapabilityProfile = {
         agent_url: agent.url,
@@ -127,7 +147,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "mcp",
-      }]);
+      }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -164,7 +184,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "a2a",
-      }]);
+      }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -194,15 +214,15 @@ export class CapabilityDiscovery {
 
   /**
    * Infer agent type from discovered tools.
-   * Sales agents have: get_products, create_media_buy, list_authorized_properties
+   * Buying agents have: get_products, create_media_buy, list_authorized_properties
    * Creative agents have: list_creative_formats, build_creative, validate_creative
    * Signals agents have: get_signals, match_audience, activate_signal
    */
-  private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
+  private inferAgentType(tools: ToolCapability[]): 'buying' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Priority: sales > creative > signals (sales is the primary commerce type)
-    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'sales';
+    // Priority: buying > creative > signals (buying is the primary commerce type)
+    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'buying';
     if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) return 'creative';
     if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) return 'signals';
 
@@ -277,8 +297,8 @@ export class CapabilityDiscovery {
    * Infer agent type from a capability profile.
    * Use this to avoid duplicating the type inference logic.
    */
-  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'unknown' {
-    if (profile.standard_operations) return 'sales';
+  inferTypeFromProfile(profile: AgentCapabilityProfile): 'buying' | 'creative' | 'signals' | 'unknown' {
+    if (profile.standard_operations) return 'buying';
     if (profile.creative_capabilities) return 'creative';
     if (profile.signals_capabilities) return 'signals';
     return 'unknown';

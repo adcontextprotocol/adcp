@@ -1,10 +1,11 @@
 /**
  * Addie Billing Tools
  *
- * Tools for Addie to help users with membership signup:
+ * Tools for Addie to help users with membership billing:
  * - Find appropriate membership products based on company type and size
  * - Generate payment links
  * - Send invoices
+ * - Access Stripe Customer Portal (receipts, invoices, payment methods)
  */
 
 import { createLogger } from '../../logger.js';
@@ -16,6 +17,7 @@ import {
   createAndSendInvoice,
   validateInvoiceDetails,
   createStripeCustomer,
+  createCustomerPortalSession,
   getPriceByLookupKey,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
@@ -189,6 +191,17 @@ Pass the same billing information as send_invoice.`,
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
     },
   },
+  {
+    name: 'get_billing_portal',
+    description: `Get a link to the Stripe Customer Portal where the member can view invoices, download receipts, update payment methods, and manage their subscription.
+Use this when a member asks about receipts, invoices, billing history, payment methods, or subscription management.
+The member must be signed in.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -317,7 +330,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       if (!priceId) {
         return JSON.stringify({
           success: false,
-          error: `Product not found for lookup key: ${lookupKey}`,
+          error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
         });
       }
 
@@ -535,6 +548,51 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: false,
         error: message,
+      });
+    }
+  });
+
+  // Get billing portal link for existing members
+  handlers.set('get_billing_portal', async (_input) => {
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (!orgId) {
+      return JSON.stringify({
+        success: false,
+        error: 'You need to be signed in with a linked account to access billing. Visit https://agenticadvertising.org/dashboard/membership to manage your billing.',
+      });
+    }
+
+    try {
+      const org = await orgDb.getOrganization(orgId);
+      const stripeCustomerId = org?.stripe_customer_id;
+
+      if (!stripeCustomerId) {
+        return JSON.stringify({
+          success: false,
+          error: 'No billing account found for your organization. If you have already paid, please contact finance@agenticadvertising.org for assistance.',
+        });
+      }
+
+      const returnUrl = 'https://agenticadvertising.org/dashboard/membership';
+      const portalUrl = await createCustomerPortalSession(stripeCustomerId, returnUrl);
+
+      if (!portalUrl) {
+        return JSON.stringify({
+          success: false,
+          error: 'Unable to create billing portal session. Please try again or contact finance@agenticadvertising.org.',
+        });
+      }
+
+      return JSON.stringify({
+        success: true,
+        portal_url: portalUrl,
+        message: 'Here is your billing portal link. You can view invoices, download receipts, update payment methods, and manage your subscription.',
+      });
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error creating billing portal session');
+      return JSON.stringify({
+        success: false,
+        error: 'Failed to access billing portal. Please try again or contact finance@agenticadvertising.org.',
       });
     }
   });

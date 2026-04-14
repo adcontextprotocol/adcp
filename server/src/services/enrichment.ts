@@ -6,7 +6,7 @@
  * don't need to manage enrichment manually.
  */
 
-import { getPool } from '../db/client.js';
+import { getPool, getClient } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import {
   getLushaClient,
@@ -26,6 +26,9 @@ const ENRICHMENT_STALE_DAYS = 30;
 
 // Maximum number of enrichments per batch to avoid rate limits
 const MAX_BATCH_SIZE = 10;
+
+// Statement timeout for enrichment queries (ms) to prevent connection hogging
+const ENRICHMENT_QUERY_TIMEOUT_MS = 8000;
 
 export interface EnrichmentResult {
   success: boolean;
@@ -64,7 +67,6 @@ async function saveEnrichmentToOrg(
   orgId: string,
   enrichmentData: LushaCompanyData
 ): Promise<void> {
-  const pool = getPool();
   const suggestedCompanyType = mapIndustryToCompanyType(
     enrichmentData.mainIndustry,
     enrichmentData.subIndustry
@@ -73,44 +75,55 @@ async function saveEnrichmentToOrg(
     enrichmentData.revenueRange || formatRevenueRange(enrichmentData.revenue);
   const suggestedRevenueTier = mapRevenueToTier(enrichmentData.revenue);
 
-  await pool.query(
-    `UPDATE organizations SET
-      enrichment_data = $1,
-      enrichment_source = 'lusha',
-      enrichment_at = NOW(),
-      enrichment_revenue = $2,
-      enrichment_revenue_range = $3,
-      enrichment_employee_count = $4,
-      enrichment_employee_count_range = $5,
-      enrichment_industry = $6,
-      enrichment_sub_industry = $7,
-      enrichment_founded_year = $8,
-      enrichment_country = $9,
-      enrichment_city = $10,
-      enrichment_linkedin_url = $11,
-      enrichment_description = $12,
-      company_type = COALESCE(company_type, $13),
-      revenue_tier = COALESCE(revenue_tier, $14),
-      updated_at = NOW()
-    WHERE workos_organization_id = $15`,
-    [
-      JSON.stringify(enrichmentData),
-      enrichmentData.revenue || null,
-      revenueRange,
-      enrichmentData.employeeCount || null,
-      enrichmentData.employeeCountRange || null,
-      enrichmentData.mainIndustry || null,
-      enrichmentData.subIndustry || null,
-      enrichmentData.foundedYear || null,
-      enrichmentData.country || null,
-      enrichmentData.city || null,
-      enrichmentData.linkedinUrl || null,
-      enrichmentData.description || null,
-      suggestedCompanyType,
-      suggestedRevenueTier,
-      orgId,
-    ]
-  );
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL statement_timeout = '${ENRICHMENT_QUERY_TIMEOUT_MS}ms'`);
+    await client.query(
+      `UPDATE organizations SET
+        enrichment_data = $1,
+        enrichment_source = 'lusha',
+        enrichment_at = NOW(),
+        enrichment_revenue = $2,
+        enrichment_revenue_range = $3,
+        enrichment_employee_count = $4,
+        enrichment_employee_count_range = $5,
+        enrichment_industry = $6,
+        enrichment_sub_industry = $7,
+        enrichment_founded_year = $8,
+        enrichment_country = $9,
+        enrichment_city = $10,
+        enrichment_linkedin_url = $11,
+        enrichment_description = $12,
+        company_type = COALESCE(company_type, $13),
+        revenue_tier = COALESCE(revenue_tier, $14),
+        updated_at = NOW()
+      WHERE workos_organization_id = $15`,
+      [
+        JSON.stringify(enrichmentData),
+        enrichmentData.revenue || null,
+        revenueRange,
+        enrichmentData.employeeCount || null,
+        enrichmentData.employeeCountRange || null,
+        enrichmentData.mainIndustry || null,
+        enrichmentData.subIndustry || null,
+        enrichmentData.foundedYear || null,
+        enrichmentData.country || null,
+        enrichmentData.city || null,
+        enrichmentData.linkedinUrl || null,
+        enrichmentData.description || null,
+        suggestedCompanyType,
+        suggestedRevenueTier,
+        orgId,
+      ]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   logger.info(
     { orgId, companyName: enrichmentData.companyName, suggestedCompanyType, suggestedRevenueTier },
@@ -199,11 +212,14 @@ async function saveEnrichmentToOrg(
     );
   }
 
-  // Fire and forget - don't block enrichment on knowledge writes
+  // Await knowledge writes so pool connections are released before returning.
+  // Previously these were fire-and-forget, which leaked pool connections under load.
   if (knowledgeWrites.length > 0) {
-    Promise.all(knowledgeWrites).catch(err => {
+    try {
+      await Promise.all(knowledgeWrites);
+    } catch (err) {
       logger.warn({ err, orgId }, 'Failed to write enrichment data to org_knowledge');
-    });
+    }
   }
 }
 
@@ -225,33 +241,44 @@ export async function enrichOrganization(
 
   const pool = getPool();
 
-  // Check if already enriched and not stale
-  const existingResult = await pool.query(
-    `SELECT enrichment_at, enrichment_data, enrichment_industry, enrichment_revenue,
-            enrichment_revenue_range, enrichment_employee_count, company_type
-     FROM organizations WHERE workos_organization_id = $1`,
-    [orgId]
-  );
+  // Check if already enriched and not stale (with statement timeout to avoid holding connections)
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL statement_timeout = '${ENRICHMENT_QUERY_TIMEOUT_MS}ms'`);
+    const existingResult = await client.query(
+      `SELECT enrichment_at, enrichment_data, enrichment_industry, enrichment_revenue,
+              enrichment_revenue_range, enrichment_employee_count, company_type
+       FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+    await client.query('COMMIT');
 
-  if (existingResult.rows.length > 0) {
-    const existing = existingResult.rows[0];
-    if (!isEnrichmentStale(existing.enrichment_at)) {
-      // Return cached data
-      return {
-        success: true,
-        domain,
-        enriched: true,
-        cached: true,
-        data: {
-          companyName: existing.enrichment_data?.companyName,
-          employeeCount: existing.enrichment_employee_count,
-          revenue: existing.enrichment_revenue,
-          revenueRange: existing.enrichment_revenue_range,
-          industry: existing.enrichment_industry,
-          suggestedCompanyType: existing.company_type,
-        },
-      };
+    if (existingResult.rows.length > 0) {
+      const existing = existingResult.rows[0];
+      if (!isEnrichmentStale(existing.enrichment_at)) {
+        // Return cached data
+        return {
+          success: true,
+          domain,
+          enriched: true,
+          cached: true,
+          data: {
+            companyName: existing.enrichment_data?.companyName,
+            employeeCount: existing.enrichment_employee_count,
+            revenue: existing.enrichment_revenue,
+            revenueRange: existing.enrichment_revenue_range,
+            industry: existing.enrichment_industry,
+            suggestedCompanyType: existing.company_type,
+          },
+        };
+      }
     }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 
   // Fetch fresh enrichment data
@@ -516,24 +543,37 @@ export async function enrichMissingOrganizations(
 
   // Find organizations without enrichment data that have a domain
   // Priority: accounts with users first, then prospects
-  const result = await pool.query(`
-    SELECT o.workos_organization_id, o.name, o.email_domain,
-           CASE WHEN om.workos_organization_id IS NOT NULL THEN true ELSE false END as has_users
-    FROM organizations o
-    LEFT JOIN (
-      SELECT DISTINCT workos_organization_id FROM organization_memberships
-    ) om ON om.workos_organization_id = o.workos_organization_id
-    WHERE o.enrichment_at IS NULL
-      AND o.email_domain IS NOT NULL
-      AND o.email_domain != ''
-      ${includeEmptyProspects ? '' : 'AND om.workos_organization_id IS NOT NULL'}
-    ORDER BY
-      -- Prioritize accounts with users
-      CASE WHEN om.workos_organization_id IS NOT NULL THEN 0 ELSE 1 END,
-      o.last_activity_at DESC NULLS LAST,
-      o.created_at DESC
-    LIMIT $1
-  `, [limit]);
+  // Use a dedicated client with statement timeout to avoid hogging connections
+  const batchClient = await getClient();
+  let result;
+  try {
+    await batchClient.query('BEGIN');
+    await batchClient.query(`SET LOCAL statement_timeout = '${ENRICHMENT_QUERY_TIMEOUT_MS}ms'`);
+    result = await batchClient.query(`
+      SELECT o.workos_organization_id, o.name, o.email_domain,
+             CASE WHEN om.workos_organization_id IS NOT NULL THEN true ELSE false END as has_users
+      FROM organizations o
+      LEFT JOIN (
+        SELECT DISTINCT workos_organization_id FROM organization_memberships
+      ) om ON om.workos_organization_id = o.workos_organization_id
+      WHERE o.enrichment_at IS NULL
+        AND o.email_domain IS NOT NULL
+        AND o.email_domain != ''
+        ${includeEmptyProspects ? '' : 'AND om.workos_organization_id IS NOT NULL'}
+      ORDER BY
+        -- Prioritize accounts with users
+        CASE WHEN om.workos_organization_id IS NOT NULL THEN 0 ELSE 1 END,
+        o.last_activity_at DESC NULLS LAST,
+        o.created_at DESC
+      LIMIT $1
+    `, [limit]);
+    await batchClient.query('COMMIT');
+  } catch (err) {
+    await batchClient.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    batchClient.release();
+  }
 
   let enriched = 0;
   let failed = 0;
@@ -557,10 +597,21 @@ export async function enrichMissingOrganizations(
         });
       } else if (enrichResult.error === 'Company not found') {
         // Mark as attempted so we don't keep re-querying Lusha for the same domain
-        await pool.query(
-          `UPDATE organizations SET enrichment_at = NOW(), enrichment_source = 'lusha_not_found' WHERE workos_organization_id = $1`,
-          [org.workos_organization_id]
-        );
+        const notFoundClient = await getClient();
+        try {
+          await notFoundClient.query('BEGIN');
+          await notFoundClient.query(`SET LOCAL statement_timeout = '${ENRICHMENT_QUERY_TIMEOUT_MS}ms'`);
+          await notFoundClient.query(
+            `UPDATE organizations SET enrichment_at = NOW(), enrichment_source = 'lusha_not_found' WHERE workos_organization_id = $1`,
+            [org.workos_organization_id]
+          );
+          await notFoundClient.query('COMMIT');
+        } catch (err) {
+          await notFoundClient.query('ROLLBACK').catch(() => {});
+          throw err;
+        } finally {
+          notFoundClient.release();
+        }
         skipped++;
         details.push({
           orgId: org.workos_organization_id,

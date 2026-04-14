@@ -3,10 +3,17 @@
  *
  * Implements list_creative_formats and preview_creative using
  * the shared canonical format library and template-based rendering.
+ *
+ * Uses the low-level Server class (like the training agent) so tool
+ * schemas are plain JSON Schema objects — no Zod round-trip that drops
+ * adcp_major_version and additionalProperties.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { renderPreview } from './preview-renderer.js';
@@ -247,97 +254,154 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
   return { response_type: 'single', ...result };
 }
 
+// ── Tool definitions (plain JSON Schema — matches canonical specs) ───
+
+const ADCP_MAJOR_VERSION_PROP = {
+  type: 'integer',
+  description: 'The AdCP major version the buyer\'s payloads conform to. When omitted, the seller assumes its highest supported version.',
+  minimum: 1,
+  maximum: 99,
+} as const;
+
+const FORMAT_ID_SCHEMA = {
+  type: 'object',
+  properties: {
+    agent_url: { type: 'string', format: 'uri' },
+    id: { type: 'string' },
+    width: { type: 'integer' },
+    height: { type: 'integer' },
+  },
+  additionalProperties: true,
+} as const;
+
+const TOOLS = [
+  {
+    name: 'list_creative_formats',
+    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        adcp_major_version: ADCP_MAJOR_VERSION_PROP,
+        format_ids: { type: 'array', description: 'Return only these specific format IDs', items: FORMAT_ID_SCHEMA, minItems: 1 },
+        type: { type: 'string', description: 'Filter by format type', enum: ['audio', 'video', 'display', 'dooh'] },
+        asset_types: { type: 'array', description: 'Filter to formats that include these asset types', items: { type: 'string', enum: ['image', 'video', 'audio', 'text', 'html', 'javascript', 'url'] }, minItems: 1 },
+        name_search: { type: 'string', description: 'Case-insensitive partial match on name or description' },
+        min_width: { type: 'integer', description: 'Minimum width in pixels (inclusive)' },
+        max_width: { type: 'integer', description: 'Maximum width in pixels (inclusive)' },
+        min_height: { type: 'integer', description: 'Minimum height in pixels (inclusive)' },
+        max_height: { type: 'integer', description: 'Maximum height in pixels (inclusive)' },
+        is_responsive: { type: 'boolean', description: 'Filter for responsive formats that adapt to container size' },
+      },
+      additionalProperties: true,
+    },
+    outputSchema: {
+      type: 'object' as const,
+      properties: {
+        formats: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      },
+      required: ['formats'],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: 'preview_creative',
+    description: 'Generate HTML previews of creative manifests. Supports single and batch modes. Returns preview URLs (iframe-embeddable) and/or raw HTML. Previews expire after 1 hour. Not for production ad serving.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        adcp_major_version: ADCP_MAJOR_VERSION_PROP,
+        request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Request type. Defaults to single.' },
+        creative_manifest: { type: 'object', description: 'Creative manifest with format_id and assets (required for single mode)', additionalProperties: true },
+        format_id: { ...FORMAT_ID_SCHEMA, description: 'Format identifier for rendering. Defaults to manifest format_id.' },
+        inputs: {
+          type: 'array', description: 'Array of input sets for multiple preview variants', minItems: 1,
+          items: {
+            type: 'object',
+            properties: { name: { type: 'string' }, macros: { type: 'object', additionalProperties: { type: 'string' } }, context_description: { type: 'string' } },
+            required: ['name'], additionalProperties: true,
+          },
+        },
+        output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Output format. Defaults to url.' },
+        requests: {
+          type: 'array', description: 'Array of preview requests (batch mode, max 50)', minItems: 1, maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              creative_manifest: { type: 'object', additionalProperties: true },
+              format_id: FORMAT_ID_SCHEMA,
+              output_format: { type: 'string', enum: ['url', 'html', 'both'] },
+              inputs: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+            },
+            required: ['creative_manifest'], additionalProperties: true,
+          },
+        },
+        variant_id: { type: 'string', description: 'Variant ID (variant mode)' },
+        template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
+        item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render' },
+      },
+      additionalProperties: true,
+    },
+    outputSchema: {
+      type: 'object' as const,
+      properties: {
+        response_type: { type: 'string' },
+        previews: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        results: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        errors: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' } } } },
+        expires_at: { type: 'string', format: 'date-time' },
+      },
+      additionalProperties: true,
+    },
+  },
+];
+
+type ToolArgs = Record<string, unknown>;
+type ToolHandler = (args: ToolArgs) => Record<string, unknown>;
+
 // ── Server factory ──────────────────────────────────────────────────
 
 export function createCreativeAgentServer(agentBaseUrl: string) {
   const formats = buildReferenceFormats(agentBaseUrl);
 
-  const server = new McpServer({
-    name: 'AdCP Reference Creative Agent',
-    version: '1.0.0',
+  const handlers: Record<string, ToolHandler> = {
+    list_creative_formats: (args) => handleListCreativeFormats(args, formats),
+    preview_creative: (args) => handlePreviewCreative(args, formats, agentBaseUrl),
+  };
+
+  const server = new Server(
+    { name: 'AdCP Reference Creative Agent', version: '1.0.0' },
+    { capabilities: { tools: {} } },
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return { tools: TOOLS };
   });
 
-  server.registerTool(
-    'list_creative_formats',
-    {
-      description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
-      inputSchema: {
-        format_ids: z.array(z.union([z.string(), z.object({ id: z.string() })])).optional().describe('Filter by specific format IDs'),
-        asset_types: z.array(z.string()).optional().describe('Filter by asset types: image, video, audio, text, html, vast, etc.'),
-        name_search: z.string().optional().describe('Case-insensitive partial match on name or description'),
-        min_width: z.number().optional().describe('Minimum width in pixels'),
-        max_width: z.number().optional().describe('Maximum width in pixels'),
-        min_height: z.number().optional().describe('Minimum height in pixels'),
-        max_height: z.number().optional().describe('Maximum height in pixels'),
-        is_responsive: z.boolean().optional().describe('Filter for responsive formats'),
-      },
-      outputSchema: {
-        formats: z.array(z.record(z.string(), z.unknown())),
-      },
-    },
-    async (args) => {
-      const data = handleListCreativeFormats(args as Record<string, unknown>, formats);
-      return {
-        structuredContent: data,
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(data),
-        }],
-      };
-    },
-  );
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const handler = handlers[name];
 
-  server.registerTool(
-    'preview_creative',
-    {
-      description: 'Generate HTML previews of creative manifests. Supports single and batch modes. Returns preview URLs (iframe-embeddable) and/or raw HTML. Previews expire after 1 hour. Not for production ad serving.',
-      inputSchema: {
-        request_type: z.enum(['single', 'batch', 'variant']).optional().describe('Request type. Defaults to single.'),
-        creative_manifest: z.record(z.string(), z.unknown()).optional().describe('Creative manifest with format_id and assets (required for single mode)'),
-        format_id: z.object({
-          agent_url: z.string().optional(),
-          id: z.string().optional(),
-          width: z.number().optional(),
-          height: z.number().optional(),
-        }).optional().describe('Format identifier for rendering. Defaults to manifest format_id.'),
-        inputs: z.array(z.object({
-          name: z.string(),
-          macros: z.record(z.string(), z.string()).optional(),
-          context_description: z.string().optional(),
-        })).optional().describe('Array of input sets for multiple preview variants'),
-        output_format: z.enum(['url', 'html', 'both']).optional().describe('Output format. Defaults to url.'),
-        requests: z.array(z.object({
-          creative_manifest: z.record(z.string(), z.unknown()),
-          format_id: z.object({ agent_url: z.string().optional(), id: z.string().optional() }).optional(),
-          output_format: z.enum(['url', 'html', 'both']).optional(),
-          inputs: z.array(z.object({ name: z.string() })).optional(),
-        })).optional().describe('Array of preview requests (batch mode, max 20)'),
-        variant_id: z.string().optional().describe('Variant ID (variant mode — not supported by reference agent)'),
-        template_id: z.string().optional().describe('Custom template ID'),
-        item_limit: z.number().optional().describe('Max catalog items to render'),
-      },
-      outputSchema: {
-        response_type: z.string().optional(),
-        previews: z.array(z.record(z.string(), z.unknown())).optional(),
-        results: z.array(z.record(z.string(), z.unknown())).optional(),
-        errors: z.array(z.object({
-          code: z.string(),
-          message: z.string(),
-        })).optional(),
-        expires_at: z.string().optional(),
-      },
-    },
-    async (args) => {
-      const data = handlePreviewCreative(args as Record<string, unknown>, formats, agentBaseUrl);
+    if (!handler) {
       return {
-        structuredContent: data,
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(data),
-        }],
+        content: [{ type: 'text' as const, text: JSON.stringify({ errors: [{ code: 'INVALID_REQUEST', message: `Unknown tool: ${name}` }] }) }],
+        isError: true,
       };
-    },
-  );
+    }
+
+    try {
+      const result = handler((args as ToolArgs) || {});
+      return {
+        structuredContent: result,
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Internal error';
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ errors: [{ code: 'INTERNAL_ERROR', message }] }) }],
+        isError: true,
+      };
+    }
+  });
 
   return server;
 }

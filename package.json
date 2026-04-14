@@ -10,7 +10,7 @@
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
-    "build": "tsc --project server/tsconfig.json && npm run build:schemas",
+    "build": "tsc --project server/tsconfig.json && mkdir -p dist/addie/rules && cp server/src/addie/rules/*.md dist/addie/rules/ && npm run build:schemas",
     "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:schemas": "node scripts/build-schemas.cjs",
     "build:mintlify": "cd mintlify-docs && mintlify build",
@@ -48,7 +48,7 @@
     "check:images": "bash scripts/check-image-quality.sh"
   },
   "dependencies": {
-    "@adcp/client": "^4.19.0",
+    "@adcp/client": "^4.26.2",
     "@anthropic-ai/sdk": "^0.82.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@google/generative-ai": "^0.24.1",
@@ -122,7 +122,7 @@
     "vitest": "^4.1.2"
   },
   "engines": {
-    "node": ">=22.0"
+    "node": ">=22.22.0"
   },
   "overrides": {
     "webpack-dev-server": "^5.2.2",

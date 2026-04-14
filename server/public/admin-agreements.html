@@ -383,10 +383,24 @@
       document.getElementById('agreementModal').style.display = 'flex';
     }
 
-    // Edit agreement
-    function editAgreement(id) {
-      editingAgreement = agreements.find(a => a.id === id);
-      if (!editingAgreement) return;
+    // Edit agreement — fetches full text on demand
+    async function editAgreement(id) {
+      const stub = agreements.find(a => a.id === id);
+      if (!stub) return;
+
+      document.getElementById('modalTitle').textContent = 'Loading...';
+      document.getElementById('agreementModal').style.display = 'flex';
+
+      try {
+        const response = await fetch(`/api/admin/agreements/${id}`);
+        if (!response.ok) throw new Error('Failed to load agreement');
+        editingAgreement = await response.json();
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        alert('Failed to load agreement text');
+        closeModal();
+        return;
+      }
 
       document.getElementById('modalTitle').textContent = 'Edit Agreement';
       document.getElementById('agreementType').value = editingAgreement.agreement_type;
@@ -394,7 +408,6 @@
       document.getElementById('agreementEffectiveDate').value = editingAgreement.effective_date.split('T')[0];
       document.getElementById('agreementText').value = editingAgreement.text;
       updatePreview();
-      document.getElementById('agreementModal').style.display = 'flex';
     }
 
     // Close modal

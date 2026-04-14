@@ -163,6 +163,9 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
   <Card title="Generative creative" icon="wand-magic-sparkles" href="/docs/creative/generative-creative">
     AI-generated creative workflows and best practices.
   </Card>
+  <Card title="Creative agent pricing" icon="money-bill" href="/docs/creative/implementing-creative-agents#pricing-walkthrough">
+    How creative agents charge: pricing discovery, build costs, and billing reconciliation.
+  </Card>
   <Card title="Sponsored Intelligence" icon="message-bot" href="/docs/sponsored-intelligence/overview">
     Conversational brand experiences in AI assistants.
   </Card>
@@ -176,6 +179,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 - **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
 - **Cross-platform adaptation** — agents adapt assets across display, video, audio, native formats
 - **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
+- **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
 
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
@@ -188,7 +192,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 **~45 min** | Prerequisite: C3
 
-Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. The skill tested is orchestrating a buying workflow correctly.
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/docs/building/schemas-and-sdks) SDK. The skill tested is orchestrating a buying workflow correctly.
 
 ### What you'll build
 
@@ -197,6 +201,16 @@ Create a working buyer agent that discovers products and executes media buys. Us
 - Media buy creation with targeting and budget
 - Creative sync with at least 1 format
 - Campaign monitoring via delivery reporting
+
+### How you'll validate
+
+Your buyer agent runs against the public test agent (`test-mcp`). Use `npx @adcp/client` to execute tool calls and verify your agent handles the complete buying workflow:
+
+```bash
+npx @adcp/client test-mcp get_products '{"brief":"your campaign brief"}'
+```
+
+See [Validate Your Agent](/docs/building/validate-your-agent) for CLI setup and the full testing workflow.
 
 ### Assessment rubric
 

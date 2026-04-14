@@ -341,6 +341,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Purchase order number for tracking.',
         },
+        agency_estimate_number: {
+          type: 'string',
+          description: 'Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency media plan and billing.',
+        },
         packages: {
           type: 'array',
           description: 'Products to purchase',
@@ -764,8 +768,8 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         status_filter: {
           description: 'Filter by media buy status. Single status or array. Defaults to ["active"] when no IDs provided.',
           oneOf: [
-            { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
-            { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
+            { type: 'string', enum: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
+            { type: 'array', items: { type: 'string', enum: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
           ],
         },
         include_snapshot: {
@@ -1157,6 +1161,15 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         creative_manifest: {
           type: 'object',
           description: 'Source manifest - minimal for generation, complete for transformation',
+        },
+        account: {
+          type: 'object',
+          description: 'Account reference for pricing and billing. Required by creative agents that charge for services.',
+          properties: {
+            account_id: { type: 'string' },
+            brand: { type: 'object', properties: { domain: { type: 'string' } } },
+            operator: { type: 'string' },
+          },
         },
         brand: {
           type: 'object',
@@ -2537,7 +2550,7 @@ export function createAdcpToolHandlers(
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
         const ctx = { mode: 'training' as const, userId };
-        const result = executeTrainingAgentTool(task, params, ctx);
+        const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
           return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
         }
@@ -2612,7 +2625,7 @@ export function createAdcpToolHandlers(
                 organization_id: organizationId,
                 agent_url: agentUrl,
                 agent_name: baseUrl.hostname,
-                agent_type: 'sales',
+                agent_type: 'buying',
                 protocol: 'mcp',
               });
               logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');

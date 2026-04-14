@@ -6,13 +6,20 @@
  * TTL-based cleanup runs every 5 minutes.
  */
 
-import type { SessionState, AccountRef, BrandRef } from './types.js';
+import type { SessionState, AccountRef, BrandRef, UsageRecord } from './types.js';
+import { cleanupExpiredTasks } from '@adcp/client';
+import { isDatabaseInitialized, getPool } from '../db/client.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('training-agent-state');
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_SESSIONS = 1000;
 const MAX_MEDIA_BUYS_PER_SESSION = 100;
 const MAX_CREATIVES_PER_SESSION = 500;
+const MAX_PROPERTY_LISTS_PER_SESSION = 100;
+const MAX_CONTENT_STANDARDS_PER_SESSION = 100;
 
 const sessions = new Map<string, SessionState>();
 
@@ -30,6 +37,7 @@ function createSession(): SessionState {
     contentStandards: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
+    usageRecords: [],
     createdAt: now,
     lastAccessedAt: now,
   };
@@ -61,7 +69,9 @@ export function getSession(key: string): SessionState {
   return session;
 }
 
-export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
+const MAX_USAGE_RECORDS_PER_SESSION = 1000;
+
+export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, MAX_PROPERTY_LISTS_PER_SESSION, MAX_CONTENT_STANDARDS_PER_SESSION };
 
 /** Read-only access to all sessions (for cross-session lookups). */
 export function getAllSessions(): ReadonlyMap<string, SessionState> {
@@ -97,12 +107,23 @@ export function sessionKeyFromArgs(
 /** Start the TTL cleanup interval */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
-  cleanupTimer = setInterval(() => {
+  cleanupTimer = setInterval(async () => {
     const now = Date.now();
     for (const [key, session] of sessions) {
       if (now - session.lastAccessedAt.getTime() > SESSION_TTL_MS) {
         sessions.delete(key);
       }
+    }
+    // Clean up expired MCP tasks from PostgreSQL
+    try {
+      if (isDatabaseInitialized()) {
+        const deleted = await cleanupExpiredTasks(getPool());
+        if (deleted > 0) {
+          logger.info({ deleted }, 'Cleaned up expired MCP tasks');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to clean up expired MCP tasks');
     }
   }, CLEANUP_INTERVAL_MS);
   // Don't block process exit

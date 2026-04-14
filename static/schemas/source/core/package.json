@@ -56,6 +56,18 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "measurement_terms": {
+      "$ref": "/schemas/core/measurement-terms.json",
+      "description": "Agreed billing measurement and makegood terms for this package. Reflects what was negotiated — may differ from the buyer's proposal or the product's defaults. When present, these terms are binding for the package's duration."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Agreed performance standards for this package. When any entry specifies a vendor, creatives assigned to this package MUST include corresponding tracker_script or tracker_pixel assets from that vendor.",
+      "items": {
+        "$ref": "/schemas/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Creative assets assigned to this package",
@@ -125,6 +137,11 @@
         }
       },
       "additionalProperties": false
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Echoed from the buyer's request. When present on the package, takes precedence over the media buy-level estimate number."
     },
     "creative_deadline": {
       "type": "string",

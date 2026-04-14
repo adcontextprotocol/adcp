@@ -1,17 +1,18 @@
 /**
  * Claude client for Addie - handles LLM interactions with tool use
  *
- * System prompt is built from database-backed rules, allowing non-engineers
- * to edit Addie's behavior without code changes.
+ * System prompt is built from markdown rule files in ./rules/,
+ * with tool reference always appended from code.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
-import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
+import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
-import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
+import { getCurrentConfigVersionId } from './config-version.js';
+import { loadRules, invalidateRulesCache } from './rules/index.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
@@ -235,10 +236,9 @@ export interface ProcessMessageOptions {
 }
 
 /**
- * Override for rules - used by eval framework to test proposed rules
+ * Override for system prompt - used by eval framework to test proposed rules
  */
 export interface RulesOverride {
-  ruleIds: number[];
   systemPrompt: string;
 }
 
@@ -312,11 +312,6 @@ export class AddieClaudeClient {
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
   private addieDb: AddieDatabase;
-  private cachedSystemPrompt: string | null = null;
-  private cachedRuleIds: number[] = [];
-  private cachedRulesSnapshot: RuleSnapshot[] = [];
-  private cacheExpiry: number = 0;
-  private readonly CACHE_TTL_MS = 300000; // Cache rules for 5 minutes (rules change rarely)
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
   constructor(apiKey: string, model: string = AddieModelConfig.chat) {
@@ -333,66 +328,22 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Convert AddieRule to RuleSnapshot for config versioning
-   */
-  private ruleToSnapshot(rule: AddieRule): RuleSnapshot {
-    return {
-      id: rule.id,
-      rule_type: rule.rule_type,
-      name: rule.name,
-      content: rule.content,
-      priority: rule.priority,
-    };
-  }
-
-  /**
-   * Get the system prompt from database rules, with tool reference always appended.
+   * Get the system prompt from markdown rule files, with tool reference always appended.
    *
-   * Architecture:
-   * - Database rules (addie_rules) contain behavioral guidelines (editable without deploys)
-   * - Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied to code)
-   * - Fallback prompt used only when database is unavailable
-   *
-   * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message.
+   * Rules are loaded from ./rules/*.md files (cached in memory after first read).
+   * Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied to code).
+   * Fallback prompt used only when rule files can't be read.
    */
-  private async getSystemPrompt(): Promise<{ prompt: string; ruleIds: number[]; rulesSnapshot: RuleSnapshot[] }> {
-    const now = Date.now();
-
-    // Return cached prompt if still valid
-    if (this.cachedSystemPrompt && now < this.cacheExpiry) {
-      return {
-        prompt: this.cachedSystemPrompt,
-        ruleIds: this.cachedRuleIds,
-        rulesSnapshot: this.cachedRulesSnapshot,
-      };
-    }
-
+  private getSystemPrompt(): { prompt: string } {
     try {
-      const rules = await this.addieDb.getActiveRules();
-
-      // If we have rules from the database, build prompt from them
-      if (rules.length > 0) {
-        const basePrompt = await this.addieDb.buildSystemPrompt();
-        // Always append tool reference - tools are defined in code, not DB
-        const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
-        const ruleIds = rules.map(r => r.id);
-        const rulesSnapshot = rules.map(r => this.ruleToSnapshot(r));
-
-        this.cachedSystemPrompt = prompt;
-        this.cachedRuleIds = ruleIds;
-        this.cachedRulesSnapshot = rulesSnapshot;
-        this.cacheExpiry = now + this.CACHE_TTL_MS;
-
-        logger.debug({ ruleCount: rules.length }, 'Addie: Built system prompt from database rules');
-        return { prompt, ruleIds, rulesSnapshot };
-      }
+      const basePrompt = loadRules();
+      const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+      return { prompt };
     } catch (error) {
-      logger.warn({ error }, 'Addie: Failed to load rules from database, using fallback prompt');
+      logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
+      const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+      return { prompt: fallbackPrompt };
     }
-
-    // Fallback: minimal prompt + tool reference (database unavailable or empty)
-    const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
-    return { prompt: fallbackPrompt, ruleIds: [], rulesSnapshot: [] };
   }
 
   private estimateMessageContentChars(content: Anthropic.MessageParam['content']): number {
@@ -492,13 +443,10 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Invalidate the cached system prompt (call after rule changes)
+   * Invalidate the cached system prompt (forces re-read of rule files)
    */
   invalidateCache(): void {
-    this.cachedSystemPrompt = null;
-    this.cachedRuleIds = [];
-    this.cachedRulesSnapshot = [];
-    this.cacheExpiry = 0;
+    invalidateRulesCache();
   }
 
   /**
@@ -542,24 +490,16 @@ export class AddieClaudeClient {
     let totalCacheCreationTokens = 0;
     let totalCacheReadTokens = 0;
 
-    // Get system prompt - use override if provided (for eval), otherwise from database
+    // Get system prompt - use override if provided, otherwise from rule files
     const promptStart = Date.now();
     let systemPrompt: string;
-    let ruleIds: number[];
-    let rulesSnapshot: RuleSnapshot[];
 
     if (rulesOverride) {
-      // Eval mode: use provided rules
       systemPrompt = rulesOverride.systemPrompt;
-      ruleIds = rulesOverride.ruleIds;
-      rulesSnapshot = []; // Not needed for eval - we don't track config version
-      logger.debug({ ruleIds }, 'Addie: Using rules override for eval');
+      logger.debug('Addie: Using rules override');
     } else {
-      // Normal mode: get from database
-      const promptResult = await this.getSystemPrompt();
+      const promptResult = this.getSystemPrompt();
       systemPrompt = promptResult.prompt;
-      ruleIds = promptResult.ruleIds;
-      rulesSnapshot = promptResult.rulesSnapshot;
     }
     systemPromptMs = Date.now() - promptStart;
 
@@ -574,7 +514,7 @@ export class AddieClaudeClient {
     }
 
     // Get config version ID for this interaction (skip for eval mode)
-    const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
+    const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId();
 
     const maxIterations = options?.maxIterations ?? 10;
     const effectiveModel = options?.modelOverride ?? this.model;
@@ -770,7 +710,7 @@ export class AddieClaudeClient {
           tool_executions: toolExecutions,
           flagged: !!hallucinationReason,
           flag_reason: hallucinationReason ?? undefined,
-          active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+          active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
             system_prompt_ms: systemPromptMs,
@@ -877,7 +817,7 @@ export class AddieClaudeClient {
             tools_used: toolsUsed,
             tool_executions: toolExecutions,
             flagged: false,
-            active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+            active_rule_ids: undefined,
             config_version_id: configVersionId ?? undefined,
             timing: {
               system_prompt_ms: systemPromptMs,
@@ -1030,7 +970,7 @@ export class AddieClaudeClient {
       tool_executions: toolExecutions,
       flagged: true,
       flag_reason: 'Max tool iterations reached',
-      active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+      active_rule_ids: undefined,
       config_version_id: configVersionId ?? undefined,
       timing: {
         system_prompt_ms: systemPromptMs,
@@ -1081,9 +1021,9 @@ export class AddieClaudeClient {
     let totalCacheCreationTokens = 0;
     let totalCacheReadTokens = 0;
 
-    // Get system prompt from database rules (or fallback)
+    // Get system prompt from rule files (or fallback)
     const promptStart = Date.now();
-    let { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
+    const { prompt: systemPrompt } = this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
 
     // Build system content as array: base prompt is cached, requestContext is not.
@@ -1095,7 +1035,7 @@ export class AddieClaudeClient {
     }
 
     // Get config version ID for this interaction (for tracking/analysis)
-    const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
+    const configVersionId = await getCurrentConfigVersionId();
 
     // Determine effective model (support precision mode override for billing/financial)
     const effectiveModel = options?.modelOverride ?? this.model;
@@ -1317,7 +1257,7 @@ export class AddieClaudeClient {
               tool_executions: toolExecutions,
               flagged: !!hallucinationReason,
               flag_reason: hallucinationReason ?? undefined,
-              active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+              active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               timing: {
                 system_prompt_ms: systemPromptMs,
@@ -1350,7 +1290,7 @@ export class AddieClaudeClient {
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
                 flagged: false,
-                active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+                active_rule_ids: undefined,
                 config_version_id: configVersionId ?? undefined,
                 timing: {
                   system_prompt_ms: systemPromptMs,
@@ -1523,7 +1463,7 @@ export class AddieClaudeClient {
           tool_executions: toolExecutions,
           flagged: true,
           flag_reason: 'Max tool iterations reached',
-          active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+          active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
             system_prompt_ms: systemPromptMs,

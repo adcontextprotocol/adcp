@@ -108,6 +108,15 @@
       },
       "minItems": 1
     },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include pricing_options on each format. Used by transformation and generation agents that charge per format or per unit of work. Requires account. When false or omitted, pricing is not computed."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account reference for pricing. When provided with include_pricing, the agent returns pricing_options from this account's rate card on each format."
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },

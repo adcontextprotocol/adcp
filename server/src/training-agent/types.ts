@@ -155,26 +155,14 @@ export interface SessionState {
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   propertyLists: Map<string, PropertyListState>;
   collectionLists: Map<string, CollectionListState>;
-  contentStandards: Map<string, ContentStandardState>;
+  contentStandards: Map<string, ContentStandardsState>;
+  usageRecords: UsageRecord[];
   lastGetProductsContext?: {
     products: Product[];
     proposals?: Proposal[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
-}
-
-export interface PropertyListState {
-  list_id: string;
-  name: string;
-  description?: string;
-  base_properties?: unknown[];
-  filters?: Record<string, unknown>;
-  brand?: { domain: string };
-  webhook_url?: string;
-  property_count: number;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface CollectionListState {
@@ -190,24 +178,13 @@ export interface CollectionListState {
   updated_at: string;
 }
 
-export interface ContentStandardState {
-  standards_id: string;
-  name: string;
-  countries_all?: string[];
-  channels_any?: string[];
-  languages_any?: string[];
-  policy?: string;
-  calibration_exemplars?: unknown[];
-  created_at: string;
-  updated_at: string;
-}
-
 export interface SignalActivationState {
   signalAgentSegmentId: string;
   destinationType: 'platform' | 'agent';
   destinationId: string;
   account?: string;
   pricingOptionId?: string;
+  governanceContext?: string;
   isLive: boolean;
   activatedAt: string;
 }
@@ -297,6 +274,19 @@ export interface CreativeState {
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
+  pricingOptionId?: string;
+}
+
+export interface UsageRecord {
+  account: AccountRef;
+  creativeId?: string;
+  signalAgentSegmentId?: string;
+  pricingOptionId?: string;
+  impressions?: number;
+  mediaSpend?: number;
+  vendorCost: number;
+  currency: string;
+  reportedAt: string;
 }
 
 // ── Governance types ────────────────────────────────────────────
@@ -321,6 +311,7 @@ export interface GovernancePlanState {
     authorityLevel: string;
     perSellerMaxPct?: number;
     reallocationThreshold?: number;
+    allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
   channels?: {
     required?: string[];
@@ -336,6 +327,7 @@ export interface GovernancePlanState {
   customPolicies?: string[];
   mode: 'enforce' | 'advisory' | 'audit';
   committedBudget: number;
+  committedByType?: Record<string, number>;
   syncedAt: string;
 }
 
@@ -347,6 +339,7 @@ export interface GovernanceCheckState {
   status: 'approved' | 'denied' | 'conditions' | 'escalated';
   caller: string;
   tool?: string;
+  purchaseType?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -355,7 +348,6 @@ export interface GovernanceCheckState {
   mode: string;
   categoriesEvaluated: string[];
   policiesEvaluated: string[];
-  mediaBuyId?: string;
   timestamp: string;
   expiresAt?: string;
 }
@@ -380,9 +372,45 @@ export interface GovernanceOutcomeState {
   planId: string;
   checkId?: string;
   governanceContext?: string;
+  purchaseType?: string;
+  sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
-  mediaBuyId?: string;
   findings: GovernanceFinding[];
   timestamp: string;
+}
+
+// ── Property governance types ─────────────────────────────────────
+
+export interface PropertyListState {
+  listId: string;
+  name: string;
+  description?: string;
+  listType?: string;
+  principal?: string;
+  baseProperties: unknown[];
+  filters?: unknown;
+  brand?: unknown;
+  webhookUrl?: string;
+  cacheDurationHours: number;
+  propertyCount: number;
+  authToken: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Content standards types ───────────────────────────────────────
+
+export interface ContentStandardsState {
+  standardsId: string;
+  scope: {
+    countriesAll?: string[];
+    channelsAny?: string[];
+    languagesAny?: string[];
+    description?: string;
+  };
+  policy: string;
+  calibrationExemplars?: { pass?: unknown[]; fail?: unknown[] };
+  createdAt: string;
+  updatedAt: string;
 }

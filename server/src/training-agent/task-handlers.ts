@@ -14,6 +14,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
+import { PostgresTaskStore } from '@adcp/client';
+import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
 import type {
@@ -32,6 +34,10 @@ import type {
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
+  BuildCreativeResponse,
+  ListCreativesResponse,
+  PreviewCreativeResponse,
+  CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/client';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -101,7 +107,7 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
+import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -116,32 +122,38 @@ import {
   handleGetRights,
   handleAcquireRights,
   handleUpdateRights,
+  handleCreativeApproval,
 } from './brand-handlers.js';
+import {
+  PROPERTY_TOOLS,
+  handleCreatePropertyList,
+  handleListPropertyLists,
+  handleGetPropertyList,
+  handleUpdatePropertyList,
+  handleDeletePropertyList,
+  handleValidatePropertyDelivery,
+} from './property-handlers.js';
+import {
+  CONTENT_STANDARDS_TOOLS,
+  handleCreateContentStandards,
+  handleListContentStandards,
+  handleGetContentStandards,
+  handleUpdateContentStandards,
+  handleCalibrateContent,
+  handleValidateContentDelivery,
+} from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
 import {
-  PROPERTY_LIST_TOOLS,
   COLLECTION_LIST_TOOLS,
-  CONTENT_STANDARDS_TOOLS,
-  handleCreatePropertyList,
-  handleGetPropertyList,
-  handleUpdatePropertyList,
-  handleListPropertyLists,
-  handleDeletePropertyList,
   handleCreateCollectionList,
   handleGetCollectionList,
   handleUpdateCollectionList,
   handleListCollectionLists,
   handleDeleteCollectionList,
-  handleCreateContentStandards,
-  handleGetContentStandards,
-  handleUpdateContentStandards,
-  handleListContentStandards,
-  handleCalibrateContent,
-  handleValidateContentDelivery,
 } from './inventory-governance-handlers.js';
 import {
   CATALOG_EVENT_TOOLS,
@@ -161,16 +173,26 @@ import { PUBLISHERS } from './publishers.js';
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
 /**
- * Shared task store across per-request Server instances. The SDK's
- * InMemoryTaskStore handles TTL cleanup, task ID generation, and
- * result storage. Passing this to the Server constructor auto-registers
- * handlers for tasks/get, tasks/result, tasks/list, and tasks/cancel.
+ * Shared task store across per-request Server instances.
+ *
+ * In production (database available), uses PostgresTaskStore so tasks
+ * survive across Fly.io instances. In tests (no database), falls back
+ * to InMemoryTaskStore.
  *
  * Note: no session isolation — any session can see/cancel tasks from
  * another. This is intentional for the training agent where all sessions
  * are sandboxed. Production servers should scope tasks by sessionId.
  */
-let sdkTaskStore = new InMemoryTaskStore();
+let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
+
+function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
+  if (!sdkTaskStore) {
+    sdkTaskStore = isDatabaseInitialized()
+      ? new PostgresTaskStore(getPool())
+      : new InMemoryTaskStore();
+  }
+  return sdkTaskStore;
+}
 
 /** Look up which tools allow task augmentation. */
 function toolSupportsTask(toolName: string): boolean {
@@ -181,8 +203,8 @@ function toolSupportsTask(toolName: string): boolean {
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
-  sdkTaskStore.cleanup();
-  sdkTaskStore = new InMemoryTaskStore();
+  sdkTaskStore?.cleanup();
+  sdkTaskStore = null;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -334,13 +356,15 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
+  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
+  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
-    if (new Date(mb.startTime) > now) return 'pending_activation';
+    if (new Date(mb.startTime) > now) return 'pending_start';
   }
   if (mb.status === 'paused') return 'paused';
   return mb.status;
@@ -349,7 +373,8 @@ function deriveStatus(mb: MediaBuyState): string {
 /** Map lifecycle status to valid buyer actions. */
 function validActionsForStatus(status: string): string[] {
   switch (status) {
-    case 'pending_activation':
+    case 'pending_creatives':
+    case 'pending_start':
       return ['cancel', 'sync_creatives'];
     case 'active':
       return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
@@ -511,7 +536,7 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
-        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
+        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
         include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.' },
         include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
@@ -550,7 +575,7 @@ const TOOLS = [
   },
   {
     name: 'list_creatives',
-    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. Not for uploading or updating creatives (use sync_creatives). Only returns creatives from the current session.',
+    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -559,6 +584,9 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
+        include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
+        include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
+        filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
       },
     },
   },
@@ -595,6 +623,8 @@ const TOOLS = [
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         message: { type: 'string', description: 'Natural language instructions for generative builds' },
+        include_preview: { type: 'boolean', description: 'Include a preview URL or inline HTML in the build response' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Echoed on the response.' },
       },
     },
   },
@@ -633,6 +663,7 @@ const TOOLS = [
         packages: { type: 'array' },
         new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
+        action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -671,6 +702,7 @@ const TOOLS = [
         destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
         options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
       required: [] as const,
@@ -679,11 +711,41 @@ const TOOLS = [
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
   ...GOVERNANCE_TOOLS,
-  ...PROPERTY_LIST_TOOLS,
+  ...PROPERTY_TOOLS,
   ...COLLECTION_LIST_TOOLS,
   ...CONTENT_STANDARDS_TOOLS,
   ...BRAND_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
+  {
+    name: 'report_usage',
+    description: 'Report consumption data for billing verification. Send creative_id and pricing_option_id for creative agents, signal_agent_segment_id for signals agents. The vendor verifies the reported cost against its rate card.',
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        idempotency_key: { type: 'string', description: 'UUID for retry safety' },
+        reporting_period: { type: 'object', properties: { start: { type: 'string' }, end: { type: 'string' } }, required: ['start', 'end'] },
+        usage: {
+          type: 'array', items: {
+            type: 'object', properties: {
+              account: ACCOUNT_REF_SCHEMA,
+              creative_id: { type: 'string', description: 'Creative identifier (creative agents)' },
+              signal_agent_segment_id: { type: 'string', description: 'Signal identifier (signals agents)' },
+              pricing_option_id: { type: 'string', description: 'Pricing option from discovery or build response' },
+              impressions: { type: 'number' },
+              media_spend: { type: 'number' },
+              vendor_cost: { type: 'number' },
+              currency: { type: 'string' },
+            },
+            required: ['account', 'vendor_cost', 'currency'],
+          },
+        },
+      },
+      required: ['reporting_period', 'usage'] as const,
+    },
+  },
   {
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
@@ -1592,7 +1654,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 }
 
 function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[] };
+  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
@@ -1600,6 +1662,8 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   }
+
+  const includePricing = req.include_pricing && req.account;
 
   return {
     query_summary: {
@@ -1610,14 +1674,41 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       has_more: false,
       total_count: creatives.length,
     },
-    creatives: creatives.map(c => ({
-      creative_id: c.creativeId,
-      format_id: c.formatId,
-      name: c.name,
-      status: c.status,
-      synced_at: c.syncedAt,
-    })),
+    creatives: creatives.map(c => {
+      const base: Record<string, unknown> = {
+        creative_id: c.creativeId,
+        format_id: c.formatId,
+        name: c.name,
+        status: c.status,
+        created_date: c.syncedAt,
+        updated_date: c.syncedAt,
+      };
+      if (includePricing) {
+        base.pricing_options = [getCreativePricing(req.account!, c)];
+      }
+      if (req.include_snapshot) {
+        base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
+      }
+      return base;
+    }),
     sandbox: true,
+  };
+}
+
+/** Sandbox rate card: returns CPM pricing based on account and creative format. */
+function getCreativePricing(account: { account_id?: string }, creative: import('./types.js').CreativeState) {
+  // Two sandbox rate cards: "premium" accounts get lower CPM
+  const isPremium = account.account_id?.includes('premium');
+  const isVideo = creative.formatId.id.includes('video') || creative.formatId.id.includes('vast');
+  const cpm = isPremium
+    ? (isVideo ? 0.25 : 0.10)
+    : (isVideo ? 0.50 : 0.20);
+  const pricingOptionId = `po_${creative.formatId.id}_cpm`;
+  return {
+    pricing_option_id: pricingOptionId,
+    model: 'cpm',
+    cpm,
+    currency: 'USD',
   };
 }
 
@@ -1807,23 +1898,48 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
+function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Record<string, unknown> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
+  const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
       features: {
         inline_creative_management: true,
+        compliance_testing: true,
       },
       portfolio: {
-        channels,
+        publisher_domains: publisherDomains,
+        primary_channels: channels,
       },
+    },
+    creative: {
+      supports_generation: true,
+      supports_transformation: true,
+      supports_compliance: false,
+      has_creative_library: true,
+    },
+    account: {
+      require_operator_auth: false,
+      required_for_products: false,
+      sandbox: true,
+      supported_billing: [],
+    },
+    compliance_testing: {
+      scenarios: [
+        'force_creative_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+      ],
     },
     agent: {
       name: 'AdCP Training Agent',
@@ -1993,6 +2109,8 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     }
   }
   const pricingOptionId = req.pricing_option_id;
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
@@ -2063,6 +2181,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
       destinationId: id,
       account: dest.account,
       pricingOptionId,
+      governanceContext,
       isLive: true,
       activatedAt: now,
     };
@@ -2082,7 +2201,11 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
     };
   });
 
-  return { deployments, sandbox: true };
+  return {
+    deployments,
+    ...(governanceContext && { governance_context: governanceContext }),
+    sandbox: true,
+  };
 }
 
 function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
@@ -2212,7 +2335,7 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
 interface BuildCreativeArgs {
   account?: unknown;
   creative_id?: string;
-  creative_manifest?: { format_id?: FormatID; assets?: Array<Record<string, unknown>> };
+  creative_manifest?: { format_id?: FormatID; assets?: Record<string, unknown> | Array<Record<string, unknown>> };
   target_format_id?: FormatID;
   target_format_ids?: FormatID[];
   brand?: { domain?: string };
@@ -2227,16 +2350,23 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
   return { w: dims?.width || 300, h: dims?.height || 250 };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
+function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
+  return { serving_tag: { content: html } };
+}
+
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
 
-  // Determine target formats
+  // Determine target formats (cap at 50 to prevent response amplification)
+  const MAX_TARGET_FORMATS = 50;
   const targetIds: FormatID[] = req.target_format_ids?.length
-    ? req.target_format_ids
+    ? req.target_format_ids.slice(0, MAX_TARGET_FORMATS)
     : req.target_format_id
       ? [req.target_format_id]
       : [];
@@ -2254,25 +2384,35 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     const format = validFormatIds.get(formatId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    const base = {
       creative_manifest: {
-        creative_id: req.creative_id,
         format_id: { agent_url: agentUrl, id: formatId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`,
-          },
-        ],
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
       sandbox: true,
     };
+
+    // Return pricing when account is provided (paid creative agent mode)
+    if (req.account) {
+      const pricing = getCreativePricing(req.account, creative);
+      creative.pricingOptionId = pricing.pricing_option_id;
+      return {
+        ...base,
+        pricing_option_id: pricing.pricing_option_id,
+        vendor_cost: 0, // CPM-priced: cost accrues at serve time
+        currency: pricing.currency,
+        consumption: {},
+        ...(governanceContext && { governance_context: governanceContext }),
+      };
+    }
+
+    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
   if (req.creative_manifest) {
-    const inputAssets = req.creative_manifest.assets || [];
+    const rawAssets = req.creative_manifest.assets;
+    const inputAssetCount = Array.isArray(rawAssets) ? rawAssets.length : Object.keys(rawAssets || {}).length;
 
     if (targetIds.length === 0) {
       // Use the manifest's own format_id if no target specified
@@ -2283,25 +2423,16 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     // Generate output for each target format
     if (targetIds.length > 1) {
       // Multi-format response
-      const results = targetIds.map(fmtId => {
+      const creative_manifests = targetIds.map(fmtId => {
         const format = validFormatIds.get(fmtId.id);
         const { w, h } = getDimensions(format);
-
         return {
-          creative_manifest: {
-            format_id: { agent_url: agentUrl, id: fmtId.id },
-            assets: [
-              {
-                asset_id: 'serving_tag',
-                asset_type: 'html',
-                html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
-              },
-            ],
-          },
+          format_id: { agent_url: agentUrl, id: fmtId.id },
+          assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
 
-      return { results, sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
     }
 
     // Single format response
@@ -2312,20 +2443,43 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
     return {
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
-        assets: [
-          {
-            asset_id: 'serving_tag',
-            asset_type: 'html',
-            html: `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssets.length}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`,
-          },
-        ],
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
+      ...(governanceContext && { governance_context: governanceContext }),
+      sandbox: true,
+    };
+  }
+
+  // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
+  if (targetIds.length > 0) {
+    if (targetIds.length > 1) {
+      const creative_manifests = targetIds.map(fmtId => {
+        const format = validFormatIds.get(fmtId.id);
+        const { w, h } = getDimensions(format);
+        return {
+          format_id: { agent_url: agentUrl, id: fmtId.id },
+          assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
+        };
+      });
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
+    }
+
+    const fmtId = targetIds[0];
+    const format = validFormatIds.get(fmtId.id);
+    const { w, h } = getDimensions(format);
+
+    return {
+      creative_manifest: {
+        format_id: { agent_url: agentUrl, id: fmtId.id },
+        assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
+      },
+      ...(governanceContext && { governance_context: governanceContext }),
       sandbox: true,
     };
   }
 
   return {
-    errors: [{ code: 'INVALID_REQUEST', message: 'Provide either creative_id (library mode) or creative_manifest (transformation mode).' }],
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
   };
 }
 
@@ -2334,9 +2488,9 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext) {
 interface PreviewCreativeArgs {
   account?: unknown;
   request_type?: 'single' | 'batch';
-  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> };
+  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
   creative_id?: string;
-  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }>;
+  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
 }
@@ -2350,7 +2504,7 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Array<Record<string, unknown>> }) {
+  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }) {
     // Resolve format
     let formatId = manifest.format_id;
     let creativeName = 'Preview';
@@ -2366,33 +2520,46 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
 
     const fmtId = formatId?.id || 'display_300x250';
     const format = validFormatIds.get(fmtId);
+    if (!format && formatId?.id) {
+      return null; // Signal invalid format to caller
+    }
     const { w, h } = getDimensions(format);
 
     const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
+      render_id: `preview_${fmtId}`,
+      output_format: outputFormat,
+      role: 'primary',
       dimensions: { width: w, height: h },
     };
 
     if (outputFormat === 'url' || outputFormat === 'both') {
-      // Generate a data URI as the preview URL (the training agent doesn't host files)
-      render.url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
+      render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
     if (outputFormat === 'html' || outputFormat === 'both') {
-      render.html = previewHtml;
+      render.preview_html = previewHtml;
     }
 
     return {
-      format_id: { agent_url: agentUrl, id: fmtId },
+      preview_id: `preview_${fmtId}`,
       renders: [render],
-      expires_at: expiresAt,
+      input: { name: creativeName },
     };
   }
 
   // Batch mode
   if (req.request_type === 'batch' && req.creatives?.length) {
     return {
-      previews: req.creatives.map(buildPreview),
+      response_type: 'batch',
+      results: req.creatives.map(c => ({
+        success: true,
+        creative_id: c.creative_id || 'unknown',
+        response: {
+          previews: [buildPreview(c)],
+          expires_at: expiresAt,
+        },
+      })),
       sandbox: true,
     };
   }
@@ -2405,15 +2572,137 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  const preview = buildPreview(manifest);
+  if (!preview) {
+    const fmtId = manifest.format_id?.id || 'unknown';
+    return {
+      errors: [{ code: 'INVALID_FORMAT', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+    };
+  }
+
   return {
-    previews: [buildPreview(manifest)],
+    response_type: 'single',
+    previews: [preview],
+    expires_at: expiresAt,
     sandbox: true,
   };
 }
 
+// ── report_usage handler ──────────────────────────────────────────
+
+interface ReportUsageArgs extends ToolArgs {
+  idempotency_key?: string;
+  reporting_period: { start: string; end: string };
+  usage: Array<{
+    account: { account_id?: string; brand?: { domain: string }; operator?: string };
+    creative_id?: string;
+    signal_agent_segment_id?: string;
+    pricing_option_id?: string;
+    impressions?: number;
+    media_spend?: number;
+    vendor_cost: number;
+    currency: string;
+  }>;
+}
+
+function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as ReportUsageArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!req.reporting_period || !req.usage?.length) {
+    return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
+  }
+
+  if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {
+    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded.` }] };
+  }
+
+  let accepted = 0;
+  const errors: Array<{ code: string; message: string; field?: string }> = [];
+
+  for (let i = 0; i < req.usage.length; i++) {
+    const record = req.usage[i];
+
+    // Validate required fields
+    if (record.vendor_cost === undefined || record.vendor_cost === null) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'vendor_cost is required.', field: `usage[${i}].vendor_cost` });
+      continue;
+    }
+    if (record.vendor_cost < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'vendor_cost must be non-negative.', field: `usage[${i}].vendor_cost` });
+      continue;
+    }
+    if (!record.currency) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'currency is required.', field: `usage[${i}].currency` });
+      continue;
+    }
+    if (!record.account) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'account is required.', field: `usage[${i}].account` });
+      continue;
+    }
+    if (record.impressions !== undefined && record.impressions < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'impressions must be non-negative.', field: `usage[${i}].impressions` });
+      continue;
+    }
+
+    // Validate creative_id exists if provided
+    if (record.creative_id) {
+      const creative = session.creatives.get(record.creative_id);
+      if (!creative) {
+        errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
+        continue;
+      }
+
+      // Validate pricing_option_id matches if provided
+      if (record.pricing_option_id && creative.pricingOptionId && record.pricing_option_id !== creative.pricingOptionId) {
+        errors.push({
+          code: 'INVALID_PRICING_OPTION',
+          message: `pricing_option_id mismatch: expected ${creative.pricingOptionId}, received ${record.pricing_option_id}`,
+          field: `usage[${i}].pricing_option_id`,
+        });
+        continue;
+      }
+    }
+
+    // Validate signal_agent_segment_id exists if provided
+    if (record.signal_agent_segment_id) {
+      const activation = session.signalActivations.get(record.signal_agent_segment_id);
+      if (!activation) {
+        errors.push({ code: 'NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
+        continue;
+      }
+    }
+
+    // Store the usage record
+    session.usageRecords.push({
+      account: record.account as import('./types.js').AccountRef,
+      creativeId: record.creative_id,
+      signalAgentSegmentId: record.signal_agent_segment_id,
+      pricingOptionId: record.pricing_option_id,
+      impressions: record.impressions,
+      mediaSpend: record.media_spend,
+      vendorCost: record.vendor_cost,
+      currency: record.currency,
+      reportedAt: new Date().toISOString(),
+    });
+    accepted++;
+  }
+
+  // Use 'rejected' instead of 'errors' for partial acceptance to avoid
+  // the MCP server's error detection wrapping the response as an error.
+  // When all records are rejected (accepted === 0), return as errors for
+  // proper error signaling.
+  if (accepted === 0 && errors.length) {
+    return { accepted: 0, errors, sandbox: true };
+  }
+  const result: Record<string, unknown> = { accepted, sandbox: true };
+  if (errors.length) result.rejected = errors;
+  return result;
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
-type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
+type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
@@ -2443,23 +2732,26 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   get_rights: handleGetRights,
   acquire_rights: handleAcquireRights,
   update_rights: handleUpdateRights,
+  creative_approval: handleCreativeApproval,
   create_property_list: handleCreatePropertyList,
+  list_property_lists: handleListPropertyLists,
   get_property_list: handleGetPropertyList,
   update_property_list: handleUpdatePropertyList,
-  list_property_lists: handleListPropertyLists,
   delete_property_list: handleDeletePropertyList,
+  validate_property_delivery: handleValidatePropertyDelivery,
   create_collection_list: handleCreateCollectionList,
   get_collection_list: handleGetCollectionList,
   update_collection_list: handleUpdateCollectionList,
   list_collection_lists: handleListCollectionLists,
   delete_collection_list: handleDeleteCollectionList,
   create_content_standards: handleCreateContentStandards,
+  list_content_standards: handleListContentStandards,
   get_content_standards: handleGetContentStandards,
   update_content_standards: handleUpdateContentStandards,
-  list_content_standards: handleListContentStandards,
   calibrate_content: handleCalibrateContent,
   validate_content_delivery: handleValidateContentDelivery,
   get_adcp_capabilities: handleGetAdcpCapabilities,
+  report_usage: handleReportUsage,
   comply_test_controller: handleComplyTestController,
 };
 
@@ -2467,17 +2759,17 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
  */
-export function executeTrainingAgentTool(
+export async function executeTrainingAgentTool(
   toolName: string,
   args: ToolArgs,
   ctx: TrainingContext,
-): { success: boolean; data?: object; error?: string } {
+): Promise<{ success: boolean; data?: object; error?: string }> {
   const handler = HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
-    const result = handler(args, ctx);
+    const result = await Promise.resolve(handler(args, ctx));
     return { success: true, data: result };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
@@ -2491,7 +2783,7 @@ export function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = sdkTaskStore;
+  const taskStore = getTaskStore();
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {
@@ -2533,7 +2825,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let toolResult: CallToolResult;
     let isError = false;
     try {
-      const result = handler((args as ToolArgs) || {}, ctx);
+      const result = await Promise.resolve(handler((args as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
@@ -2567,7 +2859,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
     // 15 minutes gives developers time to inspect tasks while debugging.
-    // With the rate limiter (60 req/min) this caps live tasks at ~900.
+    // With the rate limiter (300 req/min) this caps live tasks at ~4,500.
     const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
     const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);

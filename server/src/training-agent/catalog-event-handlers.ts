@@ -260,6 +260,7 @@ export const CATALOG_EVENT_TOOLS = [
         creative_id: { type: 'string' },
         metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'roas', 'cpa', 'engagement_rate'] },
         feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'blended'] },
+        feedback: { type: 'object', description: 'Structured feedback object (alternative to flat fields)' },
         idempotency_key: { type: 'string' },
       },
       required: ['media_buy_id', 'measurement_period', 'performance_index'],

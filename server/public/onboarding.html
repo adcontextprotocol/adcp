@@ -29,7 +29,7 @@
     }
     h1 {
       color: var(--color-text-heading);
-      margin-bottom: var(--space-2.5);
+      margin-bottom: var(--space-2_5);
       font-size: var(--text-3xl);
     }
     .subtitle {
@@ -120,7 +120,7 @@
       background: var(--color-bg-card);
       padding: var(--space-3) var(--space-4);
       border-radius: var(--radius-md);
-      margin-bottom: var(--space-2.5);
+      margin-bottom: var(--space-2_5);
     }
     .invitation-item:last-child {
       margin-bottom: 0;
@@ -189,7 +189,7 @@
     }
     .btn {
       width: 100%;
-      padding: var(--space-3.5);
+      padding: var(--space-3_5);
       background: var(--gradient-primary);
       color: white;
       border: none;
@@ -318,7 +318,7 @@
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
       margin-bottom: var(--space-4);
-      padding: var(--space-2.5);
+      padding: var(--space-2_5);
       background: var(--color-gray-100);
       border-radius: var(--radius-md);
     }
@@ -591,7 +591,7 @@
 
           <div class="form-group">
             <label>What type of company are you? *</label>
-            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
               <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="brand" required style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
@@ -646,7 +646,7 @@
 
           <div class="form-group">
             <label>Annual Revenue *</label>
-            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
               <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="under_1m" required style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
@@ -689,7 +689,7 @@
           <!-- Membership Tier Selection -->
           <div class="form-group" id="companyTierGroup">
             <label>Select your membership tier</label>
-            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
               <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div style="flex: 1;">
@@ -723,6 +723,12 @@
               I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
             </label>
           </div>
+          <div class="agreements-checkbox" onclick="document.getElementById('marketingOptIn').click(); event.stopPropagation();">
+            <input type="checkbox" id="marketingOptIn" onclick="event.stopPropagation();">
+            <label for="marketingOptIn" onclick="event.stopPropagation();">
+              Keep me updated on news, events, and workshops (optional)
+            </label>
+          </div>
           <button type="submit" class="btn" id="createBtn">Register Company</button>
         </form>
       </div>
@@ -736,7 +742,7 @@
         </p>
 
         <!-- Individual account limitations notice -->
-        <div style="background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
+        <div id="individualLimitations" style="background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
           <div style="font-weight: var(--font-semibold); color: var(--color-warning-700); margin-bottom: var(--space-2);">Individual Account Limitations</div>
           <ul style="margin: 0; padding-left: var(--space-5); color: var(--color-warning-700); font-size: var(--text-sm);">
             <li>Cannot invite team members or colleagues</li>
@@ -750,7 +756,7 @@
         <!-- Membership Tier Selection -->
         <div class="form-group">
           <label>Select your membership tier</label>
-          <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+          <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
             <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
               <input type="radio" name="individualTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
               <div style="flex: 1;">
@@ -781,6 +787,12 @@
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
           <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
             I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+          </label>
+        </div>
+        <div class="agreements-checkbox" onclick="document.getElementById('marketingOptInIndividual').click(); event.stopPropagation();">
+          <input type="checkbox" id="marketingOptInIndividual" onclick="event.stopPropagation();">
+          <label for="marketingOptInIndividual" onclick="event.stopPropagation();">
+            Keep me updated on news, events, and workshops (optional)
           </label>
         </div>
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
@@ -863,11 +875,14 @@
         const data = await response.json();
         currentUser = data.user;
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const personalMode = urlParams.get('mode') === 'personal';
+
         // If user already has non-personal organizations, redirect to dashboard
+        // Unless ?mode=personal — let them create a personal workspace alongside their company org
         // Users who ONLY have personal workspaces should still see onboarding to join companies
         const hasCompanyOrgs = data.organizations && data.organizations.some(org => !org.is_personal);
-        if (hasCompanyOrgs) {
-          const urlParams = new URLSearchParams(window.location.search);
+        if (hasCompanyOrgs && !personalMode) {
           if (urlParams.get('step') === 'brand') {
             const companyOrg = data.organizations.find(org => !org.is_personal);
             if (companyOrg) {
@@ -882,20 +897,43 @@
           return;
         }
 
+        // In personal mode, check if user already has a personal workspace
+        const hasPersonalWorkspace = data.organizations && data.organizations.some(org => org.is_personal);
+        if (personalMode && hasPersonalWorkspace) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
         // Show welcome message with name if available
         if (currentUser.first_name) {
           document.getElementById('welcomeName').textContent = ', ' + currentUser.first_name;
         }
 
-        // Load pending invitations and joinable organizations
-        await Promise.all([
-          loadInvitations(),
-          loadJoinableOrganizations()
-        ]);
+        // Load pending invitations and joinable organizations (skip in personal mode)
+        if (!personalMode) {
+          await Promise.all([
+            loadInvitations(),
+            loadJoinableOrganizations()
+          ]);
+        }
 
         // Show main content
         document.getElementById('loading').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
+
+        // In personal mode, skip step 1 and go straight to individual form
+        if (personalMode) {
+          selectStep1Option('individual');
+          // Update back link and hide the "joining on behalf of a company?" hint
+          const backLink = document.querySelector('#individualForm .back-link');
+          if (backLink) {
+            backLink.href = '/dashboard';
+            backLink.onclick = null;
+            backLink.textContent = '\u2190 Back to dashboard';
+          }
+          const limitations = document.getElementById('individualLimitations');
+          if (limitations) limitations.style.display = 'none';
+        }
 
       } catch (error) {
         console.error('Init error:', error);
@@ -1312,6 +1350,7 @@
       var revenueTier = document.querySelector('input[name="revenueTier"]:checked');
       var companyTier = document.querySelector('input[name="companyTier"]:checked');
       var tosAgree = document.getElementById('tosAgree').checked;
+      var marketingOptIn = document.getElementById('marketingOptIn').checked;
       var createBtn = document.getElementById('createBtn');
 
       if (!orgName) {
@@ -1344,7 +1383,8 @@
         organization_name: orgName,
         company_type: companyType.value,
         revenue_tier: revenueTier.value,
-        corporate_domain: corporateDomain
+        corporate_domain: corporateDomain,
+        marketing_opt_in: marketingOptIn
       };
       // Only include membership_tier if a paid tier was selected
       if (companyTier && companyTier.value) {
@@ -1376,6 +1416,7 @@
     // Create individual workspace
     async function createIndividualWorkspace() {
       var tosAgree = document.getElementById('tosAgreeIndividual').checked;
+      var marketingOptIn = document.getElementById('marketingOptInIndividual').checked;
       var membershipTier = document.querySelector('input[name="individualTier"]:checked');
       var btn = document.getElementById('individualBtn');
 
@@ -1389,16 +1430,25 @@
 
       try {
         // Create a personal workspace using the user's full name
+        // Strip characters not allowed in org names (e.g. parentheses from Google profiles)
+        var suffix = "'s Workspace";
         var fullName = [currentUser.first_name, currentUser.last_name]
           .filter(Boolean)
-          .join(' ');
+          .join(' ')
+          .normalize('NFC')
+          .replace(/[^\p{L}\p{N} \-_'.\u2018\u2019]/gu, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/^[^\p{L}\p{N}]+/u, '')
+          .substring(0, 100 - suffix.length);
         var workspaceName = fullName
-          ? fullName + "'s Workspace"
+          ? fullName + suffix
           : 'Personal Workspace';
 
         var body = {
           organization_name: workspaceName,
           is_personal: true,
+          marketing_opt_in: marketingOptIn
         };
         // Only include membership_tier if a paid tier was selected
         if (membershipTier && membershipTier.value) {

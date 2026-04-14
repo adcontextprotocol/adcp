@@ -84,7 +84,7 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 - **Synchronous responses**: Sales agents MAY return completed results immediately
 - **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
 - **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
-- **Rejection**: Sales agents MAY reject a media buy in `pending_activation` status when platform setup reveals the order cannot be fulfilled (e.g., inventory sold out, policy issue discovered during ad server setup). Orchestrators MUST treat `rejected` as a terminal state. If the seller does not want to accept the order at create time, it SHOULD fail `create_media_buy` with an error rather than creating a media buy in `rejected` status.
+- **Rejection**: Sales agents MAY reject a media buy in `pending_creatives` or `pending_start` status when platform setup reveals the order cannot be fulfilled (e.g., inventory sold out, policy issue discovered during ad server setup). Orchestrators MUST treat `rejected` as a terminal state. If the seller does not want to accept the order at create time, it SHOULD fail `create_media_buy` with an error rather than creating a media buy in `rejected` status.
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
 
@@ -93,37 +93,38 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 Media buys progress through a defined set of states. Terminal states (`completed`, `rejected`, `canceled`) allow no further transitions.
 
 ```
-create_media_buy ──┬──▶ pending_activation ──▶ active
-                   │                              ▲
-                   └──▶ active                    │ resume
-                        │    ▲                    │
-               (pause)  │    │ (resume)           │
-                        ▼    │                    │
-                       paused ────────────────────┘
+create_media_buy ──┬──▶ pending_creatives ──▶ pending_start ──▶ active
+                   │                                              ▲
+                   └──▶ active                                    │ resume
+                        │    ▲                                    │
+               (pause)  │    │ (resume)                           │
+                        ▼    │                                    │
+                       paused ────────────────────────────────────┘
                         │
           active ───────┼──────────────▶ completed (terminal)
           paused ───────┘                ▲ flight ends / goal met / budget exhausted
 
-pending_activation ──▶ rejected (terminal)  — seller rejects during setup
+pending_creatives ──▶ rejected (terminal)  — seller rejects during setup
+pending_start ──────▶ rejected (terminal)  — seller rejects during setup
 
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
 ```
 
 **Rules:**
 
-- Sales agents MAY return `active` or `pending_activation` from `create_media_buy` (seller's choice based on platform setup time)
-- Sales agents MUST transition media buys from `pending_activation` to `active` when platform setup is complete. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
+- Sales agents MAY return `active`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time)
+- Sales agents MUST transition media buys from `pending_start` to `active` when the flight date arrives. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
 - A successful `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in the response.
 - Sales agents MUST include `revision` in create and update responses. The revision number MUST increment on every state change or update.
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
-- Seller-initiated rejection (from `pending_activation`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
+- Seller-initiated rejection (from `pending_creatives` or `pending_start`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
 - Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
 - Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
 - Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
-- Rejection (`rejected` status) is only valid from `pending_activation`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
+- Rejection (`rejected` status) is only valid from `pending_creatives` or `pending_start`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
 - Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
 
@@ -155,6 +156,10 @@ Rejection is not terminal — the buyer fixes the creative and resubmits via `sy
 4. Approval resets to `pending_review`
 
 **Interaction with `creative_deadline`:** If a creative is rejected after the package's `creative_deadline`, the buyer MAY still resubmit — sellers SHOULD accept resubmissions for rejected creatives even past the deadline, since the buyer is correcting a seller-identified issue. Sellers that cannot accept late resubmissions MUST return `CREATIVE_DEADLINE_EXCEEDED`.
+
+### Verification Tag Enforcement
+
+When a confirmed package's `performance_standards` includes any entry with a `vendor`, creatives assigned to that package MUST include at least one URL asset with `url_type: "tracker_script"` or `url_type: "tracker_pixel"` corresponding to each specified vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED` and a `details` message identifying the missing vendor tag. Buyer agents SHOULD proactively include vendor tags based on the agreed `measurement_terms` before submitting creatives.
 
 ## Tasks
 
@@ -298,7 +303,8 @@ Retrieve operational media buy state, including package status, creative approva
 
 | Status | Expected `valid_actions` |
 |--------|------------------------|
-| `pending_activation` | `cancel`, `sync_creatives` |
+| `pending_creatives` | `cancel`, `sync_creatives` |
+| `pending_start` | `cancel`, `sync_creatives` |
 | `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `completed` / `rejected` / `canceled` | *(empty array)* |
@@ -404,6 +410,7 @@ Common error codes:
 - `CREATIVE_DEADLINE_EXCEEDED`: Creative change submitted after the package's `creative_deadline`
 - `INVALID_STATE`: Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy)
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
+- `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_REQUIRED`: Authentication is required to access this resource
 

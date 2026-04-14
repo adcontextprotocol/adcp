@@ -201,7 +201,7 @@ export class PublisherTracker {
 
     // Build map of publisher domain -> expected agents
     for (const agent of agents) {
-      if (agent.type !== "sales") continue;
+      if (agent.type !== "buying") continue;
 
       // Extract domain from agent URL
       const domain = this.extractDomain(agent.url);

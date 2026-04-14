@@ -76,7 +76,7 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
       properties: {
         type: {
           type: 'string',
-          enum: ['creative', 'signals', 'sales', 'governance', 'si'],
+          enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
           description: 'Filter by agent type',
         },
       },

@@ -1,7 +1,8 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { Client, Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 import { DatabaseConfig } from "../config.js";
 
 let pool: Pool | null = null;
+let dbConfig: DatabaseConfig | null = null;
 
 /** Callback invoked on pool-level errors (set via onPoolError). */
 let poolErrorCallback: ((err: Error) => void) | null = null;
@@ -22,6 +23,8 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     return pool;
   }
 
+  dbConfig = config;
+
   pool = new Pool({
     connectionString: config.connectionString,
     host: config.host,
@@ -30,14 +33,14 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
+    // PgBouncer handles connection pooling on the server side, but we still
+    // keep connections alive in the local pool to avoid connection churn.
+    // Previously idleTimeoutMillis was 1ms which forced a new PgBouncer
+    // connection for every query — hammering PgBouncer under load.
     max: config.maxPoolSize || 10,
-    idleTimeoutMillis: config.idleTimeoutMillis || 10000,
-    connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
-    // Kill queries that run longer than 30s to prevent connection hoarding
-    options: '-c statement_timeout=30000',
-    // Detect dead connections killed by managed Postgres providers (Neon, Supabase)
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
+    idleTimeoutMillis: config.idleTimeoutMillis ?? 30000,
+    connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
+    allowExitOnIdle: true,
   });
 
   pool.on("error", (err) => {
@@ -77,6 +80,34 @@ export async function query<T extends QueryResultRow = any>(
 export async function getClient(): Promise<PoolClient> {
   const pool = getPool();
   return pool.connect();
+}
+
+/**
+ * Perform a health check using a dedicated connection (not from the pool).
+ * This ensures health checks succeed even when the pool is fully occupied.
+ */
+export async function healthCheck(timeoutMs = 5000): Promise<void> {
+  if (!dbConfig) {
+    throw new Error("Database not initialized. Call initializeDatabase() first.");
+  }
+
+  const client = new Client({
+    connectionString: dbConfig.connectionString,
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    ssl: dbConfig.ssl,
+    connectionTimeoutMillis: timeoutMs,
+  });
+
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+  } finally {
+    await client.end().catch(() => {});
+  }
 }
 
 /**

@@ -7,7 +7,7 @@ import { query, getPool } from '../db/client.js';
 import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { workos } from '../auth/workos-client.js';
-import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
+import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 
 const logger = createLogger('account-linking');
 
@@ -19,7 +19,7 @@ const sendVerificationLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('link-email-send:'),
+  store: new CachedPostgresStore('link-email-send:'),
   keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -30,7 +30,7 @@ const verifyViewLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('verify-email-view:'),
+  store: new CachedPostgresStore('verify-email-view:'),
   keyGenerator: (req) => req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -41,7 +41,7 @@ const verifyExecuteLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('verify-email-exec:'),
+  store: new CachedPostgresStore('verify-email-exec:'),
   keyGenerator: (req) => req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -254,7 +254,7 @@ export function createAccountLinkingRouter(): Router {
         await client.query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
-           ON CONFLICT (workos_user_id, email) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [userId, oldPrimary]
         );
 
@@ -410,11 +410,12 @@ export function handleEmailLinkVerification(app: {
           );
         }
 
-        // Record the email alias
+        // Record the email alias (use bare ON CONFLICT to handle both the
+        // composite UNIQUE(workos_user_id, email) and the LOWER(email) index)
         await query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
-           ON CONFLICT (workos_user_id, email) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [tokenRecord.primary_workos_user_id, tokenRecord.target_email]
         );
 
@@ -448,9 +449,9 @@ export function handleEmailLinkVerification(app: {
       );
 
       return renderVerifyPage(res, { success: true, message });
-    } catch (error) {
+    } catch (error: any) {
       await client.query('ROLLBACK').catch(() => {});
-      logger.error({ error }, 'Email link verification failed');
+      logger.error({ error, errorMessage: error?.message, errorCode: error?.code }, 'Email link verification failed');
       return renderVerifyPage(res, { success: false, message: 'Something went wrong during verification. Please try again or contact support.' });
     } finally {
       client.release();

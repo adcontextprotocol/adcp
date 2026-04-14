@@ -276,6 +276,87 @@ describe('AddieRouter.quickMatch', () => {
     });
   });
 
+  describe('event attendee quick-match', () => {
+    it('should route "who\'s coming to the amsterdam meetup" to events for non-admin', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: "who's coming to the amsterdam meetup tonight" }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['events']);
+      }
+    });
+
+    it('should route "who\'s coming" to events + admin for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: "who's coming to the amsterdam meetup tonight", isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['events', 'admin']);
+      }
+    });
+
+    it('should route "who is registered for the summit" to events', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who is registered for the summit?' }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "attendee list for the NYC meetup" to events', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'attendee list for the NYC meetup' }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "who will be at the meetup" to events', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who will be at the meetup tomorrow?' }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "who is going to Cannes" to events', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who is going to Cannes?' }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should match Slack smart quotes in "who\u2019s coming to"', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: "who\u2019s coming to the amsterdam meetup tonight" }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['events']);
+      }
+    });
+
+    it('should NOT match "who is going to fix this bug"', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who is going to fix this bug?' }),
+      );
+      expect(plan).toBeNull();
+    });
+
+    it('should NOT match "who is going to handle the deployment"', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who is going to handle the deployment?' }),
+      );
+      expect(plan).toBeNull();
+    });
+  });
+
   describe('substantive messages fall through to LLM router', () => {
     it('should return null for protocol questions', () => {
       const plan = router.quickMatch(

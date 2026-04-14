@@ -38,6 +38,7 @@ import {
   notifyMemberSeatChanged,
 } from "../slack/org-group-dm.js";
 import { getOrgAdminEmails } from "../utils/org-admins.js";
+import { emailPrefsDb } from "../db/email-preferences-db.js";
 
 const logger = createLogger("organization-routes");
 
@@ -1038,7 +1039,7 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain, marketing_opt_in } = req.body;
 
       // Limit how many organizations a single user can own
       const pool = getPool();
@@ -1052,6 +1053,23 @@ export function createOrganizationsRouter(): Router {
           error: 'Organization limit reached',
           message: 'You have reached the maximum number of organizations. Please contact support if you need more.',
         });
+      }
+
+      // Enforce one personal workspace per user
+      if (is_personal) {
+        const existingPersonal = await pool.query(
+          `SELECT 1 FROM organization_memberships om
+           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+           WHERE om.workos_user_id = $1 AND o.is_personal = true
+           LIMIT 1`,
+          [user.id],
+        );
+        if (existingPersonal.rows.length > 0) {
+          return res.status(409).json({
+            error: 'Personal workspace exists',
+            message: 'You already have a personal workspace.',
+          });
+        }
       }
 
       // Validate required fields
@@ -1175,7 +1193,6 @@ export function createOrganizationsRouter(): Router {
 
             if (!isAdoptable) {
               await client.query('ROLLBACK');
-              client.release();
               return res.status(409).json({
                 error: 'Organization exists',
                 message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
@@ -1253,7 +1270,19 @@ export function createOrganizationsRouter(): Router {
             });
 
             await client.query('COMMIT');
-            client.release();
+
+            // Record marketing communications opt-in choice (best-effort, don't block signup)
+            if (typeof marketing_opt_in === 'boolean') {
+              try {
+                await emailPrefsDb.setMarketingOptIn({
+                  workos_user_id: user.id,
+                  email: user.email,
+                  optIn: marketing_opt_in,
+                });
+              } catch (err) {
+                logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
+              }
+            }
 
             return res.status(200).json({
               id: existingOrgId,
@@ -1263,11 +1292,11 @@ export function createOrganizationsRouter(): Router {
           }
 
           await client.query('ROLLBACK');
-          client.release();
         } catch (adoptError) {
           await client.query('ROLLBACK').catch(() => {});
-          client.release();
           throw adoptError;
+        } finally {
+          client.release();
         }
       }
 
@@ -1406,6 +1435,19 @@ export function createOrganizationsRouter(): Router {
           user_agent: req.headers['user-agent'] || 'unknown',
           workos_organization_id: workosOrgId,
         });
+      }
+
+      // Record marketing communications opt-in choice (best-effort, don't block signup)
+      if (typeof marketing_opt_in === 'boolean') {
+        try {
+          await emailPrefsDb.setMarketingOptIn({
+            workos_user_id: user.id,
+            email: user.email,
+            optIn: marketing_opt_in,
+          });
+        } catch (err) {
+          logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
+        }
       }
 
       res.json({
@@ -2116,29 +2158,51 @@ export function createOrganizationsRouter(): Router {
       const slackDb = new SlackDatabase();
       const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
-      // Bulk-fetch seat types from local DB
-      const seatTypesResult = await getPool().query<{ workos_user_id: string; seat_type: string }>(
-        'SELECT workos_user_id, seat_type FROM organization_memberships WHERE workos_organization_id = $1',
-        [orgId]
-      );
-      const seatTypeMap = new Map(seatTypesResult.rows.map(r => [r.workos_user_id, r.seat_type]));
+      // Bulk-fetch local membership data and user-set names in parallel
+      const [localMembersResult, localUsersResult] = await Promise.all([
+        getPool().query<{
+          workos_user_id: string;
+          seat_type: string;
+          first_name: string | null;
+          last_name: string | null;
+          role: string | null;
+        }>(
+          'SELECT workos_user_id, seat_type, first_name, last_name, role FROM organization_memberships WHERE workos_organization_id = $1',
+          [orgId]
+        ),
+        getPool().query<{
+          workos_user_id: string;
+          first_name: string | null;
+          last_name: string | null;
+        }>(
+          'SELECT workos_user_id, first_name, last_name FROM users WHERE workos_user_id = ANY($1)',
+          [allMemberships.map(m => m.userId)]
+        ),
+      ]);
+      const localMemberMap = new Map(localMembersResult.rows.map(r => [r.workos_user_id, r]));
+      const localUserMap = new Map(localUsersResult.rows.map(r => [r.workos_user_id, r]));
 
       // Fetch user details for each membership
       const members = await Promise.all(
         allMemberships.map(async (membership) => {
+          const localMember = localMemberMap.get(membership.userId);
+          const localUser = localUserMap.get(membership.userId);
           try {
             const memberUser = await workos!.userManagement.getUser(membership.userId);
+            // Prefer local user names > local membership names > WorkOS names
+            const firstName = localUser?.first_name ?? localMember?.first_name ?? memberUser.firstName ?? null;
+            const lastName = localUser?.last_name ?? localMember?.last_name ?? memberUser.lastName ?? null;
             return {
               id: membership.id,
               user_id: membership.userId,
               email: memberUser.email,
-              first_name: memberUser.firstName || null,
-              last_name: memberUser.lastName || null,
-              role: membership.role?.slug || 'member',
+              first_name: firstName,
+              last_name: lastName,
+              role: membership.role?.slug || localMember?.role || 'member',
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: mappedWorkosUserIds.has(membership.userId),
-              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
+              seat_type: localMember?.seat_type ?? 'community_only',
             };
           } catch (error) {
             // User might have been deleted
@@ -2147,13 +2211,13 @@ export function createOrganizationsRouter(): Router {
               id: membership.id,
               user_id: membership.userId,
               email: 'Unknown',
-              first_name: null,
-              last_name: null,
-              role: membership.role?.slug || 'member',
+              first_name: localUser?.first_name ?? localMember?.first_name ?? null,
+              last_name: localUser?.last_name ?? localMember?.last_name ?? null,
+              role: membership.role?.slug || localMember?.role || 'member',
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: false,
-              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
+              seat_type: localMember?.seat_type ?? 'community_only',
             };
           }
         })
@@ -2319,22 +2383,23 @@ export function createOrganizationsRouter(): Router {
         },
       });
     } catch (error: any) {
-      logger.error({ err: error }, 'Send invitation error');
-
-      // Check for specific WorkOS errors
+      // Check for specific WorkOS errors — these are expected race conditions, not server errors
       if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: user already a member');
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
       if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Send invitation skipped: invitation already exists');
         return res.status(400).json({
           error: 'Invitation already exists',
           message: 'An invitation has already been sent to this email address',
         });
       }
 
+      logger.error({ err: error }, 'Send invitation error');
       res.status(500).json({
         error: 'Failed to send invitation',
         message: 'An internal error occurred while sending the invitation.',
@@ -2491,7 +2556,22 @@ export function createOrganizationsRouter(): Router {
           expires_at: newInvitation.expiresAt,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'organization_membership_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: user already a member');
+        return res.status(400).json({
+          error: 'User already a member',
+          message: 'This user is already a member of the organization',
+        });
+      }
+      if (error?.code === 'invitation_already_exists') {
+        logger.warn({ err: error }, 'Resend invitation skipped: invitation already exists');
+        return res.status(400).json({
+          error: 'Invitation already exists',
+          message: 'An invitation has already been sent to this email address',
+        });
+      }
+
       logger.error({ err: error }, 'Resend invitation error');
       res.status(500).json({
         error: 'Failed to resend invitation',

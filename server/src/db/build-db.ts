@@ -20,10 +20,29 @@ export interface BuildContent {
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: BuildEditEntry[];
+  coverImageUrl?: string;
+  dateFlavor?: string;
   generatedAt: string;
+  /** Section keys to hide from rendering */
+  hiddenSections?: string[];
+  /** Admin-added custom sections */
+  customSections?: import('../newsletters/config.js').CustomSection[];
+  /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
+  pastedContent?: string;
+  /** Available content to cherry-pick from, keyed by section */
+  candidatePool?: {
+    decisions?: BuildDecision[];
+    whatShipped?: BuildRelease[];
+    helpNeeded?: BuildHelpItem[];
+    contributorSpotlight?: BuildContributor[];
+    events?: BuildEvent[];
+  };
+  /** IDs of items the editor dismissed (won't reappear on regenerate) */
+  dismissedIds?: string[];
 }
 
 export interface BuildDecision {
+  id: string;
   workingGroup: string;
   workingGroupId: string;
   title: string;
@@ -34,6 +53,7 @@ export interface BuildDecision {
 }
 
 export interface BuildRelease {
+  id: string;
   repo: string;
   version: string;
   releaseDate: string;
@@ -51,6 +71,7 @@ export interface BuildDeepDive {
 }
 
 export interface BuildHelpItem {
+  id: string;
   title: string;
   url: string;
   source: string;
@@ -59,10 +80,24 @@ export interface BuildHelpItem {
 }
 
 export interface BuildContributor {
+  id: string;
   name: string;
   handle?: string;
   contribution: string;
   url?: string;
+}
+
+export interface BuildEvent {
+  id: string;
+  title: string;
+  slug: string;
+  startTime: string;
+  endTime?: string;
+  status: 'upcoming' | 'completed';
+  hasRecap: boolean;
+  recapExcerpt?: string;
+  recapVideoUrl?: string;
+  previouslyIncluded?: boolean;
 }
 
 export interface BuildEditEntry {
@@ -72,6 +107,12 @@ export interface BuildEditEntry {
 }
 
 // ─── Edition Record ────────────────────────────────────────────────────
+
+/** Columns to SELECT for BuildRecord — excludes cover_image_data (BYTEA). */
+const BUILD_COLUMNS = `id, edition_date, status, content, approved_by, approved_at,
+  review_channel_id, review_message_ts, perspective_id, created_at, sent_at,
+  send_stats, cover_prompt_used,
+  (cover_image_data IS NOT NULL) AS has_cover_image`;
 
 export interface BuildRecord {
   id: number;
@@ -86,6 +127,7 @@ export interface BuildRecord {
   created_at: Date;
   sent_at: Date | null;
   send_stats: unknown | null;
+  has_cover_image: boolean;
 }
 
 // ─── Queries ───────────────────────────────────────────────────────────
@@ -95,7 +137,7 @@ export async function createBuildEdition(editionDate: string, content: BuildCont
     `INSERT INTO build_editions (edition_date, content)
      VALUES ($1, $2)
      ON CONFLICT (edition_date) DO NOTHING
-     RETURNING *`,
+     RETURNING ${BUILD_COLUMNS}`,
     [editionDate, JSON.stringify(content)],
   );
   return result.rows[0] || null;
@@ -103,7 +145,7 @@ export async function createBuildEdition(editionDate: string, content: BuildCont
 
 export async function getBuildByDate(editionDate: string): Promise<BuildRecord | null> {
   const result = await query<BuildRecord>(
-    `SELECT * FROM build_editions WHERE edition_date = $1`,
+    `SELECT ${BUILD_COLUMNS} FROM build_editions WHERE edition_date = $1`,
     [editionDate],
   );
   return result.rows[0] || null;
@@ -111,7 +153,7 @@ export async function getBuildByDate(editionDate: string): Promise<BuildRecord |
 
 export async function getCurrentBuildEdition(): Promise<BuildRecord | null> {
   const result = await query<BuildRecord>(
-    `SELECT * FROM build_editions
+    `SELECT ${BUILD_COLUMNS} FROM build_editions
      WHERE created_at > NOW() - INTERVAL '21 days'
      ORDER BY edition_date DESC
      LIMIT 1`,
@@ -124,7 +166,7 @@ export async function approveBuildEdition(id: number, approvedBy: string): Promi
     `UPDATE build_editions
      SET status = 'approved', approved_by = $2, approved_at = NOW()
      WHERE id = $1 AND status = 'draft'
-     RETURNING *`,
+     RETURNING ${BUILD_COLUMNS}`,
     [id, approvedBy],
   );
   return result.rows[0] || null;
@@ -135,7 +177,7 @@ export async function updateBuildContent(id: number, content: BuildContent): Pro
     `UPDATE build_editions
      SET content = $2
      WHERE id = $1 AND status = 'draft'
-     RETURNING *`,
+     RETURNING ${BUILD_COLUMNS}`,
     [id, JSON.stringify(content)],
   );
   return result.rows[0] || null;
@@ -161,7 +203,7 @@ export async function setBuildReviewMessage(id: number, channelId: string, messa
 
 export async function getBuildByReviewMessage(channelId: string, messageTs: string): Promise<BuildRecord | null> {
   const result = await query<BuildRecord>(
-    `SELECT * FROM build_editions WHERE review_channel_id = $1 AND review_message_ts = $2`,
+    `SELECT ${BUILD_COLUMNS} FROM build_editions WHERE review_channel_id = $1 AND review_message_ts = $2`,
     [channelId, messageTs],
   );
   return result.rows[0] || null;
@@ -176,7 +218,7 @@ export async function setBuildPerspectiveId(id: number, perspectiveId: string): 
 
 export async function getRecentBuildEditions(limit: number = 10): Promise<BuildRecord[]> {
   const result = await query<BuildRecord>(
-    `SELECT * FROM build_editions WHERE status = 'sent' ORDER BY edition_date DESC LIMIT $1`,
+    `SELECT ${BUILD_COLUMNS} FROM build_editions WHERE status = 'sent' ORDER BY edition_date DESC LIMIT $1`,
     [limit],
   );
   return result.rows;
@@ -223,4 +265,47 @@ export async function getBuildRecipients(): Promise<Array<{
      ORDER BY u.workos_user_id, om.created_at ASC`,
   );
   return result.rows;
+}
+
+// ─── Cover Image ──────────────────────────────────────────────────────
+
+const MAX_COVER_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+export async function setBuildCoverImage(
+  editionId: number,
+  imageData: Buffer,
+  promptUsed: string,
+): Promise<boolean> {
+  if (imageData.length > MAX_COVER_IMAGE_SIZE) {
+    throw new Error(`Cover image too large: ${(imageData.length / 1024 / 1024).toFixed(1)} MB`);
+  }
+  const result = await query(
+    `UPDATE build_editions
+     SET cover_image_data = $2, cover_prompt_used = $3
+     WHERE id = $1 AND status = 'draft'`,
+    [editionId, imageData, promptUsed],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function getBuildCoverImageWithPrompt(
+  editionDate: string,
+): Promise<{ imageData: Buffer; promptUsed: string } | null> {
+  const result = await query<{ cover_image_data: Buffer; cover_prompt_used: string | null }>(
+    `SELECT cover_image_data, cover_prompt_used FROM build_editions
+     WHERE edition_date = $1 AND cover_image_data IS NOT NULL`,
+    [editionDate],
+  );
+  if (!result.rows[0]) return null;
+  return {
+    imageData: result.rows[0].cover_image_data,
+    promptUsed: result.rows[0].cover_prompt_used || 'Unknown',
+  };
+}
+
+export async function getBuildCoverImage(
+  editionDate: string,
+): Promise<Buffer | null> {
+  const result = await getBuildCoverImageWithPrompt(editionDate);
+  return result?.imageData || null;
 }

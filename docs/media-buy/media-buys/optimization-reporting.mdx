@@ -243,6 +243,92 @@ If reporting data is not available within the product's `expected_delay_minutes`
 
 This prevents buyers from incorrectly assuming a missed notification.
 
+#### Broadcast Measurement Windows
+
+Broadcast TV measurement works differently from digital. Measurement data is not delayed — it **matures over time** as time-shifted (DVR) viewing accumulates. Sellers declare `measurement_windows` on their products to describe this maturation:
+
+| Window | Accumulation | Typical availability |
+|--------|-------------|---------------------|
+| `live` | Real-time viewers only | ~1 day after broadcast |
+| `c3` | Live + 3 days DVR playback | ~4 days after broadcast |
+| `c7` | Live + 7 days DVR playback | ~15 days after broadcast |
+
+Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against. Note that the measurement vendor (VideoAmp, Nielsen, Comscore) adds processing time on top of the accumulation period — C7 raw data accumulates over 7 days, but vendor-certified C7 numbers may arrive ~15 days after broadcast.
+
+Broadcast sellers set `expected_delay_minutes` on their products to reflect the longest measurement pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines via `expected_availability_days`.
+
+Delivery data for products with measurement windows includes three fields on each package:
+
+- **`is_final`** — `true` when the seller considers this data closed for the reporting period. `false` when the data will be updated (wider window, more processing). Absent when the seller doesn't distinguish provisional from final.
+- **`measurement_window`** — which window this data represents (e.g., `"c3"`). References a `window_id` from the product's `measurement_windows`. Absent for standard digital reporting without windowed maturation.
+- **`supersedes_window`** — which previous window this report replaces (e.g., `"live"` when C3 data arrives). Absent on the first report for a period.
+
+When the seller sends updated data for the same period with a wider window, they use `notification_type: "window_update"`. This is distinct from `adjusted` (a correction within the same window).
+
+**Measurement window lifecycle example** — a broadcast spot airing March 1:
+
+**March 2** — Live data arrives (notification_type: `scheduled`):
+```json
+{
+  "notification_type": "scheduled",
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_nova_q4",
+    "by_package": [{
+      "package_id": "primetime_30s",
+      "impressions": 980000,
+      "spend": 24500,
+      "is_final": false,
+      "measurement_window": "live"
+    }]
+  }]
+}
+```
+
+**March 5** — C3 data supersedes live (notification_type: `window_update`):
+```json
+{
+  "notification_type": "window_update",
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_nova_q4",
+    "by_package": [{
+      "package_id": "primetime_30s",
+      "impressions": 1050000,
+      "spend": 26250,
+      "is_final": false,
+      "measurement_window": "c3",
+      "supersedes_window": "live"
+    }]
+  }]
+}
+```
+
+**March 16** — C7 data arrives, final for this period (notification_type: `window_update`):
+```json
+{
+  "notification_type": "window_update",
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_nova_q4",
+    "by_package": [{
+      "package_id": "primetime_30s",
+      "impressions": 1120000,
+      "spend": 28000,
+      "is_final": true,
+      "measurement_window": "c7",
+      "supersedes_window": "c3"
+    }]
+  }]
+}
+```
+
+The buyer replaces stored data each time a `window_update` arrives. When `is_final: true`, this is the number to reconcile against the guarantee.
+
+This pattern also applies beyond broadcast:
+- **Podcast**: 7-day downloads → 30-day downloads
+- **Influencer/YouTube**: 24-hour views → 7-day views → 30-day views
+- **Digital with IVT filtering**: raw impressions → GIVT filtered → SIVT filtered
+
+For broadcast reconciliation timing and the `measurement_window` field on billing measurement terms, see [Accountability](/docs/media-buy/advanced-topics/accountability).
+
 #### Webhook Aggregation
 
 Publishers SHOULD aggregate webhooks to reduce call volume when multiple media buys share:

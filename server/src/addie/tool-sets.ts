@@ -253,6 +253,17 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     requiresPrecision: true,
   },
 
+  events: {
+    name: 'events',
+    description: 'Browse upcoming events, check event registrations, get event details, see who is coming, and register interest in events — available to all members',
+    tools: [
+      'list_events',
+      'get_event_details',
+      'list_event_attendees',
+      'register_event_interest',
+    ],
+  },
+
   meetings: {
     name: 'meetings',
     description: 'Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links',
@@ -285,8 +296,14 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
+      // Event management (admin)
+      'create_event',
+      'update_event',
+      'manage_event_registrations',
+      'check_person_event_status',
+      'invite_to_event',
       'list_pending_invoices',
       'get_account',
       'add_prospect',

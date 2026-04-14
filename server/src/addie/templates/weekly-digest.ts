@@ -2,10 +2,85 @@ import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailReci
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
 import { pickNudge } from '../services/digest-nudge.js';
+import DOMPurify from 'isomorphic-dompurify';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+
+function isHtml(text: string): boolean {
+  return /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s/]/i.test(text);
+}
+
+/** Add inline styles to TipTap HTML for email client rendering. */
+function htmlToEmailHtml(html: string): string {
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+  });
+  return clean
+    .replace(/<a /g, '<a style="color: #2563eb; text-decoration: underline;" ')
+    .replace(/<ul>/g, '<ul style="margin: 8px 0; padding-left: 20px;">')
+    .replace(/<ol>/g, '<ol style="margin: 8px 0; padding-left: 20px;">')
+    .replace(/<li>/g, '<li style="margin-bottom: 4px;">')
+    .replace(/<p>/g, '<p style="margin: 0 0 8px 0;">');
+}
+
+/** Convert TipTap HTML to Slack mrkdwn using DOM traversal. */
+function htmlToSlackMrkdwn(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToSlackMrkdwn(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToSlackMrkdwn(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToSlackMrkdwn).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'strong': case 'b': return `*${inner}*`;
+    case 'em': case 'i': return `_${inner}_`;
+    case 'a': { const href = el.getAttribute('href'); return href ? `<${href}|${inner}>` : inner; }
+    case 'li': return `• ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
+}
+
+/** Convert TipTap HTML to plain text using DOM traversal. */
+function htmlToPlainText(html: string): string {
+  const dom = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'a', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as DocumentFragment;
+  return domToPlainText(dom).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSDOM node from DOMPurify RETURN_DOM
+function domToPlainText(node: any): string {
+  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType !== 1) return '';
+  const el = node;
+  const tag = el.tagName?.toLowerCase();
+  const inner = Array.from(el.childNodes).map(domToPlainText).join('');
+  switch (tag) {
+    case 'br': return '\n';
+    case 'p': return inner + '\n\n';
+    case 'a': { const href = el.getAttribute('href'); return href && href !== inner ? `${inner} (${href})` : inner; }
+    case 'li': return `- ${inner}\n`;
+    case 'ul': case 'ol': return inner;
+    default: return inner;
+  }
+}
 
 /**
  * Wrap a URL for email click tracking. Returns raw URL for web/preview renders.
@@ -120,8 +195,16 @@ export function renderDigestEmail(
     </p>
 
     <!-- Header -->
+    ${content.coverImageUrl ? `
+    <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
+      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(editionDate))}" style="width: 100%; height: auto; display: block;">
+    </div>
     <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
     <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    ` : `
+    <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+    `}
 
     ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
 
@@ -147,7 +230,11 @@ export function renderDigestEmail(
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
-      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${slackLinksToHtml(content.editorsNote)}</p>
+      <div style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${
+        isHtml(content.editorsNote)
+          ? htmlToEmailHtml(content.editorsNote)
+          : slackLinksToHtml(content.editorsNote).replace(/\n/g, '<br>')
+      }</div>
     </div>
     ` : ''}
 
@@ -400,7 +487,12 @@ function renderDigestText(
   lines.push(content.openingTake, '');
 
   if (content.editorsNote) {
-    lines.push(slackLinksToPlainText(content.editorsNote), '');
+    lines.push(
+      isHtml(content.editorsNote)
+        ? htmlToPlainText(content.editorsNote)
+        : slackLinksToPlainText(content.editorsNote),
+      '',
+    );
   }
 
   if (content.newMembers.length > 0) {
@@ -499,6 +591,15 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     text: { type: 'plain_text', text: `The Prompt — ${formatDate(editionDate)}` },
   });
 
+  // Cover image
+  if (content.coverImageUrl) {
+    blocks.push({
+      type: 'image',
+      image_url: content.coverImageUrl,
+      alt_text: `The Prompt cover — ${formatDate(editionDate)}`,
+    });
+  }
+
   // Opening take
   blocks.push({
     type: 'section',
@@ -507,9 +608,12 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
 
   // Editor's note
   if (content.editorsNote) {
+    const mrkdwn = isHtml(content.editorsNote)
+      ? htmlToSlackMrkdwn(content.editorsNote)
+      : escapeSlackMrkdwnPreserveLinks(content.editorsNote);
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: escapeSlackMrkdwnPreserveLinks(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+      text: { type: 'mrkdwn', text: mrkdwn.split('\n').map((line) => `> ${line}`).join('\n') },
     });
   }
 

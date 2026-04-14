@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { PostgresStore } from './pg-rate-limit-store.js';
+import { CachedPostgresStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -37,7 +37,7 @@ export const invitationRateLimiter = rateLimit({
   max: 10, // 10 requests per window
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('invite:'),
+  store: new CachedPostgresStore('invite:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -67,7 +67,7 @@ export const orgCreationRateLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('org:'),
+  store: new CachedPostgresStore('org:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -94,7 +94,7 @@ export const brandCreationRateLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('brand:'),
+  store: new CachedPostgresStore('brand:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -115,13 +115,18 @@ export const brandCreationRateLimiter = rateLimit({
 /**
  * Rate limiter for notification endpoints (polled from nav bell)
  * Limits: 120 requests per minute per user (allows 30s polling across multiple tabs)
+ *
+ * Uses CachedPostgresStore: increments are served from memory (no DB hit per
+ * request) and flushed to Postgres every 15s so counters stay synced across
+ * pods. This replaced a direct PostgresStore that was saturating the
+ * connection pool on every poll request.
  */
 export const notificationRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('notif:'),
+  store: new CachedPostgresStore('notif:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -149,7 +154,7 @@ export const storyboardEvalRateLimiter = rateLimit({
   skipFailedRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('storyboard:'),
+  store: new CachedPostgresStore('storyboard:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -168,6 +173,34 @@ export const storyboardEvalRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for step-by-step storyboard execution.
+ * More generous than full evaluation (30/hour vs 5/hour) since each step is one MCP call.
+ */
+export const storyboardStepRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,
+  skipFailedRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('storyboard-step:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for storyboard step execution');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Step execution limit exceeded (30 per hour). Please try again later.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */
@@ -176,7 +209,7 @@ export const bulkResolveRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('resolve:'),
+  store: new CachedPostgresStore('resolve:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -193,6 +226,56 @@ export const bulkResolveRateLimiter = rateLimit({
   },
 });
 
+export const emailPrefsRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('emailprefs:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for email preferences');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for admin content write operations (delete, status change)
+ * Limits: 30 writes per 15 minutes per user
+ */
+export const adminContentWriteRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('admin-content:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for admin content writes');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Admin content write rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil(15 * 60),
+    });
+  },
+});
+
 /**
  * Rate limiter for logo uploads
  * Limits: 10 uploads per hour per user
@@ -202,7 +285,7 @@ export const logoUploadRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new PostgresStore('logo:'),
+  store: new CachedPostgresStore('logo:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {

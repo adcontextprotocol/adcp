@@ -79,7 +79,7 @@
     .section-badge {
       background: var(--color-error-100);
       color: var(--color-error-700);
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
       font-weight: var(--font-semibold);
@@ -133,12 +133,12 @@
     .user-list li {
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
-      padding: var(--space-0.5) 0;
+      padding: var(--space-0_5) 0;
     }
     .claimed-tag {
       display: inline-block;
       margin-left: var(--space-1);
-      padding: var(--space-0.5) var(--space-1);
+      padding: var(--space-0_5) var(--space-1);
       background: var(--color-warning-100);
       color: var(--color-warning-700);
       border-radius: var(--radius-sm);
@@ -151,7 +151,7 @@
     .personal-tag {
       display: inline-block;
       margin-left: var(--space-1);
-      padding: var(--space-0.5) var(--space-1);
+      padding: var(--space-0_5) var(--space-1);
       background: var(--color-gray-100);
       color: var(--color-text-muted);
       border-radius: var(--radius-sm);
@@ -160,7 +160,7 @@
     .user-count {
       background: var(--color-gray-100);
       color: var(--color-text-secondary);
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
       font-weight: var(--font-semibold);
@@ -168,7 +168,7 @@
 
     /* Action Buttons */
     .btn {
-      padding: var(--space-1.5) var(--space-3);
+      padding: var(--space-1_5) var(--space-3);
       border: none;
       border-radius: var(--radius-md);
       font-size: var(--text-xs);
@@ -230,7 +230,7 @@
     /* Status Badges */
     .status-badge {
       display: inline-block;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
       font-weight: var(--font-medium);
@@ -247,7 +247,7 @@
     /* Signal badges for Review Relationships */
     .signal-badge {
       display: inline-block;
-      padding: var(--space-0.5) var(--space-2);
+      padding: var(--space-0_5) var(--space-2);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
       font-weight: var(--font-semibold);
@@ -411,7 +411,7 @@
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
                   Backfill Slack User Links
-                  <span id="backfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
+                  <span id="backfillCount" style="margin-left: var(--space-2); padding: var(--space-0_5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
                 </div>
                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Link unmapped Slack users to existing organizations based on their email domain</div>
               </div>
@@ -427,7 +427,7 @@
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">
                   Auto-Add Domain Users as Members
-                  <span id="memberBackfillCount" style="margin-left: var(--space-2); padding: var(--space-0.5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
+                  <span id="memberBackfillCount" style="margin-left: var(--space-2); padding: var(--space-0_5) var(--space-2); background: var(--color-gray-100); color: var(--color-text-secondary); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-normal);">loading...</span>
                 </div>
                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Add users with verified domain emails directly as organization members (they have accounts but aren't members yet)</div>
               </div>
@@ -439,11 +439,16 @@
 
           <!-- Domain Sync Issues -->
           <div style="padding: var(--space-5) 0; border-bottom: 1px solid var(--color-border);">
-            <div class="review-subsection-title">
-              Domain Sync Issues
-              <span class="section-badge neutral" id="syncBadge">0</span>
+            <div style="display: flex; align-items: center; gap: var(--space-4);">
+              <div style="flex: 1;">
+                <div class="review-subsection-title">
+                  Domain Sync Issues
+                  <span class="section-badge neutral" id="syncBadge">0</span>
+                </div>
+                <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with email_domain set but not in the organization_domains table.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="syncAllDomainsBtn" style="display: none;">Sync All</button>
             </div>
-            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Organizations with email_domain set but not in the organization_domains table.</p>
             <div id="domainSyncContent"></div>
           </div>
 
@@ -1155,9 +1160,14 @@
 
       // Domain Sync Issues
       const syncContent = document.getElementById('domainSyncContent');
+      const syncAllBtn = document.getElementById('syncAllDomainsBtn');
       if (syncCount === 0) {
         syncContent.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No sync issues found.</div>';
+        syncAllBtn.style.display = 'none';
       } else {
+        syncAllBtn.style.display = 'block';
+        syncAllBtn.textContent = `Sync All (${syncCount})`;
+        syncAllBtn.onclick = () => syncAllDomains(syncAllBtn);
         syncContent.innerHTML = `
           <table class="issue-table">
             <thead>
@@ -1554,6 +1564,44 @@
       linkAllBtn.classList.add('btn-success');
       linkAllBtn.textContent = `Linked ${completed} domains`;
       setTimeout(() => { loadDomainHealth(); }, 1500);
+    }
+
+    async function syncAllDomains(button) {
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Syncing...';
+
+      try {
+        const response = await fetch('/api/admin/domain-health/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) { window.AdminSidebar?.redirectToLogin(); return; }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Sync failed');
+        }
+
+        const result = await response.json();
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        button.textContent = `Synced ${result.synced_count || 0} domains`;
+        setTimeout(() => { loadDomainHealth(); }, 1500);
+      } catch (error) {
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-primary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
     }
 
     // ─── Merge Modal ────────────────────────────────────────────────────────

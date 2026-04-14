@@ -26,6 +26,17 @@ import type { BrandClassification } from './brand-classifier.js';
 
 const logger = createLogger('brand-enrichment');
 
+const _backgroundWork = new Set<Promise<unknown>>();
+
+export function trackBackground(p: Promise<unknown>): void {
+  _backgroundWork.add(p);
+  p.finally(() => _backgroundWork.delete(p));
+}
+
+export function drainBackgroundWork(): Promise<unknown[]> {
+  return Promise.allSettled([..._backgroundWork]);
+}
+
 // Generic page titles that Brandfetch sometimes returns instead of brand names
 const GENERIC_NAMES = new Set([
   'about', 'home', 'welcome', 'homepage', 'contact', 'products', 'services',
@@ -145,7 +156,7 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   if (isVariant) {
     const canonicalDomain = classification!.canonical_domain!.toLowerCase();
 
-    // Remove the variant from discovered_brands (it's just a regional redirect)
+    // Remove the variant from brands (it's just a regional redirect)
     try {
       await brandDb.deleteDiscoveredBrand(domain);
     } catch {
@@ -321,7 +332,7 @@ export async function getEnrichmentCandidates(options: {
   // that may benefit from re-enrichment (last validated > 30 days ago)
   if (source === 'community' || source === 'all') {
     const communityResult = await query<{ domain: string; brand_name: string | null }>(
-      `SELECT domain, brand_name FROM discovered_brands
+      `SELECT domain, brand_name FROM brands
        WHERE source_type = 'community' AND (
          has_brand_manifest = false
          OR (has_brand_manifest = true AND (last_validated IS NULL OR last_validated < NOW() - INTERVAL '30 days'))
@@ -369,7 +380,7 @@ export async function migrateLogosToHosted(options: {
   const delayMs = Math.min(Math.max(0, options.delayMs ?? 500), 10000);
 
   const result = await query<{ domain: string; brand_manifest: Record<string, unknown> }>(
-    `SELECT domain, brand_manifest FROM discovered_brands
+    `SELECT domain, brand_manifest FROM brands
      WHERE source_type IN ('enriched', 'community')
        AND has_brand_manifest = true
        AND EXISTS (
@@ -395,7 +406,7 @@ export async function migrateLogosToHosted(options: {
     try {
       const hosted = await downloadAndCacheLogos(row.domain, logos);
       await query(
-        `UPDATE discovered_brands
+        `UPDATE brands
          SET brand_manifest = brand_manifest || $2::jsonb
          WHERE domain = $1`,
         [row.domain, JSON.stringify({ logos: hosted })]
@@ -422,17 +433,17 @@ export async function migrateLogosToHosted(options: {
 export async function getBrandEnrichmentStats(): Promise<BrandEnrichmentStats> {
   const [totalResult, enrichedResult, communityResult, brandJsonResult, requestsResult] =
     await Promise.all([
-      query<{ count: string }>('SELECT COUNT(*) as count FROM discovered_brands'),
+      query<{ count: string }>('SELECT COUNT(*) as count FROM brands'),
       query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM discovered_brands
+        `SELECT COUNT(*) as count FROM brands
          WHERE source_type = 'enriched' AND has_brand_manifest = true`
       ),
       query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM discovered_brands
+        `SELECT COUNT(*) as count FROM brands
          WHERE source_type = 'community' AND has_brand_manifest = false`
       ),
       query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM discovered_brands WHERE source_type = 'brand_json'`
+        `SELECT COUNT(*) as count FROM brands WHERE source_type = 'brand_json'`
       ),
       query<{ count: string }>(
         `SELECT COUNT(*) as count FROM registry_requests
@@ -542,7 +553,7 @@ export async function expandHouse(houseDomain: string, options: {
   // Filter out already-known brands
   const existingBrands = new Set<string>();
   const existing = await query<{ domain: string }>(
-    'SELECT domain FROM discovered_brands WHERE house_domain = $1',
+    'SELECT domain FROM brands WHERE house_domain = $1',
     [houseDomain]
   );
   for (const row of existing.rows) {
@@ -614,10 +625,10 @@ export async function expandHouse(houseDomain: string, options: {
         'Background enrichment complete'
       );
     };
-    // Fire and forget — don't await
-    enrichInBackground().catch(err => {
+    const bgPromise = enrichInBackground().catch(err => {
       logger.error({ err, houseDomain }, 'Background enrichment crashed');
     });
+    trackBackground(bgPromise);
   }
 
   logger.info(
@@ -696,7 +707,7 @@ export interface DomainResearchResult {
 /**
  * Progressive domain research: checks what's known, fills gaps from external APIs.
  *
- * 1. Check discovered_brands — skip Brandfetch+Sonnet if enriched & fresh (< 30 days)
+ * 1. Check brands — skip Brandfetch+Sonnet if enriched & fresh (< 30 days)
  * 2. Check organizations — skip Lusha if org has fresh enrichment data
  * 3. Call enrichBrand() for brand data gaps (Brandfetch + Sonnet classification)
  * 4. Call enrichOrganization() for firmographic gaps (Lusha)

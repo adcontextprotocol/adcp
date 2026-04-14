@@ -4,8 +4,9 @@
  * Registers The Build with the shared newsletter infrastructure.
  */
 
-import type { NewsletterConfig } from '../config.js';
+import type { NewsletterConfig, SectionDescriptor } from '../config.js';
 import { registerNewsletter } from '../registry.js';
+import { escapeHtml } from '../email-layout.js';
 import { buildBuildContent, hasBuildMinimumContent, generateBuildSubject } from './builder.js';
 import { renderBuildEmail, renderBuildSlack, renderBuildReview } from './template.js';
 import {
@@ -20,6 +21,9 @@ import {
   setBuildPerspectiveId,
   getRecentBuildEditions,
   getBuildRecipients,
+  setBuildCoverImage,
+  getBuildCoverImage,
+  getBuildCoverImageWithPrompt,
   type BuildContent,
   type BuildRecord,
 } from '../../db/build-db.js';
@@ -126,6 +130,15 @@ const buildDB: NewsletterEditionDB = {
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
+  async setCoverImage(id, imageData, promptUsed) {
+    return setBuildCoverImage(id, imageData, promptUsed);
+  },
+  async getCoverImage(editionDate) {
+    return getBuildCoverImage(editionDate);
+  },
+  async getCoverImageWithPrompt(editionDate) {
+    return getBuildCoverImageWithPrompt(editionDate);
+  },
 };
 
 // ─── Markdown builder ──────────────────────────────────────────────────
@@ -196,6 +209,118 @@ function isTriweeklyWednesday(dateOverride?: Date): boolean {
   return diffWeeks % 3 === 0;
 }
 
+// ─── Section Descriptors ──────────────────────────────────────────────
+
+function escUrl(s: string): string {
+  return /^https?:\/\//i.test(s) ? escapeHtml(s) : '#';
+}
+
+const BUILD_SECTIONS: SectionDescriptor[] = [
+  {
+    key: 'decisions',
+    label: 'Decisions & Proposals',
+    hint: 'WG decisions, open proposals, and items under review',
+    countFn: (c) => (c as BuildContent).decisions?.length ?? 0,
+    renderHtml: (c) => {
+      const decisions = (c as BuildContent).decisions || [];
+      if (decisions.length === 0) return '<em style="color:#888;">None included yet</em>';
+      return decisions.map(d => {
+        const badgeClass = d.status === 'decided' ? 'badge-decided' : d.status === 'open_for_comment' ? 'badge-open' : 'badge-review';
+        const label = d.status === 'decided' ? 'DECIDED' : d.status === 'open_for_comment' ? 'OPEN' : 'REVIEW';
+        return `<div class="item-card" data-id="${escapeHtml(d.id)}">
+          <span class="item-badge ${badgeClass}">${label}</span>
+          <strong>${escapeHtml(d.workingGroup)}</strong>
+          <br><a href="${escUrl(d.url)}" target="_blank">${escapeHtml(d.title)}</a>
+          <br><span style="font-size:13px;color:#666;">${escapeHtml(d.summary)}</span>
+        </div>`;
+      }).join('');
+    },
+  },
+  {
+    key: 'whatShipped',
+    label: 'What Shipped',
+    hint: 'Protocol releases, SDK updates, platform changes',
+    countFn: (c) => (c as BuildContent).whatShipped?.length ?? 0,
+    renderHtml: (c) => {
+      const shipped = (c as BuildContent).whatShipped || [];
+      if (shipped.length === 0) return '<em style="color:#888;">None included yet</em>';
+      return shipped.map(r => `<div class="item-card" data-id="${escapeHtml(r.id)}">
+        ${r.breaking ? '<span class="item-badge badge-breaking">BREAKING</span>' : ''}
+        <a href="${escUrl(r.releaseUrl)}" target="_blank" style="font-weight:600;">${escapeHtml(r.repo)} ${escapeHtml(r.version)}</a>
+        — ${escapeHtml(r.summary)}
+        ${r.migrationNote ? `<br><span style="font-size:13px;color:#dc2626;">Migration: ${escapeHtml(r.migrationNote)}</span>` : ''}
+      </div>`).join('');
+    },
+  },
+  {
+    key: 'helpNeeded',
+    label: 'Help Needed',
+    hint: 'Open asks for code, review, writing, or expertise',
+    countFn: (c) => (c as BuildContent).helpNeeded?.length ?? 0,
+    renderHtml: (c) => {
+      const help = (c as BuildContent).helpNeeded || [];
+      if (help.length === 0) return '<em style="color:#888;">None included yet</em>';
+      return help.map(h => `<div class="item-card" data-id="${escapeHtml(h.id)}">
+        <span style="display:inline-block;padding:2px 6px;background:#e5e7eb;color:#374151;font-size:11px;border-radius:3px;margin-right:6px;">${escapeHtml(h.type)}</span>
+        <a href="${escUrl(h.url)}" target="_blank">${escapeHtml(h.title)}</a>
+        <br><span style="font-size:13px;color:#666;">${escapeHtml(h.source)} — ${escapeHtml(h.context)}</span>
+      </div>`).join('');
+    },
+  },
+  {
+    key: 'deepDive',
+    label: 'Deep Dive',
+    hint: 'Curated technical deep-dive (admin-selected)',
+    layout: 'half',
+    renderHtml: (c) => {
+      const dd = (c as BuildContent).deepDive;
+      if (!dd) return '<em style="color:#888;">No deep dive this edition</em>';
+      return `<strong>${escapeHtml(dd.title)}</strong>
+        <p style="font-size:13px;color:#666;margin:4px 0;">${escapeHtml(dd.body.slice(0, 200))}...</p>`;
+    },
+  },
+  {
+    key: 'contributorSpotlight',
+    label: 'Contributor Spotlight',
+    hint: 'Recent contributors and their work',
+    layout: 'half',
+    countFn: (c) => (c as BuildContent).contributorSpotlight?.length ?? 0,
+    renderHtml: (c) => {
+      const spotlights = (c as BuildContent).contributorSpotlight || [];
+      if (spotlights.length === 0) return '<em style="color:#888;">None included yet</em>';
+      return spotlights.map(s => `<div class="item-card" data-id="${escapeHtml(s.id)}">
+        <strong>${escapeHtml(s.name)}</strong>${s.handle ? ` (${escapeHtml(s.handle)})` : ''}
+        — ${escapeHtml(s.contribution)}
+      </div>`).join('');
+    },
+  },
+  {
+    key: 'events',
+    label: 'Events',
+    hint: 'Recent recaps and upcoming events',
+    countFn: (c) => ((c as Record<string, unknown>).events as unknown[] || []).length,
+    renderHtml: (c) => {
+      const events = ((c as Record<string, unknown>).events || []) as import('../../db/build-db.js').BuildEvent[];
+      if (events.length === 0) return '<em style="color:#888;">No events</em>';
+      return events.map(e => {
+        const statusBadge = e.status === 'upcoming'
+          ? '<span class="item-badge" style="background:#2563eb;">UPCOMING</span>'
+          : e.hasRecap
+            ? '<span class="item-badge" style="background:#065f46;">HAS RECAP</span>'
+            : '<span class="item-badge" style="background:#d97706;">NO RECAP</span>';
+        const date = new Date(e.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `<div class="item-card" data-id="${escapeHtml(e.id)}">
+          ${statusBadge}
+          <strong>${escapeHtml(e.title)}</strong>
+          <span style="font-size:12px;color:#888;margin-left:8px;">${date}</span>
+          ${e.recapExcerpt ? `<br><span style="font-size:13px;color:#666;">${escapeHtml(e.recapExcerpt.slice(0, 120))}...</span>` : ''}
+          ${e.previouslyIncluded ? '<br><span style="font-size:11px;color:#d97706;">Previously included in a newsletter</span>' : ''}
+        </div>`;
+      }).join('');
+    },
+  },
+];
+
 // ─── Registration ──────────────────────────────────────────────────────
 
 export const theBuildConfig: NewsletterConfig = {
@@ -222,6 +347,7 @@ export const theBuildConfig: NewsletterConfig = {
     domain: 'docs.adcontextprotocol.org',
   },
   announcementChannelEnvVar: 'SLACK_BUILD_CHANNEL',
+  coverRoutePrefix: '/build',
   buildContent: buildBuildContent,
   hasMinimumContent: (c) => hasBuildMinimumContent(c as BuildContent),
   generateSubject: (c) => generateBuildSubject(c as BuildContent),
@@ -232,7 +358,9 @@ export const theBuildConfig: NewsletterConfig = {
   renderSlack: (content, editionDate) => renderBuildSlack(content as BuildContent, editionDate),
   renderReview: (content, editionDate) => renderBuildReview(content as BuildContent, editionDate),
   db: buildDB,
-  editableFields: ['statusLine', 'editorsNote', 'emailSubject'],
+  editableFields: ['statusLine', 'editorsNote', 'emailSubject', 'dateFlavor'],
+  sections: BUILD_SECTIONS,
+  adminIcon: '/sage-icon.svg',
 };
 
 registerNewsletter(theBuildConfig);

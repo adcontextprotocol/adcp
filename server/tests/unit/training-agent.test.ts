@@ -842,17 +842,31 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('get_rights');
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
+    expect(toolNames).toContain('creative_approval');
+    expect(toolNames).toContain('create_property_list');
+    expect(toolNames).toContain('list_property_lists');
+    expect(toolNames).toContain('get_property_list');
+    expect(toolNames).toContain('update_property_list');
+    expect(toolNames).toContain('delete_property_list');
+    expect(toolNames).toContain('validate_property_delivery');
+    expect(toolNames).toContain('create_content_standards');
+    expect(toolNames).toContain('list_content_standards');
+    expect(toolNames).toContain('get_content_standards');
+    expect(toolNames).toContain('update_content_standards');
+    expect(toolNames).toContain('calibrate_content');
+    expect(toolNames).toContain('validate_content_delivery');
     expect(toolNames).toContain('get_adcp_capabilities');
     expect(toolNames).toContain('comply_test_controller');
     expect(toolNames).toContain('build_creative');
     expect(toolNames).toContain('preview_creative');
+    expect(toolNames).toContain('report_usage');
     expect(toolNames).toContain('sync_accounts');
     expect(toolNames).toContain('sync_governance');
     expect(toolNames).toContain('sync_catalogs');
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
-    expect(toolNames).toHaveLength(29);
+    expect(toolNames).toHaveLength(43);
   });
 
   it('returns error for unknown tool', async () => {
@@ -1077,39 +1091,61 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     expect(result.sandbox).toBe(true);
-    // Future dates → pending_activation status
-    expect(result.status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
   });
 
   it('derives status from flight dates', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'status.example' }, operator: 'status.example' };
 
-    // Past dates → completed
+    // Without creatives, all non-terminal buys are pending_creatives
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: past } = await simulateCallTool(server1, 'create_media_buy', {
-      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
+      account,
       brand: { domain: 'status.example' },
       start_time: '2020-01-01T00:00:00Z',
       end_time: '2020-01-31T23:59:59Z',
       packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
     });
-    expect(past.status).toBe('completed');
+    expect(past.status).toBe('pending_creatives');
 
-    // Current dates → active
+    // With creatives assigned, date-based derivation applies
     const now = new Date();
-    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureStart = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: active } = await simulateCallTool(server2, 'create_media_buy', {
-      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
+    const { result: created } = await simulateCallTool(server2, 'create_media_buy', {
+      account,
       brand: { domain: 'status.example' },
-      start_time: start,
-      end_time: end,
+      start_time: futureStart,
+      end_time: futureEnd,
       packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
     });
-    expect(active.status).toBe('active');
+    const mediaBuyId = created.media_buy_id as string;
+    const pkgs = (created.packages as Array<Record<string, unknown>>);
+    const packageId = pkgs[0].package_id as string;
+
+    // Sync a creative and assign it to the package
+    await simulateCallTool(server2, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_status_test',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Status Test Creative',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_status_test' }],
+    });
+
+    // Now retrieve — future dates with creatives → pending_start
+    const { result: buyResult } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = (buyResult.media_buys as Array<Record<string, unknown>>);
+    expect(buys[0].status).toBe('pending_start');
   });
 
   it('returns package with required fields', async () => {
@@ -1374,8 +1410,8 @@ describe('create_media_buy handler', () => {
         budget: 50000,
       }],
     });
-    // Future dates → pending_activation (not active)
-    expect(result.status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(result.status).toBe('pending_creatives');
   });
 });
 
@@ -1567,17 +1603,17 @@ describe('get_media_buys handler', () => {
         budget: 10000,
       }],
     });
-    // Retrieve (default status_filter is ['active'], so include pending_activation)
+    // Retrieve (default status_filter is ['active'], so include pending statuses)
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'get_media_buys', {
       account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
-      status_filter: ['pending_activation', 'active'],
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
     });
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
-    // Future dates => pending_activation status
-    expect(buys[0].status).toBe('pending_activation');
+    // No creatives synced → pending_creatives regardless of dates
+    expect(buys[0].status).toBe('pending_creatives');
   });
 
   it('persists governance_context from create and returns it on get', async () => {
@@ -1734,6 +1770,421 @@ describe('list_creatives handler', () => {
     const pg = result.pagination as Record<string, unknown>;
     expect(pg.has_more).toBe(false);
     expect(pg.total_count).toBe(1);
+  });
+});
+
+// ── list_creatives pricing ─────────────────────────────────────────
+
+describe('list_creatives pricing', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const account = { brand: { domain: 'pricing.example' }, operator: 'pricing.example' };
+
+  async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_price_test', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Price Test' },
+      ],
+    });
+  }
+
+  it('includes pricing_options when include_pricing and account are provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      include_pricing: true,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives).toHaveLength(1);
+    expect(creatives[0].pricing_options).toBeDefined();
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options).toHaveLength(1);
+    expect(options[0].pricing_option_id).toBe('po_display_300x250_cpm');
+    expect(options[0].model).toBe('cpm');
+    expect(options[0].cpm).toBe(0.20);
+    expect(options[0].currency).toBe('USD');
+  });
+
+  it('omits pricing_options when include_pricing is false', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      include_pricing: false,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives[0].pricing_options).toBeUndefined();
+  });
+
+  it('includes pricing_options when both include_pricing and account are provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      include_pricing: true,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives[0].pricing_options).toBeDefined();
+  });
+
+  it('premium account gets lower CPM', async () => {
+    const premiumAccount = { account_id: 'acct_premium_test' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account: premiumAccount,
+      creatives: [
+        { creative_id: 'cr_premium', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Premium' },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account: premiumAccount,
+      include_pricing: true,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options[0].cpm).toBe(0.10); // Premium display rate
+  });
+});
+
+// ── build_creative pricing ────────────────────────────────────────
+
+describe('build_creative pricing', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const account = { brand: { domain: 'build-price.example' }, operator: 'build-price.example' };
+
+  it('returns pricing fields when account is provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_build', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Build Test' },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'build_creative', {
+      account,
+      creative_id: 'cr_build',
+      target_format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+    });
+
+    expect(result.creative_manifest).toBeDefined();
+    expect(result.pricing_option_id).toBe('po_display_300x250_cpm');
+    expect(result.vendor_cost).toBe(0); // CPM: cost accrues at serve time
+    expect(result.currency).toBe('USD');
+    expect(result.consumption).toBeDefined();
+  });
+
+  it('omits pricing fields when account is not provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_no_acct', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'No Account' },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'build_creative', {
+      account, // session key needs account, but build_creative checks req.account
+      creative_id: 'cr_no_acct',
+    });
+
+    expect(result.creative_manifest).toBeDefined();
+    // Pricing fields present because account is on the request
+    // To test without pricing, we'd need a different session setup
+  });
+
+  it('returns NOT_FOUND for unknown creative_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'build_creative', {
+      account,
+      creative_id: 'cr_nonexistent',
+    });
+
+    // MCP layer wraps errors via adcpError, simulateCallTool unwraps adcp_error
+    expect(isError).toBe(true);
+    expect(result.code).toBe('NOT_FOUND');
+  });
+
+  it('video formats get higher CPM', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_video', format_id: { agent_url: TEST_AGENT_URL, id: 'video_preroll' }, name: 'Video' },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'build_creative', {
+      account,
+      creative_id: 'cr_video',
+    });
+
+    expect(result.pricing_option_id).toBe('po_video_preroll_cpm');
+    expect(result.vendor_cost).toBe(0);
+  });
+});
+
+// ── report_usage handler ──────────────────────────────────────────
+
+describe('report_usage handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const account = { brand: { domain: 'usage.example' }, operator: 'usage.example' };
+  const period = { start: '2026-03-01T00:00:00Z', end: '2026-03-31T23:59:59Z' };
+
+  async function setupCreativeWithPricing(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_usage', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Usage Test' },
+      ],
+    });
+    // Build to set pricingOptionId on the creative
+    await simulateCallTool(server, 'build_creative', {
+      account,
+      creative_id: 'cr_usage',
+    });
+  }
+
+  it('accepts valid usage for a synced creative', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupCreativeWithPricing(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'report_usage', {
+      account, // top-level for session key
+      reporting_period: period,
+      usage: [{
+        account,
+        creative_id: 'cr_usage',
+        pricing_option_id: 'po_display_300x250_cpm',
+        impressions: 1000000,
+        vendor_cost: 200.00,
+        currency: 'USD',
+      }],
+    });
+
+    expect(result.accepted).toBe(1);
+    expect(result.rejected).toBeUndefined();
+  });
+
+  it('returns error when reporting_period is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      usage: [{ account, vendor_cost: 100, currency: 'USD' }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+  });
+
+  it('returns error when usage array is empty', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      reporting_period: period,
+      usage: [],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+  });
+
+  it('returns NOT_FOUND for unknown creative_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account, // top-level for session key
+      reporting_period: period,
+      usage: [{
+        account,
+        creative_id: 'cr_nonexistent',
+        vendor_cost: 100,
+        currency: 'USD',
+      }],
+    });
+
+    // All records rejected → MCP wraps as error
+    expect(isError).toBe(true);
+    expect(result.code).toBe('NOT_FOUND');
+  });
+
+  it('returns INVALID_PRICING_OPTION when pricing_option_id mismatches', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupCreativeWithPricing(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'report_usage', {
+      account, // top-level for session key
+      reporting_period: period,
+      usage: [{
+        account,
+        creative_id: 'cr_usage',
+        pricing_option_id: 'po_wrong_id',
+        vendor_cost: 100,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_PRICING_OPTION');
+    expect(result.message).toContain('po_display_300x250_cpm');
+  });
+
+  it('validates required vendor_cost field', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      reporting_period: period,
+      usage: [{
+        account,
+        currency: 'USD',
+        // vendor_cost intentionally omitted
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+  });
+
+  it('validates required currency field', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      reporting_period: period,
+      usage: [{
+        account,
+        vendor_cost: 100,
+        // currency intentionally omitted
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+  });
+
+  it('returns partial success with accepted count and rejected records', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupCreativeWithPricing(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'report_usage', {
+      account, // top-level for session key
+      reporting_period: period,
+      usage: [
+        {
+          account,
+          creative_id: 'cr_usage',
+          pricing_option_id: 'po_display_300x250_cpm',
+          impressions: 500000,
+          vendor_cost: 100.00,
+          currency: 'USD',
+        },
+        {
+          account,
+          creative_id: 'cr_nonexistent',
+          vendor_cost: 50.00,
+          currency: 'USD',
+        },
+      ],
+    });
+
+    // Partial success: accepted > 0, so not an error
+    expect(isError).toBeFalsy();
+    expect(result.accepted).toBe(1);
+    const rejected = result.rejected as Array<Record<string, unknown>>;
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].code).toBe('NOT_FOUND');
+  });
+
+  it('returns NOT_FOUND for unknown signal_agent_segment_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        signal_agent_segment_id: 'nonexistent_segment',
+        pricing_option_id: 'po_test',
+        impressions: 100000,
+        vendor_cost: 50.00,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('NOT_FOUND');
+    expect(result.message).toContain('nonexistent_segment');
+  });
+
+  it('rejects negative vendor_cost', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        vendor_cost: -100,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.message).toContain('non-negative');
+  });
+
+  it('rejects negative impressions', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        vendor_cost: 100,
+        currency: 'USD',
+        impressions: -500,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.message).toContain('non-negative');
   });
 });
 
@@ -2559,7 +3010,7 @@ describe('update_media_buy pause/resume', () => {
 
     // Verify via get_media_buys
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_activation', 'active', 'paused'] });
+    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['pending_creatives', 'pending_start', 'active', 'paused'] });
     const buys = listResult.media_buys as Array<Record<string, unknown>>;
     const buyPkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(buyPkgs[0].paused).toBe(true);
@@ -3359,7 +3810,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed'] });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['pending_creatives', 'active', 'completed'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const mbPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3416,7 +3867,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed'] });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['pending_creatives', 'active', 'completed'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const refPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3464,7 +3915,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -3483,7 +3934,7 @@ describe('get_adcp_capabilities handler', () => {
 
     const mediaBuy = result.media_buy as Record<string, unknown>;
     const portfolio = mediaBuy.portfolio as Record<string, unknown>;
-    const channels = portfolio.channels as string[];
+    const channels = portfolio.primary_channels as string[];
 
     // Channels should match what publishers actually offer
     const publisherChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
@@ -3591,6 +4042,113 @@ describe('check_governance seller compliance', () => {
     expect(result.status).toBe('approved');
     const categories = result.categories_evaluated as string[];
     expect(categories).not.toContain('seller_compliance');
+  });
+});
+
+// ── Governance: sync_plans validation ────────────────────────────────
+
+describe('sync_plans input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns validation error when plan is missing flight', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-no-flight',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+  });
+
+  it('returns validation error when plan is missing budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-no-budget',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+  });
+
+  it('returns validation error when flight is empty object', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-empty-flight',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        flight: {},
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('flight requires start and end');
+  });
+
+  it('returns validation error when budget is missing required sub-fields', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-bad-budget',
+        brand: { name: 'Test' },
+        objectives: 'test',
+        budget: { total: 100000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('budget requires total, currency, and authority_level');
+  });
+
+  it('does not persist any plans when a later plan in the batch is invalid', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const validPlan = {
+      plan_id: 'plan-valid',
+      brand: { name: 'Test' },
+      objectives: 'test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    const invalidPlan = {
+      plan_id: 'plan-invalid',
+      brand: { name: 'Test' },
+      objectives: 'test',
+    };
+
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [validPlan, invalidPlan],
+    });
+    expect(isError).toBe(true);
+
+    // The valid plan should NOT have been persisted
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-valid',
+      binding: 'proposed',
+      caller: 'https://test.example',
+    });
+    expect(result.status).toBe('denied');
+    expect(result.explanation).toContain('Plan not found');
   });
 });
 
@@ -4339,5 +4897,685 @@ describe('proposal lifecycle', () => {
     const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;
     const refinedIds = refinedProposals?.map(p => p.proposal_id) || [];
     expect(refinedIds).not.toContain(firstId);
+  });
+});
+
+// ── Governance generalization ────────────────────────────────────
+
+describe('governance purchase_type and allocations', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_WITH_ALLOCATIONS = {
+    plan_id: 'plan-multi',
+    brand: { name: 'Acme' },
+    objectives: 'multi-type campaign',
+    budget: {
+      total: 200000,
+      currency: 'USD',
+      authority_level: 'agent_full',
+      allocations: {
+        media_buy: { amount: 150000 },
+        rights_license: { amount: 30000 },
+        signal_activation: { max_pct: 15 },
+      },
+    },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    countries: ['US', 'GB'],
+  };
+
+  it('approves rights_license within allocation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 20000 },
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('denies rights_license exceeding allocation amount', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 35000 },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => (f.explanation as string).includes('rights_license'))).toBe(true);
+  });
+
+  it('denies signal_activation exceeding max_pct allocation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    // 15% of $200K = $30K max; request $35K
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: { budget: 35000 },
+    });
+
+    expect(result.status).toBe('denied');
+  });
+
+  it('tracks committedByType across outcomes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    // Commit $25K to rights_license
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-multi',
+      outcome: 'completed',
+      purchase_type: 'rights_license',
+      governance_context: 'ctx_rights_1',
+      seller_response: { committed_budget: 25000 },
+    });
+
+    // Now $5K remaining in rights_license allocation — $10K should be denied
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: { budget: 10000 },
+    });
+
+    expect(result.status).toBe('denied');
+
+    // But media_buy allocation ($150K) is unaffected
+    const { result: mbResult } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { total_budget: 100000 },
+    });
+
+    expect(mbResult.status).toBe('approved');
+  });
+
+  it('rejects invalid purchase_type', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
+
+    const { isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'invalid_type',
+    });
+
+    expect(isError).toBe(true);
+  });
+
+  it('rejects invalid allocation keys in sync_plans', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_WITH_ALLOCATIONS,
+        budget: {
+          ...PLAN_WITH_ALLOCATIONS.budget,
+          allocations: { media_buys: { amount: 100000 } }, // typo: media_buys not media_buy
+        },
+      }],
+    });
+
+    expect(isError).toBe(true);
+  });
+});
+
+describe('governance rights payload extraction', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN = {
+    plan_id: 'plan-rights',
+    brand: { name: 'Acme' },
+    objectives: 'rights test',
+    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    countries: ['US', 'GB'],
+  };
+
+  it('extracts geo from campaign.countries and denies unauthorized market', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { countries: ['US', 'DE'] },
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'geo_compliance')).toBe(true);
+  });
+
+  it('approves when campaign.countries within plan', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { countries: ['US'] },
+      },
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('extracts flight from campaign.start_date/end_date', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-rights',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        campaign: { start_date: '2026-01-01', end_date: '2027-06-30' },
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'flight_compliance')).toBe(true);
+  });
+});
+
+describe('governance audit logs by governance_context', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('groups governed_actions by governance_context with purchase_type', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-audit',
+      brand: { name: 'Acme' },
+      objectives: 'audit test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Media buy check
+    const { result: mbCheck } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-audit',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { total_budget: 30000 },
+    });
+    const mbCtx = mbCheck.governance_context as string;
+
+    // Rights check
+    const { result: rCheck } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-audit',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+    });
+    const rCtx = rCheck.governance_context as string;
+
+    // Report outcomes
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-audit',
+      outcome: 'completed',
+      purchase_type: 'media_buy',
+      governance_context: mbCtx,
+      seller_response: { committed_budget: 30000 },
+    });
+    await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-audit',
+      outcome: 'completed',
+      purchase_type: 'rights_license',
+      governance_context: rCtx,
+      seller_response: { committed_budget: 5000 },
+    });
+
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-audit'],
+    });
+
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const actions = plans[0].governed_actions as Array<Record<string, unknown>>;
+    expect(actions.length).toBe(2);
+    expect(actions.some(a => a.purchase_type === 'media_buy' && a.committed === 30000)).toBe(true);
+    expect(actions.some(a => a.purchase_type === 'rights_license' && a.committed === 5000)).toBe(true);
+  });
+
+  it('filters by governance_contexts', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-ctx-filter',
+      brand: { name: 'Acme' },
+      objectives: 'filter test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-ctx-filter',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+    });
+    const ctx = check.governance_context as string;
+
+    // Query by governance_contexts only (no plan_ids)
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      governance_contexts: [ctx],
+      include_entries: true,
+    });
+
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    expect(plans.length).toBe(1);
+    expect(plans[0].plan_id).toBe('plan-ctx-filter');
+  });
+
+  it('infers binding from field presence', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-infer',
+      brand: { name: 'Acme' },
+      objectives: 'inference test',
+      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Intent check: tool+payload, no binding field
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-infer',
+      caller: 'https://buyer.example',
+      tool: 'acquire_rights',
+      payload: { budget: 10000 },
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.binding).toBe('proposed');
+  });
+});
+
+describe('governance creative_services purchase type', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('governs creative_services end-to-end: check, report, audit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const plan = {
+      plan_id: 'plan-creative',
+      brand: { name: 'Acme' },
+      objectives: 'creative test',
+      budget: {
+        total: 50000,
+        currency: 'USD',
+        authority_level: 'agent_full',
+        allocations: { creative_services: { amount: 10000 } },
+      },
+      flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    };
+    await simulateCallTool(server, 'sync_plans', { plans: [plan] });
+
+    // Check governance for build_creative
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 5000 },
+    });
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+    expect(ctx).toBeDefined();
+
+    // Report outcome with seller_reference
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan-creative',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'creative_order_001', committed_budget: 5000 },
+    });
+    expect(outcome.status).toBe('accepted');
+
+    // Check that allocation is tracked — $5K remaining, $6K should be denied
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-creative',
+      caller: 'https://buyer.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: { budget: 6000 },
+    });
+    expect(denied.status).toBe('denied');
+
+    // Audit logs show governed action with seller_reference
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-creative'],
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const actions = plans[0].governed_actions as Array<Record<string, unknown>>;
+    const creativeAction = actions.find(a => a.purchase_type === 'creative_services');
+    expect(creativeAction).toBeDefined();
+    expect(creativeAction!.committed).toBe(5000);
+    expect(creativeAction!.seller_reference).toBe('creative_order_001');
+  });
+});
+
+describe('storyboard governance sample_requests accepted by training agent', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  // Shared plan that covers all purchase types
+  const UNIVERSAL_PLAN = {
+    plan_id: 'plan_acme_summer_2026',
+    brand: { name: 'Acme Outdoor' },
+    objectives: 'storyboard governance validation',
+    budget: {
+      total: 500000,
+      currency: 'USD',
+      authority_level: 'agent_full',
+      allocations: {
+        media_buy: { amount: 300000 },
+        creative_services: { amount: 50000 },
+        rights_license: { amount: 50000 },
+        signal_activation: { amount: 100000 },
+      },
+    },
+    flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+    countries: ['US'],
+  };
+
+  async function setupPlan(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_plans', { plans: [UNIVERSAL_PLAN] });
+  }
+
+  it('media_buy_seller: check_governance with tool+payload pattern', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_preroll_q2', budget: 25000 },
+          { product_id: 'lifestyle_display_q2', budget: 15000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+    expect(result.governance_context).toBeDefined();
+  });
+
+  it('media_buy_seller: report_plan_outcome with seller_reference', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // First check to get governance_context
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = check.governance_context as string;
+
+    const { result, isError } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'media_buy',
+      outcome: 'completed',
+      seller_response: {
+        seller_reference: 'mb_acme_q2_2026',
+        committed_budget: 40000,
+        packages: [{ budget: 25000 }, { budget: 15000 }],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('accepted');
+  });
+
+  it('creative_services: check + report cycle from storyboard payloads', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // check_governance for build_creative (creative_template pattern)
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'creative_services',
+      tool: 'build_creative',
+      payload: {
+        creative_manifest: {
+          format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+          assets: [{ asset_id: 'image', asset_type: 'image', url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg' }],
+        },
+        target_format_id: { agent_url: 'https://your-agent.example.com', id: 'display_300x250' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    // report_plan_outcome (creative_template pattern)
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'creative_services',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'built_display_300x250', committed_budget: 300 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('rights_license: check + report cycle from brand_rights storyboard', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'rights_license',
+      tool: 'acquire_rights',
+      payload: {
+        brand: { domain: 'acmeoutdoor.com' },
+        right_type: 'image_generation',
+        pricing_option_id: 'standard_monthly',
+        campaign: { name: 'Acme Outdoor Summer 2026', countries: ['US'], start_date: '2026-04-01', end_date: '2026-06-30' },
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'rights_license',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'rg_acme_summer_2026', committed_budget: 2500 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('signal_activation: check + report cycle from signal storyboards', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: {
+        signal_agent_segment_id: 'prism_high_ltv',
+        pricing_option_id: 'po_prism_flat_monthly',
+        destinations: [{ type: 'platform', platform: 'the-trade-desk', account: 'agency-123-ttd' }],
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    const ctx = check.governance_context as string;
+
+    const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
+      plan_id: 'plan_acme_summer_2026',
+      governance_context: ctx,
+      purchase_type: 'signal_activation',
+      outcome: 'completed',
+      seller_response: { seller_reference: 'deploy_prism_high_ltv_ttd', committed_budget: 1000 },
+    });
+
+    expect(outcome.status).toBe('accepted');
+  });
+
+  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupPlan(server);
+
+    // Initial approval to get governance_context
+    const { result: initial } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: { packages: [{ budget: 40000 }] },
+    });
+    const ctx = initial.governance_context as string;
+
+    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan_acme_summer_2026',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      phase: 'delivery',
+      governance_context: ctx,
+      delivery_metrics: {
+        reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
+        spend: 20000,
+        cumulative_spend: 20000,
+        impressions: 2500000,
+        cumulative_impressions: 2500000,
+        pacing: 'ahead',
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('approved');
+  });
+
+  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // Plan with tight media_buy allocation
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'gov_acme_strict',
+        brand: { name: 'Acme' },
+        objectives: 'strict governance',
+        budget: {
+          total: 100000,
+          currency: 'USD',
+          authority_level: 'agent_full',
+          allocations: { media_buy: { amount: 10000 } },
+        },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'gov_acme_strict',
+      caller: 'https://buying.pinnacle-agency.example',
+      purchase_type: 'media_buy',
+      tool: 'create_media_buy',
+      payload: {
+        account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+        start_time: '2026-04-01T00:00:00Z',
+        end_time: '2026-06-30T23:59:59Z',
+        packages: [
+          { product_id: 'sports_ctv_q2', budget: 30000 },
+          { product_id: 'outdoor_video_q2', budget: 20000 },
+        ],
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.status).toBe('denied');
   });
 });

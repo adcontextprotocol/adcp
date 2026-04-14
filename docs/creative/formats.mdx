@@ -313,6 +313,14 @@ The `assets` array enables comprehensive asset discovery. Each asset has a `requ
 
 This unified approach helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while clearly indicating minimum requirements.
 
+### Third-Party Tracker Support
+
+Whether a format supports third-party measurement is determined by whether its `assets` array includes a tracker slot — an asset with `asset_type: "url"` and `url_type: "tracker_pixel"` or `"tracker_script"`. Buyer agents should check this before assigning creatives that require third-party verification.
+
+Most digital formats (display, video, CTV, audio, DOOH) include an optional `impression_tracker` asset. Formats without a tracker slot — such as broadcast TV spots — do not support creative-level pixel tracking. Measurement for these formats comes from external sources (panel data, set-top box telemetry) declared in the product's `billing_measurement` terms, not from creative-embedded pixels.
+
+A buyer agent that requires DoubleVerify viewability or IAS brand safety measurement should filter formats by tracker support. If no tracker slot exists, those vendors cannot instrument the creative — the buyer must rely on the seller's declared measurement vendor instead.
+
 ### Typed Asset Requirements
 
 Each asset type has its own requirements schema that defines what constraints apply to that asset. The `requirements` object is typed based on the `asset_type`:

@@ -41,7 +41,8 @@ import {
   isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
 import {
-  EVENT_TOOLS,
+  EVENT_READONLY_TOOLS,
+  EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
 } from "../addie/mcp/event-tools.js";
 import {
@@ -73,7 +74,7 @@ import {
   createPropertyToolHandlers,
 } from "../addie/mcp/property-tools.js";
 import { AddieModelConfig } from "../config/models.js";
-import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
+import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
 import { optionalAuth } from "../middleware/auth.js";
@@ -247,14 +248,23 @@ async function buildVoiceRequestTools(
     workingGroupDb.getCommitteesLedByUser(userId),
   ]);
 
+  // Event tools: readonly for all users, admin tools for admins only
+  const eventHandlers = createEventToolHandlers(memberContext);
+  allTools.push(...EVENT_READONLY_TOOLS);
+  for (const tool of EVENT_READONLY_TOOLS) {
+    const handler = eventHandlers.get(tool.name);
+    if (handler) combinedHandlers.set(tool.name, handler);
+  }
+
   if (userIsAdmin) {
     allTools.push(...ADMIN_TOOLS);
     for (const [name, handler] of createAdminToolHandlers(memberContext)) {
       combinedHandlers.set(name, handler);
     }
-    allTools.push(...EVENT_TOOLS);
-    for (const [name, handler] of createEventToolHandlers(memberContext)) {
-      combinedHandlers.set(name, handler);
+    allTools.push(...EVENT_ADMIN_TOOLS);
+    for (const tool of EVENT_ADMIN_TOOLS) {
+      const handler = eventHandlers.get(tool.name);
+      if (handler) combinedHandlers.set(tool.name, handler);
     }
   }
 
@@ -294,7 +304,7 @@ async function buildVoiceRequestTools(
 const llmRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 200,
-  store: new PostgresStore("tavus-llm:"),
+  store: new CachedPostgresStore("tavus-llm:"),
   keyGenerator: (req) => ipKeyGenerator(req.ip || ""),
   message: { error: { message: "Too many requests" } },
   standardHeaders: true,
@@ -306,7 +316,7 @@ const llmRateLimiter = rateLimit({
 const sessionRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-  store: new PostgresStore("tavus-session:"),
+  store: new CachedPostgresStore("tavus-session:"),
   keyGenerator: (req) => (req as Request & { user?: { id: string } }).user?.id || ipKeyGenerator(req.ip || ""),
   message: { error: "Too many requests" },
   standardHeaders: true,

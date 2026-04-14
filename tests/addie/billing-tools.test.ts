@@ -376,8 +376,9 @@ describe('billing-tools', () => {
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('Product not found');
+      expect(parsed.error).toContain('No product matches lookup_key');
       expect(parsed.error).toContain('invalid_key');
+      expect(parsed.error).toContain('find_membership_products');
     });
 
     test('returns error when Stripe session creation fails', async () => {

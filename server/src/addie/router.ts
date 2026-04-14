@@ -390,7 +390,9 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
-- Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
+- Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
+- Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
+- Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
 - Listing all members with payment/product/invoice status → ["admin"]
 - Task management, marking tasks done, checking tasks, reminders, logging conversations → ["admin"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
@@ -435,7 +437,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? `
 
 3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
+   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
    - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
@@ -628,7 +630,10 @@ export class AddieRouter {
    */
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
     const startTime = Date.now();
-    const text = ctx.message.toLowerCase().trim();
+    // Normalize smart quotes (Slack converts ' to \u2018/\u2019 and " to \u201C/\u201D)
+    const text = ctx.message.toLowerCase().trim()
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
 
     // In threads, brief messages ("yes", "done", "ok") are responses to
     // something Addie said — let the LLM router see them with thread context.
@@ -645,6 +650,21 @@ export class AddieRouter {
           };
         }
       }
+    }
+
+    // Event attendee queries - "who's coming to X", "attendee list for X"
+    const eventAttendeePattern =
+      /who(?:'s|\s+is)\s+(coming\s+to|going\s+to\s+(?:the|cannes|ces|dmexco)|registered\s+for|attending|signed\s+up\s+for)|attendee\s+list|guest\s+list|who\s+will\s+be\s+(?:at\s+the|there\s+(?:at|for)|coming\s+to)/i;
+    if (eventAttendeePattern.test(text)) {
+      const toolSets = ctx.isAAOAdmin ? ['events', 'admin'] : ['events'];
+      return {
+        action: 'respond',
+        tool_sets: toolSets,
+        confidence: 'high',
+        reason: 'Event attendee query',
+        decision_method: 'quick_match',
+        latency_ms: Date.now() - startTime,
+      };
     }
 
     // Admin engagement/analytics queries - route to admin tools

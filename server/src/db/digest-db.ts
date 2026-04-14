@@ -15,7 +15,15 @@ export interface DigestContent {
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: DigestEditEntry[];
+  coverImageUrl?: string;
+  dateFlavor?: string;
   generatedAt: string;
+  /** Section keys to hide from rendering */
+  hiddenSections?: string[];
+  /** Admin-added custom sections */
+  customSections?: import('../newsletters/config.js').CustomSection[];
+  /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
+  pastedContent?: string;
 }
 
 export interface DigestShipment {
@@ -146,6 +154,12 @@ export function isLegacyContent(
 
 // ─── Shared types ───────────────────────────────────────────────────────
 
+/** Columns to SELECT for DigestRecord — excludes cover_image_data (BYTEA). */
+const DIGEST_COLUMNS = `id, edition_date, status, approved_by, approved_at,
+  review_channel_id, review_message_ts, content, created_at, sent_at,
+  send_stats, perspective_id, cover_prompt_used,
+  (cover_image_data IS NOT NULL) AS has_cover_image`;
+
 export interface DigestRecord {
   id: number;
   edition_date: Date;
@@ -159,6 +173,7 @@ export interface DigestRecord {
   sent_at: Date | null;
   send_stats: DigestSendStats | null;
   perspective_id: string | null;
+  has_cover_image: boolean;
 }
 
 export interface DigestSendStats {
@@ -236,7 +251,7 @@ export async function createDigest(
     `INSERT INTO weekly_digests (edition_date, status, content)
      VALUES ($1, 'draft', $2)
      ON CONFLICT (edition_date) DO NOTHING
-     RETURNING *`,
+     RETURNING ${DIGEST_COLUMNS}`,
     [editionDate, JSON.stringify(content)],
   );
   return result.rows[0] || null;
@@ -247,7 +262,7 @@ export async function createDigest(
  */
 export async function getDigestByDate(editionDate: string): Promise<DigestRecord | null> {
   const result = await query<DigestRecord>(
-    `SELECT * FROM weekly_digests WHERE edition_date = $1`,
+    `SELECT ${DIGEST_COLUMNS} FROM weekly_digests WHERE edition_date = $1`,
     [editionDate],
   );
   return result.rows[0] || null;
@@ -258,7 +273,7 @@ export async function getDigestByDate(editionDate: string): Promise<DigestRecord
  */
 export async function getCurrentWeekDigest(): Promise<DigestRecord | null> {
   const result = await query<DigestRecord>(
-    `SELECT * FROM weekly_digests
+    `SELECT ${DIGEST_COLUMNS} FROM weekly_digests
      WHERE edition_date >= CURRENT_DATE - INTERVAL '16 days'
      ORDER BY edition_date DESC
      LIMIT 1`,
@@ -274,7 +289,7 @@ export async function approveDigest(id: number, approvedBy: string): Promise<Dig
     `UPDATE weekly_digests
      SET status = 'approved', approved_by = $2, approved_at = NOW()
      WHERE id = $1 AND status = 'draft'
-     RETURNING *`,
+     RETURNING ${DIGEST_COLUMNS}`,
     [id, approvedBy],
   );
   return result.rows[0] || null;
@@ -328,7 +343,7 @@ export async function revertToDraft(id: number): Promise<DigestRecord | null> {
     `UPDATE weekly_digests
      SET status = 'draft', approved_by = NULL, approved_at = NULL
      WHERE id = $1 AND status = 'skipped'
-     RETURNING *`,
+     RETURNING ${DIGEST_COLUMNS}`,
     [id],
   );
   return result.rows[0] || null;
@@ -345,7 +360,7 @@ export async function updateDigestContent(
     `UPDATE weekly_digests
      SET content = $2
      WHERE id = $1 AND status = 'draft'
-     RETURNING *`,
+     RETURNING ${DIGEST_COLUMNS}`,
     [id, JSON.stringify(content)],
   );
   return result.rows[0] || null;
@@ -359,7 +374,7 @@ export async function getDigestByReviewMessage(
   messageTs: string,
 ): Promise<DigestRecord | null> {
   const result = await query<DigestRecord>(
-    `SELECT * FROM weekly_digests
+    `SELECT ${DIGEST_COLUMNS} FROM weekly_digests
      WHERE review_channel_id = $1 AND review_message_ts = $2`,
     [channelId, messageTs],
   );
@@ -548,7 +563,7 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
  */
 export async function getRecentDigests(limit: number = 10): Promise<DigestRecord[]> {
   const result = await query<DigestRecord>(
-    `SELECT * FROM weekly_digests
+    `SELECT ${DIGEST_COLUMNS} FROM weekly_digests
      WHERE status = 'sent'
      ORDER BY edition_date DESC
      LIMIT $1`,
@@ -590,4 +605,59 @@ export async function getUserWorkingGroupMap(): Promise<Map<string, string[]>> {
     map.set(row.workos_user_id, groups);
   }
   return map;
+}
+
+// ─── Cover Image ──────────────────────────────────────────────────────
+
+const MAX_COVER_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Save a cover image for a draft digest edition.
+ * Returns false if the digest is no longer a draft (status guard).
+ */
+export async function setDigestCoverImage(
+  digestId: number,
+  imageData: Buffer,
+  promptUsed: string,
+): Promise<boolean> {
+  if (imageData.length > MAX_COVER_IMAGE_SIZE) {
+    throw new Error(`Cover image too large: ${(imageData.length / 1024 / 1024).toFixed(1)} MB`);
+  }
+  const result = await query(
+    `UPDATE weekly_digests
+     SET cover_image_data = $2, cover_prompt_used = $3
+     WHERE id = $1 AND status = 'draft'`,
+    [digestId, imageData, promptUsed],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Get the cover image binary and prompt for a digest by edition date.
+ * Used by the serving route and the send pipeline (to reuse for perspectives).
+ */
+export async function getDigestCoverImageWithPrompt(
+  editionDate: string,
+): Promise<{ imageData: Buffer; promptUsed: string } | null> {
+  const result = await query<{ cover_image_data: Buffer; cover_prompt_used: string | null }>(
+    `SELECT cover_image_data, cover_prompt_used FROM weekly_digests
+     WHERE edition_date = $1 AND cover_image_data IS NOT NULL`,
+    [editionDate],
+  );
+  if (!result.rows[0]) return null;
+  return {
+    imageData: result.rows[0].cover_image_data,
+    promptUsed: result.rows[0].cover_prompt_used || 'Unknown',
+  };
+}
+
+/**
+ * Get the cover image binary for a digest by edition date.
+ * Used by the serving route.
+ */
+export async function getDigestCoverImage(
+  editionDate: string,
+): Promise<Buffer | null> {
+  const result = await getDigestCoverImageWithPrompt(editionDate);
+  return result?.imageData || null;
 }

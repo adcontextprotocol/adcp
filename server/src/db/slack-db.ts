@@ -62,6 +62,18 @@ export class SlackDatabase {
   }
 
   /**
+   * Mark a Slack user as deleted (e.g. when the Slack API returns user_not_found)
+   */
+  async markSlackUserDeleted(slackUserId: string): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET slack_is_deleted = true, updated_at = NOW()
+       WHERE slack_user_id = $1`,
+      [slackUserId]
+    );
+  }
+
+  /**
    * Get a Slack user mapping by Slack user ID
    */
   async getBySlackUserId(slackUserId: string): Promise<SlackUserMapping | null> {

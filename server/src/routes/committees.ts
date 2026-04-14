@@ -1875,7 +1875,8 @@ export function createCommitteeRouters(): {
         });
       }
 
-      res.status(201).json({ document });
+      const { file_data: _fd, last_content: _lc, ...documentMeta } = document;
+      res.status(201).json({ document: documentMeta });
 
       // Index immediately so Addie can reference the document right away
       reindexDocument(document.id)
@@ -1986,7 +1987,8 @@ export function createCommitteeRouters(): {
         });
       }
 
-      res.status(201).json({ document });
+      const { file_data: _fd, last_content: _lc, ...documentMeta } = document;
+      res.status(201).json({ document: documentMeta });
 
       // Index immediately so Addie can reference the document right away
       reindexDocument(document.id)
@@ -2087,7 +2089,11 @@ export function createCommitteeRouters(): {
         is_featured,
       });
 
-      res.json({ document });
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      const { file_data: _fd, last_content: _lc, ...documentMeta } = document;
+      res.json({ document: documentMeta });
 
       // Refresh in-memory search index so Addie sees updated metadata
       refreshWorkingGroupDocs()

@@ -27,6 +27,7 @@ import {
   parseWebhookPayload as parseLumaWebhook,
   type LumaWebhookPayload,
 } from '../luma/client.js';
+import { createEventFromLuma } from '../luma/sync.js';
 import { eventsDb } from '../db/events-db.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import {
@@ -54,7 +55,6 @@ import { emailDb } from '../db/email-db.js';
 
 const logger = createLogger('webhooks');
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -63,7 +63,6 @@ const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY 
 
 // Log configuration on module load
 logger.info({
-  resendConfigured: !!RESEND_API_KEY,
   webhookSecretConfigured: !!RESEND_WEBHOOK_SECRET,
   anthropicConfigured: !!anthropic,
   fastModel: ModelConfig.fast,
@@ -84,6 +83,9 @@ interface ResendInboundPayload {
     bcc?: string[];
     subject: string;
     message_id: string;
+    text?: string;
+    html?: string;
+    headers?: Array<{ name: string; value: string }>;
     attachments?: Array<{
       id: string;
       filename: string;
@@ -188,8 +190,9 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
         return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
       }
 
-      // Unknown context, log and treat as unrouted
-      logger.warn({ context, email }, 'Unknown Addie context in email address');
+      // Any other addie+<context> — route as prospect so the email gets processed
+      logger.info({ context, email }, 'Addie subaddress with unrecognized context — routing as prospect');
+      return { type: 'prospect', addiePosition: position, addieAddress: email };
     }
   }
 
@@ -328,17 +331,6 @@ async function ensureContactsForParticipants(
   return contacts;
 }
 
-interface ResendEmailResponse {
-  text?: string;
-  html?: string;
-  headers?: {
-    to?: string;
-    cc?: string;
-    from?: string;
-    [key: string]: string | undefined;
-  };
-}
-
 interface FetchEmailResult {
   text?: string;
   html?: string;
@@ -350,82 +342,57 @@ interface FetchEmailResult {
 }
 
 /**
- * Fetch email body and headers from Resend API
- * The headers contain original TO/CC recipients that aren't in the webhook payload
+ * Parse email body and headers from the inbound webhook payload.
+ * Resend delivers text, html, and headers directly in the webhook —
+ * there is no separate REST endpoint for inbound email retrieval.
  */
-async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null> {
-  if (!RESEND_API_KEY) {
-    logger.warn('RESEND_API_KEY not configured, cannot fetch email body');
+function parseEmailFromWebhook(data: ResendInboundPayload['data']): FetchEmailResult | null {
+  if (!data.text && !data.html) {
+    logger.warn({ emailId: data.email_id }, 'Webhook payload missing text and html');
     return null;
   }
 
-  const startTime = Date.now();
-  logger.debug({ emailId }, 'Fetching email body from Resend');
-
-  try {
-    // CodeQL: emailId comes from Resend webhook payload, URL is always https://api.resend.com
-    const response = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, { // lgtm[js/request-forgery]
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-    });
-
-    const durationMs = Date.now() - startTime;
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error({
-        status: response.status,
-        emailId,
-        durationMs,
-        errorBody: errorBody.substring(0, 500),
-      }, 'Failed to fetch email from Resend API');
-      return null;
+  // Last-writer-wins for duplicate header names. Safe for to/cc/in-reply-to/references
+  // which are single-valued per RFC 5322.
+  const headers = new Map<string, string>();
+  if (data.headers) {
+    for (const h of data.headers) {
+      headers.set(h.name.toLowerCase(), h.value);
     }
-
-    const data = (await response.json()) as ResendEmailResponse;
-    const textLength = data.text?.length || 0;
-    const htmlLength = data.html?.length || 0;
-
-    // Parse original recipients from headers (these contain the real TO/CC, not just Resend addresses)
-    // Headers can contain multiple comma-separated addresses like: "John Doe" <john@example.com>, jane@example.com
-    const originalTo = parseEmailHeaderList(data.headers?.to);
-    const originalCc = parseEmailHeaderList(data.headers?.cc);
-
-    // Extract threading headers for email conversation support
-    const inReplyTo = data.headers?.['in-reply-to'] || data.headers?.['In-Reply-To'];
-    const referencesRaw = data.headers?.['references'] || data.headers?.['References'];
-    const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
-
-    logger.info({
-      emailId,
-      durationMs,
-      hasText: !!data.text,
-      hasHtml: !!data.html,
-      textLength,
-      htmlLength,
-      hasOriginalTo: originalTo.length > 0,
-      hasOriginalCc: originalCc.length > 0,
-      originalTo,
-      originalCc,
-      hasInReplyTo: !!inReplyTo,
-      hasReferences: !!references?.length,
-    }, 'Fetched email body from Resend');
-
-    return {
-      text: data.text,
-      html: data.html,
-      textLength,
-      originalTo,
-      originalCc,
-      inReplyTo,
-      references,
-    };
-  } catch (error) {
-    const durationMs = Date.now() - startTime;
-    logger.error({ error, emailId, durationMs }, 'Error fetching email body from Resend');
-    return null;
   }
+
+  // Parse original recipients from headers
+  const originalTo = parseEmailHeaderList(headers.get('to'));
+  const originalCc = parseEmailHeaderList(headers.get('cc'));
+
+  // Extract threading headers for email conversation support
+  const inReplyTo = headers.get('in-reply-to');
+  const referencesRaw = headers.get('references');
+  const references = referencesRaw ? referencesRaw.split(/\s+/).filter(Boolean) : undefined;
+
+  logger.info({
+    emailId: data.email_id,
+    hasText: !!data.text,
+    hasHtml: !!data.html,
+    textLength: data.text?.length || 0,
+    htmlLength: data.html?.length || 0,
+    hasOriginalTo: originalTo.length > 0,
+    hasOriginalCc: originalCc.length > 0,
+    originalTo,
+    originalCc,
+    hasInReplyTo: !!inReplyTo,
+    hasReferences: !!references?.length,
+  }, 'Parsed email content from webhook payload');
+
+  return {
+    text: data.text,
+    html: data.html,
+    textLength: data.text?.length || 0,
+    originalTo,
+    originalCc,
+    inReplyTo,
+    references,
+  };
 }
 
 /**
@@ -573,6 +540,10 @@ function extractInsightsSimple(data: {
  */
 function verifyResendWebhook(req: Request, rawBody: string): boolean {
   if (!RESEND_WEBHOOK_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('RESEND_WEBHOOK_SECRET not configured in production — rejecting webhook');
+      return false;
+    }
     logger.warn('RESEND_WEBHOOK_SECRET not configured, skipping signature verification (dev mode)');
     return true;
   }
@@ -630,9 +601,8 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
 }> {
   const pool = getPool();
 
-  // Fetch email body and original headers first
-  // The Resend API returns original TO/CC in headers, which aren't in the webhook payload
-  const emailBody = await fetchEmailBody(data.email_id);
+  // Parse email body and headers from the webhook payload
+  const emailBody = parseEmailFromWebhook(data);
 
   // Use original recipients from headers if available, otherwise fall back to webhook data
   let toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
@@ -823,8 +793,8 @@ async function handleFeedEmail(
   // Extract links from HTML content for processing
   const links: { url: string; text?: string }[] = [];
 
-  // Fetch the email body to get HTML content
-  const emailBody = await fetchEmailBody(data.email_id);
+  // Parse the email body from the webhook payload
+  const emailBody = parseEmailFromWebhook(data);
 
   if (emailBody?.html) {
     // Simple regex to extract links from HTML
@@ -878,22 +848,39 @@ async function handleFeedEmail(
 }
 
 /**
- * Handle unrouted emails (plain addie@ or unknown context)
+ * Handle unrouted emails — no routing handler matched.
  *
- * Logs the email but doesn't process it - for monitoring what comes in
- * without a clear routing context.
+ * Alerts the team via Slack and saves the email as a prospect
+ * fallback so it doesn't get lost.
  */
 async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<void> {
-  // Log with ERROR level so it's visible in monitoring — unrouted emails should not happen
-  // after the routing fix. If we're seeing these, there's a new from-address we need to handle.
+  const from = data.from;
+  const to = data.to;
+  const cc = data.cc;
+  const subject = data.subject;
+
   logger.error({
     emailId: data.email_id,
     messageId: data.message_id,
-    from: data.from,
-    to: data.to,
-    cc: data.cc,
-    subject: data.subject,
+    from,
+    to,
+    cc,
+    subject,
   }, 'Received unrouted inbound email — no handler matched. This email was NOT processed.');
+
+  // Sanitize for Slack mrkdwn — strip characters that could trigger mentions or formatting
+  const sanitize = (s: string) => s.replace(/[<>&*_~`@]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+  notifySystemError({
+    source: 'webhooks',
+    errorMessage: [
+      'Unrouted inbound email — no handler matched.',
+      `From: ${sanitize(from)}`,
+      `To: ${sanitize(String(to))}`,
+      cc ? `CC: ${sanitize(String(cc))}` : '',
+      `Subject: ${sanitize(subject ?? '(none)')}`,
+    ].filter(Boolean).join('\n'),
+  });
 
   // Store as a prospect email so it doesn't get lost
   try {
@@ -952,6 +939,13 @@ async function handleLumaGuestCreated(payload: LumaWebhookPayload): Promise<void
     registration_source: 'luma',
     luma_guest_id: guest.api_id,
   });
+
+  // Add to invite list so they appear in our admin UI and can access invite-only events
+  try {
+    await eventsDb.addInvites(event.id, [guest.user_email]);
+  } catch {
+    // Duplicate invite — safe to ignore
+  }
 
   logger.info({
     eventId: event.id,
@@ -1017,8 +1011,52 @@ async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void
 }
 
 /**
+ * Handle Luma event.created webhook
+ * Creates a new event in the AAO database from a Luma event
+ */
+async function handleLumaEventCreated(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEvent = payload.data.event;
+  if (!lumaEvent) {
+    logger.warn({ payload }, 'Luma event.created webhook missing event data');
+    return;
+  }
+
+  const result = await createEventFromLuma(lumaEvent);
+  if (result) {
+    logger.info({ eventId: result.id, slug: result.slug, lumaEventId: lumaEvent.api_id }, 'Created event from Luma webhook');
+  }
+}
+
+/**
+ * Handle Luma event.deleted or event.cancelled webhook
+ * Marks the AAO event as cancelled if it exists
+ */
+async function handleLumaEventCancelled(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEventId = payload.data.event?.api_id || payload.data.api_id;
+  if (!lumaEventId) {
+    logger.warn({ payload }, 'Luma event cancelled webhook missing event ID');
+    return;
+  }
+
+  const pool = getPool();
+  const eventResult = await pool.query(
+    `SELECT id, title FROM events WHERE luma_event_id = $1`,
+    [lumaEventId]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId }, 'Luma event cancelled for unknown event, ignoring');
+    return;
+  }
+
+  const event = eventResult.rows[0];
+  await eventsDb.updateEvent(event.id, { status: 'cancelled' as any });
+  logger.info({ eventId: event.id, title: event.title, lumaEventId }, 'Cancelled event from Luma webhook');
+}
+
+/**
  * Handle Luma event.updated webhook
- * Syncs event changes from Luma to our database
+ * Syncs event changes from Luma to our database, creating the event if it doesn't exist yet
  */
 async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void> {
   const lumaEvent = payload.data.event;
@@ -1036,13 +1074,15 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
   );
 
   if (eventResult.rows.length === 0) {
-    logger.debug({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, ignoring');
+    // Event doesn't exist yet — create it
+    logger.info({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, creating');
+    await createEventFromLuma(lumaEvent);
     return;
   }
 
   const eventId = eventResult.rows[0].id;
 
-  // Update our event with Luma changes
+  // Update our event with Luma changes (all fields that createEventFromLuma maps)
   await eventsDb.updateEvent(eventId, {
     title: lumaEvent.name,
     description: lumaEvent.description || undefined,
@@ -1052,7 +1092,10 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
     venue_name: lumaEvent.geo_address_json?.description || undefined,
     venue_address: lumaEvent.geo_address_json?.full_address || undefined,
     venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_state: lumaEvent.geo_address_json?.region || undefined,
     venue_country: lumaEvent.geo_address_json?.country || undefined,
+    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
+    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
     virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
     featured_image_url: lumaEvent.cover_url || undefined,
   });
@@ -1073,12 +1116,24 @@ export function createWebhooksRouter(): Router {
   router.post('/luma', async (req: Request, res: Response) => {
     const requestStartTime = Date.now();
 
+    // Verify webhook authenticity via signing secret
+    const LUMA_WEBHOOK_SECRET = process.env.LUMA_WEBHOOK_SECRET;
+    if (!LUMA_WEBHOOK_SECRET) {
+      logger.warn('Luma webhook rejected: LUMA_WEBHOOK_SECRET not configured');
+      return res.status(503).json({ error: 'Webhook validation not configured' });
+    }
+    const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
+    if (providedSecret !== LUMA_WEBHOOK_SECRET) {
+      logger.warn('Luma webhook rejected: invalid signing secret');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     try {
-      logger.info({ body: req.body }, 'Received Luma webhook');
+      logger.debug({ action: (req.body as Record<string, unknown>)?.action }, 'Received Luma webhook');
 
       const payload = parseLumaWebhook(req.body);
       if (!payload) {
-        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+        logger.warn('Invalid Luma webhook payload structure');
         return res.status(400).json({ error: 'Invalid payload' });
       }
 
@@ -1098,13 +1153,11 @@ export function createWebhooksRouter(): Router {
           await handleLumaEventUpdated(payload);
           break;
         case 'event.created':
-          // Events created via Luma directly are logged but not auto-synced
-          // (we create events from AAO, not vice versa)
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
+          await handleLumaEventCreated(payload);
           break;
         case 'event.deleted':
-          // Log but don't auto-delete our events
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
+        case 'event.cancelled':
+          await handleLumaEventCancelled(payload);
           break;
         default:
           logger.warn({ action: payload.action }, 'Unknown Luma webhook action');
