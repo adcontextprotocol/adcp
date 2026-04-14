@@ -126,6 +126,35 @@ export class FederatedIndexDatabase {
   }
 
   /**
+   * Bulk-fetch first authorization for multiple agents in a single query.
+   * Returns a Map from agent_url to its first AgentPublisherAuthorization.
+   */
+  async bulkGetFirstAuthForAgents(agentUrls: string[]): Promise<Map<string, AgentPublisherAuthorization>> {
+    if (agentUrls.length === 0) return new Map();
+
+    const map = new Map<string, AgentPublisherAuthorization>();
+    const BATCH_SIZE = 1000;
+
+    for (let i = 0; i < agentUrls.length; i += BATCH_SIZE) {
+      const batch = agentUrls.slice(i, i + BATCH_SIZE);
+      // DISTINCT ON picks first row per agent_url.
+      // ORDER BY source ASC ensures adagents_json (alphabetically first) is preferred over agent_claim.
+      const result = await query<AgentPublisherAuthorization>(
+        `SELECT DISTINCT ON (agent_url)
+           agent_url, publisher_domain, authorized_for, property_ids, source, discovered_at, last_validated
+         FROM agent_publisher_authorizations
+         WHERE agent_url = ANY($1)
+         ORDER BY agent_url, source, publisher_domain`,
+        [batch]
+      );
+      for (const row of result.rows) {
+        map.set(row.agent_url, row);
+      }
+    }
+    return map;
+  }
+
+  /**
    * Check whether a publisher domain has a valid adagents.json (from crawl data).
    * Returns true if any record for this domain has has_valid_adagents = true,
    * null if the domain has never been discovered.
