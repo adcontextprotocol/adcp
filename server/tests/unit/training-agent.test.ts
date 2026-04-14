@@ -445,11 +445,9 @@ describe('buildCatalog', () => {
   });
 
   describe('reporting_capabilities compliance', () => {
-    it('uses available_reporting_frequencies (not reporting_frequency) and includes required fields', () => {
-      const withReporting = catalog.filter(cp => cp.product.reporting_capabilities);
-      expect(withReporting.length).toBeGreaterThan(0);
-
-      for (const cp of withReporting) {
+    it('every product has reporting_capabilities with required fields', () => {
+      for (const cp of catalog) {
+        expect(cp.product.reporting_capabilities).toBeDefined();
         const rc = cp.product.reporting_capabilities as Record<string, unknown>;
         // Must use correct field name
         expect(rc.available_reporting_frequencies).toBeDefined();
@@ -867,6 +865,50 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
     expect(toolNames).toHaveLength(43);
+  });
+
+  it('get_adcp_capabilities response uses 3.0 capability model', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const caps = result as Record<string, unknown>;
+    const mediaBuy = caps.media_buy as Record<string, unknown>;
+    const features = mediaBuy.features as Record<string, unknown>;
+    const execution = mediaBuy.execution as Record<string, unknown>;
+    const targeting = execution.targeting as Record<string, unknown>;
+
+    // Object presence replaces boolean gates
+    expect(mediaBuy.content_standards).toBeDefined();
+    expect(mediaBuy.audience_targeting).toBeDefined();
+    expect(mediaBuy.conversion_tracking).toBeDefined();
+
+    // Removed boolean gates must not be present
+    expect(features).not.toHaveProperty('content_standards');
+    expect(features).not.toHaveProperty('audience_targeting');
+    expect(features).not.toHaveProperty('conversion_tracking');
+
+    // Removed targeting flags must not be present
+    expect(targeting).not.toHaveProperty('device_platform');
+    expect(targeting).not.toHaveProperty('device_type');
+    expect(targeting).not.toHaveProperty('audience_include');
+    expect(targeting).not.toHaveProperty('audience_exclude');
+
+    // Flattened geo targeting
+    expect(targeting.supported_geo_levels).toBeDefined();
+    expect(targeting.supported_metro_systems).toBeDefined();
+    expect(targeting.supported_postal_systems).toBeDefined();
+    expect(targeting).not.toHaveProperty('geo_countries');
+    expect(targeting).not.toHaveProperty('geo_regions');
+
+    // Removed seller-level reporting (product-level is source of truth)
+    expect(mediaBuy).not.toHaveProperty('reporting');
+
+    // account required for media_buy sellers
+    expect(caps.account).toBeDefined();
+    const account = caps.account as Record<string, unknown>;
+    expect((account.supported_billing as unknown[]).length).toBeGreaterThan(0);
+
+    // portfolio present
+    expect(mediaBuy.portfolio).toBeDefined();
   });
 
   it('returns error for unknown tool', async () => {

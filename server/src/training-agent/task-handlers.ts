@@ -1903,11 +1903,35 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     media_buy: {
       features: {
         inline_creative_management: true,
-        compliance_testing: true,
+        catalog_management: true,
       },
       portfolio: {
         publisher_domains: publisherDomains,
         primary_channels: channels,
+      },
+      content_standards: {
+        supports_local_evaluation: true,
+        supported_channels: channels,
+        supports_webhook_delivery: false,
+      },
+      audience_targeting: {
+        supported_identifier_types: ['hashed_email'],
+        minimum_audience_size: 100,
+      },
+      conversion_tracking: {
+        supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
+        supported_hashed_identifiers: ['hashed_email'],
+        supported_action_sources: ['website', 'app'],
+      },
+      execution: {
+        targeting: {
+          supported_geo_levels: ['countries', 'regions', 'metros', 'postal_areas'],
+          supported_metro_systems: ['nielsen_dma'],
+          supported_postal_systems: ['us_zip'],
+          language: true,
+          keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
+          negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+        },
       },
     },
     creative: {
@@ -1920,7 +1944,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
       require_operator_auth: false,
       required_for_products: false,
       sandbox: true,
-      supported_billing: [],
+      supported_billing: ['agent'],
     },
     compliance_testing: {
       scenarios: [
