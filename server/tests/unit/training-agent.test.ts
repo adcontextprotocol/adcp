@@ -842,6 +842,19 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('get_rights');
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
+    expect(toolNames).toContain('creative_approval');
+    expect(toolNames).toContain('create_property_list');
+    expect(toolNames).toContain('list_property_lists');
+    expect(toolNames).toContain('get_property_list');
+    expect(toolNames).toContain('update_property_list');
+    expect(toolNames).toContain('delete_property_list');
+    expect(toolNames).toContain('validate_property_delivery');
+    expect(toolNames).toContain('create_content_standards');
+    expect(toolNames).toContain('list_content_standards');
+    expect(toolNames).toContain('get_content_standards');
+    expect(toolNames).toContain('update_content_standards');
+    expect(toolNames).toContain('calibrate_content');
+    expect(toolNames).toContain('validate_content_delivery');
     expect(toolNames).toContain('get_adcp_capabilities');
     expect(toolNames).toContain('comply_test_controller');
     expect(toolNames).toContain('build_creative');
@@ -853,7 +866,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
-    expect(toolNames).toHaveLength(30);
+    expect(toolNames).toHaveLength(43);
   });
 
   it('returns error for unknown tool', async () => {
