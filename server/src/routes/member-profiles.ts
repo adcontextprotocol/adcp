@@ -20,6 +20,7 @@ import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
+import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import type { MemberBrandInfo } from "../types.js";
@@ -102,9 +103,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       // Get user's organization memberships
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
+      let memberships = await workos!.userManagement.listOrganizationMemberships({
         userId: user.id,
       });
+
+      // Auto-link: if no memberships, check for verified domain match
+      if (memberships.data.length === 0) {
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          // Re-fetch memberships after auto-link
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+        }
+      }
 
       if (memberships.data.length === 0) {
         logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
@@ -221,9 +233,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
       } else {
         // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
+        let memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
+
+        // Auto-link: if no memberships, check for verified domain match
+        if (memberships.data.length === 0) {
+          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+          if (linked) {
+            memberships = await workos!.userManagement.listOrganizationMemberships({
+              userId: user.id,
+            });
+          }
+        }
 
         if (memberships.data.length === 0) {
           return res.status(404).json({
@@ -390,9 +412,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
       } else {
         // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
+        let memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
+
+        // Auto-link: if no memberships, check for verified domain match
+        if (memberships.data.length === 0) {
+          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+          if (linked) {
+            memberships = await workos!.userManagement.listOrganizationMemberships({
+              userId: user.id,
+            });
+          }
+        }
 
         if (memberships.data.length === 0) {
           return res.status(404).json({
