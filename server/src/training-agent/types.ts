@@ -145,6 +145,20 @@ export interface ShowResponse {
   }>;
 }
 
+export interface RightsGrantState {
+  grantId: string;
+  rightsId: string;
+  brandId: string;
+  buyerDomain: string;
+  status: 'acquired' | 'pending_approval' | 'rejected';
+  pricingOptionId: string;
+  startDate: string;
+  endDate: string;
+  impressionCap?: number;
+  paused: boolean;
+  createdAt: string;
+}
+
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
@@ -154,6 +168,7 @@ export interface SessionState {
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   propertyLists: Map<string, PropertyListState>;
   contentStandards: Map<string, ContentStandardsState>;
+  rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
   lastGetProductsContext?: {
     products: Product[];

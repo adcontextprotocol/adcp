@@ -128,13 +128,10 @@ export const CONTENT_STANDARDS_TOOLS = [
 function toStandardsResponse(state: ContentStandardsState) {
   return {
     standards_id: state.standardsId,
-    scope: {
-      ...(state.scope.countriesAll ? { countries_all: state.scope.countriesAll } : {}),
-      ...(state.scope.channelsAny ? { channels_any: state.scope.channelsAny } : {}),
-      ...(state.scope.languagesAny ? { languages_any: state.scope.languagesAny } : {}),
-      ...(state.scope.description ? { description: state.scope.description } : {}),
-    },
     ...(state.scope.description ? { name: state.scope.description } : {}),
+    ...(state.scope.countriesAll ? { countries_all: state.scope.countriesAll } : {}),
+    ...(state.scope.channelsAny ? { channels_any: state.scope.channelsAny } : {}),
+    ...(state.scope.languagesAny ? { languages_any: state.scope.languagesAny } : {}),
     policy: state.policy,
     ...(state.calibrationExemplars ? { calibration_exemplars: state.calibrationExemplars } : {}),
   };
