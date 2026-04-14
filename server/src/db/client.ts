@@ -61,16 +61,46 @@ export function getPool(): Pool {
   return pool;
 }
 
+/** Transient connection errors that are safe to retry (PgBouncer / TCP resets). */
+const TRANSIENT_CONNECTION_ERRORS = new Set([
+  "client_idle_timeout",
+  "server_login_retry",
+  "connection_reset",
+  "ECONNRESET",
+  "EPIPE",
+  "57P01", // admin_shutdown
+  "57P03", // cannot_connect_now
+  "08006", // connection_failure
+  "08003", // connection_does_not_exist
+]);
+
+function isTransientConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = (err as any).code || err.message || "";
+  return TRANSIENT_CONNECTION_ERRORS.has(msg);
+}
+
 /**
  * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
  * with the params array -- never concatenate user input into the text argument.
+ *
+ * Automatically retries once on transient connection errors (e.g. PgBouncer
+ * closing an idle connection between pool checkout and query execution).
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
-  const pool = getPool();
-  return pool.query<T>(text, params);
+  const p = getPool();
+  try {
+    return await p.query<T>(text, params);
+  } catch (err) {
+    if (isTransientConnectionError(err)) {
+      console.warn("Transient DB connection error, retrying query:", (err as Error).message);
+      return p.query<T>(text, params);
+    }
+    throw err;
+  }
 }
 
 /**
