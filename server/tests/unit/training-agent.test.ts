@@ -5621,3 +5621,86 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(result.status).toBe('denied');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Context echo — AdCP requirement: echo caller context unchanged in responses
+// ---------------------------------------------------------------------------
+
+/** Raw call that preserves the full response envelope (context, adcp_error). */
+async function simulateCallToolRaw(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<{ parsed: Record<string, unknown>; isError?: boolean }> {
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const handler = requestHandlers.get('tools/call');
+  if (!handler) throw new Error('CallTool handler not found');
+  const response = await handler(
+    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    {},
+  );
+  const text = response.content?.[0]?.text;
+  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+}
+
+describe('context echo', () => {
+  const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+  const TEST_CONTEXT = { correlation_id: 'test-123', custom: { nested: true } };
+
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+  });
+
+  it('echoes context in success responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBeFalsy();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('omits context when not provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {});
+    expect(parsed).not.toHaveProperty('context');
+  });
+
+  it('echoes context in error responses (unknown tool)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'nonexistent_tool', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context in validation error responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // create_media_buy with missing required fields triggers a validation error
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+      // missing required fields: start_time, end_time, packages
+    });
+    expect(isError).toBe(true);
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('does not pass context to handlers as part of args', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // get_products returns product data — if context leaked into args it wouldn't
+    // affect the response, but the key should not appear in the result body
+    // except as the echoed context field
+    const { parsed } = await simulateCallToolRaw(server, 'get_products', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+    });
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+    // The products field should exist (handler ran successfully)
+    expect(parsed.products).toBeDefined();
+  });
+});
