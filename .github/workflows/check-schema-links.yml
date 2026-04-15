@@ -188,7 +188,7 @@ jobs:
 
       - name: Comment on PR (only when issues found)
         if: steps.check.outputs.has_issues == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           COMMENT_BODY: ${{ steps.check.outputs.comment }}
         with:
@@ -225,7 +225,7 @@ jobs:
 
       - name: Clean up stale comment on success
         if: steps.check.outputs.has_issues == 'false'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { data: comments } = await github.rest.issues.listComments({
