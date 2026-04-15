@@ -9,13 +9,14 @@ This skill enables you to execute the AdCP Creative Protocol with creative agent
 
 ## Overview
 
-The Creative Protocol provides 3 standardized tasks for building and previewing advertising creatives:
+The Creative Protocol provides 4 standardized tasks for building and previewing advertising creatives:
 
 | Task | Purpose | Response Time |
 |------|---------|---------------|
 | `list_creative_formats` | View format specifications | ~1s |
 | `build_creative` | Generate or transform creatives | ~30s-5m |
 | `preview_creative` | Get visual previews | ~5s |
+| `get_creative_delivery` | Variant-level delivery data | ~5-30s |
 
 ## Typical Workflow
 
@@ -169,6 +170,38 @@ Generate visual previews of creative manifests.
 **Response contains:**
 - `previews`: Array of preview objects with `preview_url` or `preview_html`
 - `expires_at`: When preview URLs expire
+
+---
+
+### get_creative_delivery
+
+Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed.
+
+**Request:**
+```json
+{
+  "media_buy_ids": ["mb_abc123"],
+  "start_date": "2025-01-01",
+  "end_date": "2025-01-31",
+  "max_variants": 10
+}
+```
+
+**Key fields:**
+- `media_buy_ids` (array, optional): Filter to specific media buys
+- `creative_ids` (array, optional): Filter to specific creatives
+- `start_date`, `end_date` (string, optional): Delivery period (YYYY-MM-DD)
+- `max_variants` (integer, optional): Max variants per creative (useful for generative creatives)
+- `account` (object, optional): Account for routing and scoping
+
+At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
+
+**Response contains:**
+- `creatives`: Array with variant-level delivery data
+  - `variant_id`: Unique variant identifier (use in `preview_creative` with `request_type: "variant"`)
+  - `generation_context`: What triggered this variant (page topic, device, etc.)
+  - `delivery_metrics`: Impressions, clicks, completions
+  - `ext`: Platform engagement metrics (likes, shares, comments)
 
 ---
 
