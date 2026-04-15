@@ -1202,8 +1202,7 @@ export function createOrganizationsRouter(): Router {
             }
 
             // Commit the read-lock transaction before making external API calls.
-            // This avoids holding a DB connection idle during network round-trips,
-            // which triggers PgBouncer client_idle_timeout errors.
+            // This avoids holding a DB connection idle during network round-trips.
             await client.query('COMMIT');
 
             // --- WorkOS API calls (outside any DB transaction) ---

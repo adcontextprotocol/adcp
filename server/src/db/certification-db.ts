@@ -1517,8 +1517,7 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
  * Uses CONCURRENTLY to avoid locking reads during refresh.
  */
 export async function refreshEngagementTime(): Promise<void> {
-  // REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction,
-  // and PgBouncer transaction mode discards non-LOCAL SET between statements.
+  // REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction.
   // Rely on the role-level statement_timeout (set to 120s via ALTER ROLE for
   // this specific need, or accept the 30s default — the view is non-critical).
   try {

@@ -274,8 +274,7 @@ export function createAccountLinkingRouter(): Router {
 
       // Update WorkOS (source of truth for auth) AFTER the transaction is
       // committed and the connection is released. This avoids holding a DB
-      // connection idle while waiting on an external network call, which
-      // triggers PgBouncer client_idle_timeout errors.
+      // connection idle while waiting on an external network call.
       // If WorkOS rejects the update the outer catch handles the error;
       // the DB change is already committed, and the user.updated webhook
       // will re-sync on the next WorkOS event if needed.

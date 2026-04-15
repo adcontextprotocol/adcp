@@ -30,14 +30,10 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    // PgBouncer owns connection pooling — pg.Pool is only a concurrency
-    // limiter and connection manager. idleTimeoutMillis: 1 (not 0 — 0 is
-    // falsy and disables eviction entirely in pg-pool) closes idle
-    // connections after 1 ms, preventing stale connections that conflict
-    // with PgBouncer's client_idle_timeout. max: 3 caps concurrent checkouts.
-    max: 3,
-    idleTimeoutMillis: 1,
-    connectionTimeoutMillis: 10000,
+    max: config.maxPoolSize ?? 40,
+    min: config.minPoolSize ?? 5,
+    idleTimeoutMillis: config.idleTimeoutMillis ?? 30000,
+    connectionTimeoutMillis: config.connectionTimeoutMillis ?? 5000,
     allowExitOnIdle: true,
   });
 
@@ -60,10 +56,8 @@ export function getPool(): Pool {
   return pool;
 }
 
-/** Transient connection errors that are safe to retry (PgBouncer / TCP resets). */
+/** Transient connection errors that are safe to retry once. */
 const TRANSIENT_CONNECTION_ERRORS = new Set([
-  "client_idle_timeout",
-  "server_login_retry",
   "connection_reset",
   "ECONNRESET",
   "EPIPE",
@@ -85,8 +79,7 @@ function isTransientConnectionError(err: unknown): boolean {
  * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
  * with the params array -- never concatenate user input into the text argument.
  *
- * Automatically retries once on transient connection errors (e.g. PgBouncer
- * closing an idle connection between pool checkout and query execution).
+ * Automatically retries once on transient connection errors.
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
@@ -106,45 +99,15 @@ export async function query<T extends QueryResultRow = any>(
 
 /**
  * Get a client from the pool for transactions.
- *
- * Validates the connection with a probe query before returning it.
- * If the connection is stale (PgBouncer killed it), releases it and
- * retries once with a fresh connection.
  */
 export async function getClient(): Promise<PoolClient> {
   const p = getPool();
-  const client = await p.connect();
-  try {
-    await client.query("SELECT 1");
-    return client;
-  } catch (err) {
-    client.release(true);
-    if (isTransientConnectionError(err)) {
-      console.warn("Stale DB connection on checkout, retrying:", (err as Error).message);
-      const retryClient = await p.connect();
-      try {
-        await retryClient.query("SELECT 1");
-        return retryClient;
-      } catch (retryErr) {
-        retryClient.release(true);
-        throw retryErr;
-      }
-    }
-    throw err;
-  }
+  return p.connect();
 }
 
 /**
- * Perform a health check using the pool.
- *
- * Previous versions opened a dedicated pg.Client on every call, bypassing
- * the pool. Under load this added connection churn (TCP + TLS handshake
- * every 15 s per machine) and competed with real traffic for PgBouncer
- * slots — causing the very timeouts it was trying to avoid.
- *
- * Using the pool is the correct signal: if the pool cannot serve a trivial
- * query within the timeout, the machine genuinely cannot handle DB traffic
- * and Fly should stop routing to it.
+ * Perform a health check. If the pool can't serve a trivial query,
+ * the machine can't handle DB traffic and Fly should stop routing to it.
  */
 export async function healthCheck(timeoutMs = 5000): Promise<void> {
   const p = getPool();

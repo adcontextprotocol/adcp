@@ -10,6 +10,7 @@ export interface DatabaseConfig {
   password?: string;
   ssl?: boolean | { rejectUnauthorized: boolean };
   maxPoolSize?: number;
+  minPoolSize?: number;
   connectionTimeoutMillis?: number;
   idleTimeoutMillis?: number;
 }
@@ -37,10 +38,9 @@ export function getDatabaseConfig(): DatabaseConfig | null {
   return {
     connectionString,
     ssl,
-    // Pool settings are hardcoded in client.ts (PgBouncer owns pooling).
-    // These fields exist only so migrate.ts can pass a partial config.
-    maxPoolSize: 3,
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 1,
+    maxPoolSize: parseInt(process.env.DATABASE_POOL_MAX || "40", 10),
+    minPoolSize: parseInt(process.env.DATABASE_POOL_MIN || "5", 10),
+    connectionTimeoutMillis: parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS || "5000", 10),
+    idleTimeoutMillis: parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS || "30000", 10),
   };
 }
