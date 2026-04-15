@@ -94,6 +94,9 @@ The domain where a data provider publishes their signal catalog (e.g., `polk.com
 **Daypart**
 Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
 
+**Delegation Type** (`delegation_type`)
+Field in adagents.json that describes the commercial relationship between a publisher and an authorized agent: `direct` (publisher treats this as their direct sales path), `delegated` (agent manages monetization on the publisher's behalf), or `ad_network` (inventory sold through a network/package). Corresponds to `relationship` in brand.json for bilateral verification.
+
 **Deployment** (Signals Protocol)
 The availability status of a signal on specific platforms, including activation state and timing.
 
@@ -231,6 +234,9 @@ Advertising inventory available for purchase, discovered through natural languag
 **Prompt**
 Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
 
+**Property**
+A digital advertising surface: website, mobile app, CTV app, podcast, or other media endpoint. Properties appear in `adagents.json` (publisher-declared inventory) and `brand.json` (operator-declared portfolio with `relationship` field). Identified by type + identifier (domain for websites, bundle ID for apps).
+
 **Provider**
 The company or platform that supplies signal data (e.g., LiveRamp, Experian, Peer39, weather services).
 
@@ -243,6 +249,9 @@ Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed
 
 **Reach**
 The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
+
+**Relationship** (brand.json field)
+Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Uses the same values as `delegation_type` in adagents.json. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
 
 **Restricted Attribute**
 A personal data category (e.g., `health_data`, `racial_ethnic_origin`) that must not be used for targeting under one or more policy categories. Restricted attributes are defined at the registry level (GDPR Article 9 categories) and self-declared on signal definitions. Governance agents match restricted attributes structurally — if a signal carries a restricted attribute that a plan's policy categories prohibit, targeting with that signal is denied.

@@ -150,6 +150,8 @@ All sources produce the same resolution response structure. To get full brand id
 | POST | `/api/registry/expand/product-identifiers` | Expand property selectors to identifiers |
 | GET | `/api/registry/validate/property-authorization` | Real-time authorization check |
 
+Authorization validation checks both sides: the publisher's `adagents.json` (does it authorize this agent with the claimed `delegation_type`?) and the operator's `brand.json` (does it declare this property with a matching `relationship`?).
+
 ### Validation Tools
 
 | Method | Path | Description |

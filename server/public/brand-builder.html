@@ -1826,7 +1826,7 @@
               domain: primaryWebsite ? primaryWebsite.identifier : '',
               keller_type: b.keller_type || 'master',
               parent_brand: b.parent_brand || '',
-              properties: otherProps.map(p => ({ type: p.type, identifier: p.identifier, primary: false })),
+              properties: otherProps.map(p => ({ type: p.type, identifier: p.identifier, primary: false, relationship: p.relationship || 'owned' })),
               brandIdManuallyEdited: true,
               description: b.description || '',
               industry: b.industry || '',
@@ -2224,7 +2224,7 @@
       // ============================================================================
 
       function addSingleBrandProperty() {
-        singleBrandProperties.push({ type: 'website', identifier: '', primary: singleBrandProperties.length === 0 });
+        singleBrandProperties.push({ type: 'website', identifier: '', primary: singleBrandProperties.length === 0, relationship: 'owned' });
         renderSingleBrandProperties();
         updatePreview();
       }
@@ -2263,6 +2263,12 @@
               <option value="streaming_audio" ${prop.type === 'streaming_audio' ? 'selected' : ''}>Streaming Audio</option>
             </select>
             <input type="text" value="${escapeHtml(prop.identifier)}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateSingleBrandProperty(${i}, 'identifier', this.value)" />
+            <select onchange="updateSingleBrandProperty(${i}, 'relationship', this.value)" title="owned = your property, direct = your sales path, delegated = you manage their monetization, ad_network = you sell as exchange/SSP">
+              <option value="owned" ${(!prop.relationship || prop.relationship === 'owned') ? 'selected' : ''}>Owned</option>
+              <option value="direct" ${prop.relationship === 'direct' ? 'selected' : ''}>Direct</option>
+              <option value="delegated" ${prop.relationship === 'delegated' ? 'selected' : ''}>Delegated</option>
+              <option value="ad_network" ${prop.relationship === 'ad_network' ? 'selected' : ''}>Ad Network</option>
+            </select>
             <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
               <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateSingleBrandProperty(${i}, 'primary', this.checked)" />
               Primary
@@ -2826,7 +2832,7 @@
       function addProperty(brandId) {
         const brand = brands.find(b => b.id === brandId);
         if (brand) {
-          brand.properties.push({ type: 'website', identifier: '', primary: false });
+          brand.properties.push({ type: 'website', identifier: '', primary: false, relationship: 'owned' });
           renderBrandDetail();
           updatePreview();
         }
@@ -3008,6 +3014,12 @@
                     <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
                   </select>
                   <input type="text" value="${escapeHtml(prop.identifier)}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateProperty(${brand.id}, ${i}, 'identifier', this.value)" />
+                  <select onchange="updateProperty(${brand.id}, ${i}, 'relationship', this.value)" title="owned = your property, direct = your sales path, delegated = you manage their monetization, ad_network = you sell as exchange/SSP">
+                    <option value="owned" ${(!prop.relationship || prop.relationship === 'owned') ? 'selected' : ''}>Owned</option>
+                    <option value="direct" ${prop.relationship === 'direct' ? 'selected' : ''}>Direct</option>
+                    <option value="delegated" ${prop.relationship === 'delegated' ? 'selected' : ''}>Delegated</option>
+                    <option value="ad_network" ${prop.relationship === 'ad_network' ? 'selected' : ''}>Ad Network</option>
+                  </select>
                   <button class="btn btn-secondary" onclick="removeProperty(${brand.id}, ${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
                 </div>
               `).join('')}
@@ -3345,7 +3357,11 @@
               singleBrandProperties
                 .filter(p => p.identifier)
                 .forEach(p => {
-                  singleBrandObj.properties.push({ type: p.type, identifier: p.identifier });
+                  const entry = { type: p.type, identifier: p.identifier };
+                  if (p.relationship && p.relationship !== 'owned') {
+                    entry.relationship = p.relationship;
+                  }
+                  singleBrandObj.properties.push(entry);
                 });
             }
 
@@ -3429,7 +3445,13 @@
                 if (brand.properties && brand.properties.length > 0) {
                   brand.properties
                     .filter(p => p.identifier)
-                    .forEach(p => props.push({ type: p.type, identifier: p.identifier }));
+                    .forEach(p => {
+                      const entry = { type: p.type, identifier: p.identifier };
+                      if (p.relationship && p.relationship !== 'owned') {
+                        entry.relationship = p.relationship;
+                      }
+                      props.push(entry);
+                    });
                 }
                 if (props.length > 0) {
                   brandObj.properties = props;

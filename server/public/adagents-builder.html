@@ -1196,6 +1196,23 @@
               </div>
 
               <div class="form-group">
+                <label>Delegation Type
+                  <span style="font-weight: normal; font-size: 12px; color: #666; margin-left: 4px;"
+                    title="Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)">
+                    &#9432; Hover for help
+                  </span>
+                </label>
+                <select id="agent-delegation-type" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                  <option value="direct">direct — your sales path</option>
+                  <option value="delegated">delegated — agent manages your monetization</option>
+                  <option value="ad_network">ad_network — sold through network/package</option>
+                </select>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">
+                  Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)
+                </p>
+              </div>
+
+              <div class="form-group">
                 <label>Property Access</label>
 
                 <div style="margin-bottom: 16px">
@@ -1409,6 +1426,7 @@
     {
       "url": "https://agent.example.com",
       "authorized_for": "Description of authorization scope",
+      "delegation_type": "direct",
       "property_ids": ["website_main", "ctv_app"]
     }
   ],
@@ -1663,6 +1681,11 @@
         newEntry.innerHTML = `
                 <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url">
                 <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth">
+                <select class="agent-delegation-type" style="flex: 1; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border);" title="Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)">
+                  <option value="direct">direct</option>
+                  <option value="delegated">delegated</option>
+                  <option value="ad_network">ad_network</option>
+                </select>
                 <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" title="Comma-separated list of property IDs this agent can sell">
                 <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
             `;
@@ -1705,6 +1728,11 @@
           newEntry.innerHTML = `
                     <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${example.url}">
                     <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${example.auth}">
+                    <select class="agent-delegation-type" style="flex: 1; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border);" title="Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)">
+                      <option value="direct" ${(example.delegationType || 'direct') === 'direct' ? 'selected' : ''}>direct</option>
+                      <option value="delegated" ${example.delegationType === 'delegated' ? 'selected' : ''}>delegated</option>
+                      <option value="ad_network" ${example.delegationType === 'ad_network' ? 'selected' : ''}>ad_network</option>
+                    </select>
                     <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${example.propertyIds}" title="Comma-separated list of property IDs this agent can sell">
                     <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
                 `;
@@ -1807,6 +1835,7 @@
               const agentObj = {
                 url: agent.url,
                 authorized_for: agent.authorized_for,
+                delegation_type: agent.delegation_type || 'direct',
               };
 
               // Handle authorization type
@@ -1973,6 +2002,7 @@
                                 ${agent.authorized_for}
                             </div>
                             <div class="dashboard-card-tags">
+                                <span class="dashboard-card-tag">${agent.delegation_type || 'direct'}</span>
                                 ${propertyInfo}
                             </div>
                         </div>
@@ -2989,6 +3019,7 @@
         document.getElementById('agent-modal-title').textContent = 'Add Agent';
         document.getElementById('agent-url').value = '';
         document.getElementById('agent-authorized-for').value = '';
+        document.getElementById('agent-delegation-type').value = 'direct';
 
         // Default to "all" access
         document.querySelector('input[name="agent-access-type"][value="all"]').checked = true;
@@ -3006,6 +3037,7 @@
         document.getElementById('agent-modal-title').textContent = 'Edit Agent';
         document.getElementById('agent-url').value = agent.url;
         document.getElementById('agent-authorized-for').value = agent.authorized_for;
+        document.getElementById('agent-delegation-type').value = agent.delegation_type || 'direct';
 
         // Determine access type based on what's set
         let accessType = 'all';
@@ -3093,6 +3125,7 @@
         const index = parseInt(document.getElementById('agent-edit-index').value);
         const url = document.getElementById('agent-url').value.trim();
         const authorizedFor = document.getElementById('agent-authorized-for').value.trim();
+        const delegationType = document.getElementById('agent-delegation-type').value;
 
         if (!url) {
           alert('Agent URL is required');
@@ -3123,6 +3156,7 @@
         const agent = {
           url: url,
           authorized_for: authorizedFor,
+          delegation_type: delegationType,
           property_ids: propertyIds,
         };
 
@@ -3595,6 +3629,7 @@
         for (const entry of agentEntries) {
           const url = entry.querySelector('.agent-url').value.trim();
           const authorizedFor = entry.querySelector('.agent-auth').value.trim();
+          const delegationType = entry.querySelector('.agent-delegation-type')?.value || 'direct';
           const propertyIds = entry.querySelector('.agent-property-ids').value.trim();
 
           if (!url || !authorizedFor) {
@@ -3602,7 +3637,7 @@
             return;
           }
 
-          const agent = { url, authorized_for: authorizedFor };
+          const agent = { url, authorized_for: authorizedFor, delegation_type: delegationType };
 
           // Add property_ids if specified
           if (propertyIds) {
@@ -3956,9 +3991,15 @@
             newEntry.className = 'agent-entry';
             const propertyIds = agent.property_ids ? agent.property_ids.join(', ') : '';
 
+            const delegationType = agent.delegation_type || 'direct';
             newEntry.innerHTML = `
                         <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${agent.url}">
                         <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${agent.authorized_for}">
+                        <select class="agent-delegation-type" style="flex: 1; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border);" title="Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)">
+                          <option value="direct" ${delegationType === 'direct' ? 'selected' : ''}>direct</option>
+                          <option value="delegated" ${delegationType === 'delegated' ? 'selected' : ''}>delegated</option>
+                          <option value="ad_network" ${delegationType === 'ad_network' ? 'selected' : ''}>ad_network</option>
+                        </select>
                         <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${propertyIds}" title="Comma-separated list of property IDs this agent can sell">
                         <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
                     `;

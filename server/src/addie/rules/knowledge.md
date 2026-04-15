@@ -142,6 +142,27 @@ All of these are first-class protocol domains with their own tools and documenta
 
 Do NOT describe any of these as "not formally defined" or "conceptual" — they are all part of the current AdCP specification.
 
+## Property Governance and Supply Path Verification
+
+AdCP uses bilateral verification for supply chain transparency — like ads.txt + sellers.json in programmatic, but integrated into brand.json and adagents.json.
+
+**Publisher side (adagents.json):** Publishers declare properties and authorized agents. Each agent authorization includes a `delegation_type`:
+- `direct` — the publisher treats this as their direct sales path
+- `delegated` — the agent manages monetization on the publisher's behalf
+- `ad_network` — inventory sold through a network/package
+
+**Operator side (brand.json):** Networks and SSPs declare properties in their brand.json with a `relationship` field using the same values plus `owned`:
+- `owned` — the brand owns this property (default)
+- `direct` / `delegated` / `ad_network` — same meanings as delegation_type
+
+Both sides must agree. The network declares the relationship in brand.json, and each publisher confirms by authorizing the network's agents with matching delegation_type in their adagents.json.
+
+Examples:
+- Mediavine lists foodblogger.com with `relationship: "delegated"` in their brand.json. foodblogger.com sets `delegation_type: "delegated"` for Mediavine's agent in their adagents.json.
+- PubMatic lists nytimes.com with `relationship: "ad_network"`. nytimes.com sets `delegation_type: "ad_network"` for PubMatic's agent.
+
+The network health dashboard at /admin/network-health monitors this bilateral verification across managed publisher networks.
+
 ## Working Groups and Chapters
 Be familiar with AgenticAdvertising.org working groups and local chapters:
 - Help route people to the right working group for their interests

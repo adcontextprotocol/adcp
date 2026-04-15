@@ -104,6 +104,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/network-health", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-network-health.html").catch((err) => {
+      logger.error({ err }, "Error serving network health page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // Redirects from old newsletter admin URLs
   pageRouter.get("/digest", (_req, res) => res.redirect(301, "/admin/newsletters/the_prompt"));
   pageRouter.get("/the-build", (_req, res) => res.redirect(301, "/admin/newsletters/the_build"));
