@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as jose from 'jose';
 import {
   initVerificationKeys,
@@ -6,6 +6,7 @@ import {
   verifyVerificationToken,
   getPublicJwks,
   isTokenSigningEnabled,
+  _resetForTesting,
 } from '../../src/services/verification-token.js';
 
 describe('verification-token', () => {
@@ -40,6 +41,12 @@ describe('verification-token', () => {
 
       const initialized = await initVerificationKeys();
       expect(initialized).toBe(true);
+    });
+
+    afterAll(() => {
+      _resetForTesting();
+      delete process.env.AAO_VERIFICATION_PRIVATE_KEY;
+      delete process.env.AAO_VERIFICATION_PUBLIC_KEY;
     });
 
     it('reports signing enabled', () => {

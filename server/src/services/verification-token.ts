@@ -125,3 +125,10 @@ export function getPublicJwks(): { keys: jose.JWK[] } {
 export function isTokenSigningEnabled(): boolean {
   return !!signingKey;
 }
+
+/** @internal Reset module state for testing. */
+export function _resetForTesting(): void {
+  signingKey = undefined;
+  verifyingKey = undefined;
+  publicJwk = undefined;
+}
