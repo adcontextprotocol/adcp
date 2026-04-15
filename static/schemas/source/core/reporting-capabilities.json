@@ -87,6 +87,19 @@
       "type": "boolean",
       "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"
     },
+    "supports_offline_delivery": {
+      "type": "boolean",
+      "description": "Whether this product supports offline file delivery to cloud storage buckets. When true, reporting files for media buys on this product are delivered to the account's reporting_bucket."
+    },
+    "offline_delivery_protocols": {
+      "type": "array",
+      "description": "Cloud storage protocols supported for offline file delivery. Only meaningful when supports_offline_delivery is true.",
+      "items": {
+        "$ref": "/schemas/enums/cloud-storage-protocol.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "date_range_support": {
       "type": "string",
       "enum": ["date_range", "lifetime_only"],

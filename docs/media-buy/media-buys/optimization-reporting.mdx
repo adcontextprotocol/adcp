@@ -572,7 +572,16 @@ File contains same structure as webhook payload but aggregated across all campai
 - High data volume (detailed breakdowns, dimensional data)
 - Buyer has batch processing infrastructure
 
-Publishers declare support for offline delivery in product capabilities:
+Sellers declare their supported push-based delivery methods in `get_adcp_capabilities`. Polling via `get_media_buy_delivery` is always available as a baseline.
+```json
+{
+  "media_buy": {
+    "reporting_delivery_methods": ["webhook", "offline"]
+  }
+}
+```
+
+Products declare supported frequencies and protocols in `reporting_capabilities`:
 ```json
 {
   "reporting_capabilities": {
@@ -583,6 +592,30 @@ Publishers declare support for offline delivery in product capabilities:
   }
 }
 ```
+
+For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location appears on the account object returned by `sync_accounts`:
+```json
+{
+  "account_id": "acc_pinnacle_001",
+  "status": "active",
+  "reporting_bucket": {
+    "protocol": "s3",
+    "bucket": "seller-reports",
+    "prefix": "accounts/pinnacle/adcp",
+    "region": "us-east-1",
+    "format": "jsonl",
+    "compression": "gzip",
+    "setup_instructions": "https://seller.example.com/docs/bucket-access"
+  }
+}
+```
+
+Buyers read from the bucket on their own schedule. The seller pushes files at the product's reporting frequency.
+
+**Delivery method determines the reporting path:**
+- When `reporting_delivery_methods` includes `offline` and a `reporting_bucket` is present on the account, the seller pushes detailed delivery data to the bucket. Buyers with batch infrastructure should read from the bucket for efficiency.
+- Polling via `get_media_buy_delivery` is always available as a baseline, regardless of which push methods the seller supports. Buyers can use it for reconciliation or as a fallback.
+- `get_media_buys` always returns the media buy object with status, totals, and pacing snapshots. Use it for status checks, not detailed reporting.
 
 For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
 
@@ -685,7 +718,7 @@ Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet).
 
 ## Data Reconciliation
 
-**The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics**, regardless of whether you use webhooks, offline delivery, or polling.
+**The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics.** Polling is always available as a baseline. When the seller also supports push-based delivery (webhooks or offline buckets), those methods provide timely data but `get_media_buy_delivery` remains the reconciliation path.
 
 Reconciliation is important for **any reporting delivery method** because:
 - **Webhooks**: May be missed due to network failures or circuit breaker drops

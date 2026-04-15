@@ -94,6 +94,16 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "reporting_delivery_methods": {
+          "type": "array",
+          "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
+          "items": {
+            "type": "string",
+            "enum": ["webhook", "offline"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
