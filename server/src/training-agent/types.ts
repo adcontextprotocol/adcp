@@ -411,8 +411,6 @@ export interface PropertyListState {
   authToken: string;
   createdAt: string;
   updatedAt: string;
-  /** Soft-delete flag — list still available for validation lookups */
-  deleted?: boolean;
 }
 
 // ── Content standards types ───────────────────────────────────────

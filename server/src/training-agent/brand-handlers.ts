@@ -595,18 +595,18 @@ export const BRAND_TOOLS = [
         campaign: {
           type: 'object',
           properties: {
-            name: { type: 'string', description: 'Campaign name' },
-            description: { type: 'string', description: 'Campaign description' },
+            description: { type: 'string' },
             uses: { type: 'array', items: { type: 'string' } },
             countries: { type: 'array', items: { type: 'string' } },
             estimated_impressions: { type: 'integer' },
             start_date: { type: 'string' },
             end_date: { type: 'string' },
           },
+          required: ['description', 'uses'],
           description: 'Campaign details for rights clearance',
         },
       },
-      required: ['rights_id', 'pricing_option_id', 'buyer'],
+      required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
     },
   },
   {
@@ -674,10 +674,7 @@ export function handleGetBrandIdentity(
   const fields = req.fields;
   const authorized = req.authorized ?? false;
 
-  // Look up by brand_id, then by house domain, then fall back to the
-  // default advertiser brand. Storyboard runners send the default brand
-  // domain (test.example.com) when no test kit is loaded — the sandbox
-  // agent resolves this to acme_outdoor so flows can execute end-to-end.
+  // Look up by brand_id first, then by house domain
   let talent = BRAND_MAP.get(brandId);
   if (!talent) {
     for (const b of BRAND_MAP.values()) {
@@ -686,12 +683,6 @@ export function handleGetBrandIdentity(
         break;
       }
     }
-  }
-  // Storyboard runners send the default brand domain (test.example.com)
-  // when no test kit is loaded. Resolve domain-like IDs to the default
-  // advertiser brand so flows can execute end-to-end.
-  if (!talent && brandId.includes('.') && ADVERTISER_BRANDS.length > 0) {
-    talent = ADVERTISER_BRANDS[0];
   }
   if (!talent) {
     return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
@@ -872,12 +863,9 @@ export function handleGetRights(
   const queryLower = query.toLowerCase();
 
   const allHolders = getRightsHolders();
-  let candidates = allHolders;
-  if (brandId) {
-    // Match by brand_id or house domain; fall back to all holders if no match
-    const filtered = allHolders.filter(t => t.brand_id === brandId || t.house.domain === brandId);
-    if (filtered.length > 0) candidates = filtered;
-  }
+  let candidates = brandId
+    ? allHolders.filter(t => t.brand_id === brandId || t.house.domain === brandId)
+    : allHolders;
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
@@ -991,9 +979,8 @@ interface AcquireRightsArgs {
   pricing_option_id: string;
   buyer?: { domain: string; brand_id?: string };
   campaign: {
-    description?: string;
-    name?: string;
-    uses?: string[];
+    description: string;
+    uses: string[];
     countries?: string[];
     estimated_impressions?: number;
     start_date?: string;
@@ -1040,12 +1027,11 @@ export function handleAcquireRights(
     return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
-  const campaignDesc = campaign?.description || campaign?.name;
-  if (!campaignDesc) {
-    return { errors: [{ code: 'invalid_request', message: 'campaign.description or campaign.name is required' }] };
+  if (!campaign?.description) {
+    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
   }
 
-  const descLower = campaignDesc.toLowerCase();
+  const descLower = campaign.description.toLowerCase();
 
   for (const [keyword, rule] of Object.entries(behavior.rejected)) {
     if (descLower.includes(keyword)) {
