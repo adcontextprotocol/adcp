@@ -1,6 +1,6 @@
 -- Network consistency reports: stores per-crawl health snapshots comparing
 -- an org's brand.json declarations against crawl reality.
--- Brand.json properties (with relationship: owned/managed/represented) define
+-- Brand.json properties (with relationship: owned/direct/delegated/ad_network) define
 -- the expected state; adagents.json crawl results provide the actual state.
 
 CREATE TABLE IF NOT EXISTS network_consistency_reports (

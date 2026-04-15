@@ -162,8 +162,8 @@ export function createNetworkHealthApiRouter(): Router {
     }
   });
 
-  // Resolve an alert
-  apiRouter.post('/alerts/:alertId/resolve', requireAdmin, async (req, res) => {
+  // Resolve an alert (must be before /:orgId routes to avoid capture)
+  apiRouter.post('/:orgId/alerts/:alertId/resolve', requireAdmin, async (req, res) => {
     try {
       const { alertId } = req.params;
       if (!UUID_PATTERN.test(alertId)) {

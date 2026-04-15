@@ -811,7 +811,7 @@
 
     async function resolveAlert(alertId) {
       try {
-        await fetch(`/api/network-health/alerts/${alertId}/resolve`, { method: 'POST' });
+        await fetch(`/api/network-health/${encodeURIComponent(selectedOrgId)}/alerts/${alertId}/resolve`, { method: 'POST' });
         loadAlerts();
       } catch (err) {
         console.error('Failed to resolve alert', err);
