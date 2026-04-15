@@ -64,6 +64,17 @@ That is useful, but it is too flat for many modern publisher sales models. It do
 
 For the higher-level framing and a side-by-side example, see [Why adagents.json is more expressive than ads.txt](https://agenticadvertising.org/perspectives/adagents-json-vs-ads-txt).
 
+### Where does sellers.json fit?
+
+In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares managed or represented properties in their [`brand.json`](/docs/governance/brand/brand-json) using the `relationship` field on each property. This creates the same bilateral verification pattern:
+
+| Programmatic | AdCP equivalent | Purpose |
+|---|---|---|
+| `ads.txt` (publisher) | `adagents.json` (publisher) | "These agents are authorized to sell my inventory" |
+| `sellers.json` (seller) | `brand.json` properties with `relationship: "managed"` or `"represented"` (operator) | "I manage/sell inventory for these publishers" |
+
+Both sides must agree for the relationship to be verified. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
+
 ## File Location
 
 Publishers must host the `adagents.json` file at:

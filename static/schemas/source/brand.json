@@ -196,7 +196,7 @@
     },
     "property": {
       "type": "object",
-      "description": "A digital property owned by a brand",
+      "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare managed or represented properties. Managed and represented properties serve the same role as sellers.json in programmatic advertising — they are the operator's public declaration of which publishers they work with. The publisher confirms by authorizing the operator's agents in their adagents.json.",
       "properties": {
         "type": {
           "type": "string",
@@ -222,6 +222,12 @@
           "type": "boolean",
           "default": false,
           "description": "Whether this is the primary property for the brand"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["owned", "managed", "represented"],
+          "default": "owned",
+          "description": "Relationship between the brand and this property. 'owned': the brand owns and operates this property (default, equivalent to omitting the field). 'managed': the brand manages monetization or ad tech for this property but does not own it (e.g., Mediavine managing a food blog's ads). 'represented': the brand sells inventory for this property as an exchange or SSP (e.g., PubMatic representing nytimes.com). Managed and represented properties form a bilateral verification chain: the operator declares the relationship here, and the publisher confirms by authorizing the operator's agents in their adagents.json."
         }
       },
       "required": ["type", "identifier"],
@@ -369,7 +375,7 @@
         "properties": {
           "type": "array",
           "items": { "$ref": "#/definitions/property" },
-          "description": "Digital properties owned by this brand"
+          "description": "Digital properties associated with this brand — owned, managed, or represented"
         },
         "product_catalog": { "$ref": "#/definitions/product_catalog" },
         "privacy_policy_url": {
@@ -1678,6 +1684,37 @@
         {
           "domain": "nike.com",
           "brands": ["*"]
+        }
+      ],
+      "last_updated": "2026-01-15T10:00:00Z"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "house": {
+        "domain": "mediavine.com",
+        "name": "Mediavine",
+        "architecture": "branded_house"
+      },
+      "brands": [
+        {
+          "id": "mediavine",
+          "url": "https://mediavine.com",
+          "names": [{"en_US": "Mediavine"}],
+          "keller_type": "master",
+          "properties": [
+            {"type": "website", "identifier": "mediavine.com", "primary": true},
+            {"type": "website", "identifier": "thehollywoodgossip.com", "relationship": "managed"},
+            {"type": "website", "identifier": "foodfanatic.com", "relationship": "managed"},
+            {"type": "website", "identifier": "thebiglead.com", "relationship": "managed"}
+          ],
+          "agents": [
+            {
+              "type": "sales",
+              "url": "https://ads.mediavine.com/mcp",
+              "id": "mediavine_sales"
+            }
+          ]
         }
       ],
       "last_updated": "2026-01-15T10:00:00Z"

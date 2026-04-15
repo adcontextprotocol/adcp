@@ -340,7 +340,7 @@
       <!-- Header + Summary -->
       <div class="card">
         <h1>Network Health</h1>
-        <p class="subtitle">Monitor adagents.json deployment health across managed publisher networks</p>
+        <p class="subtitle">Compare brand.json declarations against crawl reality across managed publisher networks</p>
         <div class="summary-grid" id="summaryGrid"></div>
       </div>
 
@@ -367,14 +367,14 @@
           </div>
 
           <div class="tabs">
-            <div class="tab active" data-tab="domains" onclick="switchTab('domains')">Domains</div>
+            <div class="tab active" data-tab="properties" onclick="switchTab('properties')">Properties</div>
             <div class="tab" data-tab="agents" onclick="switchTab('agents')">Agent Health</div>
             <div class="tab" data-tab="trends" onclick="switchTab('trends')">Trends</div>
             <div class="tab" data-tab="alerts" onclick="switchTab('alerts')">Alerts</div>
           </div>
 
-          <!-- Domains tab -->
-          <div class="tab-content" id="tab-domains"></div>
+          <!-- Properties tab -->
+          <div class="tab-content" id="tab-properties"></div>
 
           <!-- Agent Health tab -->
           <div class="tab-content" id="tab-agents" style="display: none;"></div>
@@ -391,7 +391,7 @@
 
   <script>
     let networks = [];
-    let selectedNetwork = null;
+    let selectedOrgId = null;
     let selectedReport = null;
 
     // ── Init ──────────────────────────────────────────────────────
@@ -420,9 +420,9 @@
       const avgCoverage = totalNetworks > 0
         ? (networks.reduce((s, n) => s + parseFloat(n.coverage_pct), 0) / totalNetworks).toFixed(1)
         : '0.0';
-      const totalMissing = networks.reduce((s, n) => s + (n.missing_pointers || 0), 0);
-      const totalOrphaned = networks.reduce((s, n) => s + (n.orphaned_pointers || 0), 0);
-      const totalStale = networks.reduce((s, n) => s + (n.stale_pointers || 0), 0);
+      const totalVerified = networks.reduce((s, n) => s + (n.verified_properties || 0), 0);
+      const totalMissingAuth = networks.reduce((s, n) => s + (n.missing_authorization || 0), 0);
+      const totalOrphanedAuth = networks.reduce((s, n) => s + (n.orphaned_authorization || 0), 0);
       const totalAlerts = networks.reduce((s, n) => s + (n.unresolved_alerts || 0), 0);
 
       grid.innerHTML = `
@@ -434,17 +434,17 @@
           <div class="label">Avg Coverage</div>
           <div class="value">${avgCoverage}%</div>
         </div>
-        <div class="summary-card ${totalMissing === 0 ? 'good' : 'warning'}">
-          <div class="label">Missing Pointers</div>
-          <div class="value">${totalMissing}</div>
+        <div class="summary-card ${totalVerified > 0 ? 'good' : ''}">
+          <div class="label">Verified Properties</div>
+          <div class="value">${totalVerified}</div>
         </div>
-        <div class="summary-card ${totalOrphaned === 0 ? 'good' : 'warning'}">
-          <div class="label">Orphaned Pointers</div>
-          <div class="value">${totalOrphaned}</div>
+        <div class="summary-card ${totalMissingAuth === 0 ? 'good' : 'warning'}">
+          <div class="label">Missing Auth</div>
+          <div class="value">${totalMissingAuth}</div>
         </div>
-        <div class="summary-card ${totalStale === 0 ? 'good' : 'warning'}">
-          <div class="label">Stale Pointers</div>
-          <div class="value">${totalStale}</div>
+        <div class="summary-card ${totalOrphanedAuth === 0 ? 'good' : 'warning'}">
+          <div class="label">Orphaned Auth</div>
+          <div class="value">${totalOrphanedAuth}</div>
         </div>
         <div class="summary-card ${totalAlerts === 0 ? 'good' : 'error'}">
           <div class="label">Unresolved Alerts</div>
@@ -466,12 +466,12 @@
 
       let html = `<table class="health-table">
         <thead><tr>
-          <th>Authoritative URL</th>
+          <th>Organization</th>
           <th>Coverage</th>
           <th>Properties</th>
-          <th>Missing</th>
-          <th>Orphaned</th>
-          <th>Stale</th>
+          <th>Verified</th>
+          <th>Missing Auth</th>
+          <th>Orphaned Auth</th>
           <th>Alerts</th>
           <th>Last Check</th>
         </tr></thead><tbody>`;
@@ -481,8 +481,11 @@
         const level = pct >= 95 ? 'good' : pct >= 80 ? 'warning' : 'error';
         const lastCheck = n.last_report_at ? new Date(n.last_report_at).toLocaleDateString() : 'Never';
 
-        html += `<tr class="clickable" data-network-url="${escapeHtml(n.authoritative_url)}" onclick="selectNetwork(this.dataset.networkUrl)">
-          <td style="font-family: var(--font-mono); font-size: var(--text-xs);">${escapeHtml(n.authoritative_url)}</td>
+        html += `<tr class="clickable" data-org-id="${escapeHtml(n.org_id)}" onclick="selectNetwork(this.dataset.orgId)">
+          <td>
+            <div style="font-weight: var(--font-semibold);">${escapeHtml(n.org_id)}</div>
+            <div style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(n.brand_domain || '')}</div>
+          </td>
           <td>
             <div class="coverage-bar">
               <div class="coverage-track">
@@ -492,9 +495,9 @@
             </div>
           </td>
           <td>${n.total_properties}</td>
-          <td>${n.missing_pointers || 0}</td>
-          <td>${n.orphaned_pointers || 0}</td>
-          <td>${n.stale_pointers || 0}</td>
+          <td>${n.verified_properties || 0}</td>
+          <td>${n.missing_authorization || 0}</td>
+          <td>${n.orphaned_authorization || 0}</td>
           <td>${n.unresolved_alerts > 0
             ? `<span class="section-badge">${n.unresolved_alerts}</span>`
             : '<span class="section-badge success">0</span>'}</td>
@@ -508,16 +511,16 @@
 
     // ── Network Detail ────────────────────────────────────────────
 
-    async function selectNetwork(authUrl) {
-      selectedNetwork = authUrl;
+    async function selectNetwork(orgId) {
+      selectedOrgId = orgId;
 
       document.getElementById('detailTitle').textContent = 'Network Detail';
-      document.getElementById('detailUrl').textContent = authUrl;
+      document.getElementById('detailUrl').textContent = orgId;
       document.getElementById('detailPanel').classList.add('visible');
 
       // Fetch latest report
       try {
-        const res = await fetch(`/api/network-health/${encodeURIComponent(authUrl)}`);
+        const res = await fetch(`/api/network-health/${encodeURIComponent(orgId)}`);
         if (res.ok) {
           selectedReport = await res.json();
         } else {
@@ -525,12 +528,12 @@
         }
       } catch { selectedReport = null; }
 
-      switchTab('domains');
+      switchTab('properties');
     }
 
     function closeDetail() {
       document.getElementById('detailPanel').classList.remove('visible');
-      selectedNetwork = null;
+      selectedOrgId = null;
       selectedReport = null;
     }
 
@@ -540,42 +543,51 @@
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
       document.getElementById(`tab-${tabName}`).style.display = 'block';
 
-      if (tabName === 'domains') renderDomains();
+      if (tabName === 'properties') renderProperties();
       else if (tabName === 'agents') renderAgents();
       else if (tabName === 'trends') loadTrends();
       else if (tabName === 'alerts') loadAlerts();
     }
 
-    // ── Domains Tab ───────────────────────────────────────────────
+    // ── Properties Tab ────────────────────────────────────────────
 
-    function renderDomains() {
-      const container = document.getElementById('tab-domains');
-      if (!selectedReport || !selectedReport.domain_details || selectedReport.domain_details.length === 0) {
-        container.innerHTML = '<div class="empty-state">No domain details available.</div>';
+    function renderProperties() {
+      const container = document.getElementById('tab-properties');
+      if (!selectedReport || !selectedReport.property_details || selectedReport.property_details.length === 0) {
+        container.innerHTML = '<div class="empty-state">No property details available.</div>';
         return;
       }
 
-      const domains = selectedReport.domain_details;
+      const properties = selectedReport.property_details;
       let html = `<table class="health-table">
         <thead><tr>
-          <th>Domain</th>
-          <th>Pointer Status</th>
-          <th>Matched Property</th>
-          <th>Authorized Agents</th>
+          <th>Identifier</th>
+          <th>Type</th>
+          <th>Relationship</th>
+          <th>Verification Status</th>
+          <th>Agent Authorized</th>
           <th>Errors</th>
         </tr></thead><tbody>`;
 
-      for (const d of domains) {
-        const statusClass = d.pointer_status === 'valid' ? 'success'
-          : d.pointer_status === 'missing' ? 'error'
-          : 'warning';
+      for (const p of properties) {
+        const statusClass = p.verification_status === 'verified' ? 'success'
+          : p.verification_status === 'missing_authorization' ? 'error'
+          : p.verification_status === 'orphaned' ? 'warning'
+          : p.verification_status === 'unreachable' ? 'warning'
+          : 'error';
+
+        const statusLabel = escapeHtml(p.verification_status || 'unknown');
+        const relationship = escapeHtml(p.relationship || '—');
+        const agentAuth = p.agent_authorized ? 'Yes' : 'No';
+        const agentAuthClass = p.agent_authorized ? 'success' : '';
 
         html += `<tr>
-          <td style="font-weight: var(--font-semibold);">${escapeHtml(d.domain)}</td>
-          <td><span class="section-badge ${statusClass}">${d.pointer_status}</span></td>
-          <td style="font-size: var(--text-xs);">${d.matched_property ? escapeHtml(d.matched_property) : '—'}</td>
-          <td style="font-size: var(--text-xs);">${(d.authorized_agents || []).map(a => escapeHtml(a)).join(', ') || '—'}</td>
-          <td style="font-size: var(--text-xs); color: var(--color-error-600);">${(d.errors || []).map(e => escapeHtml(e)).join(', ') || '—'}</td>
+          <td style="font-weight: var(--font-semibold);">${escapeHtml(p.identifier || p.domain || '')}</td>
+          <td style="font-size: var(--text-xs);">${escapeHtml(p.type || '—')}</td>
+          <td style="font-size: var(--text-xs);">${relationship}</td>
+          <td><span class="section-badge ${statusClass}">${statusLabel}</span></td>
+          <td><span class="section-badge ${agentAuthClass}">${agentAuth}</span></td>
+          <td style="font-size: var(--text-xs); color: var(--color-error-600);">${(p.errors || []).map(e => escapeHtml(e)).join(', ') || '—'}</td>
         </tr>`;
       }
 
@@ -617,12 +629,12 @@
 
     async function loadTrends() {
       const container = document.getElementById('tab-trends');
-      if (!selectedNetwork) return;
+      if (!selectedOrgId) return;
 
       container.innerHTML = '<div class="loading">Loading trends...</div>';
 
       try {
-        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedNetwork)}/trends`);
+        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedOrgId)}/trends`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderTrends(container, data.trends || []);
@@ -655,9 +667,9 @@
         <thead><tr>
           <th>Date</th>
           <th>Coverage</th>
-          <th>Missing</th>
-          <th>Orphaned</th>
-          <th>Stale</th>
+          <th>Verified</th>
+          <th>Missing Auth</th>
+          <th>Orphaned Auth</th>
           <th>Schema Errors</th>
         </tr></thead><tbody>`;
 
@@ -667,9 +679,9 @@
         html += `<tr>
           <td style="font-size: var(--text-xs);">${new Date(t.created_at).toLocaleDateString()}</td>
           <td><span class="section-badge ${level || ''}">${pct}%</span></td>
-          <td>${t.missing_pointers}</td>
-          <td>${t.orphaned_pointers}</td>
-          <td>${t.stale_pointers}</td>
+          <td>${t.verified_properties}</td>
+          <td>${t.missing_authorization}</td>
+          <td>${t.orphaned_authorization}</td>
           <td>${t.schema_errors}</td>
         </tr>`;
       }
@@ -682,16 +694,16 @@
 
     async function loadAlerts() {
       const container = document.getElementById('tab-alerts');
-      if (!selectedNetwork) return;
+      if (!selectedOrgId) return;
 
       container.innerHTML = '<div class="loading">Loading alerts...</div>';
 
-      const encodedUrl = encodeURIComponent(selectedNetwork);
+      const encodedOrgId = encodeURIComponent(selectedOrgId);
 
       try {
         const [ruleRes, historyRes] = await Promise.all([
-          fetch(`/api/network-health/${encodedUrl}/alerts`),
-          fetch(`/api/network-health/${encodedUrl}/alerts/history?limit=20`),
+          fetch(`/api/network-health/${encodedOrgId}/alerts`),
+          fetch(`/api/network-health/${encodedOrgId}/alerts/history?limit=20`),
         ]);
 
         const rule = ruleRes.ok ? await ruleRes.json() : null;
@@ -715,16 +727,12 @@
           <input type="number" name="coverage_threshold" min="0" max="100" step="0.1" value="${rule ? rule.coverage_threshold : 95}">
         </div>
         <div class="form-group">
-          <label>Max Stale Pointers</label>
-          <input type="number" name="stale_pointer_max" min="0" value="${rule ? rule.stale_pointer_max : 0}">
+          <label>Max Missing Authorization</label>
+          <input type="number" name="missing_authorization_max" min="0" value="${rule ? rule.missing_authorization_max : 0}">
         </div>
         <div class="form-group">
-          <label>Max Orphaned Pointers</label>
-          <input type="number" name="orphaned_pointer_max" min="0" value="${rule ? rule.orphaned_pointer_max : 0}">
-        </div>
-        <div class="form-group">
-          <label>Missing Pointer Cycles</label>
-          <input type="number" name="missing_pointer_persistence_cycles" min="1" value="${rule ? rule.missing_pointer_persistence_cycles : 2}">
+          <label>Max Orphaned Authorization</label>
+          <input type="number" name="orphaned_authorization_max" min="0" value="${rule ? rule.orphaned_authorization_max : 0}">
         </div>
         <div class="form-group">
           <label>Agent Unreachable Cycles</label>
@@ -777,9 +785,8 @@
       const webhookValue = data.get('slack_webhook_url');
       const body = {
         coverage_threshold: parseFloat(data.get('coverage_threshold')),
-        stale_pointer_max: parseInt(data.get('stale_pointer_max')),
-        orphaned_pointer_max: parseInt(data.get('orphaned_pointer_max')),
-        missing_pointer_persistence_cycles: parseInt(data.get('missing_pointer_persistence_cycles')),
+        missing_authorization_max: parseInt(data.get('missing_authorization_max')),
+        orphaned_authorization_max: parseInt(data.get('orphaned_authorization_max')),
         agent_unreachable_cycles: parseInt(data.get('agent_unreachable_cycles')),
         email_recipients: emailStr ? emailStr.split(',').map(e => e.trim()).filter(Boolean) : [],
         enabled: true,
@@ -788,7 +795,7 @@
       if (webhookValue) body.slack_webhook_url = webhookValue;
 
       try {
-        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedNetwork)}/alerts`, {
+        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedOrgId)}/alerts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

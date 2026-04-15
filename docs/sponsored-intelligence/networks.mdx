@@ -94,9 +94,55 @@ Networks can enforce [governance policies](/docs/governance/overview) at the rou
 
 Networks aggregate delivery data from underlying platforms and present unified reporting to buyers via `get_media_buy_delivery`. The buyer sees a single delivery report per media buy — the network handles the per-platform breakdown internally. Networks that want to offer platform-level transparency can use `reporting_dimensions` to expose placement-level breakdowns.
 
+## Declaring your network in brand.json
+
+A network declares its managed properties in its [`brand.json`](/docs/governance/brand/brand-json) using the `relationship` field on each property. This is the operator's public declaration of which publishers they work with — the AdCP equivalent of `sellers.json` in programmatic advertising.
+
+```json
+{
+  "house": {
+    "domain": "ai-network.example.com",
+    "name": "Example AI Network"
+  },
+  "brands": [{
+    "id": "ai_network",
+    "properties": [
+      { "type": "website", "identifier": "ai-network.example.com", "primary": true },
+      { "type": "website", "identifier": "assistant-alpha.example.com", "relationship": "managed" },
+      { "type": "website", "identifier": "assistant-beta.example.com", "relationship": "managed" },
+      { "type": "website", "identifier": "search-gamma.example.com", "relationship": "represented" }
+    ],
+    "agents": [{
+      "type": "sales",
+      "url": "https://ads.ai-network.example.com",
+      "id": "network_sales"
+    }]
+  }]
+}
+```
+
+The `relationship` field has three values:
+
+| Relationship | Meaning | Example |
+|---|---|---|
+| `owned` (default) | You own and operate this property | Your own website |
+| `managed` | You manage monetization for this property | A publisher network managing ad tech for partner sites |
+| `represented` | You sell inventory for this property as an exchange or SSP | An exchange representing a publisher's inventory |
+
+### Bilateral verification with adagents.json
+
+This creates a two-sided verification chain — the same pattern as `sellers.json` + `ads.txt` in programmatic:
+
+| File | Who publishes it | What it declares | Programmatic equivalent |
+|---|---|---|---|
+| `brand.json` (operator) | The network/SSP | "I manage/represent these publishers" | `sellers.json` |
+| `adagents.json` (publisher) | Each publisher | "This network's agents are authorized to sell my inventory" | `ads.txt` |
+
+Both sides must agree. The network declares the relationship in `brand.json`, and each publisher confirms by authorizing the network's agents in their `adagents.json`. If only one side declares, the relationship is incomplete — the network health dashboard flags this as a missing pointer (network declared but publisher hasn't deployed) or an orphaned pointer (publisher authorized but network hasn't declared).
+
 ## adagents.json for networks
 
-A network's [`adagents.json`](/docs/governance/property/adagents) lists the publisher properties it represents, even though it doesn't own them:
+Each publisher in the network authorizes the network's agent in their [`adagents.json`](/docs/governance/property/adagents):
 
 ```json
 {
@@ -104,14 +150,6 @@ A network's [`adagents.json`](/docs/governance/property/adagents) lists the publ
   "properties": [
     {
       "domain": "assistant-alpha.example.com",
-      "agents": [{
-        "agent_url": "https://ads.ai-network.example.com",
-        "relationship": "direct",
-        "supported_protocols": ["media_buy", "creative"]
-      }]
-    },
-    {
-      "domain": "assistant-beta.example.com",
       "agents": [{
         "agent_url": "https://ads.ai-network.example.com",
         "relationship": "direct",

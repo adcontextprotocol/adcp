@@ -1,22 +1,22 @@
 /**
  * Network health API routes.
  *
- * Authenticated endpoints for network consistency reports and alerting.
- * Admin page route for the dashboard UI.
+ * Org-scoped endpoints comparing brand.json declarations against crawl reality.
+ * All API routes require authentication; write operations require admin.
  *
- * API (all require auth):
- *   GET  /api/network-health                                — summary across all networks
- *   GET  /api/network-health/:authoritativeUrl              — latest report
- *   GET  /api/network-health/:authoritativeUrl/history      — historical reports
- *   GET  /api/network-health/:authoritativeUrl/trends       — lightweight trend data
- *   GET  /api/network-health/:authoritativeUrl/alerts       — alert rule config (webhook URL redacted)
- *   GET  /api/network-health/:authoritativeUrl/alerts/history    — alert history
- *   GET  /api/network-health/:authoritativeUrl/alerts/unresolved — unresolved alerts
- *   POST /api/network-health/:authoritativeUrl/alerts       — configure alert thresholds (admin)
- *   POST /api/network-health/alerts/:alertId/resolve        — resolve an alert (admin)
+ * API:
+ *   GET  /api/network-health                     — summary across all orgs (admin)
+ *   GET  /api/network-health/:orgId              — latest report for an org
+ *   GET  /api/network-health/:orgId/history      — historical reports
+ *   GET  /api/network-health/:orgId/trends       — lightweight trend data
+ *   GET  /api/network-health/:orgId/alerts       — alert rule config (webhook redacted)
+ *   GET  /api/network-health/:orgId/alerts/history    — alert history
+ *   GET  /api/network-health/:orgId/alerts/unresolved — unresolved alerts
+ *   POST /api/network-health/:orgId/alerts       — configure alert thresholds (admin)
+ *   POST /api/network-health/alerts/:alertId/resolve — resolve an alert (admin)
  *
  * Admin page:
- *   GET  /admin/network-health                              — dashboard
+ *   GET  /admin/network-health                   — dashboard
  */
 
 import { Router } from 'express';
@@ -33,9 +33,8 @@ const SLACK_WEBHOOK_PATTERN = /^https:\/\/hooks\.slack\.com\/services\//;
 
 const alertRuleSchema = z.object({
   coverage_threshold: z.number().min(0).max(100).optional(),
-  stale_pointer_max: z.number().int().min(0).optional(),
-  orphaned_pointer_max: z.number().int().min(0).optional(),
-  missing_pointer_persistence_cycles: z.number().int().min(1).optional(),
+  missing_authorization_max: z.number().int().min(0).optional(),
+  orphaned_authorization_max: z.number().int().min(0).optional(),
   agent_unreachable_cycles: z.number().int().min(1).optional(),
   slack_webhook_url: z.string().regex(SLACK_WEBHOOK_PATTERN, 'Must be a hooks.slack.com URL').nullable().optional(),
   email_recipients: z.array(z.string().email()).optional(),
@@ -60,8 +59,8 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
 
   // ── Read API ───────────────────────────────────────────────────
 
-  // Summary across all tracked networks
-  apiRouter.get('/', async (_req, res) => {
+  // Summary across all tracked orgs (admin only)
+  apiRouter.get('/', requireAdmin, async (_req, res) => {
     try {
       const summaries = await db.getNetworkSummaries();
       res.json({ networks: summaries });
@@ -71,13 +70,12 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // Latest consistency report for a specific authoritative URL
-  apiRouter.get('/:authoritativeUrl', async (req, res) => {
+  // Latest report for a specific org
+  apiRouter.get('/:orgId', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
-      const report = await db.getLatestReport(authoritativeUrl);
+      const report = await db.getLatestReport(req.params.orgId);
       if (!report) {
-        return res.status(404).json({ error: 'No report found for this authoritative URL' });
+        return res.status(404).json({ error: 'No report found for this organization' });
       }
       res.json(report);
     } catch (error) {
@@ -86,12 +84,11 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // Historical reports for trend analysis
-  apiRouter.get('/:authoritativeUrl/history', async (req, res) => {
+  // Historical reports
+  apiRouter.get('/:orgId/history', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
-      const reports = await db.getReportHistory(authoritativeUrl, limit);
+      const reports = await db.getReportHistory(req.params.orgId, limit);
       res.json({ reports });
     } catch (error) {
       logger.error({ error }, 'Error fetching report history');
@@ -99,12 +96,11 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // Trend data (lightweight projection for charts)
-  apiRouter.get('/:authoritativeUrl/trends', async (req, res) => {
+  // Trend data
+  apiRouter.get('/:orgId/trends', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
       const limit = Math.min(parseInt(req.query.limit as string) || 60, 200);
-      const trends = await db.getTrends(authoritativeUrl, limit);
+      const trends = await db.getTrends(req.params.orgId, limit);
       res.json({ trends });
     } catch (error) {
       logger.error({ error }, 'Error fetching trends');
@@ -113,14 +109,12 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
   });
 
   // Get alert configuration (webhook URL redacted)
-  apiRouter.get('/:authoritativeUrl/alerts', async (req, res) => {
+  apiRouter.get('/:orgId/alerts', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
-      const rule = await db.getAlertRule(authoritativeUrl);
+      const rule = await db.getAlertRule(req.params.orgId);
       if (!rule) {
-        return res.status(404).json({ error: 'No alert rules configured for this network' });
+        return res.status(404).json({ error: 'No alert rules configured' });
       }
-      // Redact sensitive fields
       const { slack_webhook_url, ...safeRule } = rule;
       res.json({ ...safeRule, slack_webhook_configured: !!slack_webhook_url });
     } catch (error) {
@@ -129,12 +123,11 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // Get alert history for a network
-  apiRouter.get('/:authoritativeUrl/alerts/history', async (req, res) => {
+  // Alert history
+  apiRouter.get('/:orgId/alerts/history', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-      const alerts = await db.getAlertHistory(authoritativeUrl, limit);
+      const alerts = await db.getAlertHistory(req.params.orgId, limit);
       res.json({ alerts });
     } catch (error) {
       logger.error({ error }, 'Error fetching alert history');
@@ -142,11 +135,10 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // Get unresolved alerts for a network
-  apiRouter.get('/:authoritativeUrl/alerts/unresolved', async (req, res) => {
+  // Unresolved alerts
+  apiRouter.get('/:orgId/alerts/unresolved', async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
-      const alerts = await db.getUnresolvedAlerts(authoritativeUrl);
+      const alerts = await db.getUnresolvedAlerts(req.params.orgId);
       res.json({ alerts });
     } catch (error) {
       logger.error({ error }, 'Error fetching unresolved alerts');
@@ -157,10 +149,8 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
   // ── Write API (admin only) ────────────────────────────────────
 
   // Configure alert thresholds
-  apiRouter.post('/:authoritativeUrl/alerts', requireAdmin, async (req, res) => {
+  apiRouter.post('/:orgId/alerts', requireAdmin, async (req, res) => {
     try {
-      const authoritativeUrl = decodeURIComponent(req.params.authoritativeUrl);
-
       const parsed = alertRuleSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({
@@ -170,12 +160,11 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
       }
 
       const rule = await db.upsertAlertRule({
-        authoritative_url: authoritativeUrl,
+        org_id: req.params.orgId,
         ...parsed.data,
         created_by: req.user?.email ?? req.user?.id,
       });
 
-      // Redact webhook URL in response
       const { slack_webhook_url, ...safeRule } = rule;
       res.json({ ...safeRule, slack_webhook_configured: !!slack_webhook_url });
     } catch (error) {

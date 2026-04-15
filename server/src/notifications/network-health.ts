@@ -29,11 +29,11 @@ function getPlatformChannelId(): string | null {
  */
 async function sendWebhookAlerts(
   webhookUrl: string,
-  authoritativeUrl: string,
+  orgId: string,
   alerts: CreateAlertInput[]
 ): Promise<boolean> {
   if (!SLACK_WEBHOOK_PATTERN.test(webhookUrl)) {
-    logger.warn({ authoritativeUrl }, 'Refusing to send to non-Slack webhook URL');
+    logger.warn({ orgId }, 'Refusing to send to non-Slack webhook URL');
     return false;
   }
 
@@ -55,13 +55,13 @@ async function sendWebhookAlerts(
   }
 
   const payload = {
-    text: `Network health alert: ${authoritativeUrl}`,
+    text: `Network health alert: ${orgId}`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Network Health Alert*\n\`${authoritativeUrl}\``,
+          text: `*Network Health Alert*\n\`${orgId}\``,
         },
       },
       {
@@ -81,12 +81,12 @@ async function sendWebhookAlerts(
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      logger.warn({ status: response.status, authoritativeUrl }, 'Webhook delivery failed');
+      logger.warn({ status: response.status, orgId }, 'Webhook delivery failed');
       return false;
     }
     return true;
   } catch (error) {
-    logger.error({ error, authoritativeUrl }, 'Error sending webhook alert');
+    logger.error({ error, orgId }, 'Error sending webhook alert');
     return false;
   }
 }
@@ -96,7 +96,7 @@ async function sendWebhookAlerts(
  * Returns true if the message was sent successfully.
  */
 async function sendPlatformChannelAlerts(
-  authoritativeUrl: string,
+  orgId: string,
   alerts: CreateAlertInput[]
 ): Promise<boolean> {
   const channelId = getPlatformChannelId();
@@ -110,13 +110,13 @@ async function sendPlatformChannelAlerts(
   );
 
   const message: SlackBlockMessage = {
-    text: `${emoji} Network alert: ${authoritativeUrl} (${alerts.length} issue${alerts.length === 1 ? '' : 's'})`,
+    text: `${emoji} Network alert: ${orgId} (${alerts.length} issue${alerts.length === 1 ? '' : 's'})`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `${emoji} *Network Health Alert*\n\`${authoritativeUrl}\``,
+          text: `${emoji} *Network Health Alert*\n\`${orgId}\``,
         },
       },
       {
@@ -133,7 +133,7 @@ async function sendPlatformChannelAlerts(
     await sendChannelMessage(channelId, message);
     return true;
   } catch (error) {
-    logger.error({ error, authoritativeUrl }, 'Failed to send platform channel alert');
+    logger.error({ error, orgId }, 'Failed to send platform channel alert');
     return false;
   }
 }
@@ -144,7 +144,7 @@ async function sendPlatformChannelAlerts(
  * Returns the list of channels that were notified successfully.
  */
 export async function dispatchNetworkAlerts(
-  authoritativeUrl: string,
+  orgId: string,
   alerts: CreateAlertInput[],
   rule: NetworkAlertRule | null
 ): Promise<string[]> {
@@ -154,12 +154,12 @@ export async function dispatchNetworkAlerts(
 
   // Operator webhook
   if (rule?.slack_webhook_url) {
-    const sent = await sendWebhookAlerts(rule.slack_webhook_url, authoritativeUrl, alerts);
+    const sent = await sendWebhookAlerts(rule.slack_webhook_url, orgId, alerts);
     if (sent) notifiedVia.push('slack');
   }
 
   // Platform channel
-  const platformSent = await sendPlatformChannelAlerts(authoritativeUrl, alerts);
+  const platformSent = await sendPlatformChannelAlerts(orgId, alerts);
   if (platformSent) notifiedVia.push('platform_slack');
 
   return notifiedVia;
