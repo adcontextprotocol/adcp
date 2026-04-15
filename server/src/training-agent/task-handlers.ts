@@ -2566,7 +2566,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
 
 interface PreviewCreativeArgs {
   account?: unknown;
-  request_type?: 'single' | 'batch' | 'variant';
+  request_type: 'single' | 'batch' | 'variant';
   creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
   creative_id?: string;
   requests?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
