@@ -1315,6 +1315,10 @@
     // Load avatar image asynchronously
     loadNavAvatar();
 
+    // Check marketing opt-in for logged-in users
+    if (config.user) {
+      checkMarketingOptIn();
+    }
   }
 
   function isSafeImageUrl(url) {
@@ -1333,6 +1337,176 @@
     img.alt = '';
     el.textContent = '';
     el.appendChild(img);
+  }
+
+  // Marketing opt-in prompt for users who haven't made a choice yet
+  function checkMarketingOptIn() {
+    if (sessionStorage.getItem('mkt_optin_dismissed_v1')) return;
+    if (currentPath.startsWith('/onboarding')) return;
+
+    fetch(apiBaseUrl + '/api/email-preferences', { credentials: 'include' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!data || data.marketing_opt_in !== null) return;
+        showMarketingOptInModal();
+      })
+      .catch(() => { /* not critical */ });
+  }
+
+  function showMarketingOptInModal() {
+    const styleEl = document.createElement('style');
+    styleEl.id = 'mktOptinStyles';
+    styleEl.textContent = `
+      .mkt-optin-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: var(--color-surface-overlay, rgba(0, 0, 0, 0.5));
+        z-index: var(--z-modal, 10000);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        animation: mkt-optin-fadein 0.2s ease;
+      }
+      @keyframes mkt-optin-fadein {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .mkt-optin-modal {
+        background: var(--color-bg-card, #fff);
+        border-radius: var(--modal-radius, 12px);
+        max-width: 440px;
+        width: 100%;
+        padding: var(--modal-padding, 28px 24px 24px);
+        box-shadow: var(--modal-shadow, 0 20px 60px rgba(0, 0, 0, 0.15));
+      }
+      .mkt-optin-modal h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--color-text-heading, #111);
+        margin: 0 0 8px;
+      }
+      .mkt-optin-modal p {
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--color-text-secondary, #555);
+        margin: 0 0 20px;
+      }
+      .mkt-optin-newsletters {
+        font-size: 13px;
+        color: var(--color-text-muted, #888);
+        margin: 0 0 20px;
+        padding-left: 16px;
+      }
+      .mkt-optin-newsletters li {
+        margin-bottom: 4px;
+      }
+      .mkt-optin-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+      .mkt-optin-buttons button {
+        padding: 9px 18px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: background 0.15s;
+      }
+      .mkt-optin-btn-no {
+        background: var(--color-bg-subtle, #f5f5f5);
+        color: var(--color-text-secondary, #555);
+      }
+      .mkt-optin-btn-no:hover {
+        background: var(--color-gray-200, #e5e5e5);
+      }
+      .mkt-optin-btn-yes {
+        background: var(--color-brand, #2563eb);
+        color: #fff;
+      }
+      .mkt-optin-btn-yes:hover {
+        opacity: 0.9;
+      }
+      .mkt-optin-buttons button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      @media (max-width: 480px) {
+        .mkt-optin-modal {
+          padding: 24px 20px 20px;
+        }
+        .mkt-optin-buttons {
+          flex-direction: column-reverse;
+        }
+        .mkt-optin-buttons button {
+          width: 100%;
+          text-align: center;
+        }
+      }
+    `;
+    document.head.appendChild(styleEl);
+
+    const modalHTML = '<div class="mkt-optin-overlay" id="mktOptinOverlay" role="dialog" aria-modal="true" aria-labelledby="mktOptinTitle">' +
+      '<div class="mkt-optin-modal">' +
+        '<h2 id="mktOptinTitle">Stay in the loop?</h2>' +
+        '<p>We send newsletters and event notifications to keep you up to date on agentic advertising. You can change your preferences any time from your account settings.</p>' +
+        '<ul class="mkt-optin-newsletters">' +
+          '<li><strong>The Prompt</strong> &mdash; weekly industry news</li>' +
+          '<li><strong>The Build</strong> &mdash; contributor updates</li>' +
+          '<li>Event invitations and announcements</li>' +
+        '</ul>' +
+        '<div class="mkt-optin-buttons">' +
+          '<button class="mkt-optin-btn-no" id="mktOptinNo">No thanks</button>' +
+          '<button class="mkt-optin-btn-yes" id="mktOptinYes">Yes, keep me updated</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    const overlay = document.getElementById('mktOptinOverlay');
+    const btnYes = document.getElementById('mktOptinYes');
+    const btnNo = document.getElementById('mktOptinNo');
+
+    const submitChoice = (optIn) => {
+      btnYes.disabled = true;
+      btnNo.disabled = true;
+      fetch(apiBaseUrl + '/api/email-preferences/marketing-opt-in', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opt_in: optIn }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('save failed');
+          closeModal();
+        })
+        .catch(() => {
+          btnYes.disabled = false;
+          btnNo.disabled = false;
+        });
+    };
+
+    const closeModal = () => {
+      sessionStorage.setItem('mkt_optin_dismissed_v1', '1');
+      if (overlay) overlay.remove();
+      const style = document.getElementById('mktOptinStyles');
+      if (style) style.remove();
+    };
+
+    btnYes.addEventListener('click', () => submitChoice(true));
+    btnNo.addEventListener('click', () => submitChoice(false));
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) submitChoice(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('mktOptinOverlay')) {
+        submitChoice(false);
+      }
+    });
+
+    btnNo.focus();
   }
 
   function loadNavAvatar() {
