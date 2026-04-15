@@ -59,6 +59,14 @@ export function createNetworkHealthApiRouter(): Router {
     }
   });
 
+  // Validate orgId format on all org-scoped routes
+  apiRouter.param('orgId', (req, res, next, orgId) => {
+    if (typeof orgId !== 'string' || orgId.length < 3 || orgId.length > 255) {
+      return res.status(400).json({ error: 'Invalid organization ID format' });
+    }
+    next();
+  });
+
   // Latest report for a specific org
   apiRouter.get('/:orgId', async (req, res) => {
     try {
