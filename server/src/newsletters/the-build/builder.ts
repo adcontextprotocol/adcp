@@ -21,6 +21,7 @@ import type {
   BuildHelpItem,
   BuildContributor,
   BuildEvent,
+  BuildSpecInsight,
 } from '../../db/build-db.js';
 
 const logger = createLogger('build-builder');
@@ -49,11 +50,12 @@ export async function buildBuildContent(): Promise<BuildContent> {
   }
 
   // Build all candidate pools in parallel
-  const [decisions, whatShipped, contributorSpotlight, events] = await Promise.all([
+  const [decisions, whatShipped, contributorSpotlight, events, specInsight] = await Promise.all([
     buildDecisionsSection(wgEntries),
     buildReleasesSection(),
     buildContributorSpotlight(),
     buildEventsSection(),
+    buildSpecInsightSection(wgEntries),
   ]);
 
   const decisionUrls = new Set(decisions.map((d) => d.url));
@@ -71,6 +73,7 @@ export async function buildBuildContent(): Promise<BuildContent> {
     decisions: [],
     whatShipped: [],
     deepDive: null,
+    specInsight: null,
     helpNeeded: [],
     contributorSpotlight: [],
     dateFlavor: dateFlavor || undefined,
@@ -81,6 +84,7 @@ export async function buildBuildContent(): Promise<BuildContent> {
       helpNeeded,
       contributorSpotlight,
       events,
+      specInsight,
     },
   };
 
@@ -91,6 +95,7 @@ export async function buildBuildContent(): Promise<BuildContent> {
       candidateHelp: helpNeeded.length,
       candidateSpotlights: contributorSpotlight.length,
       candidateEvents: events.length,
+      candidateSpecInsights: specInsight.length,
     },
     'The Build candidate pool built',
   );
@@ -455,6 +460,67 @@ async function buildEventsSection(): Promise<BuildEvent[]> {
     });
   } catch {
     logger.warn('Failed to fetch events for The Build');
+    return [];
+  }
+}
+
+// ─── Spec Insight ─────────────────────────────────────────────────────
+
+async function buildSpecInsightSection(wgEntries: WgEntry[]): Promise<BuildSpecInsight[]> {
+  // Gather spec-related discussion material from WG activity
+  const specDiscussions: string[] = [];
+
+  for (const entry of wgEntries) {
+    for (const recap of entry.content.meetingRecaps) {
+      if (recap.summary) {
+        specDiscussions.push(`[${entry.groupName} meeting] ${recap.summary}`);
+      }
+    }
+    for (const thread of entry.content.activeThreads) {
+      if (thread.replyCount >= 3) {
+        specDiscussions.push(`[${entry.groupName} thread, ${thread.replyCount} replies] ${thread.summary}`);
+      }
+    }
+  }
+
+  if (specDiscussions.length === 0 || !isLLMConfigured()) return [];
+
+  const discussionText = specDiscussions.slice(0, 20).join('\n');
+
+  try {
+    const result = await complete({
+      system: `You analyze AdCP protocol discussions for a contributor newsletter (The Build).
+
+From the working group activity below, identify 1-3 interesting spec insights — edge cases, interpretation questions, design tensions, or gaps that implementers should know about.
+
+For each insight, explain what it means for implementers building on AdCP.
+
+Respond in JSON: [{"title": "short label (5-10 words)", "body": "2-3 sentences explaining the insight and what it means for implementers", "relatedSpecSections": ["relevant spec area names"], "sourceContext": "which WG or thread surfaced this"}]
+
+If there are no interesting spec insights in this activity, respond with an empty array: []`,
+      prompt: `<working_group_activity>\n${discussionText}\n</working_group_activity>\n\nIdentify spec insights from the activity above.`,
+      maxTokens: 600,
+      model: 'fast',
+      operationName: 'build-spec-insight',
+    });
+
+    const cleaned = result.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '');
+    const insights: Array<{
+      title: string;
+      body: string;
+      relatedSpecSections: string[];
+      sourceContext?: string;
+    }> = JSON.parse(cleaned);
+
+    return insights.slice(0, 3).map((insight, i) => ({
+      id: `spec_insight_${i}`,
+      title: insight.title,
+      body: insight.body,
+      relatedSpecSections: insight.relatedSpecSections || [],
+      sourceContext: insight.sourceContext,
+    }));
+  } catch {
+    logger.warn('Failed to generate spec insights for The Build');
     return [];
   }
 }

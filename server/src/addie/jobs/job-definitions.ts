@@ -42,6 +42,8 @@ import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
+import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
+import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
@@ -527,6 +529,28 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.nudgesSent > 0,
   });
 
+  // Meeting prep nudge - DMs WG chairs before meetings to explore spec questions from the agenda
+  jobScheduler.register({
+    name: 'meeting-prep-nudge',
+    description: 'Pre-meeting spec exploration nudge to WG chairs',
+    interval: { value: 4, unit: 'hours' },
+    initialDelay: { value: 12, unit: 'minutes' },
+    runner: runMeetingPrepNudgeJob,
+    businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
+    shouldLogResult: (r) => r.nudgesSent > 0,
+  });
+
+  // Weekly spec insight post - Addie posts a thought-provoking spec question to Slack
+  jobScheduler.register({
+    name: 'spec-insight-post',
+    description: 'Weekly spec insight discussion post',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 14, unit: 'minutes' },
+    runner: runSpecInsightPostJob,
+    businessHours: { startHour: 9, endHour: 12, skipWeekends: true },
+    shouldLogResult: (r) => r.posted,
+  });
+
   // Auto-complete events that have ended
   jobScheduler.register({
     name: 'event-auto-complete',
@@ -703,6 +727,8 @@ export const JOB_NAMES = {
   COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
   EVENT_REMINDER: 'event-reminder',
   EVENT_RECAP_NUDGE: 'event-recap-nudge',
+  MEETING_PREP_NUDGE: 'meeting-prep-nudge',
+  SPEC_INSIGHT_POST: 'spec-insight-post',
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',

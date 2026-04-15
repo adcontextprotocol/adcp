@@ -170,6 +170,10 @@ function buildMarkdown(content: unknown): string {
     sections.push(`## Deep dive: ${c.deepDive.title}\n\n${c.deepDive.body}`);
   }
 
+  if (c.specInsight) {
+    sections.push(`## Spec insight: ${c.specInsight.title}\n\n${c.specInsight.body}${c.specInsight.relatedSpecSections.length > 0 ? `\n\n*Related: ${c.specInsight.relatedSpecSections.join(', ')}*` : ''}`);
+  }
+
   if (c.helpNeeded.length > 0) {
     sections.push('## Help needed');
     for (const h of c.helpNeeded) {
@@ -277,6 +281,20 @@ const BUILD_SECTIONS: SectionDescriptor[] = [
       if (!dd) return '<em style="color:#888;">No deep dive this edition</em>';
       return `<strong>${escapeHtml(dd.title)}</strong>
         <p style="font-size:13px;color:#666;margin:4px 0;">${escapeHtml(dd.body.slice(0, 200))}...</p>`;
+    },
+  },
+  {
+    key: 'specInsight',
+    label: 'Spec Insight',
+    hint: 'Edge cases, interpretation questions, or protocol gaps for implementers',
+    renderHtml: (c) => {
+      const si = (c as BuildContent).specInsight;
+      if (!si) return '<em style="color:#888;">No spec insight this edition</em>';
+      return `<div class="item-card" data-id="${escapeHtml(si.id)}">
+        <strong>${escapeHtml(si.title)}</strong>
+        <br><span style="font-size:13px;color:#666;">${escapeHtml(si.body.slice(0, 250))}${si.body.length > 250 ? '...' : ''}</span>
+        ${si.relatedSpecSections.length > 0 ? `<br><span style="font-size:12px;color:#888;">Spec: ${si.relatedSpecSections.map(s => escapeHtml(s)).join(', ')}</span>` : ''}
+      </div>`;
     },
   },
   {

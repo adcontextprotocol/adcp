@@ -13,6 +13,7 @@ import {
   type DigestInsiderGroup,
   type DigestShipment,
   type DigestTakeAction,
+  type DigestSpecInsight,
 } from '../../db/digest-db.js';
 import { buildWgDigestContent, getDigestEligibleGroups, truncateAtWord } from './wg-digest-builder.js';
 import { getPendingSuggestions } from '../../db/newsletter-suggestions-db.js';
@@ -49,12 +50,13 @@ async function getRecentEventRecaps(days: number): Promise<Event[]> {
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building The Prompt content');
 
-  const [whatToWatchResult, fromTheInside, voices, newMembers, whatShipped] = await Promise.all([
+  const [whatToWatchResult, fromTheInside, voices, newMembers, whatShipped, specInsight] = await Promise.all([
     buildWhatToWatch(),
     buildInsiderSection(),
     buildVoicesSection(),
     buildNewMembersSection(),
     buildWhatShippedSection(),
+    buildSpecInsightForPrompt(),
   ]);
   const whatToWatch = whatToWatchResult.items;
 
@@ -77,6 +79,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     voices,
     newMembers,
     shareableTake: shareableTake || undefined,
+    specInsight: specInsight || undefined,
     whatShipped: whatShipped.length > 0 ? whatShipped : undefined,
     takeActions: takeActions.length > 0 ? takeActions : undefined,
     dateFlavor: dateFlavor || undefined,
@@ -470,6 +473,70 @@ async function buildWhatShippedSection(): Promise<DigestShipment[]> {
   } catch {
     logger.warn('Failed to fetch what shipped items');
     return [];
+  }
+}
+
+// ─── Spec Insight ─────────────────────────────────────────────────────
+
+/**
+ * Generate a spec insight for The Prompt — accessible framing for a broad audience.
+ * Draws from recent WG activity and spec discussions.
+ */
+async function buildSpecInsightForPrompt(): Promise<DigestSpecInsight | null> {
+  if (!isLLMConfigured()) return null;
+
+  try {
+    // Get recent WG discussions as source material
+    const groups = await getDigestEligibleGroups();
+    const discussions: string[] = [];
+
+    for (const group of groups.slice(0, 5)) {
+      const content = await buildWgDigestContent(group.id);
+      if (!content) continue;
+      for (const recap of content.meetingRecaps) {
+        if (recap.summary) discussions.push(`[${content.groupName}] ${recap.summary}`);
+      }
+      for (const thread of content.activeThreads) {
+        if (thread.replyCount >= 3) discussions.push(`[${content.groupName}] ${thread.summary}`);
+      }
+    }
+
+    if (discussions.length === 0) return null;
+
+    const result = await complete({
+      system: `You write accessible spec insights for The Prompt, a newsletter about agentic advertising read by marketers, product managers, and engineers.
+
+From the working group activity below, identify one interesting protocol question or insight. Frame it for a non-technical audience:
+- Explain why it matters for people who buy or sell advertising
+- Use plain language, avoid jargon
+- Make it feel like a thought-provoking question, not a technical report
+
+Respond in JSON:
+{"id": "unique_slug", "title": "short label (5-8 words)", "body": "2-3 sentences explaining the insight and why it matters", "relatedSpecSections": ["relevant areas"], "sourceContext": "which discussion surfaced this"}
+
+If there's nothing interesting, respond with: null`,
+      prompt: `<working_group_activity>\n${discussions.slice(0, 15).join('\n')}\n</working_group_activity>\n\nIdentify a spec insight from the activity above.`,
+      maxTokens: 400,
+      model: 'fast',
+      operationName: 'prompt-spec-insight',
+    });
+
+    const cleaned = result.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+    if (cleaned === 'null') return null;
+
+    const parsed = JSON.parse(cleaned);
+    if (!parsed?.title || !parsed?.body) return null;
+
+    return {
+      id: parsed.id || 'spec_insight_prompt',
+      title: parsed.title,
+      body: parsed.body,
+      relatedSpecSections: parsed.relatedSpecSections || [],
+      sourceContext: parsed.sourceContext,
+    };
+  } catch {
+    logger.warn('Failed to generate spec insight for The Prompt');
+    return null;
   }
 }
 
