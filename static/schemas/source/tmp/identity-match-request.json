@@ -68,6 +68,9 @@
         "type": "string"
       },
       "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

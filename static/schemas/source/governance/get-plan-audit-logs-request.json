@@ -47,6 +47,9 @@
       "type": "boolean",
       "description": "Include the full audit trail. Default: false.",
       "default": false
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "anyOf": [

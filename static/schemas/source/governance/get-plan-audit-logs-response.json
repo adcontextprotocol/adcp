@@ -399,6 +399,9 @@
         ],
         "additionalProperties": false
       }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

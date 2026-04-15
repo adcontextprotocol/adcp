@@ -76,6 +76,9 @@
         "required": ["plan_id", "status", "version"],
         "additionalProperties": false
       }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["plans"],

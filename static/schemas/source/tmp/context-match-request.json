@@ -206,6 +206,9 @@
       },
       "minItems": 1,
       "maxItems": 500
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

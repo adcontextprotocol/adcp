@@ -180,6 +180,9 @@
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Invoice recipient from the purchase request. MUST be present when the tool payload includes invoice_recipient, so the governance agent can validate billing changes."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

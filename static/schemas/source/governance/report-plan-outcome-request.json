@@ -142,6 +142,9 @@
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [
