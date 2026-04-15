@@ -157,47 +157,17 @@
               "type": "object",
               "description": "Targeting capabilities. If declared true/supported, buyer can use these targeting parameters and seller MUST honor them.",
               "properties": {
-                "supported_geo_levels": {
-                  "type": "array",
-                  "description": "Geographic targeting levels this seller supports.",
-                  "items": {
-                    "type": "string",
-                    "enum": ["countries", "regions", "metros", "postal_areas"]
-                  },
-                  "uniqueItems": true
-                },
-                "supported_metro_systems": {
-                  "type": "array",
-                  "description": "Metro area classification systems this seller supports. Only meaningful when supported_geo_levels includes 'metros'.",
-                  "items": {
-                    "type": "string",
-                    "enum": ["nielsen_dma", "uk_itl1", "uk_itl2", "eurostat_nuts2"]
-                  },
-                  "uniqueItems": true
-                },
-                "supported_postal_systems": {
-                  "type": "array",
-                  "description": "Postal code systems this seller supports. Only meaningful when supported_geo_levels includes 'postal_areas'.",
-                  "items": {
-                    "type": "string",
-                    "enum": ["us_zip", "us_zip_plus_four", "gb_outward", "gb_full", "ca_fsa", "ca_full", "de_plz", "fr_code_postal", "au_postcode", "ch_plz", "at_plz"]
-                  },
-                  "uniqueItems": true
-                },
                 "geo_countries": {
                   "type": "boolean",
-                  "description": "Deprecated in 3.0, will be removed in 4.0. Use supported_geo_levels instead.",
-                  "deprecated": true
+                  "description": "Country-level targeting using ISO 3166-1 alpha-2 codes"
                 },
                 "geo_regions": {
                   "type": "boolean",
-                  "description": "Deprecated in 3.0, will be removed in 4.0. Use supported_geo_levels instead.",
-                  "deprecated": true
+                  "description": "Region/state-level targeting using ISO 3166-2 codes (e.g., US-NY, GB-SCT)"
                 },
                 "geo_metros": {
                   "type": "object",
-                  "description": "Deprecated in 3.0, will be removed in 4.0. Use supported_metro_systems instead.",
-                  "deprecated": true,
+                  "description": "Metro area targeting. Properties indicate which classification systems are supported.",
                   "properties": {
                     "nielsen_dma": { "type": "boolean" },
                     "uk_itl1": { "type": "boolean" },
@@ -208,8 +178,7 @@
                 },
                 "geo_postal_areas": {
                   "type": "object",
-                  "description": "Deprecated in 3.0, will be removed in 4.0. Use supported_postal_systems instead.",
-                  "deprecated": true,
+                  "description": "Postal area targeting. Properties indicate which postal code systems are supported.",
                   "properties": {
                     "us_zip": { "type": "boolean" },
                     "us_zip_plus_four": { "type": "boolean" },

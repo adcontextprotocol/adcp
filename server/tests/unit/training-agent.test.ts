@@ -864,7 +864,12 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
-    expect(toolNames).toHaveLength(43);
+    expect(toolNames).toContain('create_collection_list');
+    expect(toolNames).toContain('get_collection_list');
+    expect(toolNames).toContain('update_collection_list');
+    expect(toolNames).toContain('list_collection_lists');
+    expect(toolNames).toContain('delete_collection_list');
+    expect(toolNames).toHaveLength(48);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -892,12 +897,13 @@ describe('createTrainingAgentServer', () => {
     expect(targeting).not.toHaveProperty('audience_include');
     expect(targeting).not.toHaveProperty('audience_exclude');
 
-    // Flattened geo targeting
-    expect(targeting.supported_geo_levels).toBeDefined();
-    expect(targeting.supported_metro_systems).toBeDefined();
-    expect(targeting.supported_postal_systems).toBeDefined();
-    expect(targeting).not.toHaveProperty('geo_countries');
-    expect(targeting).not.toHaveProperty('geo_regions');
+    // Geo targeting uses typed objects (not flattened arrays)
+    expect(targeting.geo_countries).toBe(true);
+    expect(targeting.geo_regions).toBe(true);
+    expect(targeting.geo_metros).toBeDefined();
+    expect((targeting.geo_metros as Record<string, unknown>).nielsen_dma).toBe(true);
+    expect(targeting.geo_postal_areas).toBeDefined();
+    expect((targeting.geo_postal_areas as Record<string, unknown>).us_zip).toBe(true);
 
     // Removed seller-level reporting (product-level is source of truth)
     expect(mediaBuy).not.toHaveProperty('reporting');
