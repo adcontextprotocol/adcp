@@ -78,6 +78,7 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
     area: 'media-buy',
     description: 'Modify an existing media buy (dates, pause/resume, cancel, budget, targeting, creatives)',
     validate: (params) => {
+      if (!params.account) return 'account is required (account_id or brand+operator).';
       if (!params.media_buy_id) return 'media_buy_id is required to identify the media buy to update.';
       return null;
     },
@@ -87,7 +88,17 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
 
   // Creative
   build_creative: { area: 'creative', description: 'Generate a creative from a brief or transform an existing creative to a different format' },
-  preview_creative: { area: 'creative', description: 'Generate visual previews of creative manifests' },
+  preview_creative: {
+    area: 'creative',
+    description: 'Generate visual previews of creative manifests',
+    validate: (params) => {
+      if (!params.request_type) return 'request_type is required (single, batch, or variant).';
+      if (params.request_type === 'single' && !params.creative_manifest) return 'creative_manifest is required for single mode.';
+      if (params.request_type === 'batch' && !params.requests) return 'requests array is required for batch mode.';
+      if (params.request_type === 'variant' && !params.variant_id) return 'variant_id is required for variant mode.';
+      return null;
+    },
+  },
   get_creative_delivery: { area: 'creative', description: 'Retrieve variant-level creative delivery data from a creative agent' },
 
   // Signals
@@ -397,7 +408,7 @@ const callAdcpTaskTool: AddieTool = {
           'Task-specific parameters. Quick reference for common tasks:',
           '• get_products: { brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
           '• create_media_buy: { brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: { type: "asap"|"scheduled" }, end_time }',
-          '• update_media_buy: { media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
+          '• update_media_buy: { account: { account_id | brand+operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
           '• sync_creatives: { creatives: [{ creative_id, format_id: { agent_url, id }, assets }], assignments? }',
           '• build_creative: { message, target_format_id: { agent_url, id }, brand?: { domain } }',
           '• get_signals: { signal_spec, destinations?, countries? }',

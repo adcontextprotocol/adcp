@@ -640,13 +640,17 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
-        request_type: { type: 'string', enum: ['single', 'batch'], description: 'Single or batch preview' },
-        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview' },
-        creative_id: { type: 'string', description: 'Reference to a synced creative to preview' },
-        creatives: { type: 'array', description: 'Array of manifests for batch preview' },
+        request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Preview mode: single, batch, or variant' },
+        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview (required for single mode)' },
+        creative_id: { type: 'string', description: 'Creative identifier for context (variant mode)' },
+        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { creative_manifest: { type: 'object' } }, required: ['creative_manifest'] } },
+        variant_id: { type: 'string', description: 'Variant ID from get_creative_delivery (required for variant mode)' },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
         quality: { type: 'string', enum: ['draft', 'production'] },
+        template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
+        item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render per preview' },
       },
+      required: ['request_type'] as const,
     },
   },
   {
@@ -668,7 +672,7 @@ const TOOLS = [
         end_time: { type: 'string' },
         action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
       },
-      required: ['media_buy_id'] as const,
+      required: ['account', 'media_buy_id'] as const,
     },
   },
   {
@@ -2562,12 +2566,15 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
 
 interface PreviewCreativeArgs {
   account?: unknown;
-  request_type?: 'single' | 'batch';
+  request_type?: 'single' | 'batch' | 'variant';
   creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
   creative_id?: string;
-  creatives?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
+  requests?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
+  variant_id?: string;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
+  template_id?: string;
+  item_limit?: number;
 }
 
 function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
@@ -2623,11 +2630,19 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  // Variant mode
+  if (req.request_type === 'variant') {
+    if (!req.variant_id) {
+      return { errors: [{ code: 'INVALID_REQUEST', message: 'variant_id is required for variant mode.' }] };
+    }
+    return { errors: [{ code: 'NOT_SUPPORTED', message: 'Variant replay is not supported by the training agent. Use single or batch mode.' }] };
+  }
+
   // Batch mode
-  if (req.request_type === 'batch' && req.creatives?.length) {
+  if (req.request_type === 'batch' && req.requests?.length) {
     return {
       response_type: 'batch',
-      results: req.creatives.map(c => ({
+      results: req.requests.map(c => ({
         success: true,
         creative_id: c.creative_id || 'unknown',
         response: {
