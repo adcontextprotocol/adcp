@@ -1022,6 +1022,69 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
+  // Enforce governance: if governance plans exist, validate the buy budget.
+  // Deny-on-any-plan: without a governance_context there is no way to know
+  // which plan the buy targets, so a conservative deny teaches buyers to call
+  // check_governance first.
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
+  if (govCtx) {
+    // Find the latest check for this governance_context (Map iterates in insertion order)
+    let latestCheck: { status: string; explanation: string } | undefined;
+    for (const check of session.governanceChecks.values()) {
+      if (check.governanceContext === govCtx) {
+        latestCheck = check;
+      }
+    }
+    if (latestCheck?.status === 'denied') {
+      return {
+        errors: [{
+          code: 'GOVERNANCE_DENIED',
+          message: latestCheck.explanation || 'Governance check denied this purchase.',
+        }] as TaskError[],
+      };
+    }
+    // governance_context provided but no matching check — reject if plans exist
+    if (!latestCheck && session.governancePlans.size > 0) {
+      return {
+        errors: [{
+          code: 'GOVERNANCE_DENIED',
+          message: `governance_context "${govCtx}" does not match any governance check. Call check_governance first.`,
+        }] as TaskError[],
+      };
+    }
+  } else if (session.governancePlans.size > 0) {
+    // No governance_context provided but plans exist — compute budget and check
+    const buyBudget = req.total_budget?.amount
+      ?? (req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0));
+    if (buyBudget !== undefined) {
+      for (const plan of session.governancePlans.values()) {
+        const remaining = plan.budget.total - plan.committedBudget;
+        if (buyBudget > remaining) {
+          return {
+            errors: [{
+              code: 'GOVERNANCE_DENIED',
+              message: `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`,
+            }] as TaskError[],
+          };
+        }
+        const typeAllocation = plan.budget.allocations?.media_buy;
+        if (typeAllocation?.amount !== undefined) {
+          const typeCommitted = plan.committedByType?.media_buy ?? 0;
+          const typeRemaining = typeAllocation.amount - typeCommitted;
+          if (buyBudget > typeRemaining) {
+            return {
+              errors: [{
+                code: 'GOVERNANCE_DENIED',
+                message: `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
@@ -1225,8 +1288,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
-  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
-  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+  const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,

@@ -5620,6 +5620,176 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(isError).toBeFalsy();
     expect(result.status).toBe('denied');
   });
+
+  it('create_media_buy returns GOVERNANCE_DENIED when buy exceeds plan budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'gov-denied.example' }, operator: 'gov-denied.example' };
+
+    // Sync a plan with $10K budget — pass brand at top level to align session key
+    await simulateCallTool(server, 'sync_plans', {
+      brand: { domain: 'gov-denied.example' },
+      plans: [{
+        plan_id: 'gov_deny_buy',
+        brand: { domain: 'gov-denied.example' },
+        objectives: 'strict budget',
+        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    // Attempt create_media_buy with budget exceeding plan — no governance_context
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'gov-denied.example' },
+      start_time: '2026-04-01T00:00:00Z',
+      end_time: '2026-06-30T23:59:59Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('GOVERNANCE_DENIED');
+  });
+
+  it('create_media_buy returns GOVERNANCE_DENIED when governance_context maps to denied check', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'gov-ctx-denied.example' }, operator: 'gov-ctx-denied.example' };
+
+    // Sync plan — brand at top level for session key alignment
+    await simulateCallTool(server, 'sync_plans', {
+      brand: { domain: 'gov-ctx-denied.example' },
+      plans: [{
+        plan_id: 'gov_ctx_deny',
+        brand: { domain: 'gov-ctx-denied.example' },
+        objectives: 'strict budget',
+        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    // check_governance with a governance_context — gets denied
+    const { result: checkResult } = await simulateCallTool(server, 'check_governance', {
+      brand: { domain: 'gov-ctx-denied.example' },
+      plan_id: 'gov_ctx_deny',
+      caller: 'https://test-buyer.example',
+      governance_context: 'gc-for-deny-test',
+      payload: {
+        total_budget: 50000,
+        packages: [{ product_id: 'test', budget: 50000 }],
+      },
+    });
+    expect(checkResult.status).toBe('denied');
+
+    // Attempt create_media_buy with the denied governance_context
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'gov-ctx-denied.example' },
+      start_time: '2026-04-01T00:00:00Z',
+      end_time: '2026-06-30T23:59:59Z',
+      governance_context: 'gc-for-deny-test',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 5000,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('GOVERNANCE_DENIED');
+  });
+
+  it('create_media_buy succeeds when governance_context maps to approved check', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'gov-ok.example' }, operator: 'gov-ok.example' };
+
+    // Sync plan with large budget
+    await simulateCallTool(server, 'sync_plans', {
+      brand: { domain: 'gov-ok.example' },
+      plans: [{
+        plan_id: 'gov_approve_buy',
+        brand: { domain: 'gov-ok.example' },
+        objectives: 'large budget',
+        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    // check_governance — approved
+    const { result: checkResult } = await simulateCallTool(server, 'check_governance', {
+      brand: { domain: 'gov-ok.example' },
+      plan_id: 'gov_approve_buy',
+      caller: 'https://test-buyer.example',
+      payload: { total_budget: 25000 },
+    });
+    expect(checkResult.status).toBe('approved');
+
+    // create_media_buy with approved governance_context
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'gov-ok.example' },
+      start_time: '2026-04-01T00:00:00Z',
+      end_time: '2026-06-30T23:59:59Z',
+      governance_context: checkResult.governance_context,
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 25000,
+      }],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.media_buy_id).toBeDefined();
+  });
+
+  it('create_media_buy returns GOVERNANCE_DENIED for fabricated governance_context', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'gov-fake.example' }, operator: 'gov-fake.example' };
+
+    // Sync plan so governance is active
+    await simulateCallTool(server, 'sync_plans', {
+      brand: { domain: 'gov-fake.example' },
+      plans: [{
+        plan_id: 'gov_fake_ctx',
+        brand: { domain: 'gov-fake.example' },
+        objectives: 'strict budget',
+        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+      }],
+    });
+
+    // Attempt create_media_buy with a fabricated governance_context
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'gov-fake.example' },
+      start_time: '2026-04-01T00:00:00Z',
+      end_time: '2026-06-30T23:59:59Z',
+      governance_context: 'totally-made-up-context',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 5000,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('GOVERNANCE_DENIED');
+    expect(result.message).toContain('does not match any governance check');
+  });
 });
 
 // ---------------------------------------------------------------------------
