@@ -138,7 +138,7 @@ A buyer's response for a single package.
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
-| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering. In the GAM case, these flow as macro values at serve time. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
+| `macros` | Map\<string, string\> | No | Buyer-defined key-value pairs associated with this offer. Usage is surface-dependent and will be refined in a future version. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
 
 #### OfferPrice
 
@@ -382,16 +382,16 @@ TMP uses encrypted exposure tokens (TMPX) to close the frequency capping loop. T
 
 ### Encryption
 
-TMPX uses HPKE (RFC 9180) with `mode_auth`:
+TMPX uses HPKE (RFC 9180) with `mode_base`:
 
 | Parameter | Value |
 |---|---|
-| Mode | `mode_auth` — sender (read replica) authenticates with its own keypair |
+| Mode | `mode_base` — encrypt with recipient's public key only |
 | KEM | DHKEM(X25519, HKDF-SHA256) |
 | KDF | HKDF-SHA256 |
 | AEAD | ChaCha20-Poly1305 |
 
-The buyer's cluster master holds the recipient private key. Each read replica holds its own sender keypair for authentication. The master verifies the sender's public key during decryption, rejecting tokens not produced by an authorized replica.
+The buyer's cluster master holds the recipient private key. Read replicas encrypt using the master's public key. Only the master can decrypt. Forging a TMPX token requires both the master's public key (published) and realistic identity tokens from identity providers (UID2, ID5, RampID) — fabricating these is harder than the fraud itself. Systematic frequency manipulation is detected at the IVT (Invalid Traffic) layer, not the encryption layer.
 
 ### Binary format
 
@@ -440,11 +440,11 @@ The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The ciphert
 
 ### Key management
 
-Two keypair types per cluster:
+One X25519 keypair per cluster:
 
-1. **Master keypair** — the cluster master holds the private key for decryption. The public key is published in `encryption_keys` on agent authorization entries in `adagents.json`.
-
-2. **Replica keypairs** — each read replica generates its own X25519 keypair for HPKE `mode_auth` sender authentication. The master maintains a registry of authorized replica public keys. Replica private keys never leave the replica.
+- The cluster master holds the **private key** for decryption.
+- The **public key** is published in `encryption_keys` on agent authorization entries in `adagents.json`.
+- Read replicas use the public key to encrypt. No per-replica key management.
 
 Key rotation follows the same pattern as TMP signing keys: 5-minute cache TTL, kid prefix for versioning, 30-day grace period for old master keys.
 

@@ -245,7 +245,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
@@ -351,7 +351,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
@@ -457,7 +457,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
@@ -563,7 +563,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
@@ -617,7 +617,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
@@ -671,7 +671,7 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_auth — the read replica encrypts with this key and authenticates with its own keypair.",
+                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },

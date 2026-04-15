@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/agent-encryption-key.json",
   "title": "Agent Encryption Key",
-  "description": "X25519 public key for HPKE encryption. Used for TMPX exposure token encryption with HPKE mode_auth.",
+  "description": "X25519 public key for HPKE encryption. Used for TMPX exposure token encryption with HPKE mode_base.",
   "type": "object",
   "properties": {
     "kid": {

@@ -193,7 +193,7 @@ The publisher already knows how to render Package A — it maps to a sponsored c
 
 TMP's response model is the offer. An offer carries a `package_id` (required) and optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `macros` (a key-value map for dynamic values).
 
-**Simple case (GAM/Prebid)**: The offer carries `package_id`. The publisher flows `package_id` via `targeting_kvs` signals to GAM for line item matching. The `macros` map carries dynamic values (e.g., sponsor labels, promo text) that GAM can insert into the creative at render time.
+**Simple case (GAM/Prebid)**: The offer carries `package_id`. The publisher flows `package_id` via `targeting_kvs` signals to GAM for line item matching.
 
 **Rich case (AI assistants, dynamic retail)**: The offer includes a `summary` ("50% off cold brew — recipe integration") so the publisher can judge relevance, and an inline `creative_manifest` with everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding the full payload.
 
