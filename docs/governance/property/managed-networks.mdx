@@ -1,0 +1,593 @@
+---
+title: Managed Network Deployment
+description: "How managed publisher networks deploy adagents.json across thousands of domains using the URL reference pattern, delegation types, and common infrastructure approaches."
+"og:title": "AdCP — Managed Network Deployment Guide"
+---
+
+Managed ad networks (e.g. networks operating hundreds or thousands of publisher domains) already distribute `ads.txt` via HTTP redirects or centralized hosting. `adagents.json` supports the same scale through a built-in delegation model: the [URL reference pattern](/docs/governance/property/adagents#url-reference-pattern).
+
+This guide maps your existing `ads.txt` deployment knowledge to `adagents.json` and covers the infrastructure patterns that work at network scale.
+
+## How it compares to ads.txt distribution
+
+Both `ads.txt` and `adagents.json` require a file at a well-known path on each publisher origin. The deployment mechanics are similar, but `adagents.json` has a built-in delegation model that replaces the HTTP redirect patterns networks typically use for `ads.txt`.
+
+| Concern | `ads.txt` | `adagents.json` |
+|---------|-----------|-----------------|
+| File location | `/ads.txt` | `/.well-known/adagents.json` |
+| Delegation mechanism | HTTP 301/302 redirect | `authoritative_location` field (in-file reference) |
+| What the delegation expresses | "This file lives somewhere else" | "This publisher delegates to a named authority" |
+| Publisher intent | Ambiguous (redirect could be infrastructure) | Explicit (pointer file is a declaration) |
+| Scope of authorization | Flat (`DIRECT` / `RESELLER`) | Structured (property, placement, country, time window, delegation type) |
+| Caching at scale | Each domain cached independently (no deduplication) | Validators cache one authoritative file for all domains that reference it |
+| File format | Plain text, one entry per line | JSON with schema validation |
+
+The key difference: an HTTP redirect is invisible to the consumer. A validator following a 301 cannot tell whether the redirect means "the publisher delegates to this network" or "the CDN reorganized its paths." The `authoritative_location` field makes delegation an explicit publisher declaration.
+
+## The pointer file pattern
+
+Each managed domain hosts a minimal pointer file at `/.well-known/adagents.json`. The pointer references one centralized authoritative file that the network maintains.
+
+**Pointer file** (on each domain):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
+  "last_updated": "2025-06-01T00:00:00Z"
+}
+```
+
+The `last_updated` timestamp in the pointer file reflects when the pointer itself was last modified (e.g., when the `authoritative_location` URL changed), not when the authoritative file was updated. The authoritative file carries its own `last_updated`.
+
+**Authoritative file** (at the network):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Example Network Ad Operations",
+    "email": "adops@network.example.com",
+    "domain": "network.example.com"
+  },
+  "properties": [
+    {
+      "property_id": "site_cooking_daily",
+      "property_type": "website",
+      "name": "Cooking Daily",
+      "identifiers": [{"type": "domain", "value": "cookingdaily.com"}],
+      "tags": ["food", "managed_network"],
+      "publisher_domain": "cookingdaily.com"
+    },
+    {
+      "property_id": "site_garden_weekly",
+      "property_type": "website",
+      "name": "Garden Weekly",
+      "identifiers": [{"type": "domain", "value": "gardenweekly.com"}],
+      "tags": ["home", "managed_network"],
+      "publisher_domain": "gardenweekly.com"
+    }
+  ],
+  "tags": {
+    "managed_network": {
+      "name": "Managed Network",
+      "description": "All domains managed by Example Network"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://sales.network.example.com",
+      "authorized_for": "All managed network properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["managed_network"],
+      "delegation_type": "ad_network"
+    }
+  ],
+  "last_updated": "2025-06-01T00:00:00Z"
+}
+```
+
+### How validators resolve pointer files
+
+```mermaid
+sequenceDiagram
+    participant V as Validator
+    participant P as cookingdaily.com
+    participant N as network.example.com
+
+    V->>P: GET /.well-known/adagents.json
+    P-->>V: {"authoritative_location": "https://network.example.com/..."}
+    Note over V: Detect pointer — single hop allowed
+    V->>N: GET /adagents/v2/adagents.json
+    N-->>V: Full adagents.json (properties, agents, placements)
+    Note over V: Verify: no nested authoritative_location
+    Note over V: Validate against schema
+```
+
+The validator fetches the pointer file, follows the `authoritative_location` URL, and validates the authoritative file as a normal inline structure.
+
+**Single hop only.** The authoritative file must not itself contain an `authoritative_location`. This prevents redirect chains and infinite loops.
+
+### One authoritative file vs. per-publisher files
+
+The example above shows every domain pointing to the same authoritative file. This works when all publishers share the same agents, delegation types, and placement structure.
+
+Per-publisher authoritative files make sense when arrangements differ across the network:
+
+- Different publishers authorize different agents (some have their own direct sales alongside the network)
+- Different delegation types (Publisher A is `ad_network` only, Publisher B retains a `direct` path for premium placements)
+- Different placement structures (one publisher has `pre_roll` and `host_read`, another only has `display_banner`)
+- Different governance vendors in `property_features`
+
+In this model, each pointer file references a publisher-specific URL:
+
+```
+cookingdaily.com/.well-known/adagents.json
+  → "authoritative_location": "https://network.example.com/adagents/cookingdaily.json"
+
+gardenweekly.com/.well-known/adagents.json
+  → "authoritative_location": "https://network.example.com/adagents/gardenweekly.json"
+```
+
+The network still hosts all the authoritative files centrally — the pointer files just reference different paths. The [CI/CD pipeline](#cicd-pipeline) pattern is a natural fit: generate per-publisher authoritative files from a central database and deploy them to the network's CDN.
+
+Start with one shared file. Move to per-publisher files as publishers negotiate individual arrangements.
+
+### Why not HTTP redirects?
+
+HTTP redirects work for `ads.txt` because `ads.txt` is a flat list with no self-referential semantics. Crawlers follow the redirect chain and validate the final file.
+
+For `adagents.json`, HTTP redirects cause problems:
+
+- **Ambiguous intent.** A redirect could mean delegation, infrastructure migration, or CDN routing. The pointer file explicitly declares delegation.
+- **No scoping.** An HTTP redirect is all-or-nothing. A pointer file sits alongside a structured authorization model where the network can declare exactly what it is authorized to sell.
+- **Caching penalty.** With HTTP redirects, a validator has no way to know that 10,000 domains all redirect to the same file. It must treat each response as independent — 10,000 cache entries for identical content. With `authoritative_location`, the validator sees the same URL across all pointer files and caches the authoritative file once. For a network with thousands of domains, this is the difference between one cache entry and thousands.
+
+HTTP redirects to `/.well-known/adagents.json` are not prohibited, but they are not the recommended pattern. Use `authoritative_location` instead.
+
+## Choosing the right delegation type
+
+When a network authorizes agents on behalf of managed publishers, the `delegation_type` field describes the commercial relationship:
+
+| `delegation_type` | Use when | Example |
+|-------------------|----------|---------|
+| `direct` | Publisher treats this as their own sales channel, even though the network operates it | A white-label sales agent branded as the publisher |
+| `delegated` | Publisher authorizes the network to sell on their behalf | A rep firm with explicit publisher agreements |
+| `ad_network` | Inventory is sold through the network's package, not as the publisher's endpoint | Mediavine-style managed network selling across its portfolio |
+
+Most managed networks will use `ad_network`. Use `delegated` when individual publishers maintain their own commercial identity but authorize the network to represent them. Use `direct` only when the network operates what publishers present as their own sales infrastructure.
+
+A single authoritative file can mix delegation types — different agents can have different relationships with the same inventory:
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://sales.network.example.com",
+      "authorized_for": "Network-sold inventory across all managed properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["managed_network"],
+      "delegation_type": "ad_network"
+    },
+    {
+      "url": "https://premium.publisher.example.com",
+      "authorized_for": "Publisher's direct premium sales",
+      "authorization_type": "property_ids",
+      "property_ids": ["site_cooking_daily"],
+      "delegation_type": "direct",
+      "placement_tags": ["premium"],
+      "exclusive": true
+    }
+  ]
+}
+```
+
+## Keeping the file efficient with property tags
+
+A managed network with 500 properties and three authorized agents could list every property ID in every agent entry — but that means maintaining 1,500 property-to-agent mappings. Property tags eliminate that redundancy.
+
+The principle: **list each property once** with its identifier and tags, then **authorize agents by tag**.
+
+```json
+{
+  "properties": [
+    {
+      "property_id": "site_cooking_daily",
+      "property_type": "website",
+      "name": "Cooking Daily",
+      "identifiers": [{"type": "domain", "value": "cookingdaily.com"}],
+      "tags": ["managed_network", "food"],
+      "publisher_domain": "cookingdaily.com"
+    },
+    {
+      "property_id": "site_garden_weekly",
+      "property_type": "website",
+      "name": "Garden Weekly",
+      "identifiers": [{"type": "domain", "value": "gardenweekly.com"}],
+      "tags": ["managed_network", "home"],
+      "publisher_domain": "gardenweekly.com"
+    }
+  ],
+  "tags": {
+    "managed_network": {
+      "name": "Managed Network",
+      "description": "All domains managed by Example Network"
+    },
+    "food": {
+      "name": "Food & Cooking",
+      "description": "Food and cooking content verticals"
+    },
+    "home": {
+      "name": "Home & Garden",
+      "description": "Home and garden content verticals"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://sales.network.example.com",
+      "authorized_for": "All managed network properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["managed_network"],
+      "delegation_type": "ad_network"
+    },
+    {
+      "url": "https://food-vertical-agent.example.com",
+      "authorized_for": "Food vertical properties only",
+      "authorization_type": "property_tags",
+      "property_tags": ["food"],
+      "delegation_type": "delegated"
+    }
+  ]
+}
+```
+
+Each property appears once. Tags handle the mapping. When a new domain joins the network, add it to `properties` with the right tags — no authorization entries need to change. When a new vertical agent comes on, add one agent entry with the relevant tag.
+
+This keeps the file readable, maintainable, and compact even at thousands of properties.
+
+## Controlling what each agent can sell with placements
+
+Unlike `ads.txt`, where every authorized seller appears to have access to everything, `adagents.json` lets networks declare exactly which placements each agent is authorized to sell. This preserves sales leverage — buyers can see that premium inventory is only available through specific paths.
+
+Define placements once at the top level, tag them for grouping, then scope each agent's authorization to specific placement tags:
+
+```json
+{
+  "placement_tags": {
+    "programmatic": {
+      "name": "Programmatic",
+      "description": "Placements available through programmatic sales paths"
+    },
+    "direct_only": {
+      "name": "Direct only",
+      "description": "Premium placements reserved for direct network sales"
+    }
+  },
+  "placements": [
+    {
+      "placement_id": "bottom_native_feed",
+      "name": "Bottom-of-page native feed",
+      "tags": ["programmatic"],
+      "property_tags": ["managed_network"]
+    },
+    {
+      "placement_id": "page_takeover",
+      "name": "Full-page takeover",
+      "tags": ["direct_only", "premium"],
+      "property_tags": ["managed_network"]
+    },
+    {
+      "placement_id": "sidebar_display",
+      "name": "Sidebar display",
+      "tags": ["programmatic"],
+      "property_tags": ["managed_network"]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://taboola.com/agent",
+      "authorized_for": "Bottom-of-page native feed across all managed properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["managed_network"],
+      "placement_tags": ["programmatic"],
+      "delegation_type": "ad_network"
+    },
+    {
+      "url": "https://sales.network.example.com",
+      "authorized_for": "Premium direct-sold placements",
+      "authorization_type": "property_tags",
+      "property_tags": ["managed_network"],
+      "placement_tags": ["direct_only"],
+      "delegation_type": "direct",
+      "exclusive": true
+    }
+  ]
+}
+```
+
+In this example, Taboola can only sell programmatic placements (the bottom-of-page native feed and sidebar). The network's own sales team has exclusive access to page takeovers. A buyer agent reading this file knows exactly which paths lead to which inventory — there is no ambiguity about who can sell what.
+
+## Additional authorization qualifiers
+
+Beyond property tags and placement tags, agents can be scoped with:
+
+- **`countries`** — restrict by geography (e.g. `["US", "CA"]`)
+- **`effective_from` / `effective_until`** — time-bounded authorization for seasonal or trial arrangements
+- **`exclusive`** — declare whether this is the sole authorized path for the scoped inventory
+
+## What publishers are authorizing
+
+When a publisher's domain hosts a pointer file, they are declaring that the authoritative file speaks for them. This means:
+
+- The agents listed in the authoritative file are authorized to sell the publisher's inventory
+- The `delegation_type` on each agent entry describes the commercial relationship
+- Qualifiers (`placement_tags`, `countries`, `exclusive`, etc.) scope what each agent can sell
+
+If the network operates the domain infrastructure, the publisher has typically already consented to this through their network agreement. But the pointer file is the machine-readable declaration of that consent. If a publisher leaves the network, removing or replacing the pointer file revokes authorization immediately.
+
+## Deployment patterns
+
+All of these patterns accomplish the same thing: serve a static JSON pointer file at `/.well-known/adagents.json` on each managed domain. Choose based on your existing infrastructure.
+
+### CDN edge function
+
+Serve the pointer file from a CDN worker or edge function. This is the most common pattern for networks that already manage DNS and CDN for their publishers.
+
+**Cloudflare Worker:**
+```javascript
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === '/.well-known/adagents.json') {
+      return new Response(JSON.stringify({
+        "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+        "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
+        "last_updated": "2025-06-01T00:00:00Z"
+      }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=86400',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+    return fetch(request);
+  }
+};
+```
+
+**AWS CloudFront function:**
+```javascript
+function handler(event) {
+  if (event.request.uri === '/.well-known/adagents.json') {
+    return {
+      statusCode: 200,
+      statusDescription: 'OK',
+      headers: {
+        'content-type': { value: 'application/json' },
+        'cache-control': { value: 'public, max-age=86400' },
+        'access-control-allow-origin': { value: '*' }
+      },
+      body: JSON.stringify({
+        "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+        "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
+        "last_updated": "2025-06-01T00:00:00Z"
+      })
+    };
+  }
+  return event.request;
+}
+```
+
+### CMS plugin
+
+For networks managing WordPress or similar CMS installs, a plugin can serve the pointer file without touching server configuration.
+
+**WordPress (mu-plugin):**
+```php
+<?php
+add_action('init', function () {
+    if (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) === '/.well-known/adagents.json') {
+        header('Content-Type: application/json');
+        header('Cache-Control: public, max-age=86400');
+        echo json_encode([
+            '$schema' => 'https://adcontextprotocol.org/schemas/v3/adagents.json',
+            'authoritative_location' => 'https://network.example.com/adagents/v2/adagents.json',
+            'last_updated' => '2025-06-01T00:00:00Z',
+        ]);
+        exit;
+    }
+});
+```
+
+Drop this in `wp-content/mu-plugins/` across managed installs. Must-use plugins load automatically without activation.
+
+### CI/CD pipeline
+
+Generate pointer files from a central configuration and deploy them as static assets alongside each site.
+
+**GitHub Actions example:**
+```yaml
+name: Deploy adagents.json pointer files
+
+on:
+  push:
+    branches: [main]
+    paths: ['config/managed-domains.json']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate pointer files
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          for domain in $(jq -r '.domains[]' config/managed-domains.json); do
+            mkdir -p "dist/${domain}/.well-known"
+            cat > "dist/${domain}/.well-known/adagents.json" <<EOF
+          {
+            "\$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+            "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
+            "last_updated": "${TIMESTAMP}"
+          }
+          EOF
+          done
+
+      - name: Deploy to hosting
+        run: # your deployment step here
+```
+
+### DNS + edge function
+
+If the network manages DNS but not the origin servers, route only the well-known path through an edge function using a CNAME and path-based routing.
+
+This works when:
+- The publisher controls their own origin server
+- The network manages DNS (common in managed network agreements)
+- You need to serve `adagents.json` without modifying the publisher's server
+
+Configure your DNS provider to route `/.well-known/adagents.json` requests to a network-operated edge function (using the CDN edge pattern above), while passing all other traffic through to the publisher's origin.
+
+The specific configuration depends on your DNS and CDN provider. The principle is the same: intercept the well-known path, serve the pointer file, pass everything else through.
+
+## Validating deployment
+
+### Single domain
+
+```bash
+# Fetch the pointer file
+curl -s https://cookingdaily.com/.well-known/adagents.json | jq .
+
+# Follow the reference and validate the authoritative file
+curl -s $(curl -s https://cookingdaily.com/.well-known/adagents.json | jq -r '.authoritative_location') | jq .
+```
+
+### Using the AdCP client
+
+The `@adcp/client` package includes a network consistency checker that validates deployment across all managed domains and detects common failure modes:
+
+```bash
+# Check all domains referencing an authoritative file
+npx adcp check-network --url https://network.example.com/adagents/v2/adagents.json
+
+# Check specific domains
+npx adcp check-network --domains cookingdaily.com,gardenweekly.com
+
+# JSON output for CI/CD pipelines
+npx adcp check-network --url https://network.example.com/adagents/v2/adagents.json --json
+```
+
+Programmatic usage:
+
+```typescript
+import { NetworkConsistencyChecker } from '@adcp/client';
+
+const checker = new NetworkConsistencyChecker({
+  authoritativeUrl: 'https://network.example.com/adagents/v2/adagents.json',
+});
+
+const report = await checker.check();
+
+console.log(`Coverage: ${report.coverage}%`);
+console.log(`Orphaned pointers: ${report.orphanedPointers.length}`);
+console.log(`Missing pointers: ${report.missingPointers.length}`);
+console.log(`Schema errors: ${report.schemaErrors.length}`);
+```
+
+You can also use the **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** to validate individual domains interactively, or the [validation API](/docs/governance/property/adagents#programmatic-validation) for programmatic checks.
+
+### Integrating with CI/CD
+
+Run the consistency checker after deploying pointer files to catch issues before they affect buyers:
+
+```yaml
+- name: Validate network deployment
+  run: npx adcp check-network --url ${{ vars.AUTHORITATIVE_URL }} --json > report.json
+
+- name: Check for failures
+  run: |
+    ISSUES=$(jq '.orphanedPointers + .stalePointers + .missingPointers + .schemaErrors | length' report.json)
+    if [ "$ISSUES" -gt 0 ]; then
+      echo "::error::Network consistency check found $ISSUES issues"
+      jq '.' report.json
+      exit 1
+    fi
+```
+
+## Troubleshooting
+
+Five failure modes that occur in managed network deployments, how to detect them, and how to fix them.
+
+### Orphaned pointer
+
+**What happened:** A publisher domain has a pointer file referencing your authoritative URL, but the authoritative file doesn't list that domain in its `properties`.
+
+**How it looks:** A buyer agent fetches `cookingdaily.com/.well-known/adagents.json`, follows the pointer to the network's authoritative file, and finds no property with `publisher_domain: "cookingdaily.com"`. The domain appears to delegate to a network that doesn't claim it.
+
+**Common cause:** The network removed the publisher from the authoritative file (e.g., contract ended) but the pointer file on the domain was not removed.
+
+**Fix:** Either re-add the property to the authoritative file, or remove/replace the pointer file on the publisher's domain. If the network no longer manages the domain's DNS or CDN, coordinate with the publisher to remove the pointer.
+
+**Detection:** `npx adcp check-network --url <authoritative_url>` reports these as orphaned pointers.
+
+### Stale pointer
+
+**What happened:** A publisher's pointer file still references the network's authoritative URL after the relationship ended. Similar to an orphaned pointer, but from the publisher's perspective — the domain still claims delegation to a network that no longer authorizes it.
+
+**Common cause:** Network terminated the publisher but doesn't control the domain's infrastructure. The publisher hasn't updated their well-known path.
+
+**Fix:** The publisher must update or remove their pointer file. The network should notify the publisher when removing them from the authoritative file. The AAO registry detects this mismatch during crawls and surfaces it in network health monitoring.
+
+### Missing pointer
+
+**What happened:** A domain is listed in the authoritative file's `properties` (via `publisher_domain`), but `/.well-known/adagents.json` on that domain either doesn't exist or doesn't point to the expected authoritative URL.
+
+**How it looks:** The network claims to represent the domain, but the domain doesn't confirm delegation. Buyer agents cannot verify the authorization chain.
+
+**Common cause:** Publisher recently joined the network but the pointer file hasn't been deployed yet, or the deployment failed.
+
+**Fix:** Deploy the pointer file to the domain using one of the [deployment patterns](#deployment-patterns) above. Verify with:
+
+```bash
+curl -s https://newpublisher.com/.well-known/adagents.json | jq '.authoritative_location'
+```
+
+### Schema errors
+
+**What happened:** The authoritative file has validation errors — malformed JSON, missing required fields, invalid field values.
+
+**Impact:** One bad deploy breaks validation for every domain in the network, since they all reference the same file.
+
+**Fix:** Validate the authoritative file before deploying:
+
+```bash
+# Validate against the JSON schema
+npx adcp check-network --url https://network.example.com/adagents/v2/adagents.json
+```
+
+Use the [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) for interactive validation during development. Add schema validation to your CI/CD pipeline as a pre-deploy check.
+
+### Agent endpoint unreachable
+
+**What happened:** An `authorized_agents` entry's URL doesn't respond or returns errors. Buyer agents cannot reach the sales agent declared in the authorization.
+
+**Common cause:** Agent service is down, URL changed, or DNS is misconfigured.
+
+**Fix:** Verify the agent endpoint is reachable and returns a valid agent card:
+
+```bash
+# A2A agent
+curl -s https://sales.network.example.com/.well-known/agent-card.json | jq .
+
+# Check via AdCP client
+npx adcp check-network --url <authoritative_url>
+```
+
+The `check-network` command validates all agent endpoints and reports response times, so you can catch slow or failing agents before buyers do.
+
+## Next steps
+
+- [adagents.json Tech Spec](/docs/governance/property/adagents) — full schema reference, authorization patterns, and validation behavior
+- [Property Governance overview](/docs/governance/property) — how adagents.json fits into the broader governance model
+- [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) — interactive validator and file creator
+- [@adcp/client](https://github.com/adcontextprotocol/adcp-client) — TypeScript client library with network consistency checking

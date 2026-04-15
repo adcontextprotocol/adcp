@@ -297,6 +297,7 @@
                         "pages": [
                           "docs/governance/property/index",
                           "docs/governance/property/adagents",
+                          "docs/governance/property/managed-networks",
                           "docs/governance/property/authorized-properties",
                           "docs/governance/property/specification",
                           {
@@ -781,6 +782,7 @@
                     "pages": [
                       "docs/governance/property/index",
                       "docs/governance/property/adagents",
+                      "docs/governance/property/managed-networks",
                       "docs/governance/property/authorized-properties",
                       "docs/governance/property/specification",
                       {
