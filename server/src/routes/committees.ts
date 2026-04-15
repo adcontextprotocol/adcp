@@ -559,24 +559,54 @@ export function createCommitteeRouters(): {
     }
   });
 
-  // DELETE /api/admin/working-groups/:id - Delete working group
-  adminApiRouter.delete('/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  // POST /api/admin/working-groups/:id/deactivate - Deactivate working group
+  adminApiRouter.post('/:id/deactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const deleted = await workingGroupDb.deleteWorkingGroup(id);
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid working group ID' });
+      }
+      const deactivated = await workingGroupDb.deactivateWorkingGroup(id);
 
-      if (!deleted) {
+      if (!deactivated) {
         return res.status(404).json({
           error: 'Working group not found',
           message: `No working group found with id ${id}`
         });
       }
 
-      res.json({ success: true, deleted: id });
+      invalidateMemberContextCache();
+      res.json({ success: true, deactivated: id });
     } catch (error) {
-      logger.error({ err: error }, 'Delete working group error:');
+      logger.error({ err: error }, 'Deactivate working group error:');
       res.status(500).json({
-        error: 'Failed to delete working group',
+        error: 'Failed to deactivate working group',
+      });
+    }
+  });
+
+  // POST /api/admin/working-groups/:id/reactivate - Reactivate working group
+  adminApiRouter.post('/:id/reactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid working group ID' });
+      }
+      const reactivated = await workingGroupDb.reactivateWorkingGroup(id);
+
+      if (!reactivated) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with id ${id}`
+        });
+      }
+
+      invalidateMemberContextCache();
+      res.json({ success: true, reactivated: id });
+    } catch (error) {
+      logger.error({ err: error }, 'Reactivate working group error:');
+      res.status(500).json({
+        error: 'Failed to reactivate working group',
       });
     }
   });

@@ -97,6 +97,8 @@
     .btn-secondary:hover { background: var(--color-gray-300); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
+    .btn-success { background: var(--color-success-500, #22c55e); color: white; }
+    .btn-success:hover { background: var(--color-success-600, #16a34a); }
     .modal-overlay {
       display: none;
       position: fixed;
@@ -605,16 +607,16 @@
     </div>
   </div>
 
-  <!-- Delete Confirmation Modal -->
-  <div id="deleteModal" class="modal-overlay">
+  <!-- Deactivate Confirmation Modal -->
+  <div id="deactivateModal" class="modal-overlay">
     <div class="modal" style="max-width: 450px;">
-      <h2>Delete Committee</h2>
+      <h2>Deactivate Committee</h2>
       <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
-        Are you sure you want to delete "<span id="deleteTitle"></span>"? This will also remove all memberships.
+        Are you sure you want to deactivate "<span id="deactivateTitle"></span>"? It will be hidden from the public site but can be reactivated later.
       </p>
       <div class="modal-buttons">
-        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
-        <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+        <button type="button" class="btn btn-secondary" onclick="closeDeactivateModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDeactivate()">Deactivate</button>
       </div>
     </div>
   </div>
@@ -623,7 +625,7 @@
     let groups = [];
     let allMemberships = [];
     let editingGroup = null;
-    let deletingGroupId = null;
+    let deactivatingGroupId = null;
     let searchTimeout = null;
     let memberSearchTimeout = null;
 
@@ -830,7 +832,10 @@
               <button class="btn btn-secondary btn-small meetings-btn">Meetings</button>
               <button class="btn btn-secondary btn-small schedule-btn">Schedule</button>
               <button class="btn btn-primary btn-small manage-btn">Manage</button>
-              <button class="btn btn-danger btn-small delete-group-btn">Delete</button>
+              ${group.status === 'active'
+                ? '<button class="btn btn-danger btn-small deactivate-group-btn">Deactivate</button>'
+                : '<button class="btn btn-success btn-small reactivate-group-btn">Reactivate</button>'
+              }
             </div>
           </div>
         `;
@@ -851,9 +856,18 @@
         actions.querySelector('.manage-btn').addEventListener('click', () => {
           editGroup(groupId);
         });
-        actions.querySelector('.delete-group-btn').addEventListener('click', () => {
-          showDeleteModal(groupId, groupName);
-        });
+        const deactivateBtn = actions.querySelector('.deactivate-group-btn');
+        if (deactivateBtn) {
+          deactivateBtn.addEventListener('click', () => {
+            showDeactivateModal(groupId, groupName);
+          });
+        }
+        const reactivateBtn = actions.querySelector('.reactivate-group-btn');
+        if (reactivateBtn) {
+          reactivateBtn.addEventListener('click', () => {
+            reactivateGroup(groupId);
+          });
+        }
       });
     }
 
@@ -1544,38 +1558,57 @@
       saveBtn.textContent = 'Save';
     }
 
-    // Show delete modal
-    function showDeleteModal(id, name) {
-      deletingGroupId = id;
-      document.getElementById('deleteTitle').textContent = name;
-      document.getElementById('deleteModal').style.display = 'flex';
+    // Show deactivate modal
+    function showDeactivateModal(id, name) {
+      deactivatingGroupId = id;
+      document.getElementById('deactivateTitle').textContent = name;
+      document.getElementById('deactivateModal').style.display = 'flex';
     }
 
-    // Close delete modal
-    function closeDeleteModal() {
-      document.getElementById('deleteModal').style.display = 'none';
-      deletingGroupId = null;
+    // Close deactivate modal
+    function closeDeactivateModal() {
+      document.getElementById('deactivateModal').style.display = 'none';
+      deactivatingGroupId = null;
     }
 
-    // Confirm delete
-    async function confirmDelete() {
-      if (!deletingGroupId) return;
+    // Confirm deactivate
+    async function confirmDeactivate() {
+      if (!deactivatingGroupId) return;
 
       try {
-        const response = await fetch(`/api/admin/working-groups/${deletingGroupId}`, {
-          method: 'DELETE',
+        const response = await fetch(`/api/admin/working-groups/${deactivatingGroupId}/deactivate`, {
+          method: 'POST',
           credentials: 'same-origin'
         });
 
         if (!response.ok) {
-          throw new Error('Failed to delete');
+          throw new Error('Failed to deactivate');
         }
 
-        closeDeleteModal();
+        closeDeactivateModal();
         loadGroups();
       } catch (error) {
-        console.error('Error deleting:', error);
-        alert('Failed to delete: ' + error.message);
+        console.error('Error deactivating:', error);
+        alert('Failed to deactivate: ' + error.message);
+      }
+    }
+
+    // Reactivate group
+    async function reactivateGroup(id) {
+      try {
+        const response = await fetch(`/api/admin/working-groups/${id}/reactivate`, {
+          method: 'POST',
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to reactivate');
+        }
+
+        loadGroups();
+      } catch (error) {
+        console.error('Error reactivating:', error);
+        alert('Failed to reactivate: ' + error.message);
       }
     }
 

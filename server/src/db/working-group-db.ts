@@ -245,11 +245,22 @@ export class WorkingGroupDatabase {
   }
 
   /**
-   * Delete working group
+   * Deactivate a working group by setting status to 'inactive'
    */
-  async deleteWorkingGroup(id: string): Promise<boolean> {
+  async deactivateWorkingGroup(id: string): Promise<boolean> {
     const result = await query(
-      'DELETE FROM working_groups WHERE id = $1',
+      `UPDATE working_groups SET status = 'inactive', updated_at = NOW() WHERE id = $1`,
+      [id]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Reactivate a working group by setting status to 'active'
+   */
+  async reactivateWorkingGroup(id: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE working_groups SET status = 'active', updated_at = NOW() WHERE id = $1`,
       [id]
     );
     return (result.rowCount || 0) > 0;
