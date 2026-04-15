@@ -7,6 +7,7 @@
  */
 
 import type { TrainingContext, ToolArgs } from './types.js';
+import { getSandboxBrands } from '@adcp/client/testing';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -446,33 +447,45 @@ const TALENT: TalentEntry[] = [
 
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
-// ── Advertiser brand seed data ───────────────────────────────────
-// These are fictional brands from the storyboard test kits.
-// They have brand identity data but no talent rights.
+// ── Advertiser brands from @adcp/client sandbox entities ────────
+// Loaded via getSandboxBrands() — the same API the AAO registry uses.
+// New sandbox brands added to the SDK appear here automatically.
 
-const ADVERTISER_BRANDS: BrandEntry[] = [
-  {
-    brand_id: 'acme_outdoor',
-    house: { domain: 'acme-outdoor.example.com', name: 'Acme Outdoor' },
-    names: [{ en: 'Acme Outdoor' }],
-    description: 'Premium outdoor gear for every adventure. From trail to summit, we make gear that performs.',
-    industries: ['retail'],
-    keller_type: 'master',
-    tagline: 'Built for the Trail',
-    logos: [
-      { url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/logo-primary.png', variant: 'primary' },
-      { url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/logo-icon.png', variant: 'icon' },
-    ],
-    colors: { primary: '#1B5E20', secondary: '#FF6F00', accent: '#FDD835', background: '#FAFAFA', text: '#212121' },
-    fonts: { heading: 'Montserrat', body: 'Open Sans' },
-    tone: {
-      voice: 'Confident and adventurous, but never pretentious. We talk to people who do things, not people who buy things.',
-      attributes: ['active', 'direct', 'warm'],
-      dos: ['Use action verbs', 'Reference real outdoor activities', 'Keep it short'],
-      donts: ['Use superlatives without evidence', 'Talk down to the reader', 'Use corporate jargon'],
-    },
-  },
-];
+function loadAdvertiserBrands(): BrandEntry[] {
+  const sandboxBrands = getSandboxBrands();
+  const brands: BrandEntry[] = [];
+
+  for (const sb of sandboxBrands) {
+    const json = sb.brand_json as { house?: string; brands?: Record<string, unknown>[] };
+    const inner = json.brands?.[0] as Record<string, unknown> | undefined;
+    if (!inner) continue;
+
+    const voice = inner.voice as Record<string, unknown> | undefined;
+
+    brands.push({
+      brand_id: sb.brand_id,
+      house: { domain: sb.domain, name: sb.brand_name },
+      names: (inner.name as LocalizedName[]) || [{ en: sb.brand_name }],
+      description: (inner.description as string) || '',
+      industries: sb.industry ? [sb.industry] : [],
+      keller_type: 'master',
+      tagline: '',
+      logos: (inner.logos as Logo[]) || [],
+      colors: inner.colors as Record<string, string> | undefined,
+      fonts: inner.fonts as BrandEntry['fonts'],
+      tone: voice ? {
+        voice: (voice.voice as string) || '',
+        attributes: (voice.attributes as string[]) || [],
+        dos: (voice.dos as string[]) || [],
+        donts: (voice.donts as string[]) || [],
+      } : { voice: '', attributes: [], dos: [], donts: [] },
+    });
+  }
+
+  return brands;
+}
+
+const ADVERTISER_BRANDS = loadAdvertiserBrands();
 
 const BRAND_MAP = new Map<string, AnyBrand>([
   ...TALENT.map(t => [t.brand_id, t] as [string, AnyBrand]),
@@ -486,10 +499,12 @@ const ALL_FIELDS = [...PUBLIC_FIELDS, ...AUTHORIZED_FIELDS] as const;
 
 // ── Tool definitions ──────────────────────────────────────────────
 
+const ALL_BRAND_IDS = [...BRAND_MAP.keys()].join(', ');
+
 export const BRAND_TOOLS = [
   {
     name: 'get_brand_identity',
-    description: 'Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka, acme_outdoor.',
+    description: `Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: ${ALL_BRAND_IDS}.`,
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -771,9 +786,11 @@ export function handleGetRights(
     );
   }
 
-  candidates = candidates.filter(t =>
-    uses.some(u => t.rights.available_uses.includes(u))
-  );
+  if (uses.length > 0) {
+    candidates = candidates.filter(t =>
+      uses.some(u => t.rights.available_uses.includes(u))
+    );
+  }
 
   const rights: Array<RightsOffering & { brand_id: string; name: string; description: string; match_score: number; match_reasons: string[] }> = [];
   const excluded: Array<{ brand_id: string; name: string; reason: string; suggestions?: string[] }> = [];
@@ -878,6 +895,10 @@ export function handleAcquireRights(
   const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
     return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
+  }
+
+  if (!campaign?.description) {
+    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
   }
 
   const descLower = campaign.description.toLowerCase();
@@ -1102,6 +1123,13 @@ export function handleCreativeApproval(
   const rightsId = req.rights_id || req.rights_grant_id;
   if (!rightsId) {
     return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+  }
+
+  const isKnownOffering = TALENT.some(t =>
+    t.rights_offerings.some(r => r.rights_id === rightsId)
+  );
+  if (!isKnownOffering) {
+    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
   }
 
   const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;

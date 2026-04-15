@@ -35,8 +35,8 @@ export interface TestKit {
   id: string;
   name: string;
   description: string;
-  brand: Record<string, unknown>;
-  assets: Record<string, unknown>;
+  brand?: Record<string, unknown>;
+  assets?: Record<string, unknown>;
 }
 
 export interface StoryboardSummary {

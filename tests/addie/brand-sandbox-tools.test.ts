@@ -86,6 +86,23 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.voice_synthesis).toBeUndefined();
       expect(result.available_fields).toBeUndefined();
     });
+
+    it('loads all sandbox advertiser brands from @adcp/client', () => {
+      const expectedIds = ['acme_outdoor', 'nova_motors', 'bistro_oranje', 'osei_natural', 'summit_foods'];
+      for (const id of expectedIds) {
+        const result = call('get_brand_identity', { brand_id: id });
+        expect(result.brand_id).toBe(id);
+        expect(result.description).toBeDefined();
+        expect((result.industries as string[]).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('returns authorized fields for sandbox advertiser brands', () => {
+      const result = call('get_brand_identity', { brand_id: 'nova_motors', authorized: true });
+      expect(result.colors).toBeDefined();
+      expect(result.tone).toBeDefined();
+      expect(result.fonts).toBeDefined();
+    });
   });
 
   describe('get_rights', () => {

@@ -175,7 +175,7 @@ export function complianceResultToDbInput(
     agent_profile_json: result.agent_profile,
     observations_json: result.observations,
     triggered_by: triggeredBy,
-    dry_run: result.dry_run,
+    dry_run: true,
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
   };
 }
