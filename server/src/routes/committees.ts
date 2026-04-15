@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from "express";
 import { WorkOS } from "@workos-inc/node";
-import { getPool } from "../db/client.js";
+import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader, createRequireWorkingGroupMember } from "../middleware/auth.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
@@ -1021,7 +1021,7 @@ export function createCommitteeRouters(): {
       const seatType = await getUserSeatType(user.id);
       if (seatType === 'community_only') {
         // Look up user's org for seat request capability
-        const orgResult = await getPool().query<{ workos_organization_id: string }>(
+        const orgResult = await query<{ workos_organization_id: string }>(
           'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
           [user.id]
         );

@@ -19,4 +19,10 @@ Every PR **must** include a changeset. Before pushing, always run:
 npx changeset --empty
 ```
 
-Then add a description to the generated `.changeset/*.md` file. Use `--empty` (no package entry) for non-protocol changes (server, UI, docs, infra, tools). Only use `patch`/`minor`/`major` for changes to the published AdCP protocol spec (schemas, task definitions, API reference). See `.agents/playbook.md` for details.
+Then **immediately rename** the generated file from its random name (e.g. `petite-beds-film.md`) to a descriptive name matching the change (e.g. `fix-pg-idle-timeout-retry.md`):
+
+```bash
+mv .changeset/<random-name>.md .changeset/<descriptive-name>.md
+```
+
+Also add a description to the changeset file content. Use `--empty` (no package entry) for non-protocol changes (server, UI, docs, infra, tools). Only use `patch`/`minor`/`major` for changes to the published AdCP protocol spec (schemas, task definitions, API reference). See `.agents/playbook.md` for details.

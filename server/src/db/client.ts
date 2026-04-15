@@ -30,15 +30,14 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    // PgBouncer owns connection pooling — we do NOT pool here.
-    // We use pg.Pool only as a connection manager: it gives us pool.query()
-    // (atomic connect → query → release) and pool.connect() (checkout/release
-    // for transactions). With max: 3 and a 1 s idle timeout, this is just a
-    // thin TCP cache — connections are reused briefly within request bursts
-    // then closed well before PgBouncer's client_idle_timeout can fire.
-    max: config.maxPoolSize || 3,
-    idleTimeoutMillis: config.idleTimeoutMillis ?? 1000,
-    connectionTimeoutMillis: config.connectionTimeoutMillis || 10000,
+    // PgBouncer owns connection pooling — pg.Pool is only a concurrency
+    // limiter and connection manager. idleTimeoutMillis: 1 (not 0 — 0 is
+    // falsy and disables eviction entirely in pg-pool) closes idle
+    // connections after 1 ms, preventing stale connections that conflict
+    // with PgBouncer's client_idle_timeout. max: 3 caps concurrent checkouts.
+    max: 3,
+    idleTimeoutMillis: 1,
+    connectionTimeoutMillis: 10000,
     allowExitOnIdle: true,
   });
 
@@ -61,24 +60,78 @@ export function getPool(): Pool {
   return pool;
 }
 
+/** Transient connection errors that are safe to retry (PgBouncer / TCP resets). */
+const TRANSIENT_CONNECTION_ERRORS = new Set([
+  "client_idle_timeout",
+  "server_login_retry",
+  "connection_reset",
+  "ECONNRESET",
+  "EPIPE",
+  "57P01", // admin_shutdown
+  "57P03", // cannot_connect_now
+  "08006", // connection_failure
+  "08003", // connection_does_not_exist
+]);
+
+function isTransientConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as any).code || "";
+  const message = err.message || "";
+  return TRANSIENT_CONNECTION_ERRORS.has(code)
+    || TRANSIENT_CONNECTION_ERRORS.has(message);
+}
+
 /**
  * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
  * with the params array -- never concatenate user input into the text argument.
+ *
+ * Automatically retries once on transient connection errors (e.g. PgBouncer
+ * closing an idle connection between pool checkout and query execution).
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
-  const pool = getPool();
-  return pool.query<T>(text, params);
+  const p = getPool();
+  try {
+    return await p.query<T>(text, params);
+  } catch (err) {
+    if (isTransientConnectionError(err)) {
+      console.warn("Transient DB connection error, retrying query:", (err as Error).message);
+      return p.query<T>(text, params);
+    }
+    throw err;
+  }
 }
 
 /**
- * Get a client from the pool for transactions
+ * Get a client from the pool for transactions.
+ *
+ * Validates the connection with a probe query before returning it.
+ * If the connection is stale (PgBouncer killed it), releases it and
+ * retries once with a fresh connection.
  */
 export async function getClient(): Promise<PoolClient> {
-  const pool = getPool();
-  return pool.connect();
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query("SELECT 1");
+    return client;
+  } catch (err) {
+    client.release(true);
+    if (isTransientConnectionError(err)) {
+      console.warn("Stale DB connection on checkout, retrying:", (err as Error).message);
+      const retryClient = await p.connect();
+      try {
+        await retryClient.query("SELECT 1");
+        return retryClient;
+      } catch (retryErr) {
+        retryClient.release(true);
+        throw retryErr;
+      }
+    }
+    throw err;
+  }
 }
 
 /**
