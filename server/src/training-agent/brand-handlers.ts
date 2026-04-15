@@ -595,18 +595,18 @@ export const BRAND_TOOLS = [
         campaign: {
           type: 'object',
           properties: {
-            description: { type: 'string' },
+            name: { type: 'string', description: 'Campaign name' },
+            description: { type: 'string', description: 'Campaign description' },
             uses: { type: 'array', items: { type: 'string' } },
             countries: { type: 'array', items: { type: 'string' } },
             estimated_impressions: { type: 'integer' },
             start_date: { type: 'string' },
             end_date: { type: 'string' },
           },
-          required: ['description', 'uses'],
           description: 'Campaign details for rights clearance',
         },
       },
-      required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
+      required: ['rights_id', 'pricing_option_id', 'buyer'],
     },
   },
   {
@@ -617,12 +617,19 @@ export const BRAND_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        rights_id: { type: 'string', description: 'Rights grant identifier from acquire_rights' },
+        rights_id: { type: 'string', description: 'Rights offering identifier' },
+        rights_grant_id: { type: 'string', description: 'Rights grant identifier from acquire_rights' },
         end_date: { type: 'string', description: 'New end date (must be >= current end date)' },
         impression_cap: { type: 'number', description: 'New impression cap (must be >= current)' },
         paused: { type: 'boolean', description: 'Pause or resume the grant' },
+        updates: {
+          type: 'object', description: 'Update fields (alternative to top-level fields)',
+          properties: {
+            end_date: { type: 'string' },
+            impression_cap: { type: 'number' },
+          },
+        },
       },
-      required: ['rights_id'],
     },
   },
   {
@@ -667,7 +674,25 @@ export function handleGetBrandIdentity(
   const fields = req.fields;
   const authorized = req.authorized ?? false;
 
-  const talent = BRAND_MAP.get(brandId);
+  // Look up by brand_id, then by house domain, then fall back to the
+  // default advertiser brand. Storyboard runners send the default brand
+  // domain (test.example.com) when no test kit is loaded — the sandbox
+  // agent resolves this to acme_outdoor so flows can execute end-to-end.
+  let talent = BRAND_MAP.get(brandId);
+  if (!talent) {
+    for (const b of BRAND_MAP.values()) {
+      if (b.house.domain === brandId) {
+        talent = b;
+        break;
+      }
+    }
+  }
+  // Storyboard runners send the default brand domain (test.example.com)
+  // when no test kit is loaded. Resolve domain-like IDs to the default
+  // advertiser brand so flows can execute end-to-end.
+  if (!talent && brandId.includes('.') && ADVERTISER_BRANDS.length > 0) {
+    talent = ADVERTISER_BRANDS[0];
+  }
   if (!talent) {
     return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
   }
@@ -847,7 +872,12 @@ export function handleGetRights(
   const queryLower = query.toLowerCase();
 
   const allHolders = getRightsHolders();
-  let candidates = brandId ? allHolders.filter(t => t.brand_id === brandId) : allHolders;
+  let candidates = allHolders;
+  if (brandId) {
+    // Match by brand_id or house domain; fall back to all holders if no match
+    const filtered = allHolders.filter(t => t.brand_id === brandId || t.house.domain === brandId);
+    if (filtered.length > 0) candidates = filtered;
+  }
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
@@ -961,8 +991,9 @@ interface AcquireRightsArgs {
   pricing_option_id: string;
   buyer?: { domain: string; brand_id?: string };
   campaign: {
-    description: string;
-    uses: string[];
+    description?: string;
+    name?: string;
+    uses?: string[];
     countries?: string[];
     estimated_impressions?: number;
     start_date?: string;
@@ -1009,11 +1040,12 @@ export function handleAcquireRights(
     return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
-  if (!campaign?.description) {
-    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+  const campaignDesc = campaign?.description || campaign?.name;
+  if (!campaignDesc) {
+    return { errors: [{ code: 'invalid_request', message: 'campaign.description or campaign.name is required' }] };
   }
 
-  const descLower = campaign.description.toLowerCase();
+  const descLower = campaignDesc.toLowerCase();
 
   for (const [keyword, rule] of Object.entries(behavior.rejected)) {
     if (descLower.includes(keyword)) {

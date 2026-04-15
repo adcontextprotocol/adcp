@@ -1913,15 +1913,11 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        content_standards: true,
       },
       portfolio: {
         publisher_domains: publisherDomains,
         primary_channels: channels,
-      },
-      content_standards: {
-        supports_local_evaluation: true,
-        supported_channels: channels,
-        supports_webhook_delivery: false,
       },
       audience_targeting: {
         supported_identifier_types: ['hashed_email'],

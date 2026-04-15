@@ -81,6 +81,30 @@ export function getAllSessions(): ReadonlyMap<string, SessionState> {
 }
 
 /**
+ * Find a resource across all sessions by looking into a specific Map field.
+ *
+ * The training agent is stateless HTTP — each request builds its own session
+ * key from whatever brand/account the caller includes. Storyboard runners
+ * don't always include brand on every call, so create and subsequent
+ * operations can land in different sessions. This helper searches all
+ * sessions as a fallback when the primary session doesn't have the resource.
+ */
+export function findAcrossSessions<K extends keyof SessionState>(
+  field: K,
+  resourceId: string,
+): SessionState[K] extends Map<string, infer V> ? { session: SessionState; value: V } | null : never {
+  for (const session of sessions.values()) {
+    const map = session[field] as Map<string, unknown>;
+    const value = map.get(resourceId);
+    if (value) {
+      session.lastAccessedAt = new Date();
+      return { session, value } as ReturnType<typeof findAcrossSessions<K>>;
+    }
+  }
+  return null as ReturnType<typeof findAcrossSessions<K>>;
+}
+
+/**
  * Derive a session key from the request context.
  *
  * Open mode: keyed by account brand domain. This is intentionally shared —

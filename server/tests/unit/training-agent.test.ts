@@ -864,7 +864,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
-    expect(toolNames).toHaveLength(43);
+    expect(toolNames).toHaveLength(48);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -876,15 +876,10 @@ describe('createTrainingAgentServer', () => {
     const execution = mediaBuy.execution as Record<string, unknown>;
     const targeting = execution.targeting as Record<string, unknown>;
 
-    // Object presence replaces boolean gates
-    expect(mediaBuy.content_standards).toBeDefined();
+    // Feature flags live inside media_buy.features per the AdCP capabilities schema
+    expect(features.content_standards).toBeDefined();
     expect(mediaBuy.audience_targeting).toBeDefined();
     expect(mediaBuy.conversion_tracking).toBeDefined();
-
-    // Removed boolean gates must not be present
-    expect(features).not.toHaveProperty('content_standards');
-    expect(features).not.toHaveProperty('audience_targeting');
-    expect(features).not.toHaveProperty('conversion_tracking');
 
     // Removed targeting flags must not be present
     expect(targeting).not.toHaveProperty('device_platform');

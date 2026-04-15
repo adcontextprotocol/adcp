@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, ContentStandardsState } from './types.js';
-import { getSession, sessionKeyFromArgs, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
+import { getSession, sessionKeyFromArgs, findAcrossSessions, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -137,6 +137,25 @@ function toStandardsResponse(state: ContentStandardsState) {
   };
 }
 
+/**
+ * Look up content standards in the current session, falling back to a
+ * cross-session search.
+ */
+function findContentStandards(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  standardsId: string,
+): { session: import('./types.js').SessionState; state: ContentStandardsState } | null {
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const direct = session.contentStandards.get(standardsId);
+  if (direct) return { session, state: direct };
+
+  const found = findAcrossSessions('contentStandards', standardsId);
+  if (found) return { session: found.session, state: found.value };
+
+  return null;
+}
+
 // ── Handlers ─────────────────────────────────────────────────────
 
 export function handleCreateContentStandards(
@@ -217,12 +236,12 @@ export function handleGetContentStandards(
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
-  if (!state) {
+  const found = findContentStandards(args, ctx, req.standards_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
+  const { state } = found;
 
   return {
     ...toStandardsResponse(state),
@@ -246,12 +265,11 @@ export function handleUpdateContentStandards(
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-
-  const state = session.contentStandards.get(req.standards_id);
-  if (!state) {
+  const found = findContentStandards(args, ctx, req.standards_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
+  const { state } = found;
 
   if (req.scope) {
     if (req.scope.countries_all !== undefined) state.scope.countriesAll = req.scope.countries_all;
@@ -282,10 +300,9 @@ export function handleCalibrateContent(
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string; artifact: unknown };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
-  if (!state) {
+  const found = findContentStandards(args, ctx, req.standards_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
@@ -323,10 +340,8 @@ export function handleValidateContentDelivery(
     records: Array<{ record_id: string; artifact?: unknown }>;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-
-  const state = session.contentStandards.get(req.standards_id);
-  if (!state) {
+  const found = findContentStandards(args, ctx, req.standards_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 

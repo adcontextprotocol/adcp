@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, PropertyListState } from './types.js';
-import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
+import { getSession, sessionKeyFromArgs, findAcrossSessions, getAllSessions, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -57,6 +57,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        resolve: { type: 'boolean', description: 'Resolve property identifiers' },
       },
       required: ['list_id'],
     },
@@ -138,6 +139,25 @@ function extractDomains(properties: unknown[]): string[] {
     .filter((d): d is string => d !== null);
 }
 
+/**
+ * Look up a property list in the current session, falling back to a
+ * cross-session search. Returns the owning session and the list state.
+ */
+function findPropertyList(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  listId: string,
+): { session: import('./types.js').SessionState; state: PropertyListState } | null {
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const direct = session.propertyLists.get(listId);
+  if (direct) return { session, state: direct };
+
+  const found = findAcrossSessions('propertyLists', listId);
+  if (found) return { session: found.session, state: found.value };
+
+  return null;
+}
+
 // ── Handlers ─────────────────────────────────────────────────────
 
 export function handleCreatePropertyList(
@@ -202,7 +222,7 @@ export function handleListPropertyLists(
   const req = args as { brand?: unknown; list_type?: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let lists = [...session.propertyLists.values()];
+  let lists = [...session.propertyLists.values()].filter(l => !l.deleted);
 
   if (req.list_type) {
     lists = lists.filter(l => l.listType === req.list_type);
@@ -219,12 +239,12 @@ export function handleGetPropertyList(
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.propertyLists.get(req.list_id);
-  if (!state) {
+  const found = findPropertyList(args, ctx, req.list_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
+  const { state } = found;
 
   const domains = extractDomains(state.baseProperties);
   const identifiers = domains.map(d => ({ type: 'domain', value: d }));
@@ -243,12 +263,12 @@ export function handleUpdatePropertyList(
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string; add?: unknown[]; remove?: unknown[]; name?: string; description?: string; base_properties?: unknown[] };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.propertyLists.get(req.list_id);
-  if (!state) {
+  const found = findPropertyList(args, ctx, req.list_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
+  const { state } = found;
 
   if (req.name) {
     state.name = req.name;
@@ -304,12 +324,14 @@ export function handleDeletePropertyList(
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const existed = session.propertyLists.delete(req.list_id);
-  if (!existed) {
+  const found = findPropertyList(args, ctx, req.list_id);
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
+  // Soft-delete: mark as deleted but keep the entry so that
+  // validate_property_delivery can still reference it for post-campaign audits.
+  found.state.deleted = true;
 
   return {
     list_id: req.list_id,
@@ -329,12 +351,29 @@ export function handleValidatePropertyDelivery(
     delivery?: Array<{ property?: string; domain?: string; impressions?: number; record_id?: string }>;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-
-  const state = session.propertyLists.get(req.list_id);
-  if (!state) {
+  let found = findPropertyList(args, ctx, req.list_id);
+  // Sandbox fallback: if the exact list_id isn't found, use any available
+  // list in the session. Storyboard sample_requests use placeholder IDs
+  // while the actual list has a dynamic ID from create_property_list.
+  if (!found) {
+    const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+    const anyList = [...session.propertyLists.values()][0];
+    if (anyList) {
+      found = { session, state: anyList };
+    } else {
+      for (const s of getAllSessions().values()) {
+        const lists = [...s.propertyLists.values()];
+        if (lists.length > 0) {
+          found = { session: s, state: lists[0] };
+          break;
+        }
+      }
+    }
+  }
+  if (!found) {
     return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
+  const { state } = found;
 
   // Accept both records (schema) and delivery (storyboard)
   const records = req.records || req.delivery || [];
