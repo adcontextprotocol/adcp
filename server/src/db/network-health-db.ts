@@ -2,7 +2,7 @@ import { query } from "./client.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type PropertyRelationship = "owned" | "managed" | "represented";
+export type PropertyRelationship = "owned" | "direct" | "delegated" | "ad_network";
 export type VerificationStatus = "verified" | "missing_authorization" | "orphaned" | "unreachable" | "error";
 
 export interface PropertyDetail {

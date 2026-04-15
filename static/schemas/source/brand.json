@@ -196,7 +196,7 @@
     },
     "property": {
       "type": "object",
-      "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare managed or represented properties. Managed and represented properties serve the same role as sellers.json in programmatic advertising — they are the operator's public declaration of which publishers they work with. The publisher confirms by authorizing the operator's agents in their adagents.json.",
+      "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. These values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json.",
       "properties": {
         "type": {
           "type": "string",
@@ -225,9 +225,9 @@
         },
         "relationship": {
           "type": "string",
-          "enum": ["owned", "managed", "represented"],
+          "enum": ["owned", "direct", "delegated", "ad_network"],
           "default": "owned",
-          "description": "Relationship between the brand and this property. 'owned': the brand owns and operates this property (default, equivalent to omitting the field). 'managed': the brand manages monetization or ad tech for this property but does not own it (e.g., Mediavine managing a food blog's ads). 'represented': the brand sells inventory for this property as an exchange or SSP (e.g., PubMatic representing nytimes.com). Managed and represented properties form a bilateral verification chain: the operator declares the relationship here, and the publisher confirms by authorizing the operator's agents in their adagents.json."
+          "description": "How this brand relates to the property, using the same vocabulary as adagents.json delegation_type. 'owned': the brand owns and operates this property (default). 'direct': the brand is the direct sales path for this property, even if a third party operates the software (e.g., a publisher's in-house ad team using a vendor's tech). 'delegated': the brand manages monetization for this property — they are in charge of ad sales (e.g., Mediavine managing a food blog). 'ad_network': the brand sells this property's inventory as part of a network or exchange — they are a path to the inventory, not the path (e.g., PubMatic as an SSP). For non-owned properties, the publisher confirms the relationship by setting the matching delegation_type on the agent's authorization in their adagents.json."
         }
       },
       "required": ["type", "identifier"],
@@ -1704,9 +1704,9 @@
           "keller_type": "master",
           "properties": [
             {"type": "website", "identifier": "mediavine.com", "primary": true},
-            {"type": "website", "identifier": "thehollywoodgossip.com", "relationship": "managed"},
-            {"type": "website", "identifier": "foodfanatic.com", "relationship": "managed"},
-            {"type": "website", "identifier": "thebiglead.com", "relationship": "managed"}
+            {"type": "website", "identifier": "thehollywoodgossip.com", "relationship": "delegated"},
+            {"type": "website", "identifier": "foodfanatic.com", "relationship": "delegated"},
+            {"type": "website", "identifier": "thebiglead.com", "relationship": "delegated"}
           ],
           "agents": [
             {

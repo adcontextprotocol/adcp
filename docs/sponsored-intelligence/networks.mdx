@@ -96,7 +96,7 @@ Networks aggregate delivery data from underlying platforms and present unified r
 
 ## Declaring your network in brand.json
 
-A network declares its managed properties in its [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field on each property. This is the operator's public declaration of which publishers they work with — the AdCP equivalent of `sellers.json` in programmatic advertising.
+A network declares its properties in its [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. This uses the same vocabulary as adagents.json's `delegation_type`, creating a bilateral verification chain — the AdCP equivalent of `sellers.json` in programmatic advertising.
 
 ```json
 {
@@ -108,9 +108,9 @@ A network declares its managed properties in its [`brand.json`](/docs/brand-prot
     "id": "ai_network",
     "properties": [
       { "type": "website", "identifier": "ai-network.example.com", "primary": true },
-      { "type": "website", "identifier": "assistant-alpha.example.com", "relationship": "managed" },
-      { "type": "website", "identifier": "assistant-beta.example.com", "relationship": "managed" },
-      { "type": "website", "identifier": "search-gamma.example.com", "relationship": "represented" }
+      { "type": "website", "identifier": "assistant-alpha.example.com", "relationship": "delegated" },
+      { "type": "website", "identifier": "assistant-beta.example.com", "relationship": "delegated" },
+      { "type": "website", "identifier": "search-gamma.example.com", "relationship": "ad_network" }
     ],
     "agents": [{
       "type": "sales",
@@ -121,13 +121,16 @@ A network declares its managed properties in its [`brand.json`](/docs/brand-prot
 }
 ```
 
-The `relationship` field has three values:
+The `relationship` field uses the same values as `delegation_type` in adagents.json, plus `owned`:
 
 | Relationship | Meaning | Example |
 |---|---|---|
 | `owned` (default) | You own and operate this property | Your own website |
-| `managed` | You manage monetization for this property | A publisher network managing ad tech for partner sites |
-| `represented` | You sell inventory for this property as an exchange or SSP | An exchange representing a publisher's inventory |
+| `direct` | You are the direct sales path for this property | A publisher's in-house ad team using a vendor's tech |
+| `delegated` | You manage monetization for this property — you're in charge | Mediavine managing a food blog's ad sales |
+| `ad_network` | You sell this property's inventory as part of a network or exchange — you're a path, not the path | PubMatic as an SSP for nytimes.com |
+
+The distinction between `delegated` and `ad_network` matters: a delegated relationship means the operator is in charge of the property's monetization (exclusive or near-exclusive access). An ad_network relationship means the operator is one of potentially many paths to the inventory.
 
 ### Bilateral verification with adagents.json
 
@@ -135,10 +138,10 @@ This creates a two-sided verification chain — the same pattern as `sellers.jso
 
 | File | Who publishes it | What it declares | Programmatic equivalent |
 |---|---|---|---|
-| `brand.json` (operator) | The network/SSP | "I manage/represent these publishers" | `sellers.json` |
-| `adagents.json` (publisher) | Each publisher | "This network's agents are authorized to sell my inventory" | `ads.txt` |
+| `brand.json` (operator) | The network/SSP | "I sell for these publishers, here's how" | `sellers.json` |
+| `adagents.json` (publisher) | Each publisher | "This operator's agents are authorized, here's the delegation type" | `ads.txt` |
 
-Both sides must agree. The network declares the relationship in `brand.json`, and each publisher confirms by authorizing the network's agents in their `adagents.json`. If only one side declares, the relationship is incomplete — the network health dashboard flags this as a missing pointer (network declared but publisher hasn't deployed) or an orphaned pointer (publisher authorized but network hasn't declared).
+Both sides must agree. The network declares the relationship in `brand.json`, and each publisher confirms by authorizing the network's agents with the matching `delegation_type` in their `adagents.json`. If only one side declares, the relationship is incomplete — the network health dashboard flags this as missing authorization (operator declared but publisher hasn't authorized) or orphaned authorization (publisher authorized but operator hasn't declared).
 
 ## adagents.json for networks
 
