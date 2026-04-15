@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
-import { getPool } from "../db/client.js";
+import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import {
   requireAuth,
@@ -1201,7 +1201,12 @@ export function createOrganizationsRouter(): Router {
               });
             }
 
-            // Prospect org — check if user is already a member
+            // Commit the read-lock transaction before making external API calls.
+            // This avoids holding a DB connection idle during network round-trips,
+            // which triggers PgBouncer client_idle_timeout errors.
+            await client.query('COMMIT');
+
+            // --- WorkOS API calls (outside any DB transaction) ---
             const isDevUser = isDevModeEnabled() && getDevUser(req);
             let existingMembership: { id: string; role?: { slug: string } } | null = null;
             if (!isDevUser) {
@@ -1242,7 +1247,10 @@ export function createOrganizationsRouter(): Router {
               });
             }
 
-            // Mirror membership and update prospect status locally (within the same transaction)
+            // --- New transaction to write local DB state ---
+            await client.query('BEGIN');
+
+            // Mirror membership and update prospect status locally
             await client.query(`
               INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
               VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
@@ -2160,7 +2168,7 @@ export function createOrganizationsRouter(): Router {
 
       // Bulk-fetch local membership data and user-set names in parallel
       const [localMembersResult, localUsersResult] = await Promise.all([
-        getPool().query<{
+        query<{
           workos_user_id: string;
           seat_type: string;
           first_name: string | null;
@@ -2170,7 +2178,7 @@ export function createOrganizationsRouter(): Router {
           'SELECT workos_user_id, seat_type, first_name, last_name, role FROM organization_memberships WHERE workos_organization_id = $1',
           [orgId]
         ),
-        getPool().query<{
+        query<{
           workos_user_id: string;
           first_name: string | null;
           last_name: string | null;
@@ -2229,7 +2237,7 @@ export function createOrganizationsRouter(): Router {
       });
 
       // Fetch seat types for pending invitations
-      const invSeatResult = await getPool().query<{ email: string; seat_type: string }>(
+      const invSeatResult = await query<{ email: string; seat_type: string }>(
         'SELECT email, seat_type FROM invitation_seat_types WHERE workos_organization_id = $1',
         [orgId]
       );
@@ -2353,7 +2361,7 @@ export function createOrganizationsRouter(): Router {
       });
 
       // Persist seat_type intent for when the invitation is accepted
-      await getPool().query(
+      await query(
         `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
@@ -2448,7 +2456,7 @@ export function createOrganizationsRouter(): Router {
       await workos!.userManagement.revokeInvitation(invitationId);
 
       // Clean up seat_type intent
-      await getPool().query('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1', [invitationId]);
+      await query('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1', [invitationId]);
 
       logger.info({ orgId, invitationId, revokerId: user.id }, 'Invitation revoked');
 
@@ -2512,7 +2520,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Preserve seat_type from old invitation before revoking
-      const oldSeatResult = await getPool().query<{ seat_type: string }>(
+      const oldSeatResult = await query<{ seat_type: string }>(
         'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 RETURNING seat_type',
         [invitationId]
       );
@@ -2528,7 +2536,7 @@ export function createOrganizationsRouter(): Router {
       });
 
       // Persist seat_type intent for the new invitation
-      await getPool().query(
+      await query(
         `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
          VALUES ($1, $2, $3, $4)`,
         [newInvitation.id, orgId, invitation.email, preservedSeatType]
@@ -2682,13 +2690,13 @@ export function createOrganizationsRouter(): Router {
       let updatedSeatType: string | undefined;
       if (seat_type) {
         // Get old seat_type for audit log
-        const oldResult = await getPool().query<{ seat_type: string }>(
+        const oldResult = await query<{ seat_type: string }>(
           'SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1 AND workos_user_id = $2',
           [orgId, membership.userId]
         );
         const oldSeatType = oldResult.rows[0]?.seat_type || 'community_only';
 
-        await getPool().query(
+        await query(
           `UPDATE organization_memberships SET seat_type = $1, updated_at = NOW()
            WHERE workos_organization_id = $2 AND workos_user_id = $3`,
           [seat_type, orgId, membership.userId]
@@ -3345,7 +3353,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Update the member's seat type
-      await getPool().query(
+      await query(
         `UPDATE organization_memberships SET seat_type = 'contributor', updated_at = NOW()
          WHERE workos_organization_id = $1 AND workos_user_id = $2`,
         [orgId, request.workos_user_id]

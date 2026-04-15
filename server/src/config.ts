@@ -37,11 +37,10 @@ export function getDatabaseConfig(): DatabaseConfig | null {
   return {
     connectionString,
     ssl,
-      // PgBouncer owns connection pooling. These are intentionally low and
-    // NOT configurable via env vars — overriding them re-introduces a
-    // second pool that conflicts with PgBouncer's idle timeouts.
+    // Pool settings are hardcoded in client.ts (PgBouncer owns pooling).
+    // These fields exist only so migrate.ts can pass a partial config.
     maxPoolSize: 3,
     connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 1000,
+    idleTimeoutMillis: 1,
   };
 }

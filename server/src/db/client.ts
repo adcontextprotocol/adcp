@@ -30,13 +30,13 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    // PgBouncer owns connection pooling — we do NOT pool here.
-    // We use pg.Pool only as a connection manager: it gives us pool.query()
-    // (atomic connect → query → release) and pool.connect() (checkout/release
-    // for transactions). These values are hardcoded — env var overrides
-    // re-introduce a second pool that conflicts with PgBouncer's idle timeouts.
+    // PgBouncer owns connection pooling — pg.Pool is only a concurrency
+    // limiter and connection manager. idleTimeoutMillis: 1 (not 0 — 0 is
+    // falsy and disables eviction entirely in pg-pool) closes idle
+    // connections after 1 ms, preventing stale connections that conflict
+    // with PgBouncer's client_idle_timeout. max: 3 caps concurrent checkouts.
     max: 3,
-    idleTimeoutMillis: 1000,
+    idleTimeoutMillis: 1,
     connectionTimeoutMillis: 10000,
     allowExitOnIdle: true,
   });
@@ -75,8 +75,10 @@ const TRANSIENT_CONNECTION_ERRORS = new Set([
 
 function isTransientConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  const msg = (err as any).code || err.message || "";
-  return TRANSIENT_CONNECTION_ERRORS.has(msg);
+  const code = (err as any).code || "";
+  const message = err.message || "";
+  return TRANSIENT_CONNECTION_ERRORS.has(code)
+    || TRANSIENT_CONNECTION_ERRORS.has(message);
 }
 
 /**
@@ -103,11 +105,33 @@ export async function query<T extends QueryResultRow = any>(
 }
 
 /**
- * Get a client from the pool for transactions
+ * Get a client from the pool for transactions.
+ *
+ * Validates the connection with a probe query before returning it.
+ * If the connection is stale (PgBouncer killed it), releases it and
+ * retries once with a fresh connection.
  */
 export async function getClient(): Promise<PoolClient> {
-  const pool = getPool();
-  return pool.connect();
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query("SELECT 1");
+    return client;
+  } catch (err) {
+    client.release(true);
+    if (isTransientConnectionError(err)) {
+      console.warn("Stale DB connection on checkout, retrying:", (err as Error).message);
+      const retryClient = await p.connect();
+      try {
+        await retryClient.query("SELECT 1");
+        return retryClient;
+      } catch (retryErr) {
+        retryClient.release(true);
+        throw retryErr;
+      }
+    }
+    throw err;
+  }
 }
 
 /**

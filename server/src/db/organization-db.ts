@@ -1,4 +1,4 @@
-import { getPool } from './client.js';
+import { getPool, query } from './client.js';
 import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
@@ -531,7 +531,7 @@ export async function resetSeatWarningIfNeeded(
   else if (percentage < 60) newThreshold = 0;
   else {
     // 60-79% band: preserve current threshold (hysteresis)
-    const current = await getPool().query<{ val: number }>(
+    const current = await query<{ val: number }>(
       `SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1`,
       [orgId]
     );
@@ -539,7 +539,7 @@ export async function resetSeatWarningIfNeeded(
   }
 
   // Capture old value via CTE before updating
-  const result = await getPool().query<{ old_threshold: number }>(
+  const result = await query<{ old_threshold: number }>(
     `WITH old AS (
        SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1
      )
@@ -691,14 +691,14 @@ export async function findStaleSeatRequests(): Promise<{
 }
 
 export async function markAdminReminderSent(requestId: string): Promise<void> {
-  await getPool().query(
+  await query(
     'UPDATE seat_upgrade_requests SET admin_reminder_sent_at = NOW() WHERE id = $1',
     [requestId]
   );
 }
 
 export async function markMemberTimeoutNotified(requestId: string): Promise<void> {
-  await getPool().query(
+  await query(
     'UPDATE seat_upgrade_requests SET member_timeout_notified_at = NOW() WHERE id = $1',
     [requestId]
   );
@@ -1082,50 +1082,58 @@ export class OrganizationDatabase {
 
   /**
    * Atomically get or create a Stripe customer for an organization.
-   * Uses SELECT FOR UPDATE to prevent concurrent customer creation.
+   * Uses a conditional UPDATE (WHERE stripe_customer_id IS NULL) to prevent
+   * concurrent customer creation without holding a transaction open during
+   * the external Stripe API call.
    */
   async getOrCreateStripeCustomer(
     workos_organization_id: string,
     createFn: () => Promise<string | null>
   ): Promise<string | null> {
     const pool = getPool();
-    const client = await pool.connect();
+
+    const checkResult = await pool.query(
+      `SELECT stripe_customer_id FROM organizations
+       WHERE workos_organization_id = $1`,
+      [workos_organization_id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return null;
+    }
+
+    const existingCustomerId = checkResult.rows[0].stripe_customer_id;
+    if (existingCustomerId) {
+      return existingCustomerId;
+    }
+
+    const newCustomerId = await createFn();
+
+    if (!newCustomerId) {
+      return null;
+    }
 
     try {
-      await client.query('BEGIN');
-
-      const result = await client.query(
-        `SELECT stripe_customer_id FROM organizations
-         WHERE workos_organization_id = $1 FOR UPDATE`,
-        [workos_organization_id]
+      const updateResult = await pool.query(
+        `UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2 AND stripe_customer_id IS NULL
+         RETURNING stripe_customer_id`,
+        [newCustomerId, workos_organization_id]
       );
 
-      if (result.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return null;
-      }
-
-      const existingCustomerId = result.rows[0].stripe_customer_id;
-      if (existingCustomerId) {
-        await client.query('COMMIT');
-        return existingCustomerId;
-      }
-
-      const newCustomerId = await createFn();
-
-      if (newCustomerId) {
-        await client.query(
-          `UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [newCustomerId, workos_organization_id]
+      if (updateResult.rows.length === 0) {
+        logger.warn({ workos_organization_id, orphanedCustomerId: newCustomerId },
+          'Stripe customer race: another request set stripe_customer_id first');
+        const current = await pool.query(
+          `SELECT stripe_customer_id FROM organizations
+           WHERE workos_organization_id = $1`,
+          [workos_organization_id]
         );
+        return current.rows[0]?.stripe_customer_id ?? null;
       }
 
-      await client.query('COMMIT');
       return newCustomerId;
     } catch (error) {
-      await client.query('ROLLBACK');
-      // Unique constraint on stripe_customer_id — another org already owns this customer
       if (error instanceof Error && 'code' in error && (error as any).code === '23505') {
         logger.warn({
           workos_organization_id,
@@ -1134,8 +1142,6 @@ export class OrganizationDatabase {
         return null;
       }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

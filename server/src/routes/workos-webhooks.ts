@@ -1178,43 +1178,43 @@ export async function backfillUsers(): Promise<{
 
       logger.info({ count: candidates.length }, 'Backfill: verifying deletion candidates against WorkOS');
 
-      const VERIFY_BATCH_SIZE = 10;
-      for (let i = 0; i < candidates.length; i += VERIFY_BATCH_SIZE) {
-        const batch = candidates.slice(i, i + VERIFY_BATCH_SIZE);
-
-        await Promise.all(batch.map(async (row) => {
-          try {
-            // Confirm the user is actually gone from WorkOS before deleting
-            await workos.userManagement.getUser(row.workos_user_id);
-            // User still exists in WorkOS — skip deletion
-            result.usersSkipped++;
-          } catch (getErr: any) {
-            if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
-              const client = await pool.connect();
-              try {
-                await client.query('BEGIN');
-                await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
-                await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
-                await client.query('COMMIT');
-                result.usersRemoved++;
-                logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
-              } catch (err) {
-                await client.query('ROLLBACK');
-                // FK constraints prevent deletion of users with platform activity
-                // (community_points, certifications, etc.) — this is expected
-                result.usersSkipped++;
-                logger.info({ error: err, userId: row.workos_user_id }, 'Backfill: user deleted from WorkOS but retained locally due to platform activity');
-              } finally {
-                client.release();
-              }
-            } else {
-              // WorkOS API error — don't delete, log full error server-side only
-              logger.warn({ error: getErr, userId: row.workos_user_id }, 'Backfill: WorkOS API error during user verification');
-              result.errors.push(`Could not verify user ${row.workos_user_id}: WorkOS API error (status ${getErr?.status || 'unknown'})`);
+      // Process candidates sequentially to avoid pool connection deadlock.
+      // Each iteration may acquire a pool connection for the DELETE transaction,
+      // and the pool max is small (3). Using Promise.all with a batch size > pool
+      // max would cause all connections to be held simultaneously, blocking any
+      // new connect() calls and deadlocking.
+      for (const row of candidates) {
+        try {
+          // Confirm the user is actually gone from WorkOS before deleting
+          await workos.userManagement.getUser(row.workos_user_id);
+          // User still exists in WorkOS — skip deletion
+          result.usersSkipped++;
+        } catch (getErr: any) {
+          if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
+            const client = await pool.connect();
+            try {
+              await client.query('BEGIN');
+              await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
+              await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
+              await client.query('COMMIT');
+              result.usersRemoved++;
+              logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
+            } catch (err) {
+              await client.query('ROLLBACK');
+              // FK constraints prevent deletion of users with platform activity
+              // (community_points, certifications, etc.) — this is expected
               result.usersSkipped++;
+              logger.info({ error: err, userId: row.workos_user_id }, 'Backfill: user deleted from WorkOS but retained locally due to platform activity');
+            } finally {
+              client.release();
             }
+          } else {
+            // WorkOS API error — don't delete, log full error server-side only
+            logger.warn({ error: getErr, userId: row.workos_user_id }, 'Backfill: WorkOS API error during user verification');
+            result.errors.push(`Could not verify user ${row.workos_user_id}: WorkOS API error (status ${getErr?.status || 'unknown'})`);
+            result.usersSkipped++;
           }
-        }));
+        }
       }
     }
 
