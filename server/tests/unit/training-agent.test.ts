@@ -5703,4 +5703,117 @@ describe('context echo', () => {
     // The products field should exist (handler ran successfully)
     expect(parsed.products).toBeDefined();
   });
+
+  it('echoes context on negative budget error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-neg-budget',
+      start_time: '2026-05-01T00:00:00Z',
+      end_time: '2026-05-31T23:59:59Z',
+      packages: [{ product_id: 'test-product', budget: -500, pricing_option_id: 'test-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context on nonexistent product error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-nonexistent',
+      start_time: '2026-05-01T00:00:00Z',
+      end_time: '2026-05-31T23:59:59Z',
+      packages: [{ product_id: 'NONEXISTENT_PRODUCT_ID_12345', budget: 1000, pricing_option_id: 'nonexistent-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context on reversed dates error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-reversed',
+      start_time: '2026-12-31T00:00:00Z',
+      end_time: '2026-01-01T00:00:00Z',
+      packages: [{ product_id: 'test-product', budget: 1000, pricing_option_id: 'test-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  describe('state_machine invalid transitions', () => {
+    const account = { brand: { domain: 'test.example' }, operator: 'test.example' };
+    let server: ReturnType<typeof createTrainingAgentServer>;
+    let mediaBuyId: string;
+
+    beforeEach(async () => {
+      clearSessions();
+      invalidateCache();
+      clearTaskStore();
+      const catalog = buildCatalog();
+      const product = catalog[0].product;
+      const pricingOptionId = (product.pricing_options as Array<Record<string, unknown>>)[0].pricing_option_id as string;
+      server = createTrainingAgentServer(DEFAULT_CTX);
+
+      const { parsed: created } = await simulateCallToolRaw(server, 'create_media_buy', {
+        account,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{ product_id: product.product_id, budget: 50000, pricing_option_id: pricingOptionId }],
+      });
+      mediaBuyId = created.media_buy_id as string;
+
+      await simulateCallToolRaw(server, 'update_media_buy', {
+        account,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+      });
+    });
+
+    it('echoes context when pausing a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        paused: true,
+      });
+      expect(isError).toBe(true);
+      expect(parsed.adcp_error).toBeDefined();
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+
+    it('echoes context when resuming a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        paused: false,
+      });
+      expect(isError).toBe(true);
+      expect(parsed.adcp_error).toBeDefined();
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+  });
+
+  it('echoes context on comply_test_controller errors', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // comply_test_controller returns { success: false, error: '...' } — no errors array.
+    // These take the success-path spread, not the adcpError path.
+    const { parsed, isError } = await simulateCallToolRaw(server, 'comply_test_controller', {
+      context: TEST_CONTEXT,
+      scenario: 'force_creative_status',
+      params: { creative_id: 'nonexistent', status: 'approved' },
+      account: { sandbox: true },
+    });
+    // comply_test_controller errors are NOT marked isError at MCP level
+    expect(isError).toBeFalsy();
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe('NOT_FOUND');
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
 });
