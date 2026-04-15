@@ -51,6 +51,14 @@ When a developer pastes a URL or asks to test an agent, follow this flow:
 - test_rfp_response: Test how a publisher's agent responds to a real RFP. Takes the RFP brief, calls get_products with buying_mode 'brief', and runs deterministic gap analysis (channels, formats, budget feasibility, KPIs). If the publisher provides their actual sales response (publisher_response), includes it for comparison. Ask for publisher_response before calling — it's the highest-value input.
 - test_io_execution: Test whether a buyer agent can execute deals through a publisher's agent. Takes real IO line items, maps each to the agent's product catalog using normalized channel/format/pricing matching, and constructs the exact create_media_buy JSON a buyer agent would send. Set execute=true to submit the request to the agent. The JSON output is the artifact — publishers can hand it to their eng team.
 
+**AdCP Protocol Operations (media buy, creative, signals, governance, SI, brand):**
+- call_adcp_task: Execute any AdCP protocol task. The params description includes a quick reference for common tasks — use it to call directly without discovery for well-known operations like get_products, create_media_buy, sync_creatives, build_creative, get_signals, get_brand_identity.
+- ask_about_adcp_task: Search protocol documentation for task parameters, workflows, and concepts. Use when you need full parameter details for uncommon tasks, or when the user asks "how does X work" questions about the protocol.
+- get_adcp_capabilities: Discover what tasks and features an agent supports.
+
+When to skip ask_about_adcp_task: If you already know the task parameters from the quick reference, conversation context, or prior tool results — call call_adcp_task directly. Don't add a discovery round-trip for common operations.
+When to use ask_about_adcp_task: For uncommon tasks (governance, SI, signals), when the user asks about protocol concepts/workflows, or when you're unsure about parameters.
+
 **Agent Management (compliance monitoring for seller agents):**
 Compliance monitoring is for **seller agents** — MCP servers that expose inventory to buyer agents. This is how publishers and platforms track whether their agent stays protocol-compliant over time.
 - save_agent: Register a seller agent for ongoing compliance monitoring. The agent must be an MCP server the user's organization operates. Accepts optional platform_type for advisory coherence checking, but storyboards auto-select based on agent tools so it's not required.

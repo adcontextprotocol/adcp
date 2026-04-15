@@ -1,10 +1,10 @@
 /**
- * AdCP Tool Schema Drift Detection
+ * AdCP Task Registry Completeness
  *
- * Ensures that Addie's MCP tool input_schemas stay in sync with the
- * AdCP protocol JSON schemas. Checks both directions:
- * - Protocol → Tool: every protocol property exists in the tool
- * - Tool → Protocol: every tool property exists in the protocol (or is in ADDIE_ONLY)
+ * Ensures that:
+ * - Every task in ADCP_TASK_REGISTRY has documentation in a SKILL.md file
+ * - The registry contains all expected tasks (snapshot test)
+ * - The tool-set references only valid registry tasks or known management tools
  *
  * Run with: npx vitest run tests/addie/adcp-tool-schema-drift.test.ts
  */
@@ -12,76 +12,87 @@
 import { describe, expect, test } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import {
-  ADCP_MEDIA_BUY_TOOLS,
-  ADCP_CREATIVE_TOOLS,
-} from '../../server/src/addie/mcp/adcp-tools.js';
+import { ADCP_TASK_REGISTRY, ADCP_TOOLS } from '../../server/src/addie/mcp/adcp-tools.js';
+import { TOOL_SETS } from '../../server/src/addie/tool-sets.js';
 
-const SCHEMA_DIR = path.join(__dirname, '../../static/schemas/source');
+const SKILLS_DIR = path.join(__dirname, '../../skills');
 
-/**
- * Maps tool names to their protocol request schema file (relative to SCHEMA_DIR).
- * Tools without a protocol schema (preview_creative, signals, governance, SI)
- * are not covered and should be added here when schemas are created.
- */
-const TOOL_SCHEMA_MAP: Record<string, string> = {
-  get_products: 'media-buy/get-products-request.json',
-  create_media_buy: 'media-buy/create-media-buy-request.json',
-  sync_catalogs: 'media-buy/sync-catalogs-request.json',
-  list_creative_formats: 'media-buy/list-creative-formats-request.json',
-  get_media_buy_delivery: 'media-buy/get-media-buy-delivery-request.json',
-  update_media_buy: 'media-buy/update-media-buy-request.json',
-  provide_performance_feedback: 'media-buy/provide-performance-feedback-request.json',
-  build_creative: 'media-buy/build-creative-request.json',
-};
+/** Agent management tools live in member-tools.ts, not in the task registry */
+const AGENT_MANAGEMENT_TOOLS = new Set([
+  'save_agent',
+  'list_saved_agents',
+  'remove_saved_agent',
+  'setup_test_agent',
+]);
 
-/** Protocol metadata fields — not useful for LLM tool schemas */
-const PROTOCOL_ONLY = new Set(['ext', 'context', 'adcp_major_version']);
+function loadSkillTaskNames(): Set<string> {
+  const taskNames = new Set<string>();
 
-/** Addie-specific routing fields — not in protocol schemas */
-const ADDIE_ONLY = new Set(['agent_url', 'debug']);
-
-const ALL_TOOLS = [...ADCP_MEDIA_BUY_TOOLS, ...ADCP_CREATIVE_TOOLS];
-
-function getToolProps(tool: (typeof ALL_TOOLS)[number]): string[] {
-  return Object.keys(
-    (tool.input_schema as Record<string, unknown> & { properties: Record<string, unknown> })
-      .properties || {},
+  const dirs = fs.readdirSync(SKILLS_DIR).filter(d =>
+    d.startsWith('adcp-') && fs.statSync(path.join(SKILLS_DIR, d)).isDirectory()
   );
+
+  for (const dir of dirs) {
+    const skillPath = path.join(SKILLS_DIR, dir, 'SKILL.md');
+    let content: string;
+    try {
+      content = fs.readFileSync(skillPath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    // Extract task names from ### headings and backtick references
+    const headingMatches = content.matchAll(/^###\s+(\w+)/gm);
+    for (const match of headingMatches) {
+      taskNames.add(match[1]);
+    }
+
+    // Also match `task_name` references in body text
+    const backtickMatches = content.matchAll(/`(\w+)`/g);
+    for (const match of backtickMatches) {
+      if (match[1] in ADCP_TASK_REGISTRY) {
+        taskNames.add(match[1]);
+      }
+    }
+  }
+
+  return taskNames;
 }
 
-describe('AdCP tool schemas match protocol schemas', () => {
-  for (const [toolName, schemaFile] of Object.entries(TOOL_SCHEMA_MAP)) {
-    test(`${toolName} covers all protocol properties`, () => {
-      const schemaPath = path.join(SCHEMA_DIR, schemaFile);
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
-      const tool = ALL_TOOLS.find((t) => t.name === toolName);
+describe('AdCP task registry completeness', () => {
+  test('every task in the registry has SKILL.md documentation', () => {
+    const documentedTasks = loadSkillTaskNames();
+    const registryTasks = Object.keys(ADCP_TASK_REGISTRY);
 
-      expect(tool).toBeDefined();
+    const undocumented = registryTasks.filter(t => !documentedTasks.has(t));
 
-      const protocolProps = Object.keys(schema.properties || {}).filter(
-        (p) => !PROTOCOL_ONLY.has(p),
-      );
-      const toolProps = getToolProps(tool!).filter((p) => !ADDIE_ONLY.has(p));
+    expect(undocumented).toEqual([]);
+  });
 
-      const missing = protocolProps.filter((p) => !toolProps.includes(p));
+  test('ADCP_TOOLS exports exactly 3 meta-tools', () => {
+    expect(ADCP_TOOLS.map(t => t.name).sort()).toEqual([
+      'ask_about_adcp_task',
+      'call_adcp_task',
+      'get_adcp_capabilities',
+    ]);
+  });
 
-      expect(missing).toEqual([]);
-    });
+  test('adcp_operations tool set references only valid tools', () => {
+    const adcpOps = TOOL_SETS.adcp_operations;
+    expect(adcpOps).toBeDefined();
 
-    test(`${toolName} has no properties absent from protocol`, () => {
-      const schemaPath = path.join(SCHEMA_DIR, schemaFile);
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
-      const tool = ALL_TOOLS.find((t) => t.name === toolName);
+    for (const toolName of adcpOps.tools) {
+      const isRegistryTask = toolName in ADCP_TASK_REGISTRY;
+      const isMetaTool = ADCP_TOOLS.some(t => t.name === toolName);
+      const isAgentManagement = AGENT_MANAGEMENT_TOOLS.has(toolName);
 
-      expect(tool).toBeDefined();
+      expect(
+        isRegistryTask || isMetaTool || isAgentManagement,
+      ).toBe(true);
+    }
+  });
 
-      const protocolProps = new Set(Object.keys(schema.properties || {}));
-      const toolProps = getToolProps(tool!).filter((p) => !ADDIE_ONLY.has(p));
-
-      const extra = toolProps.filter((p) => !protocolProps.has(p));
-
-      expect(extra).toEqual([]);
-    });
-  }
+  test('registry task names match expected set', () => {
+    expect(Object.keys(ADCP_TASK_REGISTRY).sort()).toMatchSnapshot();
+  });
 });

@@ -9,7 +9,7 @@ This skill enables you to execute the AdCP Media Buy Protocol with sales agents.
 
 ## Overview
 
-The Media Buy Protocol provides 8 standardized tasks for managing advertising campaigns:
+The Media Buy Protocol provides 11 standardized tasks for managing advertising campaigns:
 
 | Task | Purpose | Response Time |
 |------|---------|---------------|
@@ -18,9 +18,12 @@ The Media Buy Protocol provides 8 standardized tasks for managing advertising ca
 | `list_creative_formats` | View creative specifications | ~1s |
 | `create_media_buy` | Create campaigns | Minutes-Days |
 | `update_media_buy` | Modify campaigns | Minutes-Days |
+| `get_media_buys` | Retrieve campaign state and status | ~1-5s |
 | `sync_creatives` | Upload creative assets | Minutes-Days |
+| `sync_catalogs` | Sync product feeds and catalogs | Minutes-Days |
 | `list_creatives` | Query creative library | ~1s |
 | `get_media_buy_delivery` | Get performance data | ~60s |
+| `provide_performance_feedback` | Share outcomes with publishers | ~1-5s |
 
 ## Typical Workflow
 
@@ -166,6 +169,41 @@ Modify an existing campaign.
 
 ---
 
+### sync_catalogs
+
+Sync product catalogs, store locations, job postings, and other structured feeds to a seller account. Supports inline items or external feed URLs. When called without catalogs, returns existing catalogs (discovery mode).
+
+**Request:**
+```json
+{
+  "account": {
+    "account_id": "acct_123"
+  },
+  "catalogs": [
+    {
+      "catalog_id": "winter-collection",
+      "name": "Winter 2025 Collection",
+      "type": "product",
+      "items": [
+        { "id": "sku-001", "name": "Wool Coat", "price": 299.99, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `account` (object, required): Account that owns the catalogs — `{ account_id }`
+- `catalogs` (array, optional): Catalog objects to sync. Omit for discovery mode.
+  - `type` (string, required): `offering`, `product`, `inventory`, `store`, `promotion`, `hotel`, `flight`, `job`, `vehicle`, `real_estate`, `education`, `destination`, `app`
+  - `items` (array): Inline catalog data (mutually exclusive with `url`)
+  - `url` (string): External feed URL (mutually exclusive with `items`)
+  - `feed_format` (string): `google_merchant_center`, `facebook_catalog`, `shopify`, `linkedin_jobs`, `custom`
+- `delete_missing` (boolean, optional): Remove catalogs not in this sync (use with caution)
+- `dry_run` (boolean, optional): Preview changes without applying
+
+---
+
 ### sync_creatives
 
 Upload and manage creative assets.
@@ -221,6 +259,62 @@ Query the creative library with filtering.
   "limit": 20
 }
 ```
+
+---
+
+### get_media_buys
+
+Retrieve media buy state: status, valid_actions, creative approvals, pending formats, and optional delivery snapshots or revision history.
+
+**Request:**
+```json
+{
+  "media_buy_ids": ["mb_abc123"],
+  "include_snapshot": true,
+  "include_history": 5
+}
+```
+
+**Key fields:**
+- `media_buy_ids` (array, optional): Specific media buy IDs to retrieve
+- `account` (object, optional): Filter to a specific account
+- `status_filter` (string or array, optional): Filter by status — `pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`. Defaults to `["active"]` when no IDs provided.
+- `include_snapshot` (boolean, optional): Include near-real-time delivery snapshots per package
+- `include_history` (integer, optional): Include the last N revision history entries per media buy
+
+**Response contains:**
+- `media_buys`: Array with `media_buy_id`, `status`, `valid_actions`, `packages`, creative approval state
+- Optional `snapshot` per package (impressions, spend, pacing)
+- Optional `history` entries (revision, timestamp, actor, action, summary)
+
+---
+
+### provide_performance_feedback
+
+Share performance outcomes with publishers to enable data-driven optimization.
+
+**Request:**
+```json
+{
+  "media_buy_id": "mb_abc123",
+  "measurement_period": {
+    "start": "2025-01-01T00:00:00Z",
+    "end": "2025-01-31T23:59:59Z"
+  },
+  "performance_index": 1.2,
+  "metric_type": "conversion_rate",
+  "feedback_source": "buyer_attribution"
+}
+```
+
+**Key fields:**
+- `media_buy_id` (string, required): Publisher's media buy identifier
+- `measurement_period` (object, required): Time period with `start` and `end` (ISO 8601)
+- `performance_index` (number, required): Normalized score — 0.0 = no value, 1.0 = expected, >1.0 = above expected
+- `package_id` (string, optional): Specific package for package-level feedback
+- `creative_id` (string, optional): Specific creative for creative-level feedback
+- `metric_type` (string, optional): `overall_performance`, `conversion_rate`, `brand_lift`, `click_through_rate`, `completion_rate`, `viewability`, `brand_safety`, `cost_efficiency`
+- `feedback_source` (string, optional): `buyer_attribution`, `third_party_measurement`, `platform_analytics`, `verification_partner`
 
 ---
 

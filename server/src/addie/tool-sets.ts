@@ -158,57 +158,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   adcp_operations: {
     name: 'adcp_operations',
-    description: 'Execute AdCP protocol operations - discover products, create/update media buys, manage creatives, work with signals, governance (property lists, collection lists, content standards), sponsored intelligence (SI), and interact with sales/creative/signals/governance/si agents',
+    description: 'Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.',
     tools: [
-      // Media Buy tools
-      'get_products',
-      'create_media_buy',
-      'update_media_buy',
-      'sync_creatives',
-      'list_creatives',
-      'list_creative_formats',
-      'list_authorized_properties',
-      'get_media_buy_delivery',
-      'provide_performance_feedback',
-      // Creative tools
-      'build_creative',
-      'preview_creative',
-      // Signals tools
-      'get_signals',
-      'activate_signal',
-      // Governance - Property Lists
-      'create_property_list',
-      'update_property_list',
-      'get_property_list',
-      'list_property_lists',
-      'delete_property_list',
-      // Governance - Collection Lists
-      'create_collection_list',
-      'update_collection_list',
-      'get_collection_list',
-      'list_collection_lists',
-      'delete_collection_list',
-      // Governance - Content Standards
-      'create_content_standards',
-      'get_content_standards',
-      'update_content_standards',
-      'list_content_standards',
-      'calibrate_content',
-      'get_media_buy_artifacts',
-      'validate_content_delivery',
-      // Sponsored Intelligence (SI)
-      'si_initiate_session',
-      'si_send_message',
-      'si_get_offering',
-      'si_terminate_session',
-      // Brand Protocol
-      'get_brand_identity',
-      'get_rights',
-      'acquire_rights',
-      'update_rights',
-      // Protocol
+      // Meta-tools (replace 43 individual AdCP tools)
+      'ask_about_adcp_task',
+      'call_adcp_task',
       'get_adcp_capabilities',
-      // Agent management
+      // Agent management (unchanged, from member-tools.ts)
       'save_agent',
       'list_saved_agents',
       'remove_saved_agent',
@@ -398,11 +354,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'test_out_modules',
       'start_certification_exam',
       'complete_certification_exam',
-      // Brand protocol tools (route to training agent during certification)
-      'get_brand_identity',
-      'get_rights',
-      'acquire_rights',
-      'update_rights',
+      // AdCP tasks (route to training agent during certification via call_adcp_task)
+      'call_adcp_task',
     ],
   },
 };
