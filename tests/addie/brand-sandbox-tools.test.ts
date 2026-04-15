@@ -30,7 +30,6 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.brand_id).toBe('daan_janssen');
       expect(result.house).toEqual({ domain: 'lotientertainment.com', name: 'Loti Entertainment' });
       expect(result.names).toEqual([{ en: 'Daan Janssen' }]);
-      expect(result.sandbox).toBe(true);
     });
 
     it('returns public fields without authorization', () => {
@@ -186,7 +185,6 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.generation_credentials as unknown[]).length).toBeGreaterThan(0);
       expect((result.disclosure as { required: boolean }).required).toBe(true);
       expect(result.rights_constraint).toBeDefined();
-      expect(result.sandbox).toBe(true);
     });
 
     it('returns pending_approval for alcohol campaigns', () => {

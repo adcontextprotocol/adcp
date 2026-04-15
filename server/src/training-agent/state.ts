@@ -81,6 +81,51 @@ export function getAllSessions(): ReadonlyMap<string, SessionState> {
 }
 
 /**
+ * Find a resource by ID across sessions visible to the caller.
+ *
+ * ID-based operations (get_property_list, get_content_standards, etc.) may
+ * not include brand/account context in their args, causing sessionKeyFromArgs
+ * to derive a different key than the one used during creation. This helper
+ * searches visible sessions so that a resource can always be found by its ID.
+ *
+ * Scope: in training mode, only sessions belonging to the same user are
+ * searched (per-learner isolation). In open mode, all open sessions are
+ * searched (shared bearer token, single-tenant by design).
+ */
+export function findInAnySessions<T>(
+  accessor: (session: SessionState) => Map<string, T>,
+  resourceId: string,
+  mode: 'open' | 'training' = 'open',
+  userId?: string,
+): { session: SessionState; resource: T } | null {
+  const prefix = mode === 'training' && userId ? `training:${userId}:` : 'open:';
+  for (const [key, session] of sessions.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    const resource = accessor(session).get(resourceId);
+    if (resource) return { session, resource };
+  }
+  return null;
+}
+
+/**
+ * Get sessions visible to the caller for list aggregation.
+ *
+ * Same scoping as findInAnySessions: training mode is per-learner,
+ * open mode searches all open sessions.
+ */
+export function getVisibleSessions(
+  mode: 'open' | 'training' = 'open',
+  userId?: string,
+): SessionState[] {
+  const prefix = mode === 'training' && userId ? `training:${userId}:` : 'open:';
+  const result: SessionState[] = [];
+  for (const [key, session] of sessions.entries()) {
+    if (key.startsWith(prefix)) result.push(session);
+  }
+  return result;
+}
+
+/**
  * Derive a session key from the request context.
  *
  * Open mode: keyed by account brand domain. This is intentionally shared —

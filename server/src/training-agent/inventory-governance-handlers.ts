@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, CollectionListState } from './types.js';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs, findInAnySessions, getVisibleSessions } from './state.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -160,8 +160,12 @@ export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as GetCollectionListInput;
 
-  const list = session.collectionLists.get(input.list_id);
-  if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
+  let list = session.collectionLists.get(input.list_id);
+  if (!list) {
+    const found = findInAnySessions(s => s.collectionLists, input.list_id, ctx.mode, ctx.userId);
+    if (!found) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
+    list = found.resource;
+  }
 
   const now = new Date().toISOString();
   return {
@@ -176,8 +180,12 @@ export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext)
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as UpdateCollectionListInput;
 
-  const list = session.collectionLists.get(input.list_id);
-  if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
+  let list = session.collectionLists.get(input.list_id);
+  if (!list) {
+    const found = findInAnySessions(s => s.collectionLists, input.list_id, ctx.mode, ctx.userId);
+    if (!found) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
+    list = found.resource;
+  }
 
   if (input.name !== undefined) list.name = input.name;
   if (input.description !== undefined) list.description = input.description;
@@ -196,18 +204,45 @@ export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext)
 export function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as ListInput;
-  const lists = Array.from(session.collectionLists.values());
+
+  // Aggregate across sessions to handle key mismatches
+  const seen = new Set<string>();
+  const allLists: CollectionListState[] = [];
+  for (const state of session.collectionLists.values()) {
+    seen.add(state.list_id);
+    allLists.push(state);
+  }
+  for (const other of getVisibleSessions(ctx.mode, ctx.userId)) {
+    if (other === session) continue;
+    for (const state of other.collectionLists.values()) {
+      if (!seen.has(state.list_id)) {
+        seen.add(state.list_id);
+        allLists.push(state);
+      }
+    }
+  }
+
   const filtered = input.name_contains
-    ? lists.filter(l => l.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
-    : lists;
+    ? allLists.filter(l => l.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
+    : allLists;
   return { lists: filtered, pagination: { has_more: false } };
 }
 
 export function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as DeleteInput;
-  const deleted = session.collectionLists.delete(input.list_id);
-  return { deleted, list_id: input.list_id };
+
+  if (session.collectionLists.delete(input.list_id)) {
+    return { deleted: true, list_id: input.list_id };
+  }
+
+  const found = findInAnySessions(s => s.collectionLists, input.list_id, ctx.mode, ctx.userId);
+  if (found) {
+    found.session.collectionLists.delete(input.list_id);
+    return { deleted: true, list_id: input.list_id };
+  }
+
+  return { deleted: false, list_id: input.list_id };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, ContentStandardsState } from './types.js';
-import { getSession, sessionKeyFromArgs, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
+import { getSession, sessionKeyFromArgs, findInAnySessions, getVisibleSessions, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -47,9 +47,9 @@ export const CONTENT_STANDARDS_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        brand: { type: 'object', description: 'Filter by brand' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Filter by channel' },
         languages: { type: 'array', items: { type: 'string' }, description: 'Filter by language' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Filter by country (ISO 3166-1 alpha-2)' },
       },
     },
   },
@@ -181,7 +181,6 @@ export function handleCreateContentStandards(
 
   return {
     standards_id: standardsId,
-    sandbox: true,
   };
 }
 
@@ -189,10 +188,27 @@ export function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { channels?: string[]; languages?: string[] };
+  const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let standards = [...session.contentStandards.values()];
+  // Aggregate across sessions to handle key mismatches
+  const seen = new Set<string>();
+  let standards: ContentStandardsState[] = [];
+
+  for (const state of session.contentStandards.values()) {
+    seen.add(state.standardsId);
+    standards.push(state);
+  }
+
+  for (const other of getVisibleSessions(ctx.mode, ctx.userId)) {
+    if (other === session) continue;
+    for (const state of other.contentStandards.values()) {
+      if (!seen.has(state.standardsId)) {
+        seen.add(state.standardsId);
+        standards.push(state);
+      }
+    }
+  }
 
   if (req.channels && req.channels.length > 0) {
     standards = standards.filter(s =>
@@ -206,9 +222,14 @@ export function handleListContentStandards(
     );
   }
 
+  if (req.countries && req.countries.length > 0) {
+    standards = standards.filter(s =>
+      s.scope.countriesAll?.some(c => req.countries!.includes(c)),
+    );
+  }
+
   return {
     standards: standards.map(toStandardsResponse),
-    sandbox: true,
   };
 }
 
@@ -219,14 +240,17 @@ export function handleGetContentStandards(
   const req = args as { standards_id: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
+  let state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
+    if (!found) {
+      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    }
+    state = found.resource;
   }
 
   return {
     ...toStandardsResponse(state),
-    sandbox: true,
   };
 }
 
@@ -248,9 +272,13 @@ export function handleUpdateContentStandards(
 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
+  let state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
+    if (!found) {
+      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    }
+    state = found.resource;
   }
 
   if (req.scope) {
@@ -273,7 +301,6 @@ export function handleUpdateContentStandards(
   return {
     success: true as const,
     standards_id: req.standards_id,
-    sandbox: true,
   };
 }
 
@@ -284,9 +311,13 @@ export function handleCalibrateContent(
   const req = args as { standards_id: string; artifact: unknown };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
+  let state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
+    if (!found) {
+      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    }
+    state = found.resource;
   }
 
   return {
@@ -310,7 +341,6 @@ export function handleCalibrateContent(
         explanation: 'Content complies with the defined policy.',
       },
     ],
-    sandbox: true,
   };
 }
 
@@ -325,9 +355,13 @@ export function handleValidateContentDelivery(
 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  const state = session.contentStandards.get(req.standards_id);
+  let state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
+    if (!found) {
+      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    }
+    state = found.resource;
   }
 
   const records = req.records || [];
@@ -356,6 +390,5 @@ export function handleValidateContentDelivery(
       failed_records: 0,
     },
     results,
-    sandbox: true,
   };
 }
