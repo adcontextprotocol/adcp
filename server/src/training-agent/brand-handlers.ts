@@ -634,22 +634,11 @@ export const BRAND_TOOLS = [
       type: 'object' as const,
       properties: {
         rights_id: { type: 'string', description: 'Rights grant this creative was produced under' },
-        rights_grant_id: { type: 'string', description: 'Alias for rights_id' },
         creative_url: { type: 'string', description: 'URL where the creative asset can be retrieved for review' },
         creative_id: { type: 'string', description: 'Buyer-assigned creative identifier' },
         creative_format: { type: 'string', description: 'Format of the creative being submitted' },
-        creative: {
-          type: 'object',
-          description: 'Creative object with creative_id, format, and assets',
-          properties: {
-            creative_id: { type: 'string' },
-            format: { type: 'string' },
-            assets: { type: 'array' },
-          },
-        },
         description: { type: 'string', description: 'Description of the creative for reviewer context' },
         metadata: { type: 'object', description: 'Additional creative metadata' },
-        idempotency_key: { type: 'string', description: 'Client-generated key for safe retries' },
       },
       required: ['rights_id', 'creative_url'],
     },
@@ -678,7 +667,6 @@ export function handleGetBrandIdentity(
     brand_id: talent.brand_id,
     house: talent.house,
     names: talent.names,
-    sandbox: true,
   };
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -920,7 +908,6 @@ export function handleGetRights(
 
   return {
     rights,
-    sandbox: true,
     ...(includeExcluded && excluded.length > 0 && { excluded }),
   };
 }
@@ -1024,8 +1011,7 @@ export function handleAcquireRights(
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
         ...(isStructured && rule.suggestions ? { suggestions: rule.suggestions } : {}),
-        sandbox: true,
-      };
+          };
     }
   }
 
@@ -1038,8 +1024,7 @@ export function handleAcquireRights(
         brand_id: talent.brand_id,
         detail: `${brandName}'s management requires review for ${keyword} category campaigns. Request submitted for approval.`,
         estimated_response_time: '48h',
-        sandbox: true,
-      };
+          };
     }
   }
 
@@ -1136,7 +1121,6 @@ export function handleAcquireRights(
       },
     },
     usage_reporting_url: `https://sandbox.${talent.house.domain}/rights/${grantId}/usage`,
-    sandbox: true,
   };
 }
 
@@ -1144,15 +1128,16 @@ export function handleUpdateRights(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { rights_id?: string; rights_grant_id?: string; end_date?: string; impression_cap?: number; paused?: boolean; updates?: { end_date?: string; impression_cap?: number } };
-  const rightsId = req.rights_id || req.rights_grant_id;
-  const endDate = req.end_date ?? req.updates?.end_date;
-  const impressionCap = req.impression_cap ?? req.updates?.impression_cap;
-  const paused = req.paused;
+  const req = args as { rights_id?: string; end_date?: string; impression_cap?: number; paused?: boolean };
 
-  if (!rightsId) {
-    return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+  if (!req.rights_id) {
+    return { errors: [{ code: 'invalid_request', message: 'rights_id is required' }] };
   }
+
+  const rightsId = req.rights_id;
+  const endDate = req.end_date;
+  const impressionCap = req.impression_cap;
+  const paused = req.paused;
 
   // First check session grants (from acquire_rights)
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
@@ -1214,7 +1199,6 @@ export function handleUpdateRights(
 
   return {
     rights_id: offeringRightsId,
-    rights_grant_id: grant?.grantId || rightsId,
     terms: {
       pricing_option_id: pricingOption.pricing_option_id,
       amount: pricingOption.price,
@@ -1244,7 +1228,6 @@ export function handleUpdateRights(
     },
     implementation_date: new Date().toISOString(),
     ...(paused !== undefined && { paused }),
-    sandbox: true,
   };
 }
 
@@ -1254,48 +1237,38 @@ export function handleCreativeApproval(
 ) {
   const req = args as {
     rights_id?: string;
-    rights_grant_id?: string;
     creative_url?: string;
     creative_id?: string;
     creative_format?: string;
-    creative?: { creative_id?: string; format?: string; assets?: Array<{ asset_type?: string; url?: string }> };
     description?: string;
   };
 
-  const rightsId = req.rights_id || req.rights_grant_id;
-  if (!rightsId) {
-    return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+  if (!req.rights_id) {
+    return { errors: [{ code: 'invalid_request', message: 'rights_id is required' }] };
+  }
+
+  if (!req.creative_url) {
+    return { errors: [{ code: 'invalid_request', message: 'creative_url is required' }] };
   }
 
   // Validate that the grant exists in the session
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const grant = findSessionGrant(session, rightsId);
+  const grant = findSessionGrant(session, req.rights_id);
 
   // Also check if it's a known rights offering ID (for direct rights_id usage)
-  const isKnownOffering = findRightsOffering(rightsId) !== null;
+  const isKnownOffering = findRightsOffering(req.rights_id) !== null;
 
   if (!grant && !isKnownOffering) {
-    return { errors: [{ code: 'rights_not_found', message: `No active rights grant with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
+    return { errors: [{ code: 'rights_not_found', message: `No active rights grant with id '${req.rights_id}'. Acquire rights first using acquire_rights.` }] };
   }
-
-  const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;
-  if (!creativeUrl) {
-    return { errors: [{ code: 'invalid_request', message: 'creative_url or creative.assets[].url is required' }] };
-  }
-
-  const creativeId = req.creative_id || req.creative?.creative_id || 'sandbox_creative';
-  const creativeFormat = req.creative_format || req.creative?.format;
 
   return {
     status: 'approved',
-    decision: 'approved',
-    rights_id: grant?.rightsId || rightsId,
-    rights_grant_id: grant?.grantId || rightsId,
-    creative_id: creativeId,
-    creative_url: creativeUrl,
-    ...(creativeFormat ? { creative_format: creativeFormat } : {}),
+    rights_id: grant?.rightsId || req.rights_id,
+    creative_id: req.creative_id || 'sandbox_creative',
+    creative_url: req.creative_url,
+    ...(req.creative_format ? { creative_format: req.creative_format } : {}),
     approved_at: new Date().toISOString(),
     conditions: ['Sandbox approval — not valid for production distribution'],
-    sandbox: true,
   };
 }

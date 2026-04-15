@@ -974,7 +974,6 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     products,
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
-    sandbox: true,
   };
 }
 
@@ -999,7 +998,7 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats, sandbox: true };
+  return { formats };
 }
 
 function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
@@ -1268,7 +1267,6 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
       creative_assignments: [],
     })),
-    sandbox: true,
   };
 }
 
@@ -1370,7 +1368,6 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       };
       return buy;
     }),
-    sandbox: true,
   };
 }
 
@@ -1541,7 +1538,6 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
       },
       by_package: byPackage,
     }],
-    sandbox: true,
   };
 }
 
@@ -1652,7 +1648,6 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
     ...(isDryRun && { dry_run: true }),
     creatives: results,
     ...(assignmentResults.length > 0 && { assignments: assignmentResults }),
-    sandbox: true,
   };
 }
 
@@ -1694,7 +1689,6 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       }
       return base;
     }),
-    sandbox: true,
   };
 }
 
@@ -1768,7 +1762,6 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
-      sandbox: true,
     };
   }
 
@@ -1895,7 +1888,6 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
       }),
     })),
-    sandbox: true,
     ...(warnings.length > 0 && { warnings }),
   };
   return result;
@@ -1956,8 +1948,8 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     account: {
       require_operator_auth: false,
       required_for_products: false,
-      sandbox: true,
       supported_billing: ['agent'],
+      sandbox: true,
     },
     compliance_testing: {
       scenarios: [
@@ -2107,7 +2099,7 @@ function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: { signals: SignalResponse[]; sandbox: boolean; note?: string } = { signals, sandbox: true };
+  const response: { signals: SignalResponse[]; note?: string } = { signals };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
@@ -2194,8 +2186,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
         ...(dest.type === 'agent' ? { agent_url: dest.agent_url } : { platform: dest.platform }),
         ...(dest.account ? { account: dest.account } : {}),
       })),
-      sandbox: true,
-    };
+      };
   }
 
   // Activate: store activation state and return deployment info
@@ -2232,7 +2223,6 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   return {
     deployments,
     ...(governanceContext && { governance_context: governanceContext }),
-    sandbox: true,
   };
 }
 
@@ -2282,8 +2272,7 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
       },
       currency: 'USD',
       creatives: [],
-      sandbox: true,
-    };
+      };
   }
 
   const now = new Date();
@@ -2354,7 +2343,6 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
     },
     currency: 'USD',
     creatives,
-    sandbox: true,
   };
 }
 
@@ -2382,7 +2370,7 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -2417,8 +2405,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
-      sandbox: true,
-    };
+      };
 
     // Return pricing when account is provided (paid creative agent mode)
     if (req.account) {
@@ -2460,7 +2447,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     // Single format response
@@ -2474,8 +2461,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      sandbox: true,
-    };
+      };
   }
 
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
@@ -2489,7 +2475,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     const fmtId = targetIds[0];
@@ -2502,8 +2488,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      sandbox: true,
-    };
+      };
   }
 
   return {
@@ -2588,8 +2573,7 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
           expires_at: expiresAt,
         },
       })),
-      sandbox: true,
-    };
+      };
   }
 
   // Single mode
@@ -2612,7 +2596,6 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     response_type: 'single',
     previews: [preview],
     expires_at: expiresAt,
-    sandbox: true,
   };
 }
 
@@ -2721,9 +2704,9 @@ function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   // When all records are rejected (accepted === 0), return as errors for
   // proper error signaling.
   if (accepted === 0 && errors.length) {
-    return { accepted: 0, errors, sandbox: true };
+    return { accepted: 0, errors };
   }
-  const result: Record<string, unknown> = { accepted, sandbox: true };
+  const result: Record<string, unknown> = { accepted };
   if (errors.length) result.rejected = errors;
   return result;
 }
