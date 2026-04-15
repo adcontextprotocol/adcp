@@ -16,3 +16,10 @@ query-filters:
   # Rate limiting is handled at the infrastructure level (Fly.io proxy).
   - exclude:
       id: js/missing-rate-limiting
+
+  # "Server-side URL redirect" flags res.redirect(returnTo) in auth callbacks.
+  # All returnTo values are validated against isAllowedAdcpUrl() (allowlisted
+  # hostnames) or checked as relative paths (starts with / but not //).
+  # See http.ts lines 6206, 6467, 6505, 6537.
+  - exclude:
+      id: js/server-side-unvalidated-url-redirection

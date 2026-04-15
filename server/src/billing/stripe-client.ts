@@ -295,7 +295,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
   logger.error({ lookupKey, availableLookupKeys },
-    `getPriceByLookupKey: No price found for lookup key "${lookupKey}". Available: ${availableLookupKeys.join(', ')}`);
+    'getPriceByLookupKey: No price found for lookup key. Available: see structured fields');
   return null;
 }
 
