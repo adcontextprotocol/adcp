@@ -40,6 +40,7 @@ import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
+import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
@@ -673,6 +674,17 @@ export function registerAllJobs(): void {
     options: { limit: 15 },
     shouldLogResult: (r) => r.total > 0,
   });
+
+  // Network consistency reporter - compares brand.json declarations against crawl results
+  jobScheduler.register({
+    name: 'network-consistency-reporter',
+    description: 'Network consistency reporter',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: async (options: { limit?: number }) => generateNetworkConsistencyReports(options),
+    options: { limit: 50 },
+    shouldLogResult: (r) => r.generated > 0 || r.alerts_fired > 0,
+  });
 }
 
 /**
@@ -710,4 +722,5 @@ export const JOB_NAMES = {
   KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
+  NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
 } as const;
