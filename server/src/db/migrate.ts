@@ -235,6 +235,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     connectionString:
       process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL,
     ssl,
+    maxPoolSize: 2,
+    minPoolSize: 0,
   };
 
   runMigrations(config)

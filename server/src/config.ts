@@ -15,6 +15,16 @@ export interface DatabaseConfig {
   idleTimeoutMillis?: number;
 }
 
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name}: "${raw}" (must be a non-negative integer)`);
+  }
+  return parsed;
+}
+
 /**
  * Get database configuration from environment variables
  */
@@ -38,9 +48,9 @@ export function getDatabaseConfig(): DatabaseConfig | null {
   return {
     connectionString,
     ssl,
-    maxPoolSize: parseInt(process.env.DATABASE_POOL_MAX || "40", 10),
-    minPoolSize: parseInt(process.env.DATABASE_POOL_MIN || "5", 10),
-    connectionTimeoutMillis: parseInt(process.env.DATABASE_CONNECTION_TIMEOUT_MS || "5000", 10),
-    idleTimeoutMillis: parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS || "30000", 10),
+    maxPoolSize: envInt("DATABASE_POOL_MAX", 20),
+    minPoolSize: envInt("DATABASE_POOL_MIN", 5),
+    connectionTimeoutMillis: envInt("DATABASE_CONNECTION_TIMEOUT_MS", 5000),
+    idleTimeoutMillis: envInt("DATABASE_IDLE_TIMEOUT_MS", 30000),
   };
 }

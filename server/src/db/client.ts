@@ -30,7 +30,7 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    max: config.maxPoolSize ?? 40,
+    max: config.maxPoolSize ?? 20,
     min: config.minPoolSize ?? 5,
     idleTimeoutMillis: config.idleTimeoutMillis ?? 30000,
     connectionTimeoutMillis: config.connectionTimeoutMillis ?? 5000,
