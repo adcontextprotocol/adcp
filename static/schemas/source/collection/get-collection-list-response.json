@@ -38,7 +38,10 @@
                   "description": "The identifier value"
                 }
               },
-              "required": ["type", "value"],
+              "required": [
+                "type",
+                "value"
+              ],
               "additionalProperties": false
             }
           },
@@ -59,11 +62,18 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["series", "publication", "event_series", "rotation"],
+            "enum": [
+              "series",
+              "publication",
+              "event_series",
+              "rotation"
+            ],
             "description": "What kind of content program this is"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       }
     },
@@ -97,15 +107,23 @@
               "description": "The identifier value"
             }
           },
-          "required": ["type", "value"],
+          "required": [
+            "type",
+            "value"
+          ],
           "additionalProperties": false
         }
       }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["list"],
+  "required": [
+    "list"
+  ],
   "additionalProperties": false
 }

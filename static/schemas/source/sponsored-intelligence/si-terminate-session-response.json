@@ -49,7 +49,12 @@
       "properties": {
         "action": {
           "type": "string",
-          "enum": ["save_for_later", "set_reminder", "subscribe_updates", "none"]
+          "enum": [
+            "save_for_later",
+            "set_reminder",
+            "subscribe_updates",
+            "none"
+          ]
         },
         "data": {
           "type": "object",
@@ -64,10 +69,16 @@
         "$ref": "/schemas/core/error.json"
       }
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id", "terminated"],
+  "required": [
+    "session_id",
+    "terminated"
+  ],
   "additionalProperties": true
 }

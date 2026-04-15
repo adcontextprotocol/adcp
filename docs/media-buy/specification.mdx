@@ -410,6 +410,7 @@ Common error codes:
 - `CREATIVE_DEADLINE_EXCEEDED`: Creative change submitted after the package's `creative_deadline`
 - `INVALID_STATE`: Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy)
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
+- `GOVERNANCE_DENIED`: A registered governance agent denied the transaction. Buyer may restructure the buy, escalate to human spending authority, or contact the governance agent.
 - `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_REQUIRED`: Authentication is required to access this resource

@@ -29,6 +29,9 @@
       "default": false,
       "description": "Include compliant records in results (default: only return non_compliant, unmodeled, and unidentified)"
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

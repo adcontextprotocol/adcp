@@ -9,10 +9,15 @@
       "$ref": "/schemas/collection/collection-list.json",
       "description": "The updated collection list"
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["list"],
+  "required": [
+    "list"
+  ],
   "additionalProperties": false
 }

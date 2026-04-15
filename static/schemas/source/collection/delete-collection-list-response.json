@@ -13,10 +13,16 @@
       "type": "string",
       "description": "ID of the deleted list"
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["deleted", "list_id"],
+  "required": [
+    "deleted",
+    "list_id"
+  ],
   "additionalProperties": false
 }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-request.json",
   "title": "Check Governance Request",
-  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side). planned_delivery = execution check (committed, seller-side). governance_context maintains lifecycle continuity across either check type — its presence alone does not determine binding. To check budget availability without a specific action, omit tool and payload.",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side). planned_delivery = execution check (committed, seller-side). governance_context maintains lifecycle continuity across either check type \u2014 its presence alone does not determine binding. To check budget availability without a specific action, omit tool and payload.",
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -139,7 +139,7 @@
             },
             "indices": {
               "type": "object",
-              "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy — dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy \u2014 dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
               "propertyNames": {
                 "pattern": "^[a-z_]+:.+$"
               },
@@ -180,6 +180,12 @@
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Invoice recipient from the purchase request. MUST be present when the tool payload includes invoice_recipient, so the governance agent can validate billing changes."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

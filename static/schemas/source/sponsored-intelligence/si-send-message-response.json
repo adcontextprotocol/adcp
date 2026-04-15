@@ -46,7 +46,10 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["transaction", "complete"],
+          "enum": [
+            "transaction",
+            "complete"
+          ],
           "description": "Type of handoff: transaction (ready for ACP checkout) or complete (conversation done)"
         },
         "intent": {
@@ -65,8 +68,12 @@
               "type": "object",
               "description": "Price information",
               "properties": {
-                "amount": { "type": "number" },
-                "currency": { "type": "string" }
+                "amount": {
+                  "type": "number"
+                },
+                "currency": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -82,7 +89,9 @@
             },
             "applied_offers": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Offer IDs that were applied during the conversation"
             }
           },
@@ -97,10 +106,16 @@
         "$ref": "/schemas/core/error.json"
       }
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id", "session_status"],
+  "required": [
+    "session_id",
+    "session_status"
+  ],
   "additionalProperties": true
 }
