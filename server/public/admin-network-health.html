@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Network Health - Admin - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2); color: var(--color-text-heading); }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+
+    /* Summary Cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .summary-card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-xs);
+      border-left: 4px solid var(--color-gray-300);
+    }
+    .summary-card.good { border-left-color: var(--color-success-500); }
+    .summary-card.warning { border-left-color: var(--color-warning-500); }
+    .summary-card.error { border-left-color: var(--color-error-500); }
+    .summary-card .label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+    }
+    .summary-card .value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .summary-card .detail {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
+    /* Section Headers */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .section-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .section-badge {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+      padding: var(--space-0_5) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .section-badge.success {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .section-badge.neutral {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+    .section-badge.warning {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    /* Tables */
+    .health-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .health-table th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+    .health-table td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-border);
+      font-size: var(--text-sm);
+      vertical-align: top;
+    }
+    .health-table tr:hover {
+      background: var(--color-gray-50);
+    }
+    .health-table tr.clickable {
+      cursor: pointer;
+    }
+
+    /* Coverage bar */
+    .coverage-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .coverage-track {
+      flex: 1;
+      height: 8px;
+      background: var(--color-gray-100);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      max-width: 120px;
+    }
+    .coverage-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 0.3s ease;
+    }
+    .coverage-fill.good { background: var(--color-success-500); }
+    .coverage-fill.warning { background: var(--color-warning-500); }
+    .coverage-fill.error { background: var(--color-error-500); }
+
+    /* Status indicators */
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: var(--space-1);
+    }
+    .status-dot.reachable { background: var(--color-success-500); }
+    .status-dot.unreachable { background: var(--color-error-500); }
+
+    /* Detail panel */
+    .detail-panel {
+      display: none;
+      margin-top: var(--space-5);
+      padding-top: var(--space-5);
+      border-top: 1px solid var(--color-border);
+    }
+    .detail-panel.visible { display: block; }
+    .detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .detail-url {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      word-break: break-all;
+    }
+
+    /* Trend chart */
+    .trend-chart {
+      height: 200px;
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      padding: var(--space-4) 0;
+    }
+    .trend-bar {
+      flex: 1;
+      min-width: 4px;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      transition: height 0.3s ease;
+      position: relative;
+    }
+    .trend-bar:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-gray-900);
+      color: white;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      white-space: nowrap;
+      z-index: 10;
+    }
+
+    /* Alert config form */
+    .alert-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .form-group label {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .form-group input, .form-group select {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-primary);
+    }
+    .form-group.full-width {
+      grid-column: 1 / -1;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: var(--space-1_5) var(--space-3);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-secondary {
+      background: var(--color-gray-100);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover { background: var(--color-gray-200); }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Alert list */
+    .alert-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-severity {
+      display: inline-block;
+      padding: var(--space-0_5) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .alert-severity.critical {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+    .alert-severity.warning {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .alert-time {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: 2px solid var(--color-border);
+      margin-bottom: var(--space-4);
+    }
+    .tab {
+      padding: var(--space-2) var(--space-4);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: var(--transition-all);
+    }
+    .tab:hover { color: var(--color-text-heading); }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+
+    /* Empty / loading states */
+    .empty-state {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-muted);
+    }
+    .loading {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">Loading network health data...</div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <!-- Header + Summary -->
+      <div class="card">
+        <h1>Network Health</h1>
+        <p class="subtitle">Monitor adagents.json deployment health across managed publisher networks</p>
+        <div class="summary-grid" id="summaryGrid"></div>
+      </div>
+
+      <!-- Networks List -->
+      <div class="card" id="networksCard">
+        <div class="section-header">
+          <div class="section-title">
+            Tracked Networks
+            <span class="section-badge neutral" id="networkCount">0</span>
+          </div>
+        </div>
+        <div id="networksContent"></div>
+      </div>
+
+      <!-- Network Detail (shown when a network is selected) -->
+      <div class="detail-panel" id="detailPanel">
+        <div class="card">
+          <div class="detail-header">
+            <div>
+              <div class="section-title" id="detailTitle">Network Detail</div>
+              <div class="detail-url" id="detailUrl"></div>
+            </div>
+            <button class="btn btn-secondary" onclick="closeDetail()">Close</button>
+          </div>
+
+          <div class="tabs">
+            <div class="tab active" data-tab="domains" onclick="switchTab('domains')">Domains</div>
+            <div class="tab" data-tab="agents" onclick="switchTab('agents')">Agent Health</div>
+            <div class="tab" data-tab="trends" onclick="switchTab('trends')">Trends</div>
+            <div class="tab" data-tab="alerts" onclick="switchTab('alerts')">Alerts</div>
+          </div>
+
+          <!-- Domains tab -->
+          <div class="tab-content" id="tab-domains"></div>
+
+          <!-- Agent Health tab -->
+          <div class="tab-content" id="tab-agents" style="display: none;"></div>
+
+          <!-- Trends tab -->
+          <div class="tab-content" id="tab-trends" style="display: none;"></div>
+
+          <!-- Alerts tab -->
+          <div class="tab-content" id="tab-alerts" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let networks = [];
+    let selectedNetwork = null;
+    let selectedReport = null;
+
+    // ── Init ──────────────────────────────────────────────────────
+
+    async function init() {
+      try {
+        const res = await fetch('/api/network-health');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        networks = data.networks || [];
+        renderSummary();
+        renderNetworks();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Failed to load network health data.';
+        console.error(err);
+      }
+    }
+
+    // ── Summary Cards ─────────────────────────────────────────────
+
+    function renderSummary() {
+      const grid = document.getElementById('summaryGrid');
+      const totalNetworks = networks.length;
+      const avgCoverage = totalNetworks > 0
+        ? (networks.reduce((s, n) => s + parseFloat(n.coverage_pct), 0) / totalNetworks).toFixed(1)
+        : '0.0';
+      const totalMissing = networks.reduce((s, n) => s + (n.missing_pointers || 0), 0);
+      const totalOrphaned = networks.reduce((s, n) => s + (n.orphaned_pointers || 0), 0);
+      const totalStale = networks.reduce((s, n) => s + (n.stale_pointers || 0), 0);
+      const totalAlerts = networks.reduce((s, n) => s + (n.unresolved_alerts || 0), 0);
+
+      grid.innerHTML = `
+        <div class="summary-card ${totalNetworks > 0 ? 'good' : ''}">
+          <div class="label">Networks Tracked</div>
+          <div class="value">${totalNetworks}</div>
+        </div>
+        <div class="summary-card ${parseFloat(avgCoverage) >= 95 ? 'good' : parseFloat(avgCoverage) >= 80 ? 'warning' : 'error'}">
+          <div class="label">Avg Coverage</div>
+          <div class="value">${avgCoverage}%</div>
+        </div>
+        <div class="summary-card ${totalMissing === 0 ? 'good' : 'warning'}">
+          <div class="label">Missing Pointers</div>
+          <div class="value">${totalMissing}</div>
+        </div>
+        <div class="summary-card ${totalOrphaned === 0 ? 'good' : 'warning'}">
+          <div class="label">Orphaned Pointers</div>
+          <div class="value">${totalOrphaned}</div>
+        </div>
+        <div class="summary-card ${totalStale === 0 ? 'good' : 'warning'}">
+          <div class="label">Stale Pointers</div>
+          <div class="value">${totalStale}</div>
+        </div>
+        <div class="summary-card ${totalAlerts === 0 ? 'good' : 'error'}">
+          <div class="label">Unresolved Alerts</div>
+          <div class="value">${totalAlerts}</div>
+        </div>
+      `;
+    }
+
+    // ── Network List ──────────────────────────────────────────────
+
+    function renderNetworks() {
+      const container = document.getElementById('networksContent');
+      document.getElementById('networkCount').textContent = networks.length;
+
+      if (networks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No networks tracked yet. Network reports appear after the crawler runs consistency checks.</div>';
+        return;
+      }
+
+      let html = `<table class="health-table">
+        <thead><tr>
+          <th>Authoritative URL</th>
+          <th>Coverage</th>
+          <th>Properties</th>
+          <th>Missing</th>
+          <th>Orphaned</th>
+          <th>Stale</th>
+          <th>Alerts</th>
+          <th>Last Check</th>
+        </tr></thead><tbody>`;
+
+      for (const n of networks) {
+        const pct = parseFloat(n.coverage_pct);
+        const level = pct >= 95 ? 'good' : pct >= 80 ? 'warning' : 'error';
+        const lastCheck = n.last_report_at ? new Date(n.last_report_at).toLocaleDateString() : 'Never';
+
+        html += `<tr class="clickable" data-network-url="${escapeHtml(n.authoritative_url)}" onclick="selectNetwork(this.dataset.networkUrl)">
+          <td style="font-family: var(--font-mono); font-size: var(--text-xs);">${escapeHtml(n.authoritative_url)}</td>
+          <td>
+            <div class="coverage-bar">
+              <div class="coverage-track">
+                <div class="coverage-fill ${level}" style="width: ${pct}%"></div>
+              </div>
+              <span>${pct}%</span>
+            </div>
+          </td>
+          <td>${n.total_properties}</td>
+          <td>${n.missing_pointers || 0}</td>
+          <td>${n.orphaned_pointers || 0}</td>
+          <td>${n.stale_pointers || 0}</td>
+          <td>${n.unresolved_alerts > 0
+            ? `<span class="section-badge">${n.unresolved_alerts}</span>`
+            : '<span class="section-badge success">0</span>'}</td>
+          <td style="font-size: var(--text-xs); color: var(--color-text-muted);">${lastCheck}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ── Network Detail ────────────────────────────────────────────
+
+    async function selectNetwork(authUrl) {
+      selectedNetwork = authUrl;
+
+      document.getElementById('detailTitle').textContent = 'Network Detail';
+      document.getElementById('detailUrl').textContent = authUrl;
+      document.getElementById('detailPanel').classList.add('visible');
+
+      // Fetch latest report
+      try {
+        const res = await fetch(`/api/network-health/${encodeURIComponent(authUrl)}`);
+        if (res.ok) {
+          selectedReport = await res.json();
+        } else {
+          selectedReport = null;
+        }
+      } catch { selectedReport = null; }
+
+      switchTab('domains');
+    }
+
+    function closeDetail() {
+      document.getElementById('detailPanel').classList.remove('visible');
+      selectedNetwork = null;
+      selectedReport = null;
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      document.getElementById(`tab-${tabName}`).style.display = 'block';
+
+      if (tabName === 'domains') renderDomains();
+      else if (tabName === 'agents') renderAgents();
+      else if (tabName === 'trends') loadTrends();
+      else if (tabName === 'alerts') loadAlerts();
+    }
+
+    // ── Domains Tab ───────────────────────────────────────────────
+
+    function renderDomains() {
+      const container = document.getElementById('tab-domains');
+      if (!selectedReport || !selectedReport.domain_details || selectedReport.domain_details.length === 0) {
+        container.innerHTML = '<div class="empty-state">No domain details available.</div>';
+        return;
+      }
+
+      const domains = selectedReport.domain_details;
+      let html = `<table class="health-table">
+        <thead><tr>
+          <th>Domain</th>
+          <th>Pointer Status</th>
+          <th>Matched Property</th>
+          <th>Authorized Agents</th>
+          <th>Errors</th>
+        </tr></thead><tbody>`;
+
+      for (const d of domains) {
+        const statusClass = d.pointer_status === 'valid' ? 'success'
+          : d.pointer_status === 'missing' ? 'error'
+          : 'warning';
+
+        html += `<tr>
+          <td style="font-weight: var(--font-semibold);">${escapeHtml(d.domain)}</td>
+          <td><span class="section-badge ${statusClass}">${d.pointer_status}</span></td>
+          <td style="font-size: var(--text-xs);">${d.matched_property ? escapeHtml(d.matched_property) : '—'}</td>
+          <td style="font-size: var(--text-xs);">${(d.authorized_agents || []).map(a => escapeHtml(a)).join(', ') || '—'}</td>
+          <td style="font-size: var(--text-xs); color: var(--color-error-600);">${(d.errors || []).map(e => escapeHtml(e)).join(', ') || '—'}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ── Agent Health Tab ──────────────────────────────────────────
+
+    function renderAgents() {
+      const container = document.getElementById('tab-agents');
+      if (!selectedReport || !selectedReport.agent_health || selectedReport.agent_health.length === 0) {
+        container.innerHTML = '<div class="empty-state">No agent health data available.</div>';
+        return;
+      }
+
+      let html = `<table class="health-table">
+        <thead><tr>
+          <th>Agent URL</th>
+          <th>Status</th>
+          <th>Response Time</th>
+          <th>Error</th>
+        </tr></thead><tbody>`;
+
+      for (const a of selectedReport.agent_health) {
+        html += `<tr>
+          <td style="font-family: var(--font-mono); font-size: var(--text-xs);">${escapeHtml(a.agent_url)}</td>
+          <td><span class="status-dot ${a.reachable ? 'reachable' : 'unreachable'}"></span>${a.reachable ? 'Reachable' : 'Unreachable'}</td>
+          <td>${a.response_time_ms != null ? a.response_time_ms + 'ms' : '—'}</td>
+          <td style="font-size: var(--text-xs); color: var(--color-error-600);">${a.error ? escapeHtml(a.error) : '—'}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ── Trends Tab ────────────────────────────────────────────────
+
+    async function loadTrends() {
+      const container = document.getElementById('tab-trends');
+      if (!selectedNetwork) return;
+
+      container.innerHTML = '<div class="loading">Loading trends...</div>';
+
+      try {
+        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedNetwork)}/trends`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTrends(container, data.trends || []);
+      } catch (err) {
+        container.innerHTML = '<div class="empty-state">Failed to load trend data.</div>';
+      }
+    }
+
+    function renderTrends(container, trends) {
+      if (trends.length === 0) {
+        container.innerHTML = '<div class="empty-state">No historical data yet. Trends appear after multiple crawl cycles.</div>';
+        return;
+      }
+
+      let html = '<h3 style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">Coverage Over Time</h3>';
+      html += '<div class="trend-chart">';
+
+      for (const t of trends) {
+        const pct = parseFloat(t.coverage_pct);
+        const level = pct >= 95 ? 'var(--color-success-500)' : pct >= 80 ? 'var(--color-warning-500)' : 'var(--color-error-500)';
+        const date = new Date(t.created_at).toLocaleDateString();
+        html += `<div class="trend-bar" style="height: ${pct}%; background: ${level};" data-tooltip="${date}: ${pct}%"></div>`;
+      }
+
+      html += '</div>';
+
+      // Issues over time table
+      html += '<h3 style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: var(--space-5); margin-bottom: var(--space-2);">Issue History</h3>';
+      html += `<table class="health-table">
+        <thead><tr>
+          <th>Date</th>
+          <th>Coverage</th>
+          <th>Missing</th>
+          <th>Orphaned</th>
+          <th>Stale</th>
+          <th>Schema Errors</th>
+        </tr></thead><tbody>`;
+
+      for (const t of [...trends].reverse().slice(0, 20)) {
+        const pct = parseFloat(t.coverage_pct);
+        const level = pct >= 95 ? 'success' : pct >= 80 ? 'warning' : '';
+        html += `<tr>
+          <td style="font-size: var(--text-xs);">${new Date(t.created_at).toLocaleDateString()}</td>
+          <td><span class="section-badge ${level || ''}">${pct}%</span></td>
+          <td>${t.missing_pointers}</td>
+          <td>${t.orphaned_pointers}</td>
+          <td>${t.stale_pointers}</td>
+          <td>${t.schema_errors}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ── Alerts Tab ────────────────────────────────────────────────
+
+    async function loadAlerts() {
+      const container = document.getElementById('tab-alerts');
+      if (!selectedNetwork) return;
+
+      container.innerHTML = '<div class="loading">Loading alerts...</div>';
+
+      const encodedUrl = encodeURIComponent(selectedNetwork);
+
+      try {
+        const [ruleRes, historyRes] = await Promise.all([
+          fetch(`/api/network-health/${encodedUrl}/alerts`),
+          fetch(`/api/network-health/${encodedUrl}/alerts/history?limit=20`),
+        ]);
+
+        const rule = ruleRes.ok ? await ruleRes.json() : null;
+        const historyData = historyRes.ok ? await historyRes.json() : { alerts: [] };
+
+        renderAlerts(container, rule, historyData.alerts);
+      } catch (err) {
+        container.innerHTML = '<div class="empty-state">Failed to load alert data.</div>';
+      }
+    }
+
+    function renderAlerts(container, rule, history) {
+      let html = '';
+
+      // Alert configuration form
+      html += '<h3 style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-3);">Alert Configuration</h3>';
+      html += '<form class="alert-form" id="alertForm" onsubmit="saveAlertConfig(event)">';
+      html += `
+        <div class="form-group">
+          <label>Coverage Threshold (%)</label>
+          <input type="number" name="coverage_threshold" min="0" max="100" step="0.1" value="${rule ? rule.coverage_threshold : 95}">
+        </div>
+        <div class="form-group">
+          <label>Max Stale Pointers</label>
+          <input type="number" name="stale_pointer_max" min="0" value="${rule ? rule.stale_pointer_max : 0}">
+        </div>
+        <div class="form-group">
+          <label>Max Orphaned Pointers</label>
+          <input type="number" name="orphaned_pointer_max" min="0" value="${rule ? rule.orphaned_pointer_max : 0}">
+        </div>
+        <div class="form-group">
+          <label>Missing Pointer Cycles</label>
+          <input type="number" name="missing_pointer_persistence_cycles" min="1" value="${rule ? rule.missing_pointer_persistence_cycles : 2}">
+        </div>
+        <div class="form-group">
+          <label>Agent Unreachable Cycles</label>
+          <input type="number" name="agent_unreachable_cycles" min="1" value="${rule ? rule.agent_unreachable_cycles : 2}">
+        </div>
+        <div class="form-group">
+          <label>Slack Webhook URL</label>
+          <input type="url" name="slack_webhook_url" placeholder="${rule?.slack_webhook_configured ? '(configured — enter new URL to update)' : 'https://hooks.slack.com/...'}" value="">
+        </div>
+        <div class="form-group full-width">
+          <label>Email Recipients (comma-separated)</label>
+          <input type="text" name="email_recipients" placeholder="ops@example.com, alerts@example.com" value="${escapeHtml(rule?.email_recipients?.join(', ') || '')}">
+        </div>
+        <div class="form-group">
+          <button type="submit" class="btn btn-primary">Save Configuration</button>
+          <span id="alertSaveStatus" style="font-size: var(--text-xs); color: var(--color-success-600); margin-left: var(--space-2);"></span>
+        </div>
+      `;
+      html += '</form>';
+
+      // Alert history
+      html += '<h3 style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: var(--space-6); margin-bottom: var(--space-3);">Alert History</h3>';
+
+      if (!history || history.length === 0) {
+        html += '<div class="empty-state" style="padding: var(--space-4);">No alerts fired yet.</div>';
+      } else {
+        for (const a of history) {
+          const time = new Date(a.created_at).toLocaleString();
+          const resolved = a.resolved_at ? `Resolved ${new Date(a.resolved_at).toLocaleString()}` : '';
+          html += `<div class="alert-item">
+            <div>
+              <span class="alert-severity ${a.severity}">${a.severity}</span>
+              <span style="margin-left: var(--space-2); font-size: var(--text-sm);">${escapeHtml(a.summary)}</span>
+              <div class="alert-time">${time}${resolved ? ` · ${resolved}` : ''}</div>
+            </div>
+            ${!a.resolved_at ? `<button class="btn btn-secondary" style="font-size: var(--text-xs);" data-alert-id="${escapeHtml(a.id)}" onclick="resolveAlert(this.dataset.alertId)">Resolve</button>` : ''}
+          </div>`;
+        }
+      }
+
+      container.innerHTML = html;
+    }
+
+    async function saveAlertConfig(event) {
+      event.preventDefault();
+      const form = event.target;
+      const data = new FormData(form);
+      const emailStr = data.get('email_recipients');
+
+      const webhookValue = data.get('slack_webhook_url');
+      const body = {
+        coverage_threshold: parseFloat(data.get('coverage_threshold')),
+        stale_pointer_max: parseInt(data.get('stale_pointer_max')),
+        orphaned_pointer_max: parseInt(data.get('orphaned_pointer_max')),
+        missing_pointer_persistence_cycles: parseInt(data.get('missing_pointer_persistence_cycles')),
+        agent_unreachable_cycles: parseInt(data.get('agent_unreachable_cycles')),
+        email_recipients: emailStr ? emailStr.split(',').map(e => e.trim()).filter(Boolean) : [],
+        enabled: true,
+      };
+      // Only send webhook URL if a new value was entered
+      if (webhookValue) body.slack_webhook_url = webhookValue;
+
+      try {
+        const res = await fetch(`/api/network-health/${encodeURIComponent(selectedNetwork)}/alerts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        document.getElementById('alertSaveStatus').textContent = 'Saved';
+        setTimeout(() => { document.getElementById('alertSaveStatus').textContent = ''; }, 3000);
+      } catch (err) {
+        document.getElementById('alertSaveStatus').textContent = 'Error saving';
+        document.getElementById('alertSaveStatus').style.color = 'var(--color-error-600)';
+      }
+    }
+
+    async function resolveAlert(alertId) {
+      try {
+        await fetch(`/api/network-health/alerts/${alertId}/resolve`, { method: 'POST' });
+        loadAlerts();
+      } catch (err) {
+        console.error('Failed to resolve alert', err);
+      }
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>

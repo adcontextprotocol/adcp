@@ -60,6 +60,7 @@
         label: 'Registry',
         items: [
           { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
+          { href: '/admin/network-health', label: 'Network Health', icon: '🌐' },
         ]
       },
       {
