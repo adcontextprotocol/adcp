@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, ContentStandardsState } from './types.js';
-import { getSession, sessionKeyFromArgs, findInAnySessions, getVisibleSessions, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
+import { getSession, sessionKeyFromArgs, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -191,24 +191,7 @@ export function handleListContentStandards(
   const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  // Aggregate across sessions to handle key mismatches
-  const seen = new Set<string>();
-  let standards: ContentStandardsState[] = [];
-
-  for (const state of session.contentStandards.values()) {
-    seen.add(state.standardsId);
-    standards.push(state);
-  }
-
-  for (const other of getVisibleSessions(ctx.mode, ctx.userId)) {
-    if (other === session) continue;
-    for (const state of other.contentStandards.values()) {
-      if (!seen.has(state.standardsId)) {
-        seen.add(state.standardsId);
-        standards.push(state);
-      }
-    }
-  }
+  let standards = [...session.contentStandards.values()];
 
   if (req.channels && req.channels.length > 0) {
     standards = standards.filter(s =>
@@ -240,13 +223,9 @@ export function handleGetContentStandards(
   const req = args as { standards_id: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.contentStandards.get(req.standards_id);
+  const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   return {
@@ -272,13 +251,9 @@ export function handleUpdateContentStandards(
 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.contentStandards.get(req.standards_id);
+  const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   if (req.scope) {
@@ -311,13 +286,9 @@ export function handleCalibrateContent(
   const req = args as { standards_id: string; artifact: unknown };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.contentStandards.get(req.standards_id);
+  const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   return {
@@ -355,13 +326,9 @@ export function handleValidateContentDelivery(
 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.contentStandards.get(req.standards_id);
+  const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    const found = findInAnySessions(s => s.contentStandards, req.standards_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   const records = req.records || [];

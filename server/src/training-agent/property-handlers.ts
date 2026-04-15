@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, PropertyListState } from './types.js';
-import { getSession, sessionKeyFromArgs, findInAnySessions, getVisibleSessions, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
+import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -210,25 +210,7 @@ export function handleListPropertyLists(
   const req = args as { name_contains?: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  // Collect from current session, then merge any from other sessions to handle
-  // key mismatches (e.g., list created with brand context, listed without)
-  const seen = new Set<string>();
-  let lists: PropertyListState[] = [];
-
-  for (const state of session.propertyLists.values()) {
-    seen.add(state.listId);
-    lists.push(state);
-  }
-
-  for (const other of getVisibleSessions(ctx.mode, ctx.userId)) {
-    if (other === session) continue;
-    for (const state of other.propertyLists.values()) {
-      if (!seen.has(state.listId)) {
-        seen.add(state.listId);
-        lists.push(state);
-      }
-    }
-  }
+  let lists = [...session.propertyLists.values()];
 
   if (req.name_contains) {
     const lowerFilter = req.name_contains.toLowerCase();
@@ -247,13 +229,9 @@ export function handleGetPropertyList(
   const req = args as { list_id: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.propertyLists.get(req.list_id);
+  const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    const found = findInAnySessions(s => s.propertyLists, req.list_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
 
   const domains = extractDomains(state.baseProperties);
@@ -274,13 +252,9 @@ export function handleUpdatePropertyList(
   const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.propertyLists.get(req.list_id);
+  const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    const found = findInAnySessions(s => s.propertyLists, req.list_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
 
   if (req.name) {
@@ -322,16 +296,11 @@ export function handleDeletePropertyList(
   const req = args as { list_id: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  if (session.propertyLists.delete(req.list_id)) {
-    return { list_id: req.list_id, deleted: true };
-  }
-
-  // Cross-session fallback: the list may have been created with different context
-  const found = findInAnySessions(s => s.propertyLists, req.list_id, ctx.mode, ctx.userId);
-  if (!found) {
+  const existed = session.propertyLists.delete(req.list_id);
+  if (!existed) {
     return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
-  found.session.propertyLists.delete(req.list_id);
+
   return { list_id: req.list_id, deleted: true };
 }
 
@@ -346,13 +315,9 @@ export function handleValidatePropertyDelivery(
 
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let state = session.propertyLists.get(req.list_id);
+  const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    const found = findInAnySessions(s => s.propertyLists, req.list_id, ctx.mode, ctx.userId);
-    if (!found) {
-      return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
-    }
-    state = found.resource;
+    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
   }
 
   const records = req.records || [];
