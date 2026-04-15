@@ -2037,7 +2037,8 @@ const MAX_SIGNAL_RESULTS = 10;
 function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
-  const signalSpec = req.signal_spec || req.brief;
+  const rawSpec = req.signal_spec || req.brief;
+  const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
   const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 

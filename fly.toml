@@ -62,13 +62,13 @@ primary_region = 'iad'
 
 [[vm]]
   processes = ["web"]
-  memory = "1gb"
-  cpu_kind = "shared"
-  cpus = 1
+  memory = "2gb"
+  cpu_kind = "performance"
+  cpus = 2
 
 [[vm]]
   processes = ["worker"]
   memory = "2gb"
-  cpu_kind = "shared"
-  cpus = 1
+  cpu_kind = "performance"
+  cpus = 2
 
