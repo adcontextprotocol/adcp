@@ -46,12 +46,15 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }) {
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown) {
   const errorObj = { code, ...opts };
+  const body = context !== undefined
+    ? { adcp_error: errorObj, context }
+    : { adcp_error: errorObj };
   return {
     isError: true,
-    content: [{ type: 'text' as const, text: JSON.stringify({ adcp_error: errorObj }) }],
-    structuredContent: { adcp_error: errorObj },
+    content: [{ type: 'text' as const, text: JSON.stringify(body) }],
+    structuredContent: body,
   };
 }
 
@@ -2830,17 +2833,23 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
+
+    // Extract and strip context before passing args to handlers (AdCP requirement:
+    // echo caller's context object back unchanged in every response).
+    const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
+    const { context: callerContext, ...handlerArgs } = rawArgs;
+
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
+      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
     }
 
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
     // async a dry-run operation, and clients expect immediate results.
     const taskField = (request.params as { task?: { ttl?: number } }).task;
-    const isDryRun = (args as Record<string, unknown> | undefined)?.dry_run === true;
+    const isDryRun = rawArgs.dry_run === true;
     const isTaskRequest = taskField !== undefined && !isDryRun;
     if (isTaskRequest && !toolSupportsTask(name)) {
       throw new Error(`Tool "${name}" does not support task augmentation`);
@@ -2850,7 +2859,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let toolResult: CallToolResult;
     let isError = false;
     try {
-      const result = await Promise.resolve(handler((args as ToolArgs) || {}, ctx));
+      const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
@@ -2862,10 +2871,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           details: resultObj.errors!.length > 1
             ? { all_errors: resultObj.errors }
             : undefined,
-        });
+        }, callerContext);
       } else {
+        const response = callerContext !== undefined
+          ? { ...result as object, context: callerContext }
+          : result;
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
+          content: [{ type: 'text', text: JSON.stringify(response) }],
         };
       }
     } catch (error) {
@@ -2874,7 +2886,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
-      });
+      }, callerContext);
     }
 
     // If not task-augmented, return result directly
