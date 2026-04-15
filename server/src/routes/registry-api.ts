@@ -3677,8 +3677,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
       const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
 
+      // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
+      const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
       const html = `<a href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(badgeSvgUrl)}" alt="${escapeHtml(`AAO Verified ${roleLabel} Agent`)}" loading="lazy" height="20" /></a>`;
-      const markdown = `[![AAO Verified ${roleLabel} Agent](${badgeSvgUrl})](${registryUrl})`;
+      const markdown = `[![AAO Verified ${roleLabel} Agent](${escapeMdUrl(badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
 
       res.json({
         agent_url: agentUrl,
