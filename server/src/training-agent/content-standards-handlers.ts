@@ -47,9 +47,9 @@ export const CONTENT_STANDARDS_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        brand: { type: 'object', description: 'Filter by brand' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Filter by channel' },
         languages: { type: 'array', items: { type: 'string' }, description: 'Filter by language' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Filter by country (ISO 3166-1 alpha-2)' },
       },
     },
   },
@@ -200,7 +200,6 @@ export function handleCreateContentStandards(
 
   return {
     standards_id: standardsId,
-    sandbox: true,
   };
 }
 
@@ -208,7 +207,7 @@ export function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { channels?: string[]; languages?: string[] };
+  const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let standards = [...session.contentStandards.values()];
@@ -225,9 +224,14 @@ export function handleListContentStandards(
     );
   }
 
+  if (req.countries && req.countries.length > 0) {
+    standards = standards.filter(s =>
+      s.scope.countriesAll?.some(c => req.countries!.includes(c)),
+    );
+  }
+
   return {
     standards: standards.map(toStandardsResponse),
-    sandbox: true,
   };
 }
 
@@ -245,7 +249,6 @@ export function handleGetContentStandards(
 
   return {
     ...toStandardsResponse(state),
-    sandbox: true,
   };
 }
 
@@ -291,7 +294,6 @@ export function handleUpdateContentStandards(
   return {
     success: true as const,
     standards_id: req.standards_id,
-    sandbox: true,
   };
 }
 
@@ -327,7 +329,6 @@ export function handleCalibrateContent(
         explanation: 'Content complies with the defined policy.',
       },
     ],
-    sandbox: true,
   };
 }
 
@@ -371,6 +372,5 @@ export function handleValidateContentDelivery(
       failed_records: 0,
     },
     results,
-    sandbox: true,
   };
 }

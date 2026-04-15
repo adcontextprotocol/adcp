@@ -27,7 +27,6 @@ export const PROPERTY_TOOLS = [
         description: { type: 'string', description: 'Description of the list purpose' },
         list_type: { type: 'string', enum: ['inclusion', 'exclusion'], description: 'Type of property list' },
         base_properties: { type: 'array', description: 'Property sources to include' },
-        properties: { type: 'array', description: 'Simple property list (array of {domain})' },
         filters: { type: 'object', description: 'Dynamic filters for list resolution' },
         brand: { type: 'object', description: 'Brand reference for automatic rule application' },
         idempotency_key: { type: 'string' },
@@ -43,8 +42,7 @@ export const PROPERTY_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        brand: { type: 'object', description: 'Filter by brand' },
-        list_type: { type: 'string', enum: ['inclusion', 'exclusion'], description: 'Filter by list type' },
+        name_contains: { type: 'string', description: 'Filter to lists whose name contains this string' },
       },
     },
   },
@@ -64,16 +62,18 @@ export const PROPERTY_TOOLS = [
   },
   {
     name: 'update_property_list',
-    description: 'Update a property list — add or remove properties.',
+    description: 'Update a property list. base_properties is a complete replacement, not a patch.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
-        add: { type: 'array', description: 'Properties to add' },
-        remove: { type: 'array', description: 'Properties to remove' },
         name: { type: 'string', description: 'New name for the list' },
+        description: { type: 'string', description: 'New description' },
+        base_properties: { type: 'array', description: 'Complete replacement for the base properties list' },
+        filters: { type: 'object', description: 'Complete replacement for the filters' },
+        brand: { type: 'object', description: 'Update brand reference' },
       },
       required: ['list_id'],
     },
@@ -101,8 +101,19 @@ export const PROPERTY_TOOLS = [
       properties: {
         list_id: { type: 'string', description: 'Property list to validate against' },
         brand: { type: 'object', description: 'Brand reference' },
-        records: { type: 'array', description: 'Delivery records to validate' },
-        delivery: { type: 'array', description: 'Delivery records (alias for records)' },
+        records: {
+          type: 'array',
+          description: 'Delivery records to validate. Each record has an identifier ({type, value}) and impressions.',
+          items: {
+            type: 'object',
+            properties: {
+              identifier: { type: 'object', properties: { type: { type: 'string' }, value: { type: 'string' } }, required: ['type', 'value'] },
+              impressions: { type: 'integer', minimum: 0 },
+              record_id: { type: 'string' },
+            },
+            required: ['identifier', 'impressions'],
+          },
+        },
       },
       required: ['list_id', 'records'],
     },
@@ -169,7 +180,6 @@ export function handleCreatePropertyList(
     description?: string;
     list_type?: string;
     base_properties?: unknown[];
-    properties?: unknown[];
     filters?: unknown;
     brand?: unknown;
   };
@@ -184,8 +194,7 @@ export function handleCreatePropertyList(
   const listId = `pl_${randomUUID().slice(0, 8)}`;
   const authToken = `pat_sandbox_${listId}_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
 
-  // Accept either base_properties (schema) or properties (storyboard)
-  const baseProperties = req.base_properties || req.properties || [];
+  const baseProperties = req.base_properties || [];
 
   if (baseProperties.length > MAX_PROPERTIES_PER_LIST) {
     return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Too many properties (max ${MAX_PROPERTIES_PER_LIST}).` }] };
@@ -211,7 +220,6 @@ export function handleCreatePropertyList(
   return {
     list: toListResponse(state),
     auth_token: authToken,
-    sandbox: true,
   };
 }
 
@@ -219,18 +227,18 @@ export function handleListPropertyLists(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { brand?: unknown; list_type?: string };
+  const req = args as { name_contains?: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let lists = [...session.propertyLists.values()];
 
-  if (req.list_type) {
-    lists = lists.filter(l => l.listType === req.list_type);
+  if (req.name_contains) {
+    const lowerFilter = req.name_contains.toLowerCase();
+    lists = lists.filter(l => l.name.toLowerCase().includes(lowerFilter));
   }
 
   return {
     lists: lists.map(toListResponse),
-    sandbox: true,
   };
 }
 
@@ -254,7 +262,6 @@ export function handleGetPropertyList(
     identifiers,
     resolved_at: new Date().toISOString(),
     cache_valid_until: new Date(Date.now() + state.cacheDurationHours * 3600_000).toISOString(),
-    sandbox: true,
   };
 }
 
@@ -262,7 +269,7 @@ export function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { list_id: string; add?: unknown[]; remove?: unknown[]; name?: string; description?: string; base_properties?: unknown[] };
+  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown };
 
   const found = findPropertyList(args, ctx, req.list_id);
   if (!found) {
@@ -278,36 +285,20 @@ export function handleUpdatePropertyList(
     state.description = req.description;
   }
 
-  // Replace mode: base_properties replaces entire list
+  // Per spec: base_properties is a complete replacement, not a patch
   if (req.base_properties) {
     if (req.base_properties.length > MAX_PROPERTIES_PER_LIST) {
       return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
     }
     state.baseProperties = req.base_properties;
-  } else {
-    // Incremental mode: add/remove
-    const existingDomains = new Set(extractDomains(state.baseProperties));
+  }
 
-    if (req.add) {
-      if (state.baseProperties.length + req.add.length > MAX_PROPERTIES_PER_LIST) {
-        return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
-      }
-      for (const p of req.add) {
-        const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
-        if (domain && !existingDomains.has(domain)) {
-          state.baseProperties.push(p);
-          existingDomains.add(domain);
-        }
-      }
-    }
+  if (req.filters !== undefined) {
+    state.filters = req.filters;
+  }
 
-    if (req.remove) {
-      const removeDomains = new Set(extractDomains(req.remove));
-      state.baseProperties = state.baseProperties.filter(p => {
-        const domain = typeof p === 'string' ? p : (p as { domain?: string }).domain;
-        return !domain || !removeDomains.has(domain);
-      });
-    }
+  if (req.brand !== undefined) {
+    state.brand = req.brand;
   }
 
   state.propertyCount = state.baseProperties.length;
@@ -315,7 +306,6 @@ export function handleUpdatePropertyList(
 
   return {
     list: toListResponse(state),
-    sandbox: true,
   };
 }
 
@@ -331,11 +321,7 @@ export function handleDeletePropertyList(
   }
   found.session.propertyLists.delete(req.list_id);
 
-  return {
-    list_id: req.list_id,
-    deleted: true,
-    sandbox: true,
-  };
+  return { list_id: req.list_id, deleted: true };
 }
 
 export function handleValidatePropertyDelivery(
@@ -344,9 +330,7 @@ export function handleValidatePropertyDelivery(
 ) {
   const req = args as {
     list_id: string;
-    brand?: unknown;
-    records?: Array<{ property?: string; domain?: string; impressions?: number; record_id?: string }>;
-    delivery?: Array<{ property?: string; domain?: string; impressions?: number; record_id?: string }>;
+    records: Array<{ identifier: { type: string; value: string }; impressions: number; record_id?: string }>;
   };
 
   const found = findPropertyList(args, ctx, req.list_id);
@@ -355,8 +339,7 @@ export function handleValidatePropertyDelivery(
   }
   const { state } = found;
 
-  // Accept both records (schema) and delivery (storyboard)
-  const records = req.records || req.delivery || [];
+  const records = req.records || [];
   const listDomains = new Set(extractDomains(state.baseProperties));
   const isInclusion = state.listType !== 'exclusion';
 
@@ -366,7 +349,7 @@ export function handleValidatePropertyDelivery(
   let nonCompliantImpressions = 0;
 
   const results = records.map(record => {
-    const domain = record.property || record.domain || '';
+    const domain = record.identifier?.value || '';
     const impressions = record.impressions || 0;
     const inList = listDomains.has(domain);
     const compliant = isInclusion ? inList : !inList;
@@ -414,6 +397,5 @@ export function handleValidatePropertyDelivery(
     },
     results,
     validated_at: new Date().toISOString(),
-    sandbox: true,
   };
 }

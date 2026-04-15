@@ -961,7 +961,6 @@ describe('get_products handler', () => {
 
     expect(Array.isArray(result.products)).toBe(true);
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
-    expect(result.sandbox).toBe(true);
   });
 
   it('filters by channel', async () => {
@@ -1062,7 +1061,6 @@ describe('list_creative_formats handler', () => {
 
     const formats = result.formats as Array<Record<string, unknown>>;
     expect(formats.length).toBeGreaterThan(0);
-    expect(result.sandbox).toBe(true);
   });
 
   it('filters by channels', async () => {
@@ -1133,7 +1131,6 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
-    expect(result.sandbox).toBe(true);
     // No creatives synced → pending_creatives regardless of dates
     expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
@@ -1483,7 +1480,6 @@ describe('sync_creatives handler', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.sandbox).toBe(true);
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives).toHaveLength(1);
     // Per sync-creatives-response.json, each item requires creative_id and action
@@ -3310,7 +3306,6 @@ describe('get_signals handler', () => {
       signal_spec: 'automotive purchase intent',
     });
 
-    expect(result.sandbox).toBe(true);
     const signals = result.signals as Array<Record<string, unknown>>;
     expect(signals.length).toBeGreaterThan(0);
     // Should find automotive-related signals
@@ -3602,7 +3597,6 @@ describe('activate_signal handler', () => {
       destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
     });
 
-    expect(result.sandbox).toBe(true);
     expect(result.errors).toBeUndefined();
     const deployments = result.deployments as Array<Record<string, unknown>>;
     expect(deployments.length).toBe(1);
