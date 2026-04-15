@@ -31,6 +31,8 @@ import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { SlackDatabase } from '../db/slack-db.js';
+import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
 import {
   isKnowledgeReady,
@@ -695,6 +697,10 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register alias match action handlers
   boltApp.action('alias_confirm', handleAliasConfirm);
   boltApp.action('alias_reject', handleAliasReject);
+
+  // Register marketing opt-in action handlers (from Slack join DM)
+  boltApp.action('marketing_optin_yes', handleMarketingOptIn);
+  boltApp.action('marketing_optin_no', handleMarketingOptIn);
 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
@@ -2642,6 +2648,86 @@ async function handleAliasReject({ ack, body, client }: any): Promise<void> {
       user: userId,
       text: 'Failed to dismiss alias. Please try again.',
     });
+  }
+}
+
+/**
+ * Handle marketing opt-in button clicks from Slack DM.
+ * Both yes and no route here — we distinguish by action_id.
+ */
+async function handleMarketingOptIn({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const actionId = body.actions?.[0]?.action_id;
+  const slackUserId = body.user?.id;
+  const channelId = body.channel?.id;
+  const messageTs = body.message?.ts;
+  const optIn = actionId === 'marketing_optin_yes';
+
+  if (!slackUserId) {
+    logger.warn({ actionId }, 'Addie Bolt: Marketing opt-in missing user ID');
+    return;
+  }
+
+  try {
+    const slackDb = new SlackDatabase();
+    const mapping = await slackDb.getBySlackUserId(slackUserId);
+
+    if (mapping?.workos_user_id) {
+      // User is mapped to a web account — record preference if not already set
+      if (!mapping.slack_email) {
+        logger.warn({ slackUserId }, 'Cannot record marketing opt-in: no email on Slack mapping, storing as pending');
+        await slackDb.setPendingMarketingOptIn(slackUserId, optIn);
+      } else {
+        const emailPrefsDb = new EmailPreferencesDatabase();
+        const wasSet = await emailPrefsDb.setMarketingOptInIfNotSet({
+          workos_user_id: mapping.workos_user_id,
+          email: mapping.slack_email,
+          optIn,
+        });
+        if (wasSet) {
+          logger.info({ slackUserId, workosUserId: mapping.workos_user_id, optIn }, 'Marketing opt-in recorded via Slack');
+        } else {
+          logger.debug({ slackUserId, workosUserId: mapping.workos_user_id }, 'Skipping marketing opt-in — user already has explicit preference');
+        }
+      }
+    } else {
+      // Not mapped yet — store as pending preference
+      await slackDb.setPendingMarketingOptIn(slackUserId, optIn);
+      logger.info({ slackUserId, optIn }, 'Pending marketing opt-in stored for unmapped Slack user');
+    }
+
+    // Update the message to replace buttons with confirmation
+    const confirmText = optIn
+      ? "You're all set — you'll receive The Prompt, The Build, and event notifications via email."
+      : "No problem — you won't receive marketing emails from us.";
+
+    if (channelId && messageTs) {
+      try {
+        await client.chat.update({
+          channel: channelId,
+          ts: messageTs,
+          text: confirmText,
+          blocks: [
+            {
+              type: 'section',
+              text: { type: 'mrkdwn', text: confirmText },
+            },
+          ],
+        });
+      } catch (updateErr) {
+        logger.warn({ error: updateErr }, 'Addie Bolt: Failed to update marketing opt-in message');
+      }
+    }
+  } catch (error) {
+    logger.error({ error, slackUserId, actionId }, 'Addie Bolt: Error handling marketing opt-in');
+    if (channelId) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: slackUserId,
+        text: 'Something went wrong recording your preference. Please try again.',
+      });
+    }
   }
 }
 

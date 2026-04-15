@@ -77,13 +77,16 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
   prompt += `Do not include any text, words, labels, or logos in the image. Square aspect ratio.`;
 
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({
-    model: 'gemini-3.1-flash-image-preview',
-    generationConfig: {
-      // @ts-expect-error - responseModalities not in SDK types yet
-      responseModalities: ['TEXT', 'IMAGE'],
+  const model = ai.getGenerativeModel(
+    {
+      model: 'gemini-3.1-flash-image-preview',
+      generationConfig: {
+        // @ts-expect-error - responseModalities not in SDK types yet
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
     },
-  });
+    { timeout: 180_000 },
+  );
 
   // Build content parts
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -103,13 +106,17 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
 
   const result = await withGeminiRetry(
     () => model.generateContent(parts),
-    undefined,
+    { initialDelayMs: 5000, maxDelayMs: 30000 },
     'generatePortrait',
   );
   const response = result.response;
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
     if (part.inlineData) {
+      const mimeType = part.inlineData.mimeType || 'image/png';
+      if (!mimeType.startsWith('image/')) {
+        throw new Error(`Gemini returned non-image content: ${mimeType}`);
+      }
       const imageBuffer = Buffer.from(part.inlineData.data, 'base64');
       logger.info({ sizeKB: (imageBuffer.length / 1024).toFixed(0) }, 'Portrait generated');
       return { imageBuffer, promptUsed: prompt };
@@ -129,7 +136,7 @@ export async function validatePortrait(imageBuffer: Buffer): Promise<{
   issues: string[];
 }> {
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' }, { timeout: 30_000 });
 
   const validationPrompt =
     `Analyze this portrait illustration for quality. Check: ` +
@@ -140,15 +147,19 @@ export async function validatePortrait(imageBuffer: Buffer): Promise<{
     `{ "valid": true/false, "issues": ["issue 1", "issue 2"] }`;
 
   try {
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'image/png',
-          data: imageBuffer.toString('base64'),
+    const result = await withGeminiRetry(
+      () => model.generateContent([
+        {
+          inlineData: {
+            mimeType: 'image/png',
+            data: imageBuffer.toString('base64'),
+          },
         },
-      },
-      validationPrompt,
-    ]);
+        validationPrompt,
+      ]),
+      undefined,
+      'validatePortrait',
+    );
 
     const text = result.response.text().trim();
     const jsonStr = text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');

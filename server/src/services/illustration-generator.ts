@@ -128,13 +128,16 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
   }
 
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({
-    model: 'gemini-3.1-flash-image-preview',
-    generationConfig: {
-      // @ts-expect-error - responseModalities not in SDK types yet
-      responseModalities: ['TEXT', 'IMAGE'],
+  const model = ai.getGenerativeModel(
+    {
+      model: 'gemini-3.1-flash-image-preview',
+      generationConfig: {
+        // @ts-expect-error - responseModalities not in SDK types yet
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
     },
-  });
+    { timeout: 120_000 },
+  );
 
   logger.info({ title, hasAuthorDirection: !!authorDescription }, 'Generating illustration');
 

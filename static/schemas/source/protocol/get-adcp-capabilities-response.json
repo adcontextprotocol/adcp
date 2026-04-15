@@ -83,7 +83,7 @@
     },
     "media_buy": {
       "type": "object",
-      "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",
+      "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
         "supported_pricing_models": {
           "type": "array",
@@ -94,42 +94,6 @@
           "minItems": 1,
           "uniqueItems": true
         },
-        "reporting": {
-          "type": "object",
-          "description": "Seller-level reporting capabilities. Summarizes what reporting features are available across the seller's product portfolio. Individual products may vary — check product-level reporting_capabilities for specifics.",
-          "properties": {
-            "supports_date_range": {
-              "type": "boolean",
-              "description": "Whether any products support date range filtering (date_range_support: 'date_range'). When false, all products return lifetime-only data."
-            },
-            "supports_daily_breakdown": {
-              "type": "boolean",
-              "description": "Whether delivery reporting includes daily_breakdown at the media buy and/or package level."
-            },
-            "supports_webhooks": {
-              "type": "boolean",
-              "description": "Whether any products support webhook-based reporting notifications."
-            },
-            "available_dimensions": {
-              "type": "array",
-              "description": "Reporting dimensions available across the seller's portfolio. Individual products may support a subset. Dimensions geo, device_type, device_platform, audience, and placement are opt-in via reporting_dimensions on the delivery request. Dimensions creative, keyword, and catalog_item are included automatically when the seller supports them (not controlled by reporting_dimensions).",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "geo",
-                  "device_type",
-                  "device_platform",
-                  "audience",
-                  "placement",
-                  "creative",
-                  "keyword",
-                  "catalog_item"
-                ]
-              },
-              "uniqueItems": true
-            }
-          }
-        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
@@ -139,13 +103,8 @@
           "properties": {
             "trusted_match": {
               "type": "object",
-              "description": "Trusted Match Protocol (TMP) support. When present, this seller supports real-time contextual and/or identity matching. Check individual products via get_products for per-product TMP capabilities.",
+              "description": "Trusted Match Protocol (TMP) support. Presence of this object indicates the seller has TMP infrastructure deployed. Check individual products via get_products for per-product TMP capabilities.",
               "properties": {
-                "supported": {
-                  "type": "boolean",
-                  "description": "Whether this seller has TMP infrastructure deployed.",
-                  "default": false
-                },
                 "surfaces": {
                   "type": "array",
                   "description": "Surface types this seller supports via TMP.",
@@ -200,83 +159,40 @@
               "properties": {
                 "geo_countries": {
                   "type": "boolean",
-                  "description": "Supports country-level geo targeting using ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')"
+                  "description": "Country-level targeting using ISO 3166-1 alpha-2 codes"
                 },
                 "geo_regions": {
                   "type": "boolean",
-                  "description": "Supports region/state-level geo targeting using ISO 3166-2 subdivision codes (e.g., 'US-NY', 'GB-SCT', 'DE-BY')"
+                  "description": "Region/state-level targeting using ISO 3166-2 codes (e.g., US-NY, GB-SCT)"
                 },
                 "geo_metros": {
                   "type": "object",
-                  "description": "Metro area targeting support. Specifies which classification systems are supported.",
+                  "description": "Metro area targeting. Properties indicate which classification systems are supported.",
                   "properties": {
-                    "nielsen_dma": {
-                      "type": "boolean",
-                      "description": "Supports Nielsen DMA codes (US market, e.g., '501' for NYC)"
-                    },
-                    "uk_itl1": {
-                      "type": "boolean",
-                      "description": "Supports UK ITL Level 1 regions"
-                    },
-                    "uk_itl2": {
-                      "type": "boolean",
-                      "description": "Supports UK ITL Level 2 regions"
-                    },
-                    "eurostat_nuts2": {
-                      "type": "boolean",
-                      "description": "Supports Eurostat NUTS Level 2 regions (EU)"
-                    }
-                  }
+                    "nielsen_dma": { "type": "boolean" },
+                    "uk_itl1": { "type": "boolean" },
+                    "uk_itl2": { "type": "boolean" },
+                    "eurostat_nuts2": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
                 },
                 "geo_postal_areas": {
                   "type": "object",
-                  "description": "Postal area targeting support. Specifies which postal code systems are supported. System names encode country and precision.",
+                  "description": "Postal area targeting. Properties indicate which postal code systems are supported.",
                   "properties": {
-                    "us_zip": {
-                      "type": "boolean",
-                      "description": "US 5-digit ZIP codes (e.g., '10001')"
-                    },
-                    "us_zip_plus_four": {
-                      "type": "boolean",
-                      "description": "US 9-digit ZIP+4 codes (e.g., '10001-1234')"
-                    },
-                    "gb_outward": {
-                      "type": "boolean",
-                      "description": "UK postcode district / outward code (e.g., 'SW1', 'EC1')"
-                    },
-                    "gb_full": {
-                      "type": "boolean",
-                      "description": "UK full postcode (e.g., 'SW1A 1AA')"
-                    },
-                    "ca_fsa": {
-                      "type": "boolean",
-                      "description": "Canadian Forward Sortation Area (e.g., 'K1A')"
-                    },
-                    "ca_full": {
-                      "type": "boolean",
-                      "description": "Canadian full postal code (e.g., 'K1A 0B1')"
-                    },
-                    "de_plz": {
-                      "type": "boolean",
-                      "description": "German Postleitzahl, 5 digits (e.g., '10115')"
-                    },
-                    "fr_code_postal": {
-                      "type": "boolean",
-                      "description": "French code postal, 5 digits (e.g., '75001')"
-                    },
-                    "au_postcode": {
-                      "type": "boolean",
-                      "description": "Australian postcode, 4 digits (e.g., '2000')"
-                    },
-                    "ch_plz": {
-                      "type": "boolean",
-                      "description": "Swiss Postleitzahl, 4 digits (e.g., '8000')"
-                    },
-                    "at_plz": {
-                      "type": "boolean",
-                      "description": "Austrian Postleitzahl, 4 digits (e.g., '1010')"
-                    }
-                  }
+                    "us_zip": { "type": "boolean" },
+                    "us_zip_plus_four": { "type": "boolean" },
+                    "gb_outward": { "type": "boolean" },
+                    "gb_full": { "type": "boolean" },
+                    "ca_fsa": { "type": "boolean" },
+                    "ca_full": { "type": "boolean" },
+                    "de_plz": { "type": "boolean" },
+                    "fr_code_postal": { "type": "boolean" },
+                    "au_postcode": { "type": "boolean" },
+                    "ch_plz": { "type": "boolean" },
+                    "at_plz": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
                 },
                 "age_restriction": {
                   "type": "object",
@@ -295,25 +211,9 @@
                     }
                   }
                 },
-                "device_platform": {
-                  "type": "boolean",
-                  "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
-                },
-                "device_type": {
-                  "type": "boolean",
-                  "description": "Whether seller supports device type targeting (form factor: desktop, mobile, tablet, ctv, dooh, unknown). When true, seller supports both device_type (include) and device_type_exclude (exclude) in targeting overlays."
-                },
                 "language": {
                   "type": "boolean",
                   "description": "Whether seller supports language targeting (ISO 639-1 codes)"
-                },
-                "audience_include": {
-                  "type": "boolean",
-                  "description": "Whether seller supports audience_include in targeting overlays (requires features.audience_targeting)"
-                },
-                "audience_exclude": {
-                  "type": "boolean",
-                  "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
                 },
                 "keyword_targets": {
                   "type": "object",
@@ -379,7 +279,7 @@
         },
         "audience_targeting": {
           "type": "object",
-          "description": "Audience targeting capabilities. Only present when features.audience_targeting is true.",
+          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including sync_audiences and audience_include/audience_exclude in targeting overlays.",
           "properties": {
             "supported_identifier_types": {
               "type": "array",
@@ -422,7 +322,7 @@
         },
         "conversion_tracking": {
           "type": "object",
-          "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
+          "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
           "properties": {
             "multi_source_event_dedup": {
               "type": "boolean",
@@ -497,9 +397,9 @@
           },
           "additionalProperties": true
         },
-        "content_standards_detail": {
+        "content_standards": {
           "type": "object",
-          "description": "Content standards implementation details. Only meaningful when features.content_standards is true. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
+          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
           "properties": {
             "supports_local_evaluation": {
               "type": "boolean",
@@ -521,7 +421,7 @@
         },
         "portfolio": {
           "type": "object",
-          "description": "Information about the seller's media inventory portfolio",
+          "description": "Information about the seller's media inventory portfolio. Expected for media_buy sellers — buyers use this to understand inventory coverage and verify authorization via adagents.json.",
           "properties": {
             "publisher_domains": {
               "type": "array",
@@ -786,11 +686,6 @@
       "type": "object",
       "description": "Brand protocol capabilities. Only present if brand is in supported_protocols. Brand agents provide identity data (logos, colors, tone, assets) and optionally rights clearance for licensable content (talent, music, stock media).",
       "properties": {
-        "identity": {
-          "type": "boolean",
-          "description": "Supports get_brand_identity for retrieving brand identity data",
-          "default": true
-        },
         "rights": {
           "type": "boolean",
           "description": "Supports get_rights and acquire_rights for rights discovery and clearance",

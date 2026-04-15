@@ -73,9 +73,8 @@ export interface PublisherProfile {
   properties: PropertyDefinition[];
   /** Optional: catalog types this publisher supports */
   catalogTypes?: string[];
-  /** Optional: reporting capabilities */
-  reportingFrequencies?: string[];
-  reportingMetrics?: string[];
+  reportingFrequencies: string[];
+  reportingMetrics: string[];
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */
@@ -146,6 +145,20 @@ export interface ShowResponse {
   }>;
 }
 
+export interface RightsGrantState {
+  grantId: string;
+  rightsId: string;
+  brandId: string;
+  buyerDomain: string;
+  status: 'acquired' | 'pending_approval' | 'rejected';
+  pricingOptionId: string;
+  startDate: string;
+  endDate: string;
+  impressionCap?: number;
+  paused: boolean;
+  createdAt: string;
+}
+
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
@@ -154,7 +167,9 @@ export interface SessionState {
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   propertyLists: Map<string, PropertyListState>;
+  collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
+  rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
   lastGetProductsContext?: {
     products: Product[];
@@ -162,6 +177,19 @@ export interface SessionState {
   };
   createdAt: Date;
   lastAccessedAt: Date;
+}
+
+export interface CollectionListState {
+  list_id: string;
+  name: string;
+  description?: string;
+  base_collections?: unknown[];
+  filters?: Record<string, unknown>;
+  brand?: { domain: string };
+  webhook_url?: string;
+  collection_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SignalActivationState {

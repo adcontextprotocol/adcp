@@ -445,11 +445,9 @@ describe('buildCatalog', () => {
   });
 
   describe('reporting_capabilities compliance', () => {
-    it('uses available_reporting_frequencies (not reporting_frequency) and includes required fields', () => {
-      const withReporting = catalog.filter(cp => cp.product.reporting_capabilities);
-      expect(withReporting.length).toBeGreaterThan(0);
-
-      for (const cp of withReporting) {
+    it('every product has reporting_capabilities with required fields', () => {
+      for (const cp of catalog) {
+        expect(cp.product.reporting_capabilities).toBeDefined();
         const rc = cp.product.reporting_capabilities as Record<string, unknown>;
         // Must use correct field name
         expect(rc.available_reporting_frequencies).toBeDefined();
@@ -866,7 +864,57 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
-    expect(toolNames).toHaveLength(43);
+    expect(toolNames).toContain('create_collection_list');
+    expect(toolNames).toContain('get_collection_list');
+    expect(toolNames).toContain('update_collection_list');
+    expect(toolNames).toContain('list_collection_lists');
+    expect(toolNames).toContain('delete_collection_list');
+    expect(toolNames).toHaveLength(48);
+  });
+
+  it('get_adcp_capabilities response uses 3.0 capability model', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const caps = result as Record<string, unknown>;
+    const mediaBuy = caps.media_buy as Record<string, unknown>;
+    const features = mediaBuy.features as Record<string, unknown>;
+    const execution = mediaBuy.execution as Record<string, unknown>;
+    const targeting = execution.targeting as Record<string, unknown>;
+
+    // Object presence replaces boolean gates
+    expect(mediaBuy.content_standards).toBeDefined();
+    expect(mediaBuy.audience_targeting).toBeDefined();
+    expect(mediaBuy.conversion_tracking).toBeDefined();
+
+    // Removed boolean gates must not be present
+    expect(features).not.toHaveProperty('content_standards');
+    expect(features).not.toHaveProperty('audience_targeting');
+    expect(features).not.toHaveProperty('conversion_tracking');
+
+    // Removed targeting flags must not be present
+    expect(targeting).not.toHaveProperty('device_platform');
+    expect(targeting).not.toHaveProperty('device_type');
+    expect(targeting).not.toHaveProperty('audience_include');
+    expect(targeting).not.toHaveProperty('audience_exclude');
+
+    // Geo targeting uses typed objects (not flattened arrays)
+    expect(targeting.geo_countries).toBe(true);
+    expect(targeting.geo_regions).toBe(true);
+    expect(targeting.geo_metros).toBeDefined();
+    expect((targeting.geo_metros as Record<string, unknown>).nielsen_dma).toBe(true);
+    expect(targeting.geo_postal_areas).toBeDefined();
+    expect((targeting.geo_postal_areas as Record<string, unknown>).us_zip).toBe(true);
+
+    // Removed seller-level reporting (product-level is source of truth)
+    expect(mediaBuy).not.toHaveProperty('reporting');
+
+    // account required for media_buy sellers
+    expect(caps.account).toBeDefined();
+    const account = caps.account as Record<string, unknown>;
+    expect((account.supported_billing as unknown[]).length).toBeGreaterThan(0);
+
+    // portfolio present
+    expect(mediaBuy.portfolio).toBeDefined();
   });
 
   it('returns error for unknown tool', async () => {
@@ -918,7 +966,6 @@ describe('get_products handler', () => {
 
     expect(Array.isArray(result.products)).toBe(true);
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
-    expect(result.sandbox).toBe(true);
   });
 
   it('filters by channel', async () => {
@@ -1019,7 +1066,6 @@ describe('list_creative_formats handler', () => {
 
     const formats = result.formats as Array<Record<string, unknown>>;
     expect(formats.length).toBeGreaterThan(0);
-    expect(result.sandbox).toBe(true);
   });
 
   it('filters by channels', async () => {
@@ -1090,7 +1136,6 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
-    expect(result.sandbox).toBe(true);
     // No creatives synced → pending_creatives regardless of dates
     expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
@@ -1440,7 +1485,6 @@ describe('sync_creatives handler', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.sandbox).toBe(true);
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives).toHaveLength(1);
     // Per sync-creatives-response.json, each item requires creative_id and action
@@ -3267,7 +3311,6 @@ describe('get_signals handler', () => {
       signal_spec: 'automotive purchase intent',
     });
 
-    expect(result.sandbox).toBe(true);
     const signals = result.signals as Array<Record<string, unknown>>;
     expect(signals.length).toBeGreaterThan(0);
     // Should find automotive-related signals
@@ -3559,7 +3602,6 @@ describe('activate_signal handler', () => {
       destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
     });
 
-    expect(result.sandbox).toBe(true);
     expect(result.errors).toBeUndefined();
     const deployments = result.deployments as Array<Record<string, unknown>>;
     expect(deployments.length).toBe(1);
@@ -5577,5 +5619,201 @@ describe('storyboard governance sample_requests accepted by training agent', () 
 
     expect(isError).toBeFalsy();
     expect(result.status).toBe('denied');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Context echo — AdCP requirement: echo caller context unchanged in responses
+// ---------------------------------------------------------------------------
+
+/** Raw call that preserves the full response envelope (context, adcp_error). */
+async function simulateCallToolRaw(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<{ parsed: Record<string, unknown>; isError?: boolean }> {
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const handler = requestHandlers.get('tools/call');
+  if (!handler) throw new Error('CallTool handler not found');
+  const response = await handler(
+    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    {},
+  );
+  const text = response.content?.[0]?.text;
+  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+}
+
+describe('context echo', () => {
+  const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+  const TEST_CONTEXT = { correlation_id: 'test-123', custom: { nested: true } };
+
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+  });
+
+  it('echoes context in success responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBeFalsy();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('omits context when not provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {});
+    expect(parsed).not.toHaveProperty('context');
+  });
+
+  it('echoes context in error responses (unknown tool)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'nonexistent_tool', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context in validation error responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // create_media_buy with missing required fields triggers a validation error
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+      // missing required fields: start_time, end_time, packages
+    });
+    expect(isError).toBe(true);
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('does not pass context to handlers as part of args', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // get_products returns product data — if context leaked into args it wouldn't
+    // affect the response, but the key should not appear in the result body
+    // except as the echoed context field
+    const { parsed } = await simulateCallToolRaw(server, 'get_products', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+    });
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+    // The products field should exist (handler ran successfully)
+    expect(parsed.products).toBeDefined();
+  });
+
+  it('echoes context on negative budget error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-neg-budget',
+      start_time: '2026-05-01T00:00:00Z',
+      end_time: '2026-05-31T23:59:59Z',
+      packages: [{ product_id: 'test-product', budget: -500, pricing_option_id: 'test-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context on nonexistent product error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-nonexistent',
+      start_time: '2026-05-01T00:00:00Z',
+      end_time: '2026-05-31T23:59:59Z',
+      packages: [{ product_id: 'NONEXISTENT_PRODUCT_ID_12345', budget: 1000, pricing_option_id: 'nonexistent-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context on reversed dates error (error_compliance)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      idempotency_key: 'ctx-reversed',
+      start_time: '2026-12-31T00:00:00Z',
+      end_time: '2026-01-01T00:00:00Z',
+      packages: [{ product_id: 'test-product', budget: 1000, pricing_option_id: 'test-pricing' }],
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  describe('state_machine invalid transitions', () => {
+    const account = { brand: { domain: 'test.example' }, operator: 'test.example' };
+    let server: ReturnType<typeof createTrainingAgentServer>;
+    let mediaBuyId: string;
+
+    beforeEach(async () => {
+      clearSessions();
+      invalidateCache();
+      clearTaskStore();
+      const catalog = buildCatalog();
+      const product = catalog[0].product;
+      const pricingOptionId = (product.pricing_options as Array<Record<string, unknown>>)[0].pricing_option_id as string;
+      server = createTrainingAgentServer(DEFAULT_CTX);
+
+      const { parsed: created } = await simulateCallToolRaw(server, 'create_media_buy', {
+        account,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{ product_id: product.product_id, budget: 50000, pricing_option_id: pricingOptionId }],
+      });
+      mediaBuyId = created.media_buy_id as string;
+
+      await simulateCallToolRaw(server, 'update_media_buy', {
+        account,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+      });
+    });
+
+    it('echoes context when pausing a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        paused: true,
+      });
+      expect(isError).toBe(true);
+      expect(parsed.adcp_error).toBeDefined();
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+
+    it('echoes context when resuming a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        paused: false,
+      });
+      expect(isError).toBe(true);
+      expect(parsed.adcp_error).toBeDefined();
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+  });
+
+  it('echoes context on comply_test_controller errors', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // comply_test_controller returns { success: false, error: '...' } — no errors array.
+    // These take the success-path spread, not the adcpError path.
+    const { parsed, isError } = await simulateCallToolRaw(server, 'comply_test_controller', {
+      context: TEST_CONTEXT,
+      scenario: 'force_creative_status',
+      params: { creative_id: 'nonexistent', status: 'approved' },
+      account: { sandbox: true },
+    });
+    // comply_test_controller errors are NOT marked isError at MCP level
+    expect(isError).toBeFalsy();
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe('NOT_FOUND');
+    expect(parsed.context).toEqual(TEST_CONTEXT);
   });
 });

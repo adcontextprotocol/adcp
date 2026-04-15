@@ -1148,6 +1148,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Shows and episodes — brand safety', url: `${DOCS_BASE}/docs/media-buy/product-discovery/collections-and-installments` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
+    { label: 'Collection governance', url: `${DOCS_BASE}/docs/governance/collection/index` },
+    { label: 'Collection list tasks', url: `${DOCS_BASE}/docs/governance/collection/tasks/collection_lists` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
     { label: 'Campaign governance specification', url: `${DOCS_BASE}/docs/governance/campaign/specification` },

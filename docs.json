@@ -254,6 +254,7 @@
                         "pages": [
                           "docs/creative/channels/video",
                           "docs/creative/channels/ctv",
+                          "docs/creative/channels/broadcast",
                           "docs/creative/channels/display",
                           "docs/creative/channels/audio",
                           "docs/creative/channels/dooh",
@@ -306,6 +307,13 @@
                               "docs/governance/property/tasks/validate_property_delivery"
                             ]
                           }
+                        ]
+                      },
+                      {
+                        "group": "Collection Governance",
+                        "pages": [
+                          "docs/governance/collection/index",
+                          "docs/governance/collection/tasks/collection_lists"
                         ]
                       },
                       {
@@ -730,6 +738,7 @@
                     "pages": [
                       "docs/creative/channels/video",
                       "docs/creative/channels/ctv",
+                      "docs/creative/channels/broadcast",
                       "docs/creative/channels/display",
                       "docs/creative/channels/audio",
                       "docs/creative/channels/dooh",

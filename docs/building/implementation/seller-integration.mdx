@@ -160,9 +160,9 @@ See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for fu
 
 **Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can provision test accounts and validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for implementation details.
 
-## Optional: delivery reporting
+## Delivery reporting
 
-Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
+All media_buy sellers must implement `get_media_buy_delivery` and include `reporting_capabilities` on every product. Buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
 
 ## Product design patterns
 

@@ -11,7 +11,7 @@ description: "AdCP specialist module S4: Governance protocol mastery. Content st
 **Members only** — Requires Practitioner credential. ~60 minutes with Addie. Combines hands-on lab and adaptive exam.
 </Info>
 
-This specialist module tests your mastery of the full governance protocol. You'll work with sandbox agents to manage content standards and property lists, execute the campaign governance lifecycle (plans, validation, outcomes, audit), resolve compliance policies from the registry, and reason about how governance domains compose. Addie evaluates both your hands-on work and your conceptual understanding.
+This specialist module tests your mastery of the full governance protocol. You'll work with sandbox agents to manage content standards, property lists, and collection lists, execute the campaign governance lifecycle (plans, validation, outcomes, audit), resolve compliance policies from the registry, and reason about how governance domains compose. Addie evaluates both your hands-on work and your conceptual understanding.
 
 Passing earns the **AdCP specialist — Governance** credential.
 
@@ -19,13 +19,15 @@ Passing earns the **AdCP specialist — Governance** credential.
 
 - Create, update, list, and delete content standards
 - Create, update, list, and delete property lists
+- Create, update, list, and delete collection lists — program-level brand safety across platforms
 - Calibrate content against standards and interpret results
 - Create and validate campaign plans with budget authority and policy configuration
 - Sync governance agents to accounts via `sync_governance`
 - Execute the full governance loop: `sync_plans`, `check_governance` (intent + execution), `report_plan_outcome`
 - Use the policy registry to resolve and apply compliance policies
 - Interpret audit logs and reason about drift metrics
-- Explain how governance domains compose — campaign, property, content standards, creative
+- Explain how the three layers of brand safety compose — property lists (where), collection lists (what content), content standards (per-impression adjacency)
+- Explain how governance domains compose — campaign, property, collection, content standards, creative
 - Configure audience constraints on a campaign plan using policy categories and restricted attributes
 - Validate that `check_governance` correctly denies targeting that violates audience constraints
 
@@ -36,6 +38,9 @@ Passing earns the **AdCP specialist — Governance** credential.
 <CardGroup cols={2}>
   <Card title="property_lists" icon="list-check" href="/docs/governance/property/tasks/property_lists">
     Create and manage property lists for inclusion/exclusion filtering.
+  </Card>
+  <Card title="collection_lists" icon="clapperboard" href="/docs/governance/collection/tasks/collection_lists">
+    Create and manage collection lists for program-level brand safety.
   </Card>
   <Card title="create_content_standards" icon="scale-balanced" href="/docs/governance/content-standards/tasks/create_content_standards">
     Define brand-specific content standards for automated compliance.
@@ -84,6 +89,9 @@ Passing earns the **AdCP specialist — Governance** credential.
   <Card title="Property governance" icon="shield-check" href="/docs/governance/property/index">
     Identity, authorization, and data enrichment for publishers.
   </Card>
+  <Card title="Collection governance" icon="clapperboard" href="/docs/governance/collection/index">
+    Program-level brand safety with collection lists across CTV, podcast, and other media.
+  </Card>
   <Card title="Content standards overview" icon="file-shield" href="/docs/governance/content-standards/index">
     How content standards work: calibration, local execution, and validation.
   </Card>
@@ -125,12 +133,13 @@ See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 
 1. **Content standards lifecycle** — Create, update, and manage content standards for a fictional brand
 2. **Property list management** — Create inclusion and exclusion lists for supply path control
-3. **Content calibration** — Calibrate sample content against your standards and interpret results
-4. **Compliance verification** — Verify that sandbox campaign deliveries meet governance requirements
-5. **Campaign governance lifecycle** — Sync governance agents via `sync_governance`, create a campaign plan, validate actions (intent + execution), handle denials and conditions, report outcomes, and review audit logs
-6. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
-7. **Audience governance** — Configure a plan with `policy_categories` (e.g., `fair_housing`) that carry `restricted_attributes`. Submit `check_governance` requests with audience selectors that use restricted signals and verify the governance agent denies them. Then submit compliant targeting and confirm approval.
-8. **Audience drift detection** — Run a series of delivery-phase governance checks with `audience_distribution` indices that gradually shift from baseline parity. Observe how cumulative indices reveal sustained bias patterns that single-period noise obscures, and how governance findings escalate when drift exceeds thresholds.
+3. **Collection list management** — Create a do-not-air collection list with distribution identifiers, content rating filters, and genre exclusions. Understand how collection lists compose with property lists and content standards for three-layer brand safety.
+4. **Content calibration** — Calibrate sample content against your standards and interpret results
+5. **Compliance verification** — Verify that sandbox campaign deliveries meet governance requirements
+6. **Campaign governance lifecycle** — Sync governance agents via `sync_governance`, create a campaign plan, validate actions (intent + execution), handle denials and conditions, report outcomes, and review audit logs
+7. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
+8. **Audience governance** — Configure a plan with `policy_categories` (e.g., `fair_housing`) that carry `restricted_attributes`. Submit `check_governance` requests with audience selectors that use restricted signals and verify the governance agent denies them. Then submit compliant targeting and confirm approval.
+9. **Audience drift detection** — Run a series of delivery-phase governance checks with `audience_distribution` indices that gradually shift from baseline parity. Observe how cumulative indices reveal sustained bias patterns that single-period noise obscures, and how governance findings escalate when drift exceeds thresholds.
 
 ## Assessment
 

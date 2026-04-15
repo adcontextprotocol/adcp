@@ -206,6 +206,14 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend', 'clicks'],
+        date_range_support: 'date_range'
+      },
       ext: {
         custom_vendor: {
           some_field: 'some_value',

@@ -1,6 +1,17 @@
 import { query } from './client.js';
 import crypto from 'crypto';
 
+/**
+ * Email categories that require explicit marketing opt-in (marketing_opt_in = true).
+ * Transactional emails bypass this check entirely.
+ */
+export const MARKETING_EMAIL_CATEGORIES = [
+  'the_prompt',
+  'weekly_digest',
+  'the_build',
+  'newsletter',
+];
+
 export interface EmailCategory {
   id: string;
   name: string;
@@ -269,7 +280,8 @@ export class EmailPreferencesDatabase {
   }
 
   /**
-   * Check if a user wants to receive a specific category of email
+   * Check if a user wants to receive a specific category of email.
+   * Marketing categories require explicit marketing_opt_in = true.
    */
   async shouldSendEmail(data: {
     workos_user_id: string;
@@ -277,8 +289,11 @@ export class EmailPreferencesDatabase {
   }): Promise<boolean> {
     const userPrefs = await this.getUserPreferencesByUserId(data.workos_user_id);
 
-    // If no preferences exist, use category default
+    // If no preferences exist and this is a marketing category, block send
     if (!userPrefs) {
+      if (MARKETING_EMAIL_CATEGORIES.includes(data.category_id)) {
+        return false;
+      }
       const category = await this.getCategoryById(data.category_id);
       return category?.default_enabled ?? true;
     }
@@ -286,6 +301,13 @@ export class EmailPreferencesDatabase {
     // Check global unsubscribe first
     if (userPrefs.global_unsubscribe) {
       return false;
+    }
+
+    // Marketing categories require explicit opt-in
+    if (MARKETING_EMAIL_CATEGORIES.includes(data.category_id)) {
+      if (userPrefs.marketing_opt_in !== true) {
+        return false;
+      }
     }
 
     // Check category-specific preference
@@ -596,6 +618,23 @@ export class EmailPreferencesDatabase {
    * table are marketing — transactional emails bypass this system entirely).
    * If optIn is true, removes any category overrides so defaults apply.
    */
+  /**
+   * Set marketing opt-in only if the user has no existing explicit preference.
+   * Returns true if the preference was set, false if it was already set.
+   */
+  async setMarketingOptInIfNotSet(data: {
+    workos_user_id: string;
+    email: string;
+    optIn: boolean;
+  }): Promise<boolean> {
+    const existing = await this.getUserPreferencesByUserId(data.workos_user_id);
+    if (existing && existing.marketing_opt_in !== null) {
+      return false;
+    }
+    await this.setMarketingOptIn(data);
+    return true;
+  }
+
   async setMarketingOptIn(data: {
     workos_user_id: string;
     email: string;

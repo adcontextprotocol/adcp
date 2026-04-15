@@ -46,12 +46,15 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }) {
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown) {
   const errorObj = { code, ...opts };
+  const body = context !== undefined
+    ? { adcp_error: errorObj, context }
+    : { adcp_error: errorObj };
   return {
     isError: true,
-    content: [{ type: 'text' as const, text: JSON.stringify({ adcp_error: errorObj }) }],
-    structuredContent: { adcp_error: errorObj },
+    content: [{ type: 'text' as const, text: JSON.stringify(body) }],
+    structuredContent: body,
   };
 }
 
@@ -147,6 +150,14 @@ import {
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
+import {
+  COLLECTION_LIST_TOOLS,
+  handleCreateCollectionList,
+  handleGetCollectionList,
+  handleUpdateCollectionList,
+  handleListCollectionLists,
+  handleDeleteCollectionList,
+} from './inventory-governance-handlers.js';
 import {
   CATALOG_EVENT_TOOLS,
   handleSyncCatalogs,
@@ -703,9 +714,10 @@ const TOOLS = [
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
   ...GOVERNANCE_TOOLS,
-  ...BRAND_TOOLS,
   ...PROPERTY_TOOLS,
+  ...COLLECTION_LIST_TOOLS,
   ...CONTENT_STANDARDS_TOOLS,
+  ...BRAND_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
   {
     name: 'report_usage',
@@ -962,7 +974,6 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     products,
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
-    sandbox: true,
   };
 }
 
@@ -987,7 +998,7 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats, sandbox: true };
+  return { formats };
 }
 
 function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
@@ -1256,7 +1267,6 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
       creative_assignments: [],
     })),
-    sandbox: true,
   };
 }
 
@@ -1358,7 +1368,6 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       };
       return buy;
     }),
-    sandbox: true,
   };
 }
 
@@ -1529,7 +1538,6 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
       },
       by_package: byPackage,
     }],
-    sandbox: true,
   };
 }
 
@@ -1640,7 +1648,6 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
     ...(isDryRun && { dry_run: true }),
     creatives: results,
     ...(assignmentResults.length > 0 && { assignments: assignmentResults }),
-    sandbox: true,
   };
 }
 
@@ -1682,7 +1689,6 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
       }
       return base;
     }),
-    sandbox: true,
   };
 }
 
@@ -1756,7 +1762,6 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
-      sandbox: true,
     };
   }
 
@@ -1883,7 +1888,6 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
       }),
     })),
-    sandbox: true,
     ...(warnings.length > 0 && { warnings }),
   };
   return result;
@@ -1903,11 +1907,36 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     media_buy: {
       features: {
         inline_creative_management: true,
-        compliance_testing: true,
+        catalog_management: true,
       },
       portfolio: {
         publisher_domains: publisherDomains,
         primary_channels: channels,
+      },
+      content_standards: {
+        supports_local_evaluation: true,
+        supported_channels: channels,
+        supports_webhook_delivery: false,
+      },
+      audience_targeting: {
+        supported_identifier_types: ['hashed_email'],
+        minimum_audience_size: 100,
+      },
+      conversion_tracking: {
+        supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
+        supported_hashed_identifiers: ['hashed_email'],
+        supported_action_sources: ['website', 'app'],
+      },
+      execution: {
+        targeting: {
+          geo_countries: true,
+          geo_regions: true,
+          geo_metros: { nielsen_dma: true },
+          geo_postal_areas: { us_zip: true },
+          language: true,
+          keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
+          negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+        },
       },
     },
     creative: {
@@ -1919,8 +1948,8 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
     account: {
       require_operator_auth: false,
       required_for_products: false,
+      supported_billing: ['agent'],
       sandbox: true,
-      supported_billing: [],
     },
     compliance_testing: {
       scenarios: [
@@ -2070,7 +2099,7 @@ function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: { signals: SignalResponse[]; sandbox: boolean; note?: string } = { signals, sandbox: true };
+  const response: { signals: SignalResponse[]; note?: string } = { signals };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
@@ -2157,8 +2186,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
         ...(dest.type === 'agent' ? { agent_url: dest.agent_url } : { platform: dest.platform }),
         ...(dest.account ? { account: dest.account } : {}),
       })),
-      sandbox: true,
-    };
+      };
   }
 
   // Activate: store activation state and return deployment info
@@ -2195,7 +2223,6 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   return {
     deployments,
     ...(governanceContext && { governance_context: governanceContext }),
-    sandbox: true,
   };
 }
 
@@ -2245,8 +2272,7 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
       },
       currency: 'USD',
       creatives: [],
-      sandbox: true,
-    };
+      };
   }
 
   const now = new Date();
@@ -2317,7 +2343,6 @@ function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
     },
     currency: 'USD',
     creatives,
-    sandbox: true,
   };
 }
 
@@ -2345,7 +2370,7 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { sandbox?: boolean; pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
+function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
   const req = args as unknown as BuildCreativeArgs;
   const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -2380,8 +2405,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
-      sandbox: true,
-    };
+      };
 
     // Return pricing when account is provided (paid creative agent mode)
     if (req.account) {
@@ -2423,7 +2447,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     // Single format response
@@ -2437,8 +2461,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      sandbox: true,
-    };
+      };
   }
 
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
@@ -2452,7 +2475,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }), sandbox: true };
+      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     const fmtId = targetIds[0];
@@ -2465,8 +2488,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      sandbox: true,
-    };
+      };
   }
 
   return {
@@ -2551,8 +2573,7 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
           expires_at: expiresAt,
         },
       })),
-      sandbox: true,
-    };
+      };
   }
 
   // Single mode
@@ -2575,7 +2596,6 @@ function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
     response_type: 'single',
     previews: [preview],
     expires_at: expiresAt,
-    sandbox: true,
   };
 }
 
@@ -2684,9 +2704,9 @@ function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   // When all records are rejected (accepted === 0), return as errors for
   // proper error signaling.
   if (accepted === 0 && errors.length) {
-    return { accepted: 0, errors, sandbox: true };
+    return { accepted: 0, errors };
   }
-  const result: Record<string, unknown> = { accepted, sandbox: true };
+  const result: Record<string, unknown> = { accepted };
   if (errors.length) result.rejected = errors;
   return result;
 }
@@ -2730,6 +2750,11 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_property_list: handleUpdatePropertyList,
   delete_property_list: handleDeletePropertyList,
   validate_property_delivery: handleValidatePropertyDelivery,
+  create_collection_list: handleCreateCollectionList,
+  get_collection_list: handleGetCollectionList,
+  update_collection_list: handleUpdateCollectionList,
+  list_collection_lists: handleListCollectionLists,
+  delete_collection_list: handleDeleteCollectionList,
   create_content_standards: handleCreateContentStandards,
   list_content_standards: handleListContentStandards,
   get_content_standards: handleGetContentStandards,
@@ -2791,17 +2816,23 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
+
+    // Extract and strip context before passing args to handlers (AdCP requirement:
+    // echo caller's context object back unchanged in every response).
+    const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
+    const { context: callerContext, ...handlerArgs } = rawArgs;
+
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
+      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
     }
 
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
     // async a dry-run operation, and clients expect immediate results.
     const taskField = (request.params as { task?: { ttl?: number } }).task;
-    const isDryRun = (args as Record<string, unknown> | undefined)?.dry_run === true;
+    const isDryRun = rawArgs.dry_run === true;
     const isTaskRequest = taskField !== undefined && !isDryRun;
     if (isTaskRequest && !toolSupportsTask(name)) {
       throw new Error(`Tool "${name}" does not support task augmentation`);
@@ -2811,7 +2842,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let toolResult: CallToolResult;
     let isError = false;
     try {
-      const result = await Promise.resolve(handler((args as ToolArgs) || {}, ctx));
+      const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
@@ -2823,10 +2854,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           details: resultObj.errors!.length > 1
             ? { all_errors: resultObj.errors }
             : undefined,
-        });
+        }, callerContext);
       } else {
+        const response = callerContext !== undefined
+          ? { ...result as object, context: callerContext }
+          : result;
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
+          content: [{ type: 'text', text: JSON.stringify(response) }],
         };
       }
     } catch (error) {
@@ -2835,7 +2869,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
-      });
+      }, callerContext);
     }
 
     // If not task-augmented, return result directly

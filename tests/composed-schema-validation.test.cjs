@@ -327,7 +327,15 @@ async function runTests() {
                   currency: 'USD',
                   is_fixed: true
                 }
-              ]
+              ],
+              reporting_capabilities: {
+                available_reporting_frequencies: ['daily'],
+                expected_delay_minutes: 240,
+                timezone: 'UTC',
+                supports_webhooks: false,
+                available_metrics: ['impressions', 'spend', 'clicks'],
+                date_range_support: 'date_range'
+              }
             }
           ]
         },

@@ -20,6 +20,7 @@ const MAX_MEDIA_BUYS_PER_SESSION = 100;
 const MAX_CREATIVES_PER_SESSION = 500;
 const MAX_PROPERTY_LISTS_PER_SESSION = 100;
 const MAX_CONTENT_STANDARDS_PER_SESSION = 100;
+const MAX_RIGHTS_GRANTS_PER_SESSION = 100;
 
 const sessions = new Map<string, SessionState>();
 
@@ -33,7 +34,9 @@ function createSession(): SessionState {
     governanceChecks: new Map(),
     governanceOutcomes: new Map(),
     propertyLists: new Map(),
+    collectionLists: new Map(),
     contentStandards: new Map(),
+    rightsGrants: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
     usageRecords: [],
@@ -70,7 +73,7 @@ export function getSession(key: string): SessionState {
 
 const MAX_USAGE_RECORDS_PER_SESSION = 1000;
 
-export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, MAX_PROPERTY_LISTS_PER_SESSION, MAX_CONTENT_STANDARDS_PER_SESSION };
+export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, MAX_PROPERTY_LISTS_PER_SESSION, MAX_CONTENT_STANDARDS_PER_SESSION, MAX_RIGHTS_GRANTS_PER_SESSION };
 
 /** Read-only access to all sessions (for cross-session lookups). */
 export function getAllSessions(): ReadonlyMap<string, SessionState> {

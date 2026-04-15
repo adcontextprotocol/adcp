@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { LumaEvent } from '../../src/luma/client.js';
 
 // Mock dependencies before importing the module under test
@@ -50,11 +50,16 @@ describe('Luma Sync', () => {
   let mockPool: { query: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    vi.useFakeTimers({ now: new Date('2026-04-10T12:00:00Z') });
     vi.clearAllMocks();
     mockPool = {
       query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
     };
     vi.mocked(clientModule.getPool).mockReturnValue(mockPool as any);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('createEventFromLuma', () => {

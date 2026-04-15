@@ -232,7 +232,6 @@ export function createAccountLinkingRouter(): Router {
 
         if (alias.rows.length === 0) {
           await client.query('ROLLBACK');
-          client.release();
           return res.status(404).json({ error: 'Email is not linked to your account' });
         }
 
@@ -265,9 +264,6 @@ export function createAccountLinkingRouter(): Router {
           [aliasEmail, userId]
         );
 
-        // DB is staged. Now update WorkOS (source of truth for auth).
-        await workos.userManagement.updateUser({ userId, email: aliasEmail });
-
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK');
@@ -275,6 +271,15 @@ export function createAccountLinkingRouter(): Router {
       } finally {
         client.release();
       }
+
+      // Update WorkOS (source of truth for auth) AFTER the transaction is
+      // committed and the connection is released. This avoids holding a DB
+      // connection idle while waiting on an external network call, which
+      // triggers PgBouncer client_idle_timeout errors.
+      // If WorkOS rejects the update the outer catch handles the error;
+      // the DB change is already committed, and the user.updated webhook
+      // will re-sync on the next WorkOS event if needed.
+      await workos.userManagement.updateUser({ userId, email: aliasEmail });
 
       logger.info(
         { userId, oldPrimary, newPrimary: aliasEmail },

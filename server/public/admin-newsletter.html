@@ -18,6 +18,7 @@
     .status-approved { background: #d1fae5; color: #065f46; }
     .status-sent { background: #dbeafe; color: #1e40af; }
     .recipient-count { font-size: 13px; color: #666; padding: 4px 10px; background: #f1f5f9; border-radius: 12px; }
+    .optin-stats { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }
 
     .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); position: relative; }
     .section.hidden-section { opacity: 0.5; }
@@ -269,12 +270,23 @@
       const hidden = new Set(c.hiddenSections || []);
 
       // Header
-      const badge = recipientCount ? `<span class="recipient-count">${recipientCount.emailCount} recipients</span>` : '';
+      const optIn = recipientCount?.optInStats;
+      const badge = recipientCount
+        ? `<span class="recipient-count">${esc(String(recipientCount.emailCount))} recipients</span>`
+        : '';
+      const optInBar = optIn
+        ? `<div class="optin-stats">${esc(String(optIn.opted_in))} opted in · ${esc(String(optIn.opted_out))} opted out · ${esc(String(optIn.not_asked))} not yet asked</div>`
+        : '';
       document.getElementById('headerActions').innerHTML = `
-        ${badge}
-        <span class="status-badge status-${esc(status)}">${esc(status)}</span>
-        ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendTest()">Send Test</button>` : ''}
-        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+            ${badge}
+            <span class="status-badge status-${esc(status)}">${esc(status)}</span>
+            ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendTest()">Send Test</button>` : ''}
+            ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+          </div>
+          ${optInBar}
+        </div>
       `;
 
       // Subject

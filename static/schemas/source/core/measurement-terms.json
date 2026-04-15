@@ -18,6 +18,15 @@
           "minimum": 0,
           "exclusiveMaximum": 100,
           "description": "Maximum acceptable variance between the billing vendor's count and the other party's count before resolution is triggered (e.g., 10 means a 10% divergence triggers review)."
+        },
+        "measurement_window": {
+          "type": "string",
+          "description": "Which measurement window the billing metric is reconciled against. References a window_id from the product's reporting_capabilities.measurement_windows. For broadcast TV, this is typically 'c7' (live + 7 days DVR). When absent, billing is based on the seller's standard reporting without windowed maturation.",
+          "examples": [
+            "live",
+            "c3",
+            "c7"
+          ]
         }
       },
       "required": ["vendor"],

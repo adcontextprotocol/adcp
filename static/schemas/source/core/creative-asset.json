@@ -123,6 +123,14 @@
       },
       "minItems": 1
     },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number). In broadcast buying, these identifiers tie the creative to rotation instructions and traffic systems. A creative may have multiple identifiers when different systems reference the same asset.",
+      "items": {
+        "$ref": "/schemas/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this creative. Serves as the default provenance for all manifests and assets within this creative. A manifest or asset with its own provenance replaces this object entirely (no field-level merging)."

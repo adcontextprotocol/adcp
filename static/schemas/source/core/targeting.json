@@ -178,6 +178,14 @@
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
     },
+    "collection_list": {
+      "$ref": "/schemas/core/collection-list-ref.json",
+      "description": "Reference to a collection list for including specific collections (programs, shows) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+    },
+    "collection_list_exclude": {
+      "$ref": "/schemas/core/collection-list-ref.json",
+      "description": "Reference to a collection list for excluding specific collections (programs, shows) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+    },
     "age_restriction": {
       "type": "object",
       "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",

@@ -46,7 +46,7 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(54);
+    expect(formats.length).toBe(57);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -66,6 +66,10 @@ describe('reference formats', () => {
     expect(ids).toContain('video_standard');
     expect(ids).toContain('video_vast');
     expect(ids).toContain('video_ctv_preroll_30s');
+    // Broadcast
+    expect(ids).toContain('broadcast_spot_15s');
+    expect(ids).toContain('broadcast_spot_30s');
+    expect(ids).toContain('broadcast_spot_60s');
     // Native
     expect(ids).toContain('native_standard');
     expect(ids).toContain('native_content');
@@ -108,7 +112,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(54);
+    expect(returned.length).toBe(57);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -580,7 +584,7 @@ describe('MCP tool responses include structuredContent', () => {
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(54);
+    expect(structured.formats.length).toBe(57);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {

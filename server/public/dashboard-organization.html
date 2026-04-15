@@ -804,12 +804,20 @@
       window.location.href = '/auth/login?return_to=/organization';
     }
 
+    // Fetch with a timeout to prevent hanging on slow API responses
+    function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+    }
+
     document.addEventListener('DOMContentLoaded', loadHub);
 
     async function loadHub() {
       try {
         // Fetch user data first to resolve which org to show
-        const meRes = await fetch('/api/me', { credentials: 'include' });
+        const meRes = await fetchWithTimeout('/api/me', { credentials: 'include' });
         if (!meRes.ok) {
           if (meRes.status === 401) {
             window.location.href = '/auth/login?return_to=/organization';
@@ -828,9 +836,9 @@
         // Now fetch engagement + profile + health scoped to the selected org
         const orgParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
         const [engRes, profileRes, healthRes] = await Promise.all([
-          fetch(`/api/me/engagement${orgParam}`, { credentials: 'include' }),
-          fetch(`/api/me/member-profile${orgParam}`, { credentials: 'include' }),
-          fetch('/api/me/org-health', { credentials: 'include' }),
+          fetchWithTimeout(`/api/me/engagement${orgParam}`, { credentials: 'include' }),
+          fetchWithTimeout(`/api/me/member-profile${orgParam}`, { credentials: 'include' }),
+          fetchWithTimeout('/api/me/org-health', { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -874,7 +882,7 @@
         let certSummary = null;
         if (currentOrg?.id) {
           try {
-            const certRes = await fetch(`/api/organizations/${currentOrg.id}/certification-summary`, { credentials: 'include' });
+            const certRes = await fetchWithTimeout(`/api/organizations/${currentOrg.id}/certification-summary`, { credentials: 'include' });
             if (certRes.ok) certSummary = await certRes.json();
           } catch (e) { /* ignore cert fetch errors */ }
         }
@@ -885,8 +893,18 @@
         renderHub(data, profileData?.profile || null, currentOrgId, certSummary, healthData, currentOrg?.role || 'member');
       } catch (err) {
         console.error('Hub load error:', err);
-        document.getElementById('hub-loading').innerHTML =
-          '<p>Failed to load. <a href="/organization">Try again</a></p>';
+        const msg = err.name === 'AbortError'
+          ? 'The server is taking too long to respond. Please try again in a moment.'
+          : 'Failed to load.';
+        const loadingEl = document.getElementById('hub-loading');
+        loadingEl.textContent = '';
+        const p = document.createElement('p');
+        p.textContent = msg + ' ';
+        const a = document.createElement('a');
+        a.href = '/organization';
+        a.textContent = 'Try again';
+        p.appendChild(a);
+        loadingEl.appendChild(p);
       }
     }
 

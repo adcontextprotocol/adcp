@@ -36,6 +36,7 @@ import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
+import { autoLinkByVerifiedDomain } from "./db/membership-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
@@ -6600,10 +6601,21 @@ Disallow: /api/admin/
         }
 
         // Get user's WorkOS organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
+        let memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
           statuses: ['active'],
         });
+
+        // Auto-link: if no memberships, check for verified domain match
+        if (memberships.data.length === 0) {
+          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+          if (linked) {
+            memberships = await workos!.userManagement.listOrganizationMemberships({
+              userId: user.id,
+              statuses: ['active'],
+            });
+          }
+        }
 
         // Map memberships to organization details with roles
         // Fetch organization details separately since membership.organization may be undefined

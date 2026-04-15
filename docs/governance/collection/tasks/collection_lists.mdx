@@ -1,0 +1,327 @@
+---
+title: Collection List Management
+description: "Collection list tasks in AdCP create, update, get, list, and delete inclusion and exclusion lists for content programs, combining explicit program references with dynamic genre and content rating filters."
+"og:title": "AdCP — Collection List Management"
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This protocol is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+# Collection list management
+
+Collection lists are managed, cacheable artifacts that express "these collections, filtered by these criteria." They parallel [property lists](/docs/governance/property/tasks/property_lists) but operate on content programs (shows, series, podcasts) rather than technical surfaces (domains, apps).
+
+## Architecture
+
+```
+SETUP TIME                          BID TIME                    REFRESH
+─────────────                       ────────                    ───────
+Buyer creates list ──► Governance    Seller uses cached ◄── Webhook notifies
+  base_collections      agent          collection list        seller to
+  + filters             resolves                              re-fetch
+                        & caches
+```
+
+Collection lists are **setup-time resources**. They are resolved once by the governance agent, cached by sellers, and used in delivery decisions without runtime calls back to the governance agent.
+
+## Tasks overview
+
+| Task | Purpose | Response time |
+|------|---------|---------------|
+| `create_collection_list` | Create a new collection list | Seconds |
+| `get_collection_list` | Fetch list with resolved collections | Seconds (cached) |
+| `update_collection_list` | Modify base collections or filters | Seconds |
+| `list_collection_lists` | List collection lists for a principal | Seconds |
+| `delete_collection_list` | Remove a collection list | Seconds |
+
+## Base collection sources
+
+Collection lists start with a base set of collections selected through three patterns:
+
+### distribution_ids
+
+Select collections by platform-independent identifiers. The primary mechanism for cross-publisher exclusion — an IMDb ID identifies a program regardless of which CTV platform carries it.
+
+```json
+{
+  "selection_type": "distribution_ids",
+  "identifiers": [
+    { "type": "imdb_id", "value": "tt9999901" },
+    { "type": "gracenote_id", "value": "SH000001" },
+    { "type": "eidr_id", "value": "10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C" }
+  ]
+}
+```
+
+### publisher_collections
+
+Select specific collections within a publisher's `adagents.json` by collection ID. Use when the publisher's internal identifiers are known.
+
+```json
+{
+  "selection_type": "publisher_collections",
+  "publisher_domain": "titanstreaming.com",
+  "collection_ids": ["danger_zone", "wild_nights"]
+}
+```
+
+### publisher_genres
+
+Select all collections from a publisher matching genre criteria. Use when excluding entire content categories from a specific publisher.
+
+```json
+{
+  "selection_type": "publisher_genres",
+  "publisher_domain": "streamhaus.com",
+  "genres": ["news"],
+  "genre_taxonomy": "iab_content_3.0"
+}
+```
+
+When `base_collections` is omitted, the list applies filters against the governance agent's entire collection database.
+
+## Filters
+
+Filters narrow the resolved list after base collection selection:
+
+| Filter | Type | Logic | Description |
+|--------|------|-------|-------------|
+| `content_ratings_exclude` | ContentRating[] | OR | Exclude collections with any of these ratings |
+| `content_ratings_include` | ContentRating[] | OR | Include only collections with these ratings |
+| `genres_exclude` | string[] | OR | Exclude collections tagged with any genre |
+| `genres_include` | string[] | OR | Include only collections with any genre |
+| `genre_taxonomy` | string | — | Taxonomy for genre filter values |
+| `kinds` | string[] | OR | Filter to collection kinds (series, publication, event_series, rotation) |
+| `exclude_distribution_ids` | DistributionId[] | OR | Always exclude these specific collections |
+| `production_quality` | string[] | OR | Filter by production quality tier |
+
+**Include vs. exclude**: include filters are allowlists, exclude filters are blocklists. When both are present for the same dimension, include is applied first, then exclude narrows further.
+
+**Example:** A list with `genres_include: ["drama", "comedy"]` and `genres_exclude: ["crime"]` first includes only drama and comedy collections, then removes any tagged as crime. A collection tagged `["drama", "crime"]` is excluded — the exclude filter wins. A collection tagged `["sports"]` is excluded by the include filter (not in the allowed set).
+
+**Content ratings are metadata filters, not content evaluation.** `content_ratings_exclude: [{ system: "tv_parental", rating: "TV-MA" }]` excludes all collections *declared* as TV-MA. It doesn't evaluate individual episodes — that's [content standards](/docs/governance/content-standards/index).
+
+**Genre taxonomy** normalizes genre matching between buyers and sellers. Supported taxonomies: `iab_content_3.0`, `iab_content_2.2`, `gracenote`, `eidr`, `apple_genres`, `google_genres`, `roku`, `amazon_genres`, `custom`. The `custom` value is an escape hatch for publisher-defined taxonomies — buyer and seller negotiate the vocabulary out of band.
+
+## create_collection_list
+
+Create a new collection list on a governance agent.
+
+**Request:**
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/create-collection-list-request.json",
+  "name": "Nova Motors CTV Do Not Air — 2026",
+  "description": "Programs excluded from Nova Motors CTV advertising",
+  "base_collections": [
+    {
+      "selection_type": "distribution_ids",
+      "identifiers": [
+        { "type": "imdb_id", "value": "tt9999901" },
+        { "type": "imdb_id", "value": "tt9999902" }
+      ]
+    },
+    {
+      "selection_type": "publisher_genres",
+      "publisher_domain": "streamhaus.com",
+      "genres": ["news", "crime"],
+      "genre_taxonomy": "iab_content_3.0"
+    }
+  ],
+  "filters": {
+    "content_ratings_exclude": [
+      { "system": "tv_parental", "rating": "TV-MA" },
+      { "system": "bbfc", "rating": "18" }
+    ],
+    "genres_exclude": ["news"],
+    "genre_taxonomy": "iab_content_3.0",
+    "kinds": ["series"]
+  },
+  "brand": { "domain": "novamotors.com" }
+}
+```
+
+**Response:**
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/create-collection-list-response.json",
+  "list": {
+    "list_id": "cl_novamotors_dna_2026",
+    "name": "Nova Motors CTV Do Not Air — 2026",
+    "collection_count": 247,
+    "created_at": "2026-04-07T12:00:00Z",
+    "updated_at": "2026-04-07T12:00:00Z"
+  },
+  "auth_token": "tok_example_store_this_securely"
+}
+```
+
+The `auth_token` is only returned at creation time. Store it — it authorizes sellers to fetch this list.
+
+## get_collection_list
+
+Retrieve a collection list with resolved collections. Sellers call this to fetch and cache the list.
+
+**Request:**
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/get-collection-list-request.json",
+  "list_id": "cl_novamotors_dna_2026",
+  "resolve": true,
+  "pagination": {
+    "max_results": 1000
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/get-collection-list-response.json",
+  "list": {
+    "list_id": "cl_novamotors_dna_2026",
+    "name": "Nova Motors CTV Do Not Air — 2026",
+    "collection_count": 247
+  },
+  "collections": [
+    {
+      "collection_rid": "019abc12-3d4e-7f5a-ab6c-7d8e9f0a1b2c",
+      "name": "Danger Zone",
+      "distribution_ids": [
+        { "type": "imdb_id", "value": "tt9999901" }
+      ],
+      "content_rating": { "system": "tv_parental", "rating": "TV-MA" },
+      "genre": ["comedy", "animation"],
+      "genre_taxonomy": "iab_content_3.0",
+      "kind": "series"
+    }
+  ],
+  "pagination": { "has_more": false },
+  "resolved_at": "2026-04-07T14:00:00Z",
+  "cache_valid_until": "2026-04-14T14:00:00Z",
+  "coverage_gaps": {
+    "genre": [
+      { "type": "imdb_id", "value": "tt9999905" }
+    ]
+  }
+}
+```
+
+**Coverage gaps** report collections included in the list despite missing metadata for a filtered dimension. In this example, `tt9999905` was included but has no genre metadata — the governance agent couldn't confirm it matches the genre filter.
+
+**Caching**: sellers should cache the resolved collections and re-fetch after `cache_valid_until`. The default cache duration is 168 hours (one week) because collection metadata changes less frequently than property metadata.
+
+## update_collection_list
+
+Modify an existing collection list. `base_collections` and `filters` are complete replacements, not patches.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/update-collection-list-request.json",
+  "list_id": "cl_novamotors_dna_2026",
+  "base_collections": [
+    {
+      "selection_type": "distribution_ids",
+      "identifiers": [
+        { "type": "imdb_id", "value": "tt9999901" },
+        { "type": "imdb_id", "value": "tt9999902" },
+        { "type": "imdb_id", "value": "tt9999903" }
+      ]
+    }
+  ],
+  "filters": {
+    "content_ratings_exclude": [
+      { "system": "tv_parental", "rating": "TV-MA" }
+    ]
+  },
+  "webhook_url": "https://governance.pinnacleagency.com/webhooks/collection-lists"
+}
+```
+
+## list_collection_lists
+
+List collection lists for a principal. Returns metadata only, not resolved collections.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/list-collection-lists-request.json",
+  "principal": "ops@pinnacleagency.com",
+  "pagination": { "max_results": 50 }
+}
+```
+
+## delete_collection_list
+
+Remove a collection list. Sellers with cached copies will stop receiving webhook updates.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/delete-collection-list-request.json",
+  "list_id": "cl_novamotors_dna_2026"
+}
+```
+
+## Webhooks
+
+When a collection list's resolved collections change (new programs matched, ratings updated, programs removed), the governance agent sends a webhook notification:
+
+```json
+{
+  "event": "collection_list_changed",
+  "list_id": "cl_novamotors_dna_2026",
+  "list_name": "Nova Motors CTV Do Not Air — 2026",
+  "change_summary": {
+    "collections_added": 3,
+    "collections_removed": 1,
+    "total_collections": 249
+  },
+  "resolved_at": "2026-04-08T10:00:00Z",
+  "cache_valid_until": "2026-04-15T10:00:00Z",
+  "signature": "..."
+}
+```
+
+Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the `signature` before processing.
+
+## Live sports
+
+Live sports is one of the largest CTV brand safety concerns. Collection lists handle it through the `event_series` kind:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/collection/create-collection-list-request.json",
+  "name": "Acme Outdoor — Excluded Sports Events",
+  "base_collections": [
+    {
+      "selection_type": "distribution_ids",
+      "identifiers": [
+        { "type": "gracenote_id", "value": "SP000001" },
+        { "type": "gracenote_id", "value": "SP000002" }
+      ]
+    }
+  ],
+  "filters": {
+    "kinds": ["event_series"],
+    "genres_exclude": ["combat_sports"],
+    "genre_taxonomy": "gracenote"
+  },
+  "brand": { "domain": "acmeoutdoor.com" }
+}
+```
+
+This excludes specific sports programs by Gracenote ID (SP-prefixed for sports) and structurally excludes all combat sports event series. The `event_series` kind filter ensures the list targets live event programming, not documentary series about sports.
+
+## Sharing collection lists with sellers
+
+The pattern matches [property list sharing](/docs/governance/property/index#sharing-property-lists-with-sellers):
+
+1. Create the collection list on a governance agent
+2. Store the `auth_token` from the creation response
+3. Pass `collection_list` or `collection_list_exclude` in targeting overlays
+4. Sellers fetch and cache the resolved list using the auth token
+5. Webhooks notify sellers when the list changes
