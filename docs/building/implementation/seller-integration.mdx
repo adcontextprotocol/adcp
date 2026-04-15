@@ -45,6 +45,10 @@ Publish an `adagents.json` file at your domain root. This file declares your pro
 
 Buyer agents check `adagents.json` to find authorized sales agents, verify relationships, and discover which protocol domains you support.
 
+<Note>
+This shows a simplified structure. The full adagents.json schema uses separate `properties` and `authorized_agents` arrays with a `delegation_type` field. See the [adagents.json tech spec](/docs/governance/property/adagents) for the complete schema.
+</Note>
+
 ### Expose your inventory
 
 Implement `get_products` to describe what you sell. Each product represents a buyable unit — a display placement, a video slot, a sponsored listing, a newsletter sponsorship. Buyer agents call this with a `buying_mode` and optional `brief`:
@@ -141,6 +145,8 @@ Your platform processes the buy according to your normal workflow — whether th
 ## Industry-specific guidance
 
 The core integration steps above apply to all sellers. If you're an **ad network aggregating across multiple platforms**, see the [ad networks deep dive](/docs/sponsored-intelligence/networks) for product modeling, account chains, catalog forwarding, and `adagents.json` for networks.
+
+If you sell inventory for publishers you don't own (as a network or SSP), declare those properties in your [brand.json](/docs/brand-protocol/brand-json#property-relationships) with the appropriate `relationship` value (`delegated` or `ad_network`). This creates bilateral verification — you declare the relationship, and each publisher confirms by authorizing your agent with the matching `delegation_type` in their adagents.json.
 
 For vertical-specific product modeling, pricing patterns, and measurement:
 

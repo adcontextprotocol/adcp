@@ -30,12 +30,13 @@ AdCP faces similar challenges as AI agents begin to buy and sell advertising pro
 
 ## The Solution: AdCP Authorization System
 
-AdCP prevents unauthorized resale through a two-part system:
+AdCP prevents unauthorized resale through a three-part system:
 
-1. **Publisher Authorization**: Publishers explicitly authorize sales agents via `adagents.json`
-2. **Agent Discovery**: Sales agents declare their portfolio via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `media_buy.portfolio` section
+1. **Publisher Authorization**: Publishers explicitly authorize sales agents via `adagents.json` with `delegation_type` (`direct`, `delegated`, or `ad_network`)
+2. **Operator Declaration**: Operators declare their property portfolio in `brand.json` with the `relationship` field, using the same values as `delegation_type`
+3. **Agent Discovery**: Sales agents declare their portfolio via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `media_buy.portfolio` section
 
-This creates a verifiable chain of authorization that buyer agents can validate.
+The first two create bilateral verification — like `ads.txt` + `sellers.json` in programmatic. Both sides must agree for the supply path to be trusted. See [ad networks](/docs/sponsored-intelligence/networks) for the full pattern.
 
 ## How Publishers Authorize Sales Agents
 

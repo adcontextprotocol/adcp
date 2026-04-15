@@ -75,6 +75,10 @@ In programmatic, `sellers.json` is hosted by the seller/exchange and declares wh
 
 Both sides must agree — and the `delegation_type` and `relationship` values should match. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
 
+<Note>
+The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). The values are the same: `direct`, `delegated`, `ad_network`.
+</Note>
+
 ## File Location
 
 Publishers must host the `adagents.json` file at:

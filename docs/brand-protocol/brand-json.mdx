@@ -128,7 +128,7 @@ Each brand in the `brands` array:
 | `names` | array | Yes | Localized names (see below) |
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
-| `properties` | array | No | Digital properties owned by brand |
+| `properties` | array | No | Digital properties associated with this brand |
 | `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
 | `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_types, countries }` |
 | `logos` | array | No | Brand logo assets |
@@ -662,7 +662,7 @@ Visual prohibitions and guardrails — the visual equivalent of `tone.donts`. Th
 
 ## Property definition
 
-Properties are digital touchpoints owned by brands:
+Properties are digital touchpoints associated with brands:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -671,8 +671,9 @@ Properties are digital touchpoints owned by brands:
 | `store` | enum | No | App store (`apple`, `google`, etc.) |
 | `region` | string | No | ISO country code or `global` |
 | `primary` | boolean | No | Is this the primary property? |
+| `relationship` | enum | No | How this brand relates to the property: `owned` (default), `direct`, `delegated`, `ad_network`. Matches `delegation_type` in adagents.json for bilateral verification. See [ad networks](/docs/sponsored-intelligence/networks). |
 
-### Property Types
+### Property types
 
 Matches AdCP property-type enum:
 - `website`
@@ -683,6 +684,19 @@ Matches AdCP property-type enum:
 - `podcast`
 - `radio`
 - `streaming_audio`
+
+### Property relationships
+
+Properties default to `owned` — the brand operates the property directly. For networks and SSPs that sell inventory they don't own, the `relationship` field declares the commercial arrangement:
+
+| Value | Meaning | Example |
+|---|---|---|
+| `owned` | Brand owns and operates this property (default) | Your own website |
+| `direct` | Brand is the direct sales path, even if a third party runs the tech | Publisher's in-house ad team using a vendor's platform |
+| `delegated` | Brand manages monetization — in charge of ad sales | Mediavine managing a food blog |
+| `ad_network` | Brand sells as part of a network/exchange — a path, not the path | PubMatic as an SSP |
+
+This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. The publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). See [ad networks](/docs/sponsored-intelligence/networks) for the bilateral verification pattern.
 
 ## Resolution algorithm
 

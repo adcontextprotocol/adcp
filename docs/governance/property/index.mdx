@@ -22,11 +22,13 @@ Property Governance addresses five distinct concerns:
 | Concern | Question | Owner | Mechanism |
 |---------|----------|-------|-----------|
 | **Property Identity** | What properties exist? | Publishers | `adagents.json` properties array |
-| **Sales Authorization** | Who can sell this property? | Publishers | `adagents.json` authorized_agents |
+| **Sales Authorization** | Who can sell this property? | Publishers | `adagents.json` authorized_agents with `delegation_type` |
 | **Property Data** | What do we know about this property? | Data providers | Governance agents via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) |
 | **Property Selection** | Which properties meet my requirements? | Buyers | Property lists with filters |
 
 The first three are **publisher-side declarations** via adagents.json. The last two are **buyer-side operations** that consume property data from governance agents.
+
+Authorization is bilateral — publishers declare authorized agents in `adagents.json` (with `delegation_type`), and operators declare their property portfolio in `brand.json` (with `relationship`). Both sides must agree for the supply path to be verified. This is the AdCP equivalent of `ads.txt` + `sellers.json`. See [ad networks](/docs/sponsored-intelligence/networks) for how this works.
 
 ## Publisher Side: adagents.json
 
@@ -48,7 +50,8 @@ Publishers declare their properties, authorize sales agents, and reference gover
       "url": "https://agent.example.com",
       "authorized_for": "Official sales agent",
       "authorization_type": "property_ids",
-      "property_ids": ["example_site"]
+      "property_ids": ["example_site"],
+      "delegation_type": "direct"
     }
   ],
   "property_features": [
