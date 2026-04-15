@@ -63,6 +63,7 @@ console.log(`Created media buy ${created.media_buy_id}`);
 
 // Now update it - pause the campaign
 const updateResult = await testAgent.updateMediaBuy({
+  account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
   media_buy_id: created.media_buy_id,
   paused: true
 });
@@ -116,6 +117,7 @@ async def create_and_pause_campaign():
 
     # Now update it - pause the campaign
     update_result = await test_agent.simple.update_media_buy(
+        account={'brand': {'domain': 'acmecorp.com'}, 'operator': 'acmecorp.com'},
         media_buy_id=create_result.media_buy_id,
         paused=True
     )
@@ -134,7 +136,8 @@ asyncio.run(create_and_pause_campaign())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes* | Seller's media buy identifier to update |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
+| `media_buy_id` | string | Yes | Seller's media buy identifier to update |
 | `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
@@ -148,7 +151,7 @@ asyncio.run(create_and_pause_campaign())
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
-`media_buy_id` is required to identify the media buy to update.
+`account` and `media_buy_id` are always required.
 
 ### Reporting Webhook Object
 
@@ -225,6 +228,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_001',
@@ -256,6 +260,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def increase_budget():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
             media_buy_id='mb_12345',
             packages=[
                 {'package_id': 'pkg_001', 'budget': 50000}
@@ -286,6 +291,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
   media_buy_id: 'mb_12345',
   end_time: '2025-09-30T23:59:59Z'
 });
@@ -312,6 +318,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def extend_campaign():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
             media_buy_id='mb_12345',
             end_time='2025-09-30T23:59:59Z'
         )
@@ -339,6 +346,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_001',
@@ -370,6 +378,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def update_targeting():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
             media_buy_id='mb_12345',
             packages=[
                 {
@@ -404,6 +413,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_001',
@@ -437,6 +447,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def replace_creatives():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
             media_buy_id='mb_12345',
             packages=[
                 {
@@ -473,6 +484,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
   media_buy_id: 'mb_12345',
   packages: [
     {
@@ -509,6 +521,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def update_multiple_packages():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
             media_buy_id='mb_12345',
             packages=[
                 {
@@ -541,6 +554,7 @@ Cancel an entire media buy:
 
 ```json
 {
+  "account": { "account_id": "acc_acme_001" },
   "media_buy_id": "mb_12345",
   "canceled": true,
   "cancellation_reason": "Campaign strategy changed"
@@ -586,6 +600,7 @@ Cancel a single package while the media buy remains active:
 
 ```json
 {
+  "account": { "account_id": "acc_acme_001" },
   "media_buy_id": "mb_12345",
   "packages": [
     {
@@ -694,6 +709,7 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
+  "account": { "account_id": "acc_acme_001" },
   "media_buy_id": "mb_12345",
   "packages": [{
     "package_id": "pkg_001",
@@ -706,6 +722,7 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
+  "account": { "account_id": "acc_acme_001" },
   "media_buy_id": "mb_12345",
   "packages": [{
     "package_id": "pkg_001",

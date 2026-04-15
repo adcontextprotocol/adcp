@@ -173,38 +173,23 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 
 ## Request Parameters
 
-### Variant Mode
+All modes use a single flat object with `request_type` as the discriminant.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `request_type` | string | Yes | `"variant"` |
-| `variant_id` | string | Yes | Platform-assigned variant identifier from `get_creative_delivery` |
-| `creative_id` | string | No | Creative identifier for context |
-| `output_format` | string | No | `"url"` (default) or `"html"` |
+| `request_type` | string | Yes | `"single"`, `"batch"`, or `"variant"` |
+| `creative_manifest` | object | Single | Complete creative manifest with all required assets for the format. |
+| `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. Used in single mode. |
+| `inputs` | array | No | Array of input sets for multiple preview variants. Used in single mode. |
+| `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). In batch mode, sets the default for all requests. |
+| `output_format` | string | No | `"url"` (default) or `"html"`. In batch mode, sets the default for all requests. |
+| `item_limit` | integer | No | Maximum catalog items to render per preview variant. Used in single mode. |
+| `template_id` | string | No | Specific template ID for custom format rendering. Used in single mode. |
+| `requests` | array | Batch | Array of 1-50 preview requests. Each item accepts `creative_manifest` (required), `format_id`, `inputs`, `quality`, `output_format`, `item_limit`, and `template_id`. |
+| `variant_id` | string | Variant | Platform-assigned variant identifier from `get_creative_delivery`. |
+| `creative_id` | string | No | Creative identifier for context. Used in variant mode. |
 
-### Single Mode
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `request_type` | string | Yes | `"single"` |
-| `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
-| `creative_manifest` | object | Yes | Complete creative manifest with all required assets for the format. |
-| `inputs` | array | No | Array of input sets for multiple preview variants |
-| `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). If omitted, the agent uses its own default. |
-| `output_format` | string | No | `"url"` (default) or `"html"` |
-| `item_limit` | integer | No | Maximum catalog items to render per preview variant. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large. |
-| `template_id` | string | No | Specific template ID for custom format rendering. Used when a format supports multiple visual templates. |
-
-### Batch Mode
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `request_type` | string | Yes | `"batch"` |
-| `requests` | array | Yes | Array of 1-50 preview requests |
-| `quality` | string | No | Default quality for all requests: `"draft"` or `"production"` |
-| `output_format` | string | No | Default output format for all requests |
-
-Each item in `requests` also accepts `quality`, `output_format`, `item_limit`, and `template_id` to override batch-level defaults for that individual preview.
+**Required** column values: *Single* = required when `request_type` is `"single"`, *Batch* = required when `"batch"`, *Variant* = required when `"variant"`.
 
 ### Input Sets
 
