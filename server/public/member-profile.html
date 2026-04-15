@@ -1150,6 +1150,14 @@
     let currentOrgId = null;
     let currentOrgName = null;
 
+    // Fetch with a timeout to prevent hanging on slow API responses
+    function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+    }
+
     // Get org ID from query parameter
     function getOrgIdFromUrl() {
       const params = new URLSearchParams(window.location.search);
@@ -1199,7 +1207,7 @@
     async function loadProfile() {
       try {
         // Fetch user info first - needed for org selection and sidebar
-        const meResponse = await fetch('/api/me', { credentials: 'include' });
+        const meResponse = await fetchWithTimeout('/api/me', { credentials: 'include' });
         if (meResponse.status === 401) {
           const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
           window.location.href = `/auth/login?redirect=${returnUrl}`;
@@ -1224,7 +1232,7 @@
         }
 
         const apiUrl = orgId ? `/api/me/member-profile?org=${encodeURIComponent(orgId)}` : '/api/me/member-profile';
-        const response = await fetch(apiUrl, {
+        const response = await fetchWithTimeout(apiUrl, {
           credentials: 'include'
         });
 
@@ -1260,19 +1268,9 @@
         currentOrgName = data.organization_name;
         hasActiveSubscription = data.has_active_subscription || false;
 
-        // Get billing info for sidebar
-        let isSubscribed = false;
-        let isPersonal = false;
-        try {
-          const billingResponse = await fetch(`/api/organizations/${currentOrgId}/billing`, { credentials: 'include' });
-          if (billingResponse.ok) {
-            const billingData = await billingResponse.json();
-            isSubscribed = billingData.subscription?.status === 'active';
-            isPersonal = billingData.is_personal || false;
-          }
-        } catch (e) {
-          console.warn('Could not load billing info for sidebar:', e);
-        }
+        // Determine is_personal from /api/me org data (already fetched, no extra call)
+        const currentOrgInfo = meData?.organizations?.find(o => o.id === currentOrgId);
+        const isPersonal = currentOrgInfo?.is_personal || false;
 
         // Individual accounts use the community profile as their single profile
         if (isPersonal) {
@@ -1280,15 +1278,27 @@
           return;
         }
 
-        // Initialize dashboard sidebar
+        // Initialize dashboard sidebar immediately (don't block on billing)
         if (typeof DashboardNav !== 'undefined') {
           DashboardNav.init({
             showOrgSwitcher: false,
             currentOrgName: currentOrgName || 'Organization',
             isPersonal: isPersonal,
-            isSubscribed: isSubscribed,
+            isSubscribed: false,
             showAdmin: isAdmin
           });
+        }
+
+        // Fetch billing info in the background for sidebar subscription badge
+        if (currentOrgId) {
+          fetchWithTimeout(`/api/organizations/${currentOrgId}/billing`, { credentials: 'include' }, 30000)
+            .then(r => r.ok ? r.json() : null)
+            .then(billingData => {
+              if (billingData?.subscription?.status === 'active' && typeof DashboardNav !== 'undefined') {
+                DashboardNav.setOrgStatus({ isPersonal, isSubscribed: true });
+              }
+            })
+            .catch(() => { /* billing info is non-critical for profile editing */ });
         }
 
         document.getElementById('loading').style.display = 'none';
@@ -1325,7 +1335,10 @@
       } catch (error) {
         console.error('Load profile error:', error);
         document.getElementById('loading').style.display = 'none';
-        showError('Failed to load your profile. Please try again.');
+        const msg = error.name === 'AbortError'
+          ? 'The server is taking too long to respond. Please try again in a moment.'
+          : 'Failed to load your profile. Please try again.';
+        showError(msg);
       }
     }
 

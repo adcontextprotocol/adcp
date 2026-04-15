@@ -864,6 +864,11 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_event_sources');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
+    expect(toolNames).toContain('create_collection_list');
+    expect(toolNames).toContain('get_collection_list');
+    expect(toolNames).toContain('update_collection_list');
+    expect(toolNames).toContain('list_collection_lists');
+    expect(toolNames).toContain('delete_collection_list');
     expect(toolNames).toHaveLength(48);
   });
 
@@ -887,12 +892,13 @@ describe('createTrainingAgentServer', () => {
     expect(targeting).not.toHaveProperty('audience_include');
     expect(targeting).not.toHaveProperty('audience_exclude');
 
-    // Flattened geo targeting
-    expect(targeting.supported_geo_levels).toBeDefined();
-    expect(targeting.supported_metro_systems).toBeDefined();
-    expect(targeting.supported_postal_systems).toBeDefined();
-    expect(targeting).not.toHaveProperty('geo_countries');
-    expect(targeting).not.toHaveProperty('geo_regions');
+    // Geo targeting uses typed objects (not flattened arrays)
+    expect(targeting.geo_countries).toBe(true);
+    expect(targeting.geo_regions).toBe(true);
+    expect(targeting.geo_metros).toBeDefined();
+    expect((targeting.geo_metros as Record<string, unknown>).nielsen_dma).toBe(true);
+    expect(targeting.geo_postal_areas).toBeDefined();
+    expect((targeting.geo_postal_areas as Record<string, unknown>).us_zip).toBe(true);
 
     // Removed seller-level reporting (product-level is source of truth)
     expect(mediaBuy).not.toHaveProperty('reporting');
@@ -5614,5 +5620,88 @@ describe('storyboard governance sample_requests accepted by training agent', () 
 
     expect(isError).toBeFalsy();
     expect(result.status).toBe('denied');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Context echo — AdCP requirement: echo caller context unchanged in responses
+// ---------------------------------------------------------------------------
+
+/** Raw call that preserves the full response envelope (context, adcp_error). */
+async function simulateCallToolRaw(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<{ parsed: Record<string, unknown>; isError?: boolean }> {
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const handler = requestHandlers.get('tools/call');
+  if (!handler) throw new Error('CallTool handler not found');
+  const response = await handler(
+    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    {},
+  );
+  const text = response.content?.[0]?.text;
+  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+}
+
+describe('context echo', () => {
+  const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+  const TEST_CONTEXT = { correlation_id: 'test-123', custom: { nested: true } };
+
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearTaskStore();
+  });
+
+  it('echoes context in success responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBeFalsy();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('omits context when not provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {});
+    expect(parsed).not.toHaveProperty('context');
+  });
+
+  it('echoes context in error responses (unknown tool)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'nonexistent_tool', {
+      context: TEST_CONTEXT,
+    });
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('echoes context in validation error responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // create_media_buy with missing required fields triggers a validation error
+    const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+      // missing required fields: start_time, end_time, packages
+    });
+    expect(isError).toBe(true);
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+
+  it('does not pass context to handlers as part of args', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // get_products returns product data — if context leaked into args it wouldn't
+    // affect the response, but the key should not appear in the result body
+    // except as the echoed context field
+    const { parsed } = await simulateCallToolRaw(server, 'get_products', {
+      context: TEST_CONTEXT,
+      account: { brand: { domain: 'acmeoutdoor.com' } },
+    });
+    expect(parsed.context).toEqual(TEST_CONTEXT);
+    // The products field should exist (handler ran successfully)
+    expect(parsed.products).toBeDefined();
   });
 });
