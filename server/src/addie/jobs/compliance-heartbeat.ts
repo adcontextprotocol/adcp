@@ -8,11 +8,12 @@
 import { comply, complianceResultToDbInput, type ComplyOptions } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
-import { notifyComplianceChange } from '../../notifications/compliance.js';
+import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
+import { processAgentBadges } from '../../services/badge-issuance.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
@@ -103,6 +104,49 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             source: 'compliance-notification',
             errorMessage: `Status transition notification failed for ${agent.agent_url}: ${notifyError instanceof Error ? notifyError.message : String(notifyError)}`,
           });
+        }
+      }
+
+      // Process AAO Verified badges
+      if (storyboardStatuses.length > 0) {
+        try {
+          // Resolve membership org for this agent
+          const orgResult = await query(
+            `SELECT mp.workos_organization_id
+             FROM member_profiles mp
+             WHERE mp.agents @> $1::jsonb
+             ORDER BY mp.created_at ASC
+             LIMIT 1`,
+            [JSON.stringify([{ url: agent.agent_url }])],
+          );
+          const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
+
+          // Use the storyboard IDs that were tested as the declared set
+          const declaredStoryboards = storyboardStatuses.map(s => s.storyboard_id);
+
+          const badgeResult = await processAgentBadges(
+            complianceDb,
+            agent.agent_url,
+            declaredStoryboards,
+            storyboardStatuses,
+            dbInput.overall_status === 'passing',
+            membershipOrgId,
+          );
+
+          // Notify on badge changes
+          if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: badgeResult.issued,
+                revoked: badgeResult.revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification notification');
+            }
+          }
+        } catch (badgeError) {
+          logger.warn({ badgeError, agentUrl: agent.agent_url }, 'Badge processing failed (non-fatal)');
         }
       }
     } catch (error) {

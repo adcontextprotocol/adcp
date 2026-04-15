@@ -133,6 +133,101 @@ export function deriveStoryboardStatuses(
   return entries;
 }
 
+// ── Verification Status Derivation ───────────────────────────────
+
+export type BadgeRole = 'sales' | 'buying' | 'creative' | 'governance' | 'signals' | 'measurement';
+
+/**
+ * Maps storyboard tracks to badge roles. A storyboard's track determines
+ * which role badge it counts toward. Core and error_handling storyboards
+ * are not role-specific — they're tested but don't determine role eligibility.
+ */
+const TRACK_TO_ROLE: Record<string, BadgeRole> = {
+  media_buy: 'sales',
+  creative: 'creative',
+  signals: 'signals',
+  governance: 'governance',
+  campaign_governance: 'governance',
+  audiences: 'signals',
+  products: 'sales',
+  si: 'sales',
+};
+
+export interface VerificationResult {
+  verified: boolean;
+  roles: Array<{
+    role: BadgeRole;
+    verified: boolean;
+    storyboards: string[];
+    passing: string[];
+    failing: string[];
+  }>;
+}
+
+/**
+ * Determine which badge roles an agent qualifies for based on
+ * declared storyboards and their pass/fail status.
+ *
+ * An agent is verified for a role when ALL declared storyboards
+ * that map to that role are passing. The declared storyboards
+ * come from the agent's get_adcp_capabilities response.
+ */
+export function deriveVerificationStatus(
+  declaredStoryboards: string[],
+  storyboardStatuses: StoryboardStatusEntry[],
+): VerificationResult {
+  if (declaredStoryboards.length === 0) {
+    return { verified: false, roles: [] };
+  }
+
+  // Build a status map from the latest compliance results
+  const statusMap = new Map<string, StoryboardStatusEntry>();
+  for (const entry of storyboardStatuses) {
+    statusMap.set(entry.storyboard_id, entry);
+  }
+
+  // Group declared storyboards by role
+  const roleStoryboards = new Map<BadgeRole, string[]>();
+  for (const sbId of declaredStoryboards) {
+    const sb = getStoryboard(sbId);
+    if (!sb) continue;
+
+    const role = TRACK_TO_ROLE[sb.track || ''];
+    if (!role) continue; // core/error_handling storyboards don't map to a role badge
+
+    const existing = roleStoryboards.get(role) || [];
+    existing.push(sbId);
+    roleStoryboards.set(role, existing);
+  }
+
+  const roles: VerificationResult['roles'] = [];
+
+  for (const [role, storyboards] of roleStoryboards) {
+    const passing: string[] = [];
+    const failing: string[] = [];
+
+    for (const sbId of storyboards) {
+      const status = statusMap.get(sbId);
+      if (status?.status === 'passing') {
+        passing.push(sbId);
+      } else {
+        failing.push(sbId);
+      }
+    }
+
+    roles.push({
+      role,
+      verified: failing.length === 0 && passing.length > 0,
+      storyboards,
+      passing,
+      failing,
+    });
+  }
+
+  const verified = roles.some(r => r.verified);
+  return { verified, roles };
+}
+
 // ── DB Adapter ────────────────────────────────────────────────────
 
 /**

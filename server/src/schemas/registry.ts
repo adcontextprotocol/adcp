@@ -225,8 +225,20 @@ export const AgentComplianceSchema = z
     headline: z.string().nullable(),
     monitoring_paused: z.boolean().optional(),
     check_interval_hours: z.number().int().optional(),
+    verified: z.boolean().optional(),
+    verified_roles: z.array(z.string()).optional(),
   })
   .openapi("AgentCompliance");
+
+export const VerificationBadgeSchema = z
+  .object({
+    role: z.enum(["sales", "buying", "creative", "governance", "signals", "measurement"]),
+    verified_at: z.string(),
+    verified_storyboards: z.array(z.string()),
+    verified_protocol_version: z.string().nullable(),
+    badge_url: z.string().optional(),
+  })
+  .openapi("VerificationBadge");
 
 export const AgentComplianceDetailSchema = z
   .object({
@@ -242,8 +254,19 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    verified: z.boolean().optional(),
+    verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
   .openapi("AgentComplianceDetail");
+
+export const AgentVerificationSchema = z
+  .object({
+    agent_url: z.string(),
+    verified: z.boolean(),
+    badges: z.array(VerificationBadgeSchema),
+    registry_url: z.string().optional(),
+  })
+  .openapi("AgentVerification");
 
 export const StoryboardStatusSchema = z
   .object({

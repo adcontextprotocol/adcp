@@ -194,6 +194,124 @@ export async function notifyComplianceChange(input: ComplianceChangeInput): Prom
   }
 }
 
+// ── Verification Badge Notifications ─────────────────────────────
+
+interface VerificationChangeInput {
+  agentUrl: string;
+  issued: Array<{ role: string; storyboards: string[] }>;
+  revoked: Array<{ role: string; reason: string }>;
+}
+
+/**
+ * Send notifications when an agent's AAO Verified status changes.
+ * Called from the heartbeat job after badge processing.
+ */
+export async function notifyVerificationChange(input: VerificationChangeInput): Promise<void> {
+  const { agentUrl, issued, revoked } = input;
+  const name = agentDisplayName(agentUrl);
+
+  // Post to Slack channel
+  if (CHANNEL_ID && isSlackConfigured()) {
+    try {
+      for (const badge of issued) {
+        const message: SlackBlockMessage = {
+          text: `AAO Verified: ${name} earned ${badge.role} badge`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*AAO Verified:* \`${name}\` is now a verified ${badge.role} agent. Storyboards: ${badge.storyboards.join(', ')}`,
+              },
+            },
+          ],
+        };
+        await sendChannelMessage(CHANNEL_ID, message);
+      }
+      for (const badge of revoked) {
+        const message: SlackBlockMessage = {
+          text: `AAO Verified revoked: ${name} lost ${badge.role} badge`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*AAO Verified revoked:* \`${name}\` lost its ${badge.role} badge. ${badge.reason}`,
+              },
+            },
+          ],
+        };
+        await sendChannelMessage(CHANNEL_ID, message);
+      }
+    } catch (error) {
+      logger.error({ error, agentUrl }, 'Failed to send verification channel notification');
+    }
+  }
+
+  // DM the agent's owner
+  const userIds = await resolveAgentOwnerUserIds(agentUrl);
+  const agentPageUrl = `/registry?tab=agents`;
+
+  for (const userId of userIds) {
+    try {
+      for (const badge of issued) {
+        await notifyUser({
+          recipientUserId: userId,
+          type: 'verification_earned',
+          referenceId: agentUrl,
+          referenceType: 'agent',
+          title: `Your agent ${name} is now an AAO Verified ${badge.role} agent.`,
+          url: agentPageUrl,
+        });
+      }
+      for (const badge of revoked) {
+        await notifyUser({
+          recipientUserId: userId,
+          type: 'verification_lost',
+          referenceId: agentUrl,
+          referenceType: 'agent',
+          title: `Your agent ${name} lost its AAO Verified ${badge.role} badge. ${badge.reason}`,
+          url: agentPageUrl,
+        });
+      }
+    } catch (error) {
+      logger.error({ error, userId, agentUrl }, 'Failed to send verification DM');
+    }
+  }
+
+  // Emit change feed events
+  try {
+    for (const badge of issued) {
+      await eventsDb.writeEvent({
+        event_type: 'agent.verification_earned',
+        entity_type: 'agent',
+        entity_id: agentUrl,
+        payload: {
+          agent_url: agentUrl,
+          role: badge.role,
+          verified_storyboards: badge.storyboards,
+        },
+        actor: 'pipeline:compliance-heartbeat',
+      });
+    }
+    for (const badge of revoked) {
+      await eventsDb.writeEvent({
+        event_type: 'agent.verification_lost',
+        entity_type: 'agent',
+        entity_id: agentUrl,
+        payload: {
+          agent_url: agentUrl,
+          role: badge.role,
+          reason: badge.reason,
+        },
+        actor: 'pipeline:compliance-heartbeat',
+      });
+    }
+  } catch (error) {
+    logger.error({ error, agentUrl }, 'Failed to emit verification change feed event');
+  }
+}
+
 /**
  * Send extended outage alerts for agents that have been failing for 7+ days.
  * Called separately from the heartbeat job (e.g., weekly check).
