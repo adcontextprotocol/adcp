@@ -2345,6 +2345,14 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'industry-gatherings.html');
     });
 
+    // Editorial is a content pipeline, not a working group — send visitors to Perspectives
+    this.app.get("/working-groups/editorial", (_req, res) => {
+      res.redirect(301, '/latest/perspectives');
+    });
+    this.app.get("/working-groups/editorial/manage", (_req, res) => {
+      res.redirect(301, '/dashboard/content');
+    });
+
     this.app.get("/working-groups/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'working-groups/detail.html');
     });

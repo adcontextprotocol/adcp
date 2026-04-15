@@ -96,7 +96,7 @@ async function notifyWorkingGroupOfPendingContent(
                 text: 'Review Content',
                 emoji: true,
               },
-              url: `https://agenticadvertising.org/my-content.html`,
+              url: `https://agenticadvertising.org/dashboard/content?status=pending_review`,
               action_id: 'review_content',
             },
           ],

@@ -1463,7 +1463,10 @@
         }
 
         renderWorkingGroup();
-        loadPosts();
+        // Governance committees (e.g. editorial) use content admin, not WG posts
+        if (currentGroup.committee_type !== 'governance') {
+          loadPosts();
+        }
         loadDocuments();
 
         // Load events for chapters
