@@ -3037,7 +3037,6 @@ export function createMemberToolHandlers(
 
     const complyOptions: ComplyOptions = {
       test_session_id: `quality-eval-${Date.now()}`,
-      dry_run: true,
       auth: buildAuthOption(resolved),
     };
     if (tracks) complyOptions.tracks = tracks;
@@ -3319,7 +3318,6 @@ export function createMemberToolHandlers(
     try {
       const authOption = buildAuthOption(resolved);
       const result = await runStoryboard(resolved.resolvedUrl, sb, {
-        dry_run: dryRun,
         ...(authOption && { auth: authOption }),
       });
 
@@ -3384,7 +3382,6 @@ export function createMemberToolHandlers(
       const authOption = buildAuthOption(resolved);
       const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, stepId, {
         context,
-        dry_run: dryRun,
         ...(authOption && { auth: authOption }),
       });
 

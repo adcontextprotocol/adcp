@@ -62,7 +62,6 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
-        dry_run: true,
         timeout_ms: 60_000,
         auth,
         userAgent: AAO_UA_COMPLIANCE,

@@ -4003,7 +4003,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
 
         const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, {
-          dry_run: dry_run ?? true,
           ...(auth && { auth }),
           ...(context && { context }),
         });
@@ -4068,7 +4067,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const auth = await complianceDb.resolveOwnerAuth(agentUrl);
 
         const complyResult = await comply(agentUrl, {
-          dry_run: true,
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
           ...(auth && { auth }),
@@ -4161,13 +4159,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
-            dry_run: true,
             timeout_ms: 90_000,
             storyboards: storyboardIds,
             ...(auth && { auth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
-            dry_run: true,
             timeout_ms: 90_000,
             storyboards: storyboardIds,
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },

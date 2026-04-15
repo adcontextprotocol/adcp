@@ -105,11 +105,12 @@ describe('getStoryboard', () => {
     expect(getStoryboard('nonexistent')).toBeUndefined();
   });
 
-  it('creative_template has 3 phases covering the stateless workflow', () => {
+  it('creative_template has 4 phases covering the stateless workflow', () => {
     const sb = getStoryboard('creative_template')!;
-    expect(sb.phases.length).toBe(3);
+    expect(sb.phases.length).toBe(4);
 
     const phaseIds = sb.phases.map((p) => p.id);
+    expect(phaseIds).toContain('capability_discovery');
     expect(phaseIds).toContain('format_exposure');
     expect(phaseIds).toContain('preview');
     expect(phaseIds).toContain('build');
