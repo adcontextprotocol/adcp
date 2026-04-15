@@ -1403,6 +1403,7 @@ export interface Meeting {
   slack_thread_ts?: string;
   slack_announcement_ts?: string;
   created_by_user_id?: string;
+  metadata?: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }

@@ -9,6 +9,7 @@ export interface DigestContent {
   fromTheInside: DigestInsiderGroup[];
   voices: DigestMemberPerspective[];
   newMembers: DigestNewMember[];
+  specInsight?: DigestSpecInsight | null;
   shareableTake?: string;
   whatShipped?: DigestShipment[];
   takeActions?: DigestTakeAction[];
@@ -24,6 +25,14 @@ export interface DigestContent {
   customSections?: import('../newsletters/config.js').CustomSection[];
   /** Paste-your-own mode: markdown body that replaces all auto-generated sections */
   pastedContent?: string;
+}
+
+export interface DigestSpecInsight {
+  id: string;
+  title: string;
+  body: string;
+  relatedSpecSections: string[];
+  sourceContext?: string;
 }
 
 export interface DigestShipment {

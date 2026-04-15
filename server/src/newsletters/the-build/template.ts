@@ -157,6 +157,18 @@ export function renderBuildEmail(
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 
+  // Spec Insight
+  if (content.specInsight && !isSectionHidden(content, 'specInsight')) {
+    sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Spec insight</h2>`);
+    sections.push(`
+    <div style="background: ${BUILD_PALETTE.light}; border-left: 3px solid ${BUILD_PALETTE.primary}; padding: 16px; border-radius: 4px; margin: 0 0 8px 0;">
+      <p style="font-size: 15px; font-weight: 600; color: ${BUILD_PALETTE.dark}; margin: 0 0 8px 0;">${escapeHtml(content.specInsight.title)}</p>
+      <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0;">${escapeHtml(content.specInsight.body)}</p>
+      ${content.specInsight.relatedSpecSections.length > 0 ? `<p style="font-size: 12px; color: #888; margin: 8px 0 0 0;">Related: ${content.specInsight.relatedSpecSections.map(s => escapeHtml(s)).join(', ')}</p>` : ''}
+    </div>`);
+    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
+  }
+
   // Contributor Spotlight
   if (content.contributorSpotlight.length > 0 && !isSectionHidden(content, 'contributorSpotlight')) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Contributor spotlight</h2>`);

@@ -226,6 +226,9 @@ function buildPromptMarkdown(content: unknown): string {
       }
     }
   }
+  if (c.specInsight) {
+    sections.push(`## Something worth thinking about\n\n**${c.specInsight.title}**\n\n${c.specInsight.body}${c.specInsight.relatedSpecSections.length > 0 ? `\n\n*Related: ${c.specInsight.relatedSpecSections.join(', ')}*` : ''}`);
+  }
   if (c.voices.length > 0) {
     sections.push('## Voices');
     for (const item of c.voices) {
@@ -295,6 +298,19 @@ const PROMPT_SECTIONS: SectionDescriptor[] = [
         ${g.meetingRecaps.length > 0 ? `<br><span style="font-size:12px;color:#888;">${g.meetingRecaps.length} recap(s)</span>` : ''}
         ${g.activeThreads.length > 0 ? `<span style="font-size:12px;color:#888;margin-left:8px;">${g.activeThreads.length} thread(s)</span>` : ''}
       </div>`).join('');
+    },
+  },
+  {
+    key: 'specInsight',
+    label: 'Spec Insight',
+    hint: 'A protocol question worth thinking about',
+    renderHtml: (c) => {
+      const si = (c as DigestContent).specInsight;
+      if (!si) return '<em style="color:#888;">No spec insight this edition</em>';
+      return `<div style="background:#f0f4ff;border-left:3px solid #2563eb;padding:12px;border-radius:4px;">
+        <strong>${escapeHtml(si.title)}</strong>
+        <br><span style="font-size:13px;color:#666;">${escapeHtml(si.body.slice(0, 250))}${si.body.length > 250 ? '...' : ''}</span>
+      </div>`;
     },
   },
   {

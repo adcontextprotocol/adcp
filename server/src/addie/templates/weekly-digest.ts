@@ -1,6 +1,7 @@
 import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailRecipient } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
+import { isSectionHidden } from '../../newsletters/config.js';
 import { pickNudge } from '../services/digest-nudge.js';
 import DOMPurify from 'isomorphic-dompurify';
 
@@ -296,6 +297,17 @@ export function renderDigestEmail(
     <!-- From the Inside -->
     ${renderInsiderHtml(content.fromTheInside, userWorkingGroupNames, t, segment)}
 
+    <!-- Spec Insight -->
+    ${content.specInsight && !isSectionHidden(content, 'specInsight') ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Something worth thinking about</h2>
+    <div style="background: #f0f4ff; border-left: 3px solid #2563eb; padding: 16px; border-radius: 4px; margin: 0 0 8px 0;">
+      <p style="font-size: 15px; font-weight: 600; color: #1a1a2e; margin: 0 0 8px 0;">${escapeHtml(content.specInsight.title)}</p>
+      <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0;">${escapeHtml(content.specInsight.body)}</p>
+      ${content.specInsight.relatedSpecSections.length > 0 ? `<p style="font-size: 12px; color: #888; margin: 8px 0 0 0;">Related: ${content.specInsight.relatedSpecSections.map(s => escapeHtml(s)).join(', ')}</p>` : ''}
+    </div>
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
     <!-- Voices -->
     ${content.voices.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Voices</h2>
@@ -547,6 +559,16 @@ function renderDigestText(
     }
   }
 
+  if (content.specInsight) {
+    lines.push('--- SOMETHING WORTH THINKING ABOUT ---', '');
+    lines.push(content.specInsight.title);
+    lines.push(content.specInsight.body);
+    if (content.specInsight.relatedSpecSections.length > 0) {
+      lines.push(`Related: ${content.specInsight.relatedSpecSections.join(', ')}`);
+    }
+    lines.push('');
+  }
+
   if (content.voices.length > 0) {
     lines.push('--- VOICES ---', '');
     for (const item of content.voices) {
@@ -664,6 +686,15 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*From the inside*\n\n${insiderText}` },
+    });
+  }
+
+  // Spec Insight
+  if (content.specInsight) {
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Something worth thinking about*\n\n*${escapeSlackMrkdwn(content.specInsight.title)}*\n${escapeSlackMrkdwn(content.specInsight.body)}` },
     });
   }
 

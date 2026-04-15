@@ -15,6 +15,7 @@ export interface BuildContent {
   decisions: BuildDecision[];
   whatShipped: BuildRelease[];
   deepDive: BuildDeepDive | null;
+  specInsight: BuildSpecInsight | null;
   helpNeeded: BuildHelpItem[];
   contributorSpotlight: BuildContributor[];
   editorsNote?: string;
@@ -36,6 +37,7 @@ export interface BuildContent {
     helpNeeded?: BuildHelpItem[];
     contributorSpotlight?: BuildContributor[];
     events?: BuildEvent[];
+    specInsight?: BuildSpecInsight[];
   };
   /** IDs of items the editor dismissed (won't reappear on regenerate) */
   dismissedIds?: string[];
@@ -68,6 +70,14 @@ export interface BuildDeepDive {
   slug: string;
   body: string;
   relatedDocs: string[];
+}
+
+export interface BuildSpecInsight {
+  id: string;
+  title: string;
+  body: string;
+  relatedSpecSections: string[];
+  sourceContext?: string;
 }
 
 export interface BuildHelpItem {
