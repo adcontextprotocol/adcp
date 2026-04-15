@@ -23,7 +23,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { serveHtmlWithConfig } from '../utils/html-config.js';
 import * as db from '../db/network-health-db.js';
 
 const logger = createLogger('network-health');
@@ -41,21 +40,11 @@ const alertRuleSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Router } {
-  const pageRouter = Router();
+export function createNetworkHealthApiRouter(): Router {
   const apiRouter = Router();
 
   // All API routes require authentication
   apiRouter.use(requireAuth);
-
-  // ── Admin page ─────────────────────────────────────────────────
-
-  pageRouter.get('/network-health', requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, 'admin-network-health.html').catch((err) => {
-      logger.error({ err }, 'Error serving network health page');
-      res.status(500).send('Internal server error');
-    });
-  });
 
   // ── Read API ───────────────────────────────────────────────────
 
@@ -188,5 +177,5 @@ export function createNetworkHealthRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  return { pageRouter, apiRouter };
+  return apiRouter;
 }

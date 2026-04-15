@@ -102,7 +102,7 @@ import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
-import { createNetworkHealthRouter } from "./routes/network-health.js";
+import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
@@ -1006,9 +1006,8 @@ export class HTTPServer {
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
     this.app.use('/api/registry', catalogApiRouter);
 
-    // Mount network health routes (dashboard + public API)
-    const { pageRouter: networkHealthPageRouter, apiRouter: networkHealthApiRouter } = createNetworkHealthRouter();
-    this.app.use('/admin', networkHealthPageRouter);              // Page: /admin/network-health
+    // Mount network health API routes (page route is in createAdminRouter)
+    const networkHealthApiRouter = createNetworkHealthApiRouter();
     this.app.use('/api/network-health', networkHealthApiRouter);  // API: /api/network-health/*
 
     // Public brand.json serving — single source of truth from the brands table.
