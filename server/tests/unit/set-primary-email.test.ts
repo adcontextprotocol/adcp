@@ -53,13 +53,10 @@ describe('Set primary email endpoint', () => {
     expect(source).toMatch(/FOR UPDATE/);
   });
 
-  it('does DB swap before WorkOS update so rollback is clean', () => {
-    // WorkOS updateUser must appear after the DB operations but before COMMIT
-    const beginIdx = source.indexOf("'BEGIN'");
+  it('does WorkOS update after DB transaction to avoid holding connections during network calls', () => {
     const commitIdx = source.indexOf("'COMMIT'");
-    const workosIdx = source.indexOf('workos.userManagement.updateUser', beginIdx);
-    expect(workosIdx).toBeGreaterThan(beginIdx);
-    expect(workosIdx).toBeLessThan(commitIdx);
+    const workosIdx = source.indexOf('workos.userManagement.updateUser');
+    expect(workosIdx).toBeGreaterThan(commitIdx);
   });
 
   it('rolls back on error', () => {

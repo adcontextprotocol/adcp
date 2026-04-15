@@ -132,20 +132,21 @@ Before sending geo targeting, buyers should verify the seller supports the reque
   "media_buy": {
     "execution": {
       "targeting": {
-        "supported_geo_levels": ["countries", "regions", "metros", "postal_areas"],
-        "supported_metro_systems": ["nielsen_dma"],
-        "supported_postal_systems": ["us_zip"]
+        "geo_countries": true,
+        "geo_regions": true,
+        "geo_metros": {
+          "nielsen_dma": true
+        },
+        "geo_postal_areas": {
+          "us_zip": true
+        }
       }
     }
   }
 }
 ```
 
-The `supported_geo_levels` array declares which geographic targeting levels the seller supports. `supported_metro_systems` and `supported_postal_systems` specify which classification systems are accepted within those levels. If you request a system the seller doesn't declare, expect a validation error.
-
-:::note
-The per-field booleans `geo_countries`, `geo_regions` and nested objects `geo_metros`, `geo_postal_areas` are deprecated in 3.0 and will be removed in 4.0. Use the flat array fields above instead.
-:::
+The `geo_metros` and `geo_postal_areas` objects use boolean properties to indicate which systems are supported. If you request a system the seller doesn't declare, expect a validation error.
 
 ## Full targeting example
 

@@ -195,9 +195,10 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported_geo_levels` | string[] | Geographic targeting levels: `countries`, `regions`, `metros`, `postal_areas` |
-| `supported_metro_systems` | string[] | Metro area systems: `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2` |
-| `supported_postal_systems` | string[] | Postal code systems: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz` |
+| `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
+| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
+| `geo_metros` | object | Metro area targeting with system-specific support |
+| `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
@@ -205,10 +206,6 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
-
-:::note
-The per-field booleans `geo_countries`, `geo_regions` and the nested objects `geo_metros`, `geo_postal_areas` are deprecated in 3.0. Use the flattened array fields above instead.
-:::
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
@@ -221,7 +218,7 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `geometry` | boolean | Pre-computed GeoJSON geometry (buyer provides the polygon) |
 | `transport_modes` | string[] | Transport modes supported for isochrones: `driving`, `walking`, `cycling`, `public_transport` |
 
-**supported_metro_systems** values:
+**geo_metros** specifies which metro classification systems are supported:
 
 | System | Description |
 |--------|-------------|
@@ -230,7 +227,7 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `uk_itl2` | UK ITL Level 2 regions |
 | `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
 
-**supported_postal_systems** values:
+**geo_postal_areas** specifies which postal code systems are supported:
 
 | System | Description |
 |--------|-------------|
@@ -410,8 +407,8 @@ This tells buyers:
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `"postal_areas"` in `supported_geo_levels` + `"us_zip"` in `supported_postal_systems` → Buyer can send US ZIP codes, seller MUST honor them
-- `"metros"` in `supported_geo_levels` + `"nielsen_dma"` in `supported_metro_systems` → Buyer can send DMA codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.content_standards` object present → Seller MUST apply content standards when provided
 - `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
 - `media_buy.conversion_tracking` object present → Seller MUST support `sync_event_sources` and `log_event`
@@ -454,7 +451,7 @@ if (result.supported_protocols.includes('media_buy')) {
   }
 
   // Check geo targeting
-  if (mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip')) {
+  if (mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
     console.log('US ZIP code targeting supported');
   }
 
@@ -508,7 +505,7 @@ async function findCompatibleSellers(sellers, requirements) {
 
     // Check geo targeting requirement
     if (requirements.postalCodeTargeting) {
-      if (!mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip')) {
+      if (!mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
         continue;
       }
     }
@@ -579,7 +576,7 @@ const buy = await client.createMediaBuy({
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it
-      ...(mediaBuy.execution?.targeting?.supported_postal_systems?.includes('us_zip') && {
+      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
         geo_postal_areas: [{
           system: 'us_zip',
           values: ['10001', '10002', '10003', '10004', '10005']
@@ -662,9 +659,16 @@ const buy = await client.createMediaBuy({
         "simid": true
       },
       "targeting": {
-        "supported_geo_levels": ["countries", "regions", "metros", "postal_areas"],
-        "supported_metro_systems": ["nielsen_dma"],
-        "supported_postal_systems": ["us_zip", "gb_outward", "ca_fsa"],
+        "geo_countries": true,
+        "geo_regions": true,
+        "geo_metros": {
+          "nielsen_dma": true
+        },
+        "geo_postal_areas": {
+          "us_zip": true,
+          "gb_outward": true,
+          "ca_fsa": true
+        },
         "language": true,
         "keyword_targets": {
           "supported_match_types": ["broad", "phrase", "exact"]

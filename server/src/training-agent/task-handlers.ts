@@ -1934,9 +1934,10 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
       },
       execution: {
         targeting: {
-          supported_geo_levels: ['countries', 'regions', 'metros', 'postal_areas'],
-          supported_metro_systems: ['nielsen_dma'],
-          supported_postal_systems: ['us_zip'],
+          geo_countries: true,
+          geo_regions: true,
+          geo_metros: { nielsen_dma: true },
+          geo_postal_areas: { us_zip: true },
           language: true,
           keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
           negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
