@@ -11,7 +11,10 @@
     },
     "status": {
       "type": "string",
-      "enum": ["accepted", "findings"],
+      "enum": [
+        "accepted",
+        "findings"
+      ],
       "description": "'accepted' means state updated with no issues. 'findings' means issues were detected."
     },
     "committed_budget": {
@@ -42,7 +45,11 @@
             "additionalProperties": true
           }
         },
-        "required": ["category_id", "severity", "explanation"],
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
         "additionalProperties": false
       }
     },
@@ -60,8 +67,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["outcome_id", "status"],
+  "required": [
+    "outcome_id",
+    "status"
+  ],
   "additionalProperties": false
 }

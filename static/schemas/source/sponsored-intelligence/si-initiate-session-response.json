@@ -47,10 +47,16 @@
       },
       "description": "Errors during session initiation"
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id", "session_status"],
+  "required": [
+    "session_id",
+    "session_status"
+  ],
   "additionalProperties": true
 }

@@ -85,6 +85,7 @@
           }
         },
         "required": [
+          "signal_id",
           "signal_agent_segment_id",
           "name",
           "description",
