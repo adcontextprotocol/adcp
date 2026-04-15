@@ -87,7 +87,7 @@ This data flow bridges the identity and context paths: the TMPX token is produce
 
 The TMPX token does not violate structural separation because:
 
-- The router never sees the decrypted contents — it passes the opaque `macros` field through.
+- The router never sees the decrypted contents — it passes the opaque `tmpx` field through.
 - The publisher substitutes the value into tracking URLs without interpreting it.
 - Only the buyer's cluster master can decrypt the token (HPKE `mode_auth` with the master's private key).
 - The `country` routing directive on the Identity Match request is stripped by the router before forwarding — the buyer agent never sees which country the user is in.

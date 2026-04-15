@@ -29,7 +29,7 @@
     },
     "tmpx": {
       "type": "string",
-      "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url(ciphertext). Publishers MUST treat this value as opaque pass-through data."
+      "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data."
     }
   },
   "required": [

@@ -434,7 +434,7 @@ If a parser encounters an unknown Type ID, it MUST stop parsing and treat the re
 
 ### Wire format
 
-The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The `kid` (key identifier, max 8 characters) is opaque — it MUST NOT encode geographic or deployment information. It maps to a cluster master private key internally.
+The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The ciphertext MUST use unpadded base64url encoding (RFC 4648 section 5, no `=` padding characters). Padding characters break URL query parameters where `=` is the key-value delimiter. The `kid` (key identifier, max 8 characters) is opaque — it MUST NOT encode geographic or deployment information. It maps to a cluster master private key internally.
 
 **Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably.
 
