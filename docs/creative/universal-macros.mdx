@@ -164,13 +164,25 @@ For audio formats with content context:
 | `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
+### TMP Exposure Tracking
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{TMPX}` | TMP exposure token (HPKE-encrypted) | `k1.dG1weC1leGFtcGxl...` |
+
+The `{TMPX}` macro carries an encrypted exposure token from the [Identity Match](/docs/trusted-match/specification) response. It contains the user's resolved identity tokens encrypted via HPKE, enabling the buyer's impression pixel to log per-user exposures for real-time frequency capping. Publishers substitute `{TMPX}` into tracking URLs exactly like other macros. The token is opaque — publishers MUST NOT parse, log, or make decisions based on its value.
+
+See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and key management.
+
 ### AXE Integration (Legacy)
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{AXEM}` | AXE contextual metadata (encoded blob) | `eyJjb250ZXh0IjoiLi4uIn0=` |
 
-The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), contextual data is delivered through the creative manifest in the Context Match response rather than an encoded macro.
+The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), this is replaced by:
+- **Structured creative assets** move to the `creative_manifest` field on the [Offer](/docs/trusted-match/specification#offer).
+- **Per-user exposure tracking** uses the [`{TMPX}`](#tmp-exposure-tracking) macro from Identity Match.
 
 ### Catalog Item Macros
 
@@ -365,6 +377,8 @@ Not all macros are available in all inventory types. Check format specifications
 | **Audio Content** | | | | | | | | | |
 | `{STATION_ID}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `{COLLECTION_NAME}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **TMP Exposure** | | | | | | | | | |
+| `{TMPX}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅§ | ✅ | ✅ | ✅ |
 
 **Legend**:
 - ✅ = Available
@@ -372,6 +386,7 @@ Not all macros are available in all inventory types. Check format specifications
 - ✅* = In-app only (not mobile web)
 - ✅† = When location permission granted
 - ✅‡ = Often restricted due to privacy regulations (may return empty or masked value)
+- ✅§ = DOOH uses play-log-based reporting rather than pixel URLs
 
 **Important Notes**:
 - Privacy macros (`{LIMIT_AD_TRACKING}`, `{DEVICE_ID}`) may return empty values based on user privacy settings

@@ -17,7 +17,7 @@ This page maps AXE concepts to TMP equivalents and describes how to run both in 
 |---|---|---|
 | `axei` (include segment) | Context Match offer | Package matched the content |
 | `axex` (exclude segment) | Package absent from `eligible_package_ids` | User fails suppression list, audience rule, or buyer-side frequency check |
-| `axem` (macro data) | Creative manifest | TMP returns structured assets instead of base64-encoded blobs |
+| `axem` (macro data) | Creative manifest + Offer `macros` + `{TMPX}` | Structured assets move to the creative manifest; dynamic key-values pass through Offer `macros`; per-user exposure tracking uses the `{TMPX}` macro from Identity Match |
 | Orchestrator AXE endpoint | TMP Router | Single binary with two isolated code paths |
 | Prebid Real-Time Data (RTD) module | TMP Prebid module | Replaces vendor-specific RTD modules with a single module |
 | `axe_integrations` URL | `trusted_match` capability | In `get_adcp_capabilities` response |
@@ -38,7 +38,7 @@ This page maps AXE concepts to TMP equivalents and describes how to run both in 
 
 **Before (AXE):** Enable the orchestrator's Prebid RTD module. Accept `axei`/`axex`/`axem` key-values. Create GAM line items targeting those key-values.
 
-**After (TMP):** Deploy a TMP Router (or use the TMP Prebid module). Accept offers and eligibility from the router. Set GAM targeting key-values from offer signals. GAM line items target `adcp_pkg` instead of `axei`/`axex`.
+**After (TMP):** Deploy a TMP Router (or use the TMP Prebid module). Accept offers and eligibility from the router. Set GAM targeting key-values from offer signals and pass through Offer `macros` for dynamic creative rendering. GAM line items target `adcp_pkg` instead of `axei`/`axex`.
 
 **Key difference:** The router replaces the orchestrator's RTD module. GAM line items reference package IDs instead of opaque segment IDs.
 
@@ -57,7 +57,7 @@ During migration, publishers can run AXE and TMP simultaneously:
 3. **Existing media buys** continue using AXE segments until they expire
 4. **GAM line items** for both: AXE line items target `axei`/`axex`, TMP line items target `adcp_pkg`
 
-TMP does not currently maintain its own frequency state, so there is no risk of double-counting during parallel operation. Frequency enforcement remains buyer-side via Identity Match eligibility responses. When the buyer's exposure store is updated from delivery reports (`get_media_buy_delivery`), it reflects impressions from both systems.
+TMP provides real-time per-user exposure tracking via the [`{TMPX}` macro](/docs/trusted-match/specification#tmpx-exposure-tokens). During parallel operation, both AXE and TMP impressions feed into the buyer's exposure store — AXE via the orchestrator's reporting, TMP via the buyer's impression pixel receiving encrypted TMPX tokens. There is no risk of double-counting because the buyer's exposure store deduplicates by user token and package ID regardless of source.
 
 ### Cutover
 

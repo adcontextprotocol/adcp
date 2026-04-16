@@ -26,6 +26,10 @@
       "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
       "minimum": 0,
       "maximum": 86400
+    },
+    "tmpx": {
+      "type": "string",
+      "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data."
     }
   },
   "required": [

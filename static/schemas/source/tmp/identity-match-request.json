@@ -68,6 +68,11 @@
         "type": "string"
       },
       "minItems": 1
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal."
     }
   },
   "required": [

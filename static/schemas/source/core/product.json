@@ -377,9 +377,33 @@
                 "type": "boolean",
                 "description": "Whether this provider handles identity match for this product.",
                 "default": false
+              },
+              "countries": {
+                "type": "array",
+                "description": "ISO 3166-1 alpha-2 country codes this provider serves for identity match. The router uses this to select the correct regional provider based on the request's country field. Required when identity_match is true.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$"
+                },
+                "minItems": 1
+              },
+              "uid_types": {
+                "type": "array",
+                "description": "Identity types this regional provider can resolve. The router filters providers whose uid_types includes the request's uid_type. Required when identity_match is true.",
+                "items": {
+                  "$ref": "/schemas/enums/uid-type.json"
+                },
+                "minItems": 1
               }
             },
             "required": ["agent_url"],
+            "if": {
+              "properties": { "identity_match": { "const": true } },
+              "required": ["identity_match"]
+            },
+            "then": {
+              "required": ["agent_url", "countries", "uid_types"]
+            },
             "additionalProperties": true
           },
           "minItems": 1

@@ -59,6 +59,9 @@ Publishers configure which providers the router calls. This is an operational re
 | `endpoint` | URL | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
 | `context_match` | bool | Provider handles Context Match requests |
 | `identity_match` | bool | Provider handles Identity Match requests |
+| `countries` | List\<string\> | ISO 3166-1 alpha-2 country codes this provider serves. Required when `identity_match` is true. |
+| `uid_types` | List\<string\> | Identity types this provider can resolve (from `uid-type` enum). Required when `identity_match` is true. |
+
 Additional configuration per provider:
 
 - **Property scoping**: Which properties or property groups this provider serves
@@ -103,7 +106,13 @@ When the publisher sends a Context Match request:
 
 ### Identity Match fan-out
 
-The same pattern applies. The router fans out to all providers with `identity_match` capability for the relevant properties, merges eligibility results, and returns a unified response.
+The router filters Identity Match providers by country and identity type:
+
+1. The router reads the `country` field from the request (a routing directive, not an identity signal).
+2. It selects providers whose `countries` list includes that country code.
+3. It further filters to providers whose `uid_types` list includes the request's `uid_type`.
+4. It **strips the `country` field** before forwarding the request to the buyer agent.
+5. It fans out to all matching providers in parallel, merges eligibility results, and returns a unified response.
 
 Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `ttl_sec` across providers and SHOULD log a warning.
 
@@ -171,13 +180,27 @@ tls:
   key: /etc/tmp/tls.key
 
 providers:
-  - id: acme-outdoor
-    endpoint: https://tmp.acmeoutdoor.example/v1
+  # US cluster — UID2, RampID, ID5
+  - id: acme-outdoor-us
+    endpoint: https://us.tmp.acmeoutdoor.example/v1
     context_match: true
     identity_match: true
+    countries: [US]
+    uid_types: [uid2, rampid, id5]
     timeout_ms: 40
     properties: ["01916f3a-9c4e-7000-8000-000000000010"]
 
+  # EU cluster — EUID, ID5
+  - id: acme-outdoor-eu
+    endpoint: https://eu.tmp.acmeoutdoor.example/v1
+    context_match: true
+    identity_match: true
+    countries: [DE, FR, IT, ES, NL, BE, AT, PL, SE, DK, FI, IE, PT, GR, CZ, RO, HU, BG, HR, SK, SI, LT, LV, EE, CY, MT, LU, GB]
+    uid_types: [euid, id5]
+    timeout_ms: 40
+    properties: ["01916f3a-9c4e-7000-8000-000000000010"]
+
+  # Context-only enrichment provider (no identity match, no country scoping needed)
   - id: enrichment-co
     endpoint: https://enrichment.example/v1
     context_match: true
