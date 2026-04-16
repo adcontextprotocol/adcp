@@ -49,7 +49,7 @@
     },
     "signature": {
       "type": "string",
-      "description": "Cryptographic signature of the webhook payload, signed with the agent's private key. Recipients MUST verify this signature."
+      "description": "HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes} using the secret exchanged out-of-band when the seller registered with the governance agent. Recipients MUST verify against the X-ADCP-Signature and X-ADCP-Timestamp headers using timing-safe comparison and MUST reject requests where |now - timestamp| > 300 seconds. The body copy of this field is a convenience only — the headers are authoritative. See docs/building/implementation/security#webhook-security."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

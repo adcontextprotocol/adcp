@@ -61,9 +61,11 @@ Webhook signature verification and replay prevention are defined in [Push Notifi
 
 - **Algorithm**: HMAC-SHA256 only
 - **Signed message**: `{unix_timestamp}.{raw_http_body_bytes}` — never re-serialize the JSON
+- **Timestamp source**: The `{unix_timestamp}` in the signed message MUST be the exact ASCII integer sent in the `X-ADCP-Timestamp` header. Signers and verifiers MUST NOT derive it from any body field.
 - **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
 - **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
 - **Minimum secret length**: 32 bytes
+- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Any body-level `signature` field is a convenience copy and MUST NOT be trusted over the headers.
 
 ### Verification order
 
@@ -81,10 +83,24 @@ Verify in this order to minimize computation on invalid requests:
 
 ### Webhook URL validation (SSRF)
 
-Buyer-provided `push_notification_config.url` is an SSRF vector. Publishers MUST:
-- Reject non-HTTPS URLs
-- Reject URLs targeting private/reserved IP ranges (RFC 1918, RFC 6598, link-local)
-- Resolve DNS and validate the resolved IP is not private before connecting
+Any URL that a buyer, seller, or governance agent provides for another party to fetch is an SSRF vector. This includes `push_notification_config.url`, collection-list `webhook_url`, TMP provider `endpoint`, `adagents.json` `authoritative_location`, and `reporting_bucket.setup_instructions`.
+
+Before any outbound fetch to a counterparty-controlled URL, fetchers MUST:
+
+1. **Reject non-HTTPS URLs** in production.
+2. **Resolve the hostname** and reject the fetch if the resolved IP falls in any reserved range:
+   - IPv4: RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), RFC 6598 CGNAT (`100.64.0.0/10`), loopback (`127.0.0.0/8`), link-local (`169.254.0.0/16` — explicitly includes `169.254.169.254` used by AWS/GCP/Azure/Alibaba instance metadata), broadcast (`255.255.255.255`), `0.0.0.0/8`, multicast (`224.0.0.0/4`).
+   - IPv6: loopback (`::1`), unique-local (`fc00::/7`), link-local (`fe80::/10`), IPv4-mapped (`::ffff:0:0/96` — the most common bypass, mapping reserved IPv4 into IPv6), multicast (`ff00::/8`), and the AWS IMDSv2 fd00:ec2::254 address.
+3. **Pin the connection to the validated IP.** DNS-based filtering alone is vulnerable to DNS rebinding: an attacker serves a public IP at validation time and a private IP at connect time. Fetchers MUST either (a) pass the validated IP directly to the TCP connect call and set the `Host:` header from the URL, or (b) validate the socket's post-handshake peer address against the reserved-range list before sending any request body. Re-resolving DNS without pinning is not sufficient.
+4. **Refuse to follow redirects** when fetching counterparty-controlled URLs (a 30x response lets the origin redirect to a reserved address that bypassed the initial check).
+5. **Cap response size and timeouts.** Recommended: 5 MB body cap, 10 s connect, 10 s read.
+6. **Do not echo fetch errors to the agent that supplied the URL.** Detailed error messages (connection refused vs. timed out vs. TLS failure) are a side-channel for probing internal network topology.
+
+Feature-specific security sections extend these rules with their own lifecycle and content-handling requirements:
+- [Offline reporting buckets](/docs/media-buy/media-buys/optimization-reporting#security-considerations-for-offline-delivery) — IAM-layer prefix scoping, credential revocation on account status change.
+- [Collection lists](/docs/governance/collection/tasks/collection_lists#security-considerations) — `auth_token` scope and revocation, distribution-ID validation, webhook signature normative rules.
+- [Managed networks `authoritative_location`](/docs/governance/property/managed-networks#security-considerations) — validator fetch semantics, change detection, relationship termination.
+- [TMP provider registration](/docs/trusted-match/specification#provider-registration-security) — dynamic registration authentication, router-to-provider auth, `/health` info-leakage rules.
 
 ## Authentication Best Practices
 

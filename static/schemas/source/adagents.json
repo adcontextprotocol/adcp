@@ -16,7 +16,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data."
+          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data. Because one deploy can change authorization across every publisher in the network, validators MUST cap response size, refuse redirects on the fetch, enforce short timeouts, and serve the previously cached file on transient 5xx. See docs/governance/property/managed-networks#security-considerations."
         },
         "last_updated": {
           "type": "string",

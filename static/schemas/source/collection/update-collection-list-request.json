@@ -41,7 +41,7 @@
     "webhook_url": {
       "type": "string",
       "format": "uri",
-      "description": "Update the webhook URL for list change notifications (set to empty string to remove)"
+      "description": "Update the webhook URL for list change notifications (set to empty string to remove). Governance agents MUST validate this URL against SSRF per docs/building/implementation/security#webhook-url-validation-ssrf."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

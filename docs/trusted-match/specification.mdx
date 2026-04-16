@@ -256,6 +256,16 @@ Providers have three lifecycle states:
 
 State transitions are immediate in static configuration (reload the config) and take effect within one refresh cycle in dynamic registration.
 
+### Provider registration security
+
+**Endpoint URL validation (SSRF).** Both static configuration and dynamic registration MUST validate provider `endpoint` URLs against the canonical [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS only in production, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no redirects. Because a router calls the provider on every request, DNS rebinding is the primary risk: routers MUST either pin the TCP connection to the IP that passed validation or re-validate the socket's post-handshake peer address before sending the request body. Re-resolving DNS without pinning is not sufficient.
+
+**Dynamic registration authentication.** The dynamic registration API is a privileged surface; unauthenticated registration lets an attacker point publisher traffic at arbitrary HTTPS endpoints. Routers exposing dynamic registration MUST authenticate callers (mTLS or short-lived OAuth 2.0 tokens; static API keys only with IP allow-listing) and SHOULD apply per-principal rate limits on mutations and a cap on total registered providers per publisher to bound registration-storm abuse.
+
+**Router-to-provider auth.** The existing "deployment-specific (mTLS, API key, etc.)" language in [Request Authentication](#request-authentication) sets the mechanism; the minimum bar is that production providers MUST NOT accept anonymous calls. Static bearer tokens MAY be used only with IP allow-listing.
+
+**`/health` endpoint.** The `/health` endpoint providers are encouraged to expose for router liveness MAY be unauthenticated, but the response MUST NOT leak internal state. Providers SHOULD return `200` with body `{"status": "ok"}` when ready and `503` when not ready; other status codes are bugs. Providers MUST NOT differentiate status codes or response bodies by internal subsystem (for example, a distinct code when the database is down versus when the identity cache is down is a side-channel that maps external probing onto internal topology). Version strings, build hashes, internal hostnames, and dependency statuses MUST NOT appear in the body. Rate-limit the endpoint (recommended: 1 req/sec per source IP) so it doesn't become a DoS amplifier.
+
 ## Product Integration
 
 Publishers declare TMP support on their products via the `trusted_match` field. Buyers see this on `get_products` and know what TMP capabilities are available.

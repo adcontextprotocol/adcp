@@ -793,6 +793,18 @@ Each file contains one media buy delivery per line (JSONL), row (CSV/Parquet/ORC
 - Validate file integrity using checksums if provided
 - Monitor for missing files and alert on gaps
 
+### Security considerations for offline delivery
+
+Offline files sit at rest for `file_retention_days`, so a misconfigured IAM policy leaks historical reporting across tenants. The [general security controls](/docs/building/implementation/security) apply; the offline-specific requirements:
+
+- **Scope access at the IAM layer, not by obscurity.** Buyer read access MUST be scoped to `{bucket}/{prefix}/*` (S3 bucket policy condition, GCS conditional IAM binding on `resource.name.startsWith(...)`, or Azure SAS scoped to the prefix). A bucket-wide read grant is non-compliant even when the seller only writes under one prefix per account.
+- **Scope listing as well as reads.** Prefix scoping MUST cover both object-level operations (`s3:GetObject`) and listing (`s3:ListBucket` with an `s3:prefix` condition). A policy that scopes `GetObject` to the prefix but leaves `ListBucket` unscoped lets a buyer enumerate other tenants' prefix names — a cross-tenant isolation failure even without read access to their objects. The same applies to GCS `storage.objects.list` and Azure `list` SAS permissions.
+- **Revoke access when the account closes.** When the seller emits an `account.status` transition to `inactive`, `suspended`, or `closed`, the seller MUST stop honoring the associated credentials, and buyers SHOULD treat that status change as the trigger to remove matching IAM trust on their end. A seller IAM role left granted to a decommissioned bucket is a lateral-movement risk.
+
+PII scrubbing requirements (see [above](#pii-scrubbing-for-gdpr-ccpa)) apply to offline files identically — scrub at the collection layer, not at delivery, because the files accumulate at rest.
+
+`setup_instructions` is a seller-provided URL. It is operator-facing documentation, not agent-consumable content. Buyer agents MUST NOT auto-fetch the URL; they SHOULD surface it to a human operator. If an implementation chooses to fetch it (for example, to preview the target before showing it to the operator), apply [webhook URL SSRF validation](/docs/building/implementation/security#webhook-url-validation-ssrf), and the fetched content MUST NOT be passed into an LLM context without indirect-prompt-injection guarding — seller-controlled text in this field can contain instructions to rotate credentials, change billing, or alter downstream agent behavior.
+
 ## Data Reconciliation
 
 **The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics.** Polling is always available as a baseline. When the seller also supports push-based delivery (webhooks or offline buckets), those methods provide timely data but `get_media_buy_delivery` remains the reconciliation path.
