@@ -163,14 +163,22 @@ Provider registration is an out-of-band process. After establishing a media buy 
 
 ```json
 {
-  "provider_id": "acme-outdoor-buyer",
-  "endpoint": "https://tmp.acmeoutdoor.example/v1",
+  "provider_id": "acme-outdoor-us",
+  "endpoint": "https://us.tmp.acmeoutdoor.example/v1",
   "context_match": true,
-  "identity_match": true
+  "identity_match": true,
+  "countries": ["US"],
+  "uid_types": ["uid2", "rampid", "id5"]
 }
 ```
 
+When you support `identity_match`, you MUST declare `countries` (which country codes you serve) and `uid_types` (which identity types you resolve). The router uses these to filter Identity Match fan-out — without them, the router cannot route requests to your provider.
+
 You can support either or both endpoints. Context Match only means contextual targeting without frequency capping. Identity Match only means the publisher evaluates context locally from your media buy's targeting rules and calls you only for frequency checks. Both means full TMP integration.
+
+### Health endpoint
+
+You SHOULD expose `GET /health` at your base URL. Return HTTP `200` with `{"status": "ok"}` when ready. The publisher's router uses this for pre-flight checks and monitoring. It is not called during request fan-out — only on a background interval.
 
 ## Error Handling
 

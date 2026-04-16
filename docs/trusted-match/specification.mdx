@@ -227,12 +227,34 @@ The router SHOULD exclude providers that return errors from the merged response 
 
 TMP providers are registered with the router via publisher configuration. The publisher specifies which providers the router should call, along with each provider's endpoint and supported capabilities. This is an operational relationship — the publisher trusts the provider to run code in their ad decisioning path.
 
+The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/tmp/provider-registration.json`).
+
 | Setting | Type | Required | Description |
 |---|---|---|---|
-| `context_match` | bool | Yes | Provider supports Context Match requests. |
-| `identity_match` | bool | No | Provider supports Identity Match requests. Default: false. |
+| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, and cache keys. |
+| `endpoint` | URL | Yes | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
+| `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
+| `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
+| `countries` | List\<string\> | Conditional | ISO 3166-1 alpha-2 country codes this provider serves. MUST be present and non-empty when `identity_match` is true. |
+| `uid_types` | List\<string\> | Conditional | Identity types this provider can resolve (from `uid-type` enum). MUST be present and non-empty when `identity_match` is true. |
+| `properties` | List\<UUID\> | No | Property RIDs this provider serves. When absent, the provider serves all properties. |
+| `timeout_ms` | integer | No | Per-provider timeout in milliseconds. Must be ≤ the router's overall `latency_budget_ms`. Default: 50. |
+| `priority` | integer | No | Provider ordering for merge conflict resolution. Lower values = higher priority. Default: 0. |
+| `status` | enum | No | Provider lifecycle status: `active`, `inactive`, or `draining`. Default: `active`. |
+
+At least one of `context_match` or `identity_match` must be true — a provider that handles neither operation is invalid. When `identity_match` is true, `countries` and `uid_types` are **required** — the router cannot perform country-partitioned identity routing without them. The schema enforces both constraints.
 
 Providers MAY support any combination of `context_match` and `identity_match`. A provider that supports only `context_match` is a pure enrichment or contextual targeting provider. A provider that supports only `identity_match` is a frequency capping provider — the publisher evaluates context locally from the media buy's targeting rules and calls the buyer only for identity checks.
+
+### Provider lifecycle
+
+Providers have three lifecycle states:
+
+- **Active**: Provider receives requests normally.
+- **Draining**: Provider stops receiving new requests. In-flight requests complete normally. Use this when taking a provider offline for maintenance — the router finishes current work without starting new fan-outs to this provider.
+- **Inactive**: Provider is skipped entirely. Use this to disable a provider without removing its configuration.
+
+State transitions are immediate in static configuration (reload the config) and take effect within one refresh cycle in dynamic registration.
 
 ## Product Integration
 
@@ -476,6 +498,7 @@ Publishers MUST NOT parse, decrypt, or make decisions based on TMPX values. The 
 
 - JSON over HTTP/2 POST. All implementations MUST use this transport.
 - Each provider exposes two path-based endpoints under its base URL: `POST /context` for Context Match and `POST /identity` for Identity Match. The router dispatches requests by path, not by inspecting the message body.
+- Each provider SHOULD expose `GET /health` at its base URL. The endpoint returns HTTP `200` with a JSON body `{"status": "ok"}` when the provider is ready to accept requests. Any non-`200` response or connection failure means the provider is not ready. Routers and operators use this for pre-flight checks and monitoring — it is not called in the request hot path.
 - The `type` field in each message identifies the message for deserialization — routers and agents use it to select the correct schema, not for routing. Agents MUST validate that the `type` field matches the endpoint: `context_match_request` on `/context`, `identity_match_request` on `/identity`. A mismatch MUST be rejected with HTTP `400`.
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.

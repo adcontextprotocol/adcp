@@ -1520,6 +1520,10 @@
         "error": {
           "$ref": "/schemas/tmp/error.json",
           "description": "Error response from a TMP provider or router when a request cannot be processed"
+        },
+        "provider-registration": {
+          "$ref": "/schemas/tmp/provider-registration.json",
+          "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
         }
       },
       "operations": {
