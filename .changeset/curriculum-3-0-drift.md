@@ -1,0 +1,4 @@
+---
+---
+
+Update learning modules for AdCP 3.0 drift. Adds teaching for version negotiation (`adcp_major_version` / `VERSION_UNSUPPORTED`), pricing_options[] selection, measurement_terms negotiation and `TERMS_REJECTED` recovery, `GOVERNANCE_DENIED` with `governance_context` and `purchase_type`, `pending_creatives` → `pending_start` → `active` lifecycle, required `reporting_capabilities`, object-presence capability principle, broadcast `industry_identifiers` and tracker-slot reasoning, `preview_creative` batch/variant modes, `update_media_buy` account requirement, and `agency_estimate_number` for broadcast reconciliation. Adds migration `404_curriculum_3_0_criterion_ids.sql` with semantic criterion IDs so the recertification engine can target rc.3 cohorts on specific 3.0 paradigm shifts. Issue #2227.
