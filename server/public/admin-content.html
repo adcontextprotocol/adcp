@@ -155,8 +155,17 @@
     .coauthor-tag { display: inline-flex; align-items: center; gap: var(--space-1); background: var(--color-gray-100); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-size: var(--text-xs); }
     .coauthor-tag .remove { cursor: pointer; color: var(--color-text-muted); font-weight: bold; }
     .coauthor-tag .remove:hover { color: var(--color-error-600); }
-    .coauthor-add { display: flex; gap: var(--space-2); }
+    .coauthor-add { display: flex; gap: var(--space-2); position: relative; }
     .coauthor-add input { flex: 1; }
+    .coauthor-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--color-bg-card); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); max-height: 240px; overflow-y: auto; z-index: 100; display: none; margin-top: var(--space-1); }
+    .coauthor-results.show { display: block; }
+    .coauthor-result { padding: var(--space-2_5); cursor: pointer; border-bottom: var(--border-1) solid var(--color-gray-100); }
+    .coauthor-result:hover { background: var(--color-gray-50); }
+    .coauthor-result:last-child { border-bottom: none; }
+    .coauthor-result .name { font-weight: var(--font-medium); color: var(--color-text-heading); }
+    .coauthor-result .org { font-size: var(--text-sm); color: var(--color-text-secondary); }
+    .coauthor-result.empty { color: var(--color-text-muted); cursor: default; }
+    .coauthor-result.empty:hover { background: transparent; }
 
     /* Tags input */
     .tags-display { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
@@ -459,9 +468,10 @@
           <label style="font-weight: var(--font-semibold); font-size: var(--text-sm); margin-bottom: var(--space-2); display: block;">Co-Authors</label>
           <div class="coauthor-list" id="coauthorList"></div>
           <div class="coauthor-add">
-            <input type="text" id="coauthorName" placeholder="Display name">
-            <button type="button" class="btn btn-small btn-secondary" onclick="addCoauthor()">Add</button>
+            <input type="text" id="coauthorName" placeholder="Search by name..." autocomplete="off" oninput="searchCoauthors()" onblur="setTimeout(hideCoauthorResults, 200)">
+            <div id="coauthorResults" class="coauthor-results"></div>
           </div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Only people with a public AAO profile appear in search. If you can't find a co-author, ask them to make their profile public in <a href="/community/profile-edit" target="_blank">profile settings</a>.</div>
         </div>
 
         <div class="modal-buttons">
@@ -895,7 +905,7 @@
       if (isPendingView) {
         actions = `<button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>`;
       } else {
-        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
+        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
         const isRejected = item.status === 'rejected';
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
@@ -1474,29 +1484,92 @@
       `).join('');
     }
 
-    async function addCoauthor() {
+    let coauthorSearchTimeout = null;
+    let coauthorSearchResults = [];
+
+    function hideCoauthorResults() {
+      document.getElementById('coauthorResults').classList.remove('show');
+    }
+
+    function renderCoauthorResults(message) {
+      const box = document.getElementById('coauthorResults');
+      if (message) {
+        box.innerHTML = `<div class="coauthor-result empty">${esc(message)}</div>`;
+        box.classList.add('show');
+        return;
+      }
+      const existingIds = new Set(currentCoauthors.map(a => a.user_id).filter(Boolean));
+      const candidates = coauthorSearchResults.filter(u => !existingIds.has(u.workos_user_id));
+      if (candidates.length === 0) {
+        box.innerHTML = '<div class="coauthor-result empty">No matching people found. They may need to make their AAO profile public.</div>';
+        box.classList.add('show');
+        return;
+      }
+      box.innerHTML = candidates.map((u, i) => {
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.slug || 'Unnamed';
+        const org = u.organization_name || u.headline || '';
+        return `<div class="coauthor-result" data-index="${i}"><div class="name">${esc(name)}</div>${org ? `<div class="org">${esc(org)}</div>` : ''}</div>`;
+      }).join('');
+      box.classList.add('show');
+      box.querySelectorAll('.coauthor-result[data-index]').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const idx = parseInt(el.getAttribute('data-index'), 10);
+          selectCoauthor(candidates[idx]);
+        });
+      });
+    }
+
+    function searchCoauthors() {
+      const query = document.getElementById('coauthorName').value.trim();
+      clearTimeout(coauthorSearchTimeout);
+      if (query.length < 2) {
+        hideCoauthorResults();
+        return;
+      }
+      renderCoauthorResults('Searching...');
+      coauthorSearchTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/community/people?search=${encodeURIComponent(query)}&limit=10`, { credentials: 'include' });
+          if (!res.ok) throw new Error('Search failed');
+          const data = await res.json();
+          coauthorSearchResults = data.people || [];
+          renderCoauthorResults();
+        } catch (e) {
+          renderCoauthorResults('Search failed. Try again.');
+        }
+      }, 300);
+    }
+
+    async function selectCoauthor(person) {
       const nameInput = document.getElementById('coauthorName');
-      const name = nameInput.value.trim();
-      if (!name) return;
+      const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || person.slug;
       const contentId = document.getElementById('contentId').value;
       if (!contentId) {
-        currentCoauthors.push({ display_name: name });
+        currentCoauthors.push({ user_id: person.workos_user_id, display_name: displayName });
         renderCoauthors();
         nameInput.value = '';
+        hideCoauthorResults();
         return;
       }
       try {
         const res = await fetch(`/api/me/content/${contentId}/authors`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ display_name: name }),
+          body: JSON.stringify({ user_id: person.workos_user_id, display_name: displayName }),
         });
         if (res.ok) {
           const author = await res.json();
           currentCoauthors.push(author);
           renderCoauthors();
           nameInput.value = '';
-        } else { const d = await res.json(); alert(d.message || 'Failed to add co-author'); }
-      } catch (e) { alert('Failed to add co-author'); }
+          hideCoauthorResults();
+        } else {
+          const d = await res.json();
+          alert(d.message || 'Failed to add co-author');
+        }
+      } catch (e) {
+        alert('Failed to add co-author');
+      }
     }
 
     async function removeCoauthor(index) {
