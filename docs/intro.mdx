@@ -607,7 +607,7 @@ Governance isn't a gate that slows things down. It's the safety net that lets yo
     Ask questions about AdCP, explore the protocol, and test tasks — no code required
   </Card>
   <Card title="Client SDKs" icon="rocket" href="/docs/building/schemas-and-sdks">
-    JavaScript and Python libraries with CLI tools for testing
+    JavaScript, Python, and Go libraries with CLI tools for testing
   </Card>
   <Card title="Brand.json builder" icon="palette" href="https://agenticadvertising.org/brand/builder">
     Create and validate your brand's brand.json file
@@ -678,15 +678,18 @@ npm install @adcp/client
 ```bash Python
 pip install adcp
 ```
+```bash Go
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
 </CodeGroup>
 
 - **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
 - **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-python)
+- **Go**: [adcp-go](https://github.com/adcontextprotocol/adcp-go)
 
-## Reference implementations
+## Open-source examples
 
-- [Signals Agent](https://github.com/adcontextprotocol/signals-agent)
-- [Sales Agent](https://github.com/prebid/salesagent)
+The [Prebid Sales Agent](https://github.com/prebid/salesagent) is a full-stack seller agent (Python backend, TypeScript protocol layer) with GAM integration, built by a Prebid working group. It is a community example, not a maintained reference implementation. To build your own agent, start with the [official SDKs](/docs/building/schemas-and-sdks) and [skill files](/docs/building/build-an-agent).
 
 ## Organization
 
