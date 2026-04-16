@@ -97,6 +97,7 @@
                     ]
                   },
                   "docs/protocol/architecture",
+                  "docs/protocol/required-tasks",
                   {
                     "group": "Understanding AdCP",
                     "pages": [
@@ -583,6 +584,7 @@
                 ]
               },
               "docs/protocol/architecture",
+              "docs/protocol/required-tasks",
               {
                 "group": "Understanding AdCP",
                 "pages": [
