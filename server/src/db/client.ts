@@ -1,5 +1,10 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 import { DatabaseConfig } from "../config.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("db");
+
+const SLOW_QUERY_THRESHOLD_MS = 500;
 
 let pool: Pool | null = null;
 
@@ -86,14 +91,33 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<QueryResult<T>> {
   const p = getPool();
+  const start = process.hrtime.bigint();
   try {
-    return await p.query<T>(text, params);
+    const result = await p.query<T>(text, params);
+    logSlowQuery(start, text);
+    return result;
   } catch (err) {
     if (isTransientConnectionError(err)) {
       console.warn("Transient DB connection error, retrying query:", (err as Error).message);
-      return p.query<T>(text, params);
+      const result = await p.query<T>(text, params);
+      logSlowQuery(start, text);
+      return result;
     }
     throw err;
+  }
+}
+
+function logSlowQuery(start: bigint, text: string): void {
+  const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+  if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
+    // Truncate query text for logging safety; first 200 chars is enough to identify it
+    logger.warn(
+      {
+        duration_ms: Math.round(durationMs),
+        query: text.slice(0, 200),
+      },
+      "Slow database query"
+    );
   }
 }
 

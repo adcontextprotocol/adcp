@@ -2,6 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { csrfProtection } from "./middleware/csrf.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
+import { requestMetrics } from "./middleware/request-metrics.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -478,15 +479,24 @@ export class HTTPServer {
       : path.join(__dirname, "../../dist");
     const schemasPath = path.join(distPath, 'schemas');
     this.app.use('/schemas', express.static(schemasPath, {
-      maxAge: '1h',
-      immutable: false,
-      setHeaders: (res) => {
+      maxAge: '10m',
+      setHeaders: (res, filePath) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
+        // Versioned schemas (e.g. /schemas/2.6.0/task.json) are immutable —
+        // once published, their content never changes. Cache for a year.
+        // "latest" and unversioned paths use the default 10m TTL since
+        // latest changes on every schema release.
+        if (/\/\d+\.\d+\.\d+\//.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
       }
     }));
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
+
+    // Capture request duration metrics for all API calls
+    this.app.use(requestMetrics);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
@@ -701,7 +711,15 @@ export class HTTPServer {
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")
       : path.join(__dirname, "../../static");
-    this.app.use(express.static(staticPath));
+    this.app.use(express.static(staticPath, {
+      maxAge: '1d',
+      setHeaders: (res, filePath) => {
+        // Images and fonts change rarely — cache aggressively
+        if (/\.(png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        }
+      }
+    }));
 
     // Redirect .html URLs to clean URLs for pages that need template variable injection
     // Must be BEFORE static middleware to intercept these requests
@@ -819,7 +837,20 @@ export class HTTPServer {
       next();
     });
 
-    this.app.use(express.static(publicPath, { index: false, redirect: false }));
+    this.app.use(express.static(publicPath, {
+      index: false,
+      redirect: false,
+      maxAge: '1h',
+      setHeaders: (res, filePath) => {
+        // CSS/JS may change on deploy — 1 day is a good balance.
+        // Images/fonts change rarely — cache for a week.
+        if (/\.(css|js)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+        } else if (/\.(png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        }
+      }
+    }));
   }
 
 
