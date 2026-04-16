@@ -19,6 +19,7 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
+import { mountSchemasRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
@@ -471,34 +472,12 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
-    // Serve JSON schemas as static files before any other middleware.
-    // These are high-traffic, read-only JSON files that don't need body parsing,
-    // cookies, CSRF, or session handling.
+    // Serve JSON schemas (aliases + static files + discovery) before body-parsing,
+    // cookie, and CSRF middleware so these high-traffic reads stay cheap.
     const distPath = process.env.NODE_ENV === 'production'
       ? __dirname
       : path.join(__dirname, "../../dist");
-    const schemasPath = path.join(distPath, 'schemas');
-    // Use a middleware wrapper so setHeaders can see the *request* path.
-    // express.static resolves symlinks, so checking the file path would
-    // incorrectly mark aliases (latest, v2.5) as immutable when they
-    // resolve to a versioned directory on disk.
-    const schemasStatic = express.static(schemasPath, {
-      maxAge: '10m',
-      etag: true,
-      lastModified: true,
-      setHeaders: (res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      }
-    });
-    this.app.use('/schemas', (req, res, next) => {
-      // Only direct versioned paths (/schemas/2.5.3/...) are immutable.
-      // Aliases (/latest/, /v2.5/, /v1/) use the 10m default + ETag so
-      // caches revalidate after the alias target changes.
-      if (/^\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\//.test(req.path)) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      }
-      schemasStatic(req, res, next);
-    });
+    mountSchemasRoutes(this.app, path.join(distPath, 'schemas'));
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
@@ -529,168 +508,6 @@ export class HTTPServer {
     });
     this.app.use(cookieParser());
     this.app.use(csrfProtection);
-
-    // Schema version aliasing and discovery (static serving handled above, before middleware)
-
-    // Cache for schema version directories (refreshed every 60 seconds)
-    let versionCache: { versions: string[], timestamp: number } | null = null;
-    const CACHE_TTL_MS = 60 * 1000;
-
-    async function getSchemaVersions(): Promise<string[]> {
-      const now = Date.now();
-      if (versionCache && (now - versionCache.timestamp) < CACHE_TTL_MS) {
-        return versionCache.versions;
-      }
-
-      const entries = await fs.readdir(schemasPath, { withFileTypes: true });
-      const versions = entries
-        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?$/.test(e.name))
-        .map(e => e.name)
-        .sort((a, b) => {
-          // Sort by semver (descending), prereleases come after stable
-          const parseVersion = (v: string) => {
-            const [base, prerelease] = v.split('-');
-            const [major, minor, patch] = base.split('.').map(Number);
-            return { major, minor, patch, prerelease };
-          };
-          const av = parseVersion(a);
-          const bv = parseVersion(b);
-          if (av.major !== bv.major) return bv.major - av.major;
-          if (av.minor !== bv.minor) return bv.minor - av.minor;
-          if (av.patch !== bv.patch) return bv.patch - av.patch;
-          // Stable versions come before prereleases (no prerelease = higher precedence)
-          if (!av.prerelease && bv.prerelease) return -1;
-          if (av.prerelease && !bv.prerelease) return 1;
-          // Both have prereleases, sort descending (beta.3 before beta.1)
-          if (av.prerelease && bv.prerelease) return bv.prerelease.localeCompare(av.prerelease);
-          return 0;
-        });
-
-      versionCache = { versions, timestamp: now };
-      return versions;
-    }
-
-    function parseSemver(version: string): { major: number, minor: number, patch: number, prerelease?: string } {
-      const [base, prerelease] = version.split('-');
-      const [major, minor, patch] = base.split('.').map(Number);
-      return { major, minor, patch, prerelease };
-    }
-
-    function findMatchingVersion(versions: string[], requestedMajor: number, requestedMinor?: number): string | undefined {
-      // Find the latest version that matches the requested major (and optionally minor)
-      return versions.find(v => {
-        const { major, minor } = parseSemver(v);
-        if (major !== requestedMajor) return false;
-        if (requestedMinor !== undefined && minor !== requestedMinor) return false;
-        return true;
-      });
-    }
-
-    // Middleware to resolve version aliases (e.g., v2.5 → 2.5.1)
-    // This handles cases where symlinks don't exist (e.g., in Docker)
-    this.app.use('/schemas', async (req, res, next) => {
-      // Match version alias patterns: /v2/, /v2.5/, /v2.6/, /v1/
-      const versionMatch = req.path.match(/^\/v(\d+)(?:\.(\d+))?(\/.*)?$/);
-      if (!versionMatch) {
-        return next();
-      }
-
-      const requestedMajor = parseInt(versionMatch[1], 10);
-      const requestedMinor = versionMatch[2] ? parseInt(versionMatch[2], 10) : undefined;
-      const restOfPath = versionMatch[3] || '/';
-
-      // Special case: v1 always points to latest
-      if (requestedMajor === 1 && requestedMinor === undefined) {
-        req.url = '/latest' + restOfPath;
-        return next();
-      }
-
-      try {
-        const versions = await getSchemaVersions();
-        const targetVersion = findMatchingVersion(versions, requestedMajor, requestedMinor);
-
-        if (targetVersion) {
-          req.url = '/' + targetVersion + restOfPath;
-        }
-      } catch {
-        // If we can't read the directory, let static middleware handle it
-      }
-      next();
-    });
-
-    // Redirect version directory requests to index.json
-    // e.g., /schemas/2.6.0/ → /schemas/2.6.0/index.json
-    this.app.use('/schemas', (req, res, next) => {
-      // Match paths like /2.6.0/ or /latest/ (directory requests)
-      if (req.path.match(/^\/(\d+\.\d+\.\d+|latest)\/$/)) {
-        return res.redirect(req.path + 'index.json');
-      }
-      next();
-    });
-
-    // Schema discovery endpoint - returns available versions and aliases
-    this.app.get('/schemas/', async (req, res) => {
-      try {
-        const versions = await getSchemaVersions();
-        const latestPerMinor: Record<string, string> = {};
-        let latestMajorVersion: string | undefined;
-
-        for (const version of versions) {
-          const { major, minor } = parseSemver(version);
-          const minorKey = `${major}.${minor}`;
-
-          // First version in sorted list is the overall latest
-          if (!latestMajorVersion) {
-            latestMajorVersion = version;
-          }
-
-          // Track latest patch for each minor
-          if (!latestPerMinor[minorKey]) {
-            latestPerMinor[minorKey] = version;
-          }
-        }
-
-        // Build aliases list
-        const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
-
-        // Major version aliases (e.g., v2 -> 2.6.0)
-        if (latestMajorVersion) {
-          const { major } = parseSemver(latestMajorVersion);
-          aliases.push({
-            alias: `v${major}`,
-            resolves_to: latestMajorVersion,
-            path: `/schemas/v${major}/`
-          });
-        }
-
-        // Minor version aliases (e.g., v2.5 -> 2.5.1)
-        for (const [minorKey, version] of Object.entries(latestPerMinor)) {
-          aliases.push({
-            alias: `v${minorKey}`,
-            resolves_to: version,
-            path: `/schemas/v${minorKey}/`
-          });
-        }
-
-        // Sort aliases for consistent output
-        aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
-
-        res.json({
-          versions: versions.map(v => ({
-            version: v,
-            path: `/schemas/${v}/`
-          })),
-          aliases,
-          latest: {
-            path: "/schemas/latest/",
-            note: "Development version, may differ from released versions"
-          }
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Failed to list schema versions');
-        res.status(500).json({ error: "Failed to list schema versions" });
-      }
-    });
 
     // Serve brand.json for both AAO domains.
     // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
