@@ -232,7 +232,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
 - `duration_ms`: Expected video duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](/schemas/v3/enums/vast-tracking-event.json) enum, aligned to the IAB VAST 4.2 specification:
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum, aligned to the IAB VAST 4.2 specification:
   - **Playback**: `impression`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen`, `exitFullscreen`
   - **Progress**: `progress` (for custom progress points via VAST `offset` attribute)
@@ -277,7 +277,7 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 - `content`: Inline DAAST XML content (required when delivery_type is "inline")
 - `daast_version`: DAAST specification version (1.0, 1.1)
 - `duration_ms`: Expected audio duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](/schemas/v3/enums/daast-tracking-event.json) enum:
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/daast-tracking-event.json) enum:
   - **Playback**: `impression`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `skip`
   - **Progress**: `progress`
