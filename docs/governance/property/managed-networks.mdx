@@ -585,6 +585,28 @@ npx adcp check-network --url <authoritative_url>
 
 The `check-network` command validates all agent endpoints and reports response times, so you can catch slow or failing agents before buyers do.
 
+## Security considerations
+
+One deploy to the authoritative file changes authorization across every publisher in the network. That scale is the point, and it's also the blast radius — a compromised network CDN can authorize a malicious sales agent across thousands of domains simultaneously. Two concrete implications that go beyond schema correctness:
+
+**Validator fetch semantics.** The authoritative URL points at a network-controlled origin. Without explicit fetch rules, a misbehaving origin can poison caches or hang validators. Validators MUST:
+
+- Connect only over HTTPS with valid certificates, and refuse to follow redirects (a redirect changes the declared location — treat as an error).
+- Cap response size (recommended: reject > 5 MB) and enforce short connect/read timeouts (≤ 10s each).
+- On 5xx or timeout, serve the previously cached authoritative file for up to 24 hours rather than failing closed. A transient CDN outage is not a revocation.
+- Attempt a refresh at least every 24 hours. Repeated 5xx responses MUST NOT extend the cache — the 7-day absolute cap is measured from the most recent successful fetch, not from the most recent response of any kind.
+- Cap cached lifetime at 7 days from the most recent successful fetch, regardless of the origin's `Cache-Control`. After that, fail closed — the network has had seven days to fix its origin.
+- Treat a non-monotonic `last_updated` (the refreshed file's timestamp is older than the cached file's) as an invalid response, equivalent to a 5xx: serve the cache, alert, do not adopt the older file. This blocks rollback attacks where an attacker re-serves a stale file to reinstate a previously revoked agent.
+
+**Change detection.** Because one deploy affects every publisher, buyer agents and validators SHOULD store the previous authoritative file and diff on each refresh, alerting on outlier changes. Concrete default thresholds that partners can implement on day one: any newly added `authorized_agents` entry that was not present in the previous fetch, any delegation-type downgrade (for example, an `exclusive` entry becoming non-exclusive), any property-count decrease greater than 10% or 50 absolute properties, and any change to `authoritative_location` itself. Tune from there — the goal is to catch a compromised deploy before it routes spend, not to suppress routine updates.
+
+**Relationship termination.** The pointer-file pattern relies on the network controlling publisher DNS or edge. When the relationship ends, both sides of the delegation must come down together:
+
+- The network MUST remove the publisher from the authoritative file's `properties` at termination, even when it has already lost DNS/edge control. A publisher still pointing at an ex-network's file with no matching property becomes an [orphaned pointer](#orphaned-pointer) — visible to buyers as unauthorized.
+- Validators SHOULD re-fetch and re-validate when a publisher domain transfers ownership, rather than relying on cached delegation.
+
+A signed-attestation layer (signed authoritative files, publisher-signed pointers) would strengthen this further but is a separate protocol change rather than a security-section requirement.
+
 ## Next steps
 
 - [adagents.json Tech Spec](/docs/governance/property/adagents) — full schema reference, authorization patterns, and validation behavior

@@ -274,12 +274,16 @@ When AdCP validators encounter a URL reference:
 5. **Prevent Loops**: Reject if authoritative file is also a reference
 6. **Validate Structure**: Validate the authoritative file as normal inline structure
 
+Validators MUST apply the fetch semantics, change-detection, and rollback protection rules in [Managed network security considerations](/docs/governance/property/managed-networks#security-considerations). That section is the canonical source for blast-radius guidance on the authoritative_location pattern.
+
 ### Caching Recommendations
 
 - Cache reference files for 24 hours minimum
 - Cache authoritative files separately with their own TTL
 - Use `last_updated` timestamp to detect when cache should be invalidated
 - Implement exponential backoff for failed fetches
+
+Absolute cache caps and refresh floors for authoritative files live in [Managed network security considerations](/docs/governance/property/managed-networks#security-considerations) — the requirements there take precedence over any `Cache-Control` on the origin.
 
 ## Authorization Patterns
 

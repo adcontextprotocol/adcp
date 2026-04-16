@@ -316,6 +316,23 @@ Live sports is one of the largest CTV brand safety concerns. Collection lists ha
 
 This excludes specific sports programs by Gracenote ID (SP-prefixed for sports) and structurally excludes all combat sports event series. The `event_series` kind filter ensures the list targets live event programming, not documentary series about sports.
 
+## Security considerations
+
+Collection lists gate delivery decisions, so the `auth_token` and webhook callbacks need explicit lifecycle rules. General controls in [Security](/docs/building/implementation/security) apply; the collection-list-specific rules:
+
+**`auth_token` scope, revocation, and log hygiene.** Each token authorizes exactly one `list_id`; do not reuse a token across lists. Governance agents MUST issue a distinct token per seller that receives the list — shared tokens cannot be revoked per relationship and make list-wide rotation the only response to a single compromise. Tokens MUST NOT be written to logs, cache keys, or metric labels, and error responses from `get_collection_list` MUST NOT echo the presented token.
+
+`delete_collection_list` and per-seller revocation differ:
+
+- **Normal deletion or end-of-relationship**: the token MUST fail subsequent `get_collection_list` calls immediately, but sellers with a cached resolution MAY continue serving from cache until `cache_valid_until`. A natural relationship end is not a compromise.
+- **Compromise-driven revocation**: the governance agent MUST signal cache invalidation. Either return a reduced `cache_valid_until` (at or before `now`) on the next poll that the seller still has access to complete, or emit a `collection_list_changed` webhook whose `change_summary` conveys that the list version has been invalidated so cached copies are discarded. Leaving compromised content in seller caches until the scheduled TTL is not acceptable.
+
+**Webhook URL validation.** The `webhook_url` on `update_collection_list` is SSRF-equivalent to any other buyer-provided callback URL. Apply the canonical [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS only, validated IP ranges (IPv4 and IPv6 including `::ffff:0:0/96`), connection pinning (not just DNS re-resolution), no redirect following, size and timeout caps.
+
+**Webhook signature algorithm.** The webhook signature MUST follow the [standard webhook signing rules](/docs/building/implementation/security#webhook-security): HMAC-SHA256 over `{unix_timestamp}.{raw_http_body_bytes}` where `{unix_timestamp}` is the exact ASCII integer in the `X-ADCP-Timestamp` header (never derived from body fields), transmitted as `X-ADCP-Signature: sha256=<hex digest>`, verified with timing-safe comparison, and rejected when outside the 5-minute replay window. The body `signature` field is a convenience copy — recipients MUST verify against the headers and MUST NOT trust the body value.
+
+**Distribution-ID inputs.** Governance agents SHOULD validate identifier format before persisting (IMDb: `^tt\d+$`, EIDR: `10.5240/...`, Gracenote: vendor-prefixed) and SHOULD enforce per-principal rate limits on list mutations to prevent list-bloat DoS. Surface unresolved identifiers in `coverage_gaps` rather than silently dropping them.
+
 ## Sharing collection lists with sellers
 
 The pattern matches [property list sharing](/docs/governance/property/index#sharing-property-lists-with-sellers):

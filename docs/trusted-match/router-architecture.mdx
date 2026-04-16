@@ -69,7 +69,7 @@ Provider registration typically comes from the **page configuration** — the pu
 - Router polls a discovery endpoint or watches for configuration changes
 - Changes take effect within one refresh cycle (recommended: 30 seconds)
 - Appropriate for publishers managing many providers or needing runtime updates without redeploys
-- Dynamic registration endpoints MUST validate that provider `endpoint` URLs are external HTTPS addresses. Implementations MUST reject private (RFC 1918), link-local (169.254.x.x), and cloud metadata IP ranges to prevent SSRF through provider registration.
+- Dynamic registration endpoints MUST validate that provider `endpoint` URLs are external HTTPS addresses. Implementations MUST reject private (RFC 1918), link-local (169.254.x.x), and cloud metadata IP ranges to prevent SSRF through provider registration. See [Provider registration security](/docs/trusted-match/specification#provider-registration-security) in the specification for the full normative requirements — endpoint URL validation (with DNS re-resolution), dynamic registration endpoint authentication, router-to-provider auth minimum bar, and `/health` endpoint guidance.
 
 Both models use the same schema. The router does not distinguish between providers loaded from a YAML file and providers loaded from an API — the registration fields are identical.
 
