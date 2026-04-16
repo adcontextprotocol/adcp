@@ -43,30 +43,52 @@ async function validateExample(data, schemaId, description) {
   totalTests++;
   try {
     // Create fresh AJV instance for each validation
-    const ajv = new Ajv({ 
+    const ajv = new Ajv({
       allErrors: true,
       verbose: false,
       strict: false,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
-    
+
     // Load the specific schema
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-    
+
     // Compile and validate
     const validate = await ajv.compileAsync(schema);
     const isValid = validate(data);
-    
+
     if (isValid) {
       log(`✅ ${description}`, 'success');
       passedTests++;
     } else {
-      const errors = validate.errors.map(err => 
+      const errors = validate.errors.map(err =>
         `${err.instancePath || 'root'}: ${err.message}`
       ).join('; ');
       log(`❌ ${description}: ${errors}`, 'error');
+      failedTests++;
+    }
+  } catch (error) {
+    log(`❌ ${description}: ${error.message}`, 'error');
+    failedTests++;
+  }
+}
+
+async function expectInvalid(data, schemaId, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, loadSchema: loadExternalSchema });
+    addFormats(ajv);
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const validate = await ajv.compileAsync(schema);
+    const isValid = validate(data);
+    if (!isValid) {
+      log(`✅ ${description}`, 'success');
+      passedTests++;
+    } else {
+      log(`❌ ${description}: expected schema violation but passed`, 'error');
       failedTests++;
     }
   } catch (error) {
@@ -629,6 +651,23 @@ async function runTests() {
     },
     '/schemas/tmp/identity-match-request.json',
     'TMP Identity Match request — single identity (ai-assistant walkthrough)'
+  );
+
+  // Identity Match request — maxItems:3 upper boundary (4 identities MUST fail)
+  await expectInvalid(
+    {
+      "type": "identity_match_request",
+      "request_id": "id-boundary-4",
+      "identities": [
+        { "user_token": "a", "uid_type": "uid2" },
+        { "user_token": "b", "uid_type": "id5" },
+        { "user_token": "c", "uid_type": "rampid" },
+        { "user_token": "d", "uid_type": "hashed_email" }
+      ],
+      "package_ids": ["pkg-1"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
   );
 
   // Print results

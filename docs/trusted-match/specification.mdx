@@ -242,7 +242,7 @@ The standard registration path is **static configuration** — the publisher dec
 | `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `countries` | List\<string\> | Conditional | ISO 3166-1 alpha-2 country codes this provider serves. MUST be present and non-empty when `identity_match` is true. |
-| `uid_types` | List\<string\> | Conditional | Identity types this provider can resolve (from `uid-type` enum). MUST be present and non-empty when `identity_match` is true. |
+| `uid_types` | List\<string\> | Conditional | Identity types this provider can resolve (from `uid-type` enum). The router selects providers whose `uid_types` overlaps with any `uid_type` in the request's `identities` array, and filters the forwarded `identities` to the intersection — providers MUST NOT receive tokens for types they did not declare. MUST be present and non-empty when `identity_match` is true. |
 | `properties` | List\<UUID\> | No | Property RIDs this provider serves. When absent, the provider serves all properties. |
 | `timeout_ms` | integer | No | Per-provider timeout in milliseconds. Must be ≤ the router's overall `latency_budget_ms`. Default: 50. |
 | `priority` | integer | No | Provider ordering for merge conflict resolution. Lower values = higher priority. Default: 0. |
@@ -371,19 +371,18 @@ Because the signed fields are static per placement, the same signature can be ca
 
 #### Identity Match signed fields
 
-Concatenated in this order, UTF-8, newline-separated:
+The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785) serialization of the following canonical object. Using JCS eliminates delimiter-injection risk — raw `tcf_consent` / `gpp` / `us_privacy` / `package_id` values may contain any byte, but JSON string escaping in JCS renders any framing byte harmless.
 
 | Field | Source |
 |---|---|
-| `type` | `identity_match_request` |
+| `type` | `"identity_match_request"` |
 | `request_id` | From the request body |
-| `identities_hash` | SHA-256 of the canonical `identities` bytes (see below), hex-encoded |
-| `consent.gdpr` | From the request body (`false` if absent) |
-| `consent.tcf_consent` | From the request body (empty string if absent) |
-| `package_ids` | Sorted, comma-separated list of active package IDs |
-| `daily_epoch` | `floor(unix_timestamp / 86400)` |
+| `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
+| `consent` | The request's `consent` object verbatim, or `null` when absent |
+| `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |
+| `daily_epoch` | `floor(unix_timestamp / 86400)` as a JSON integer |
 
-**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)`, sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785) (JSON Canonicalization Scheme). SHA-256 the UTF-8 bytes.
+**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)` using byte-exact match (no case folding, no trimming), sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785). SHA-256 the UTF-8 bytes; hex-encode for the signed input, use raw bytes for cache keys (both conventions hash the same preimage).
 
 The router filters `identities` per provider before forwarding (see [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out)). The signature is computed over each provider's filtered `identities` set — the router re-signs per outbound forward. The same filtered `identities_hash` value is used in the cache key (see [Caching](#caching)), so each provider has its own cache partition keyed on the subset it actually received.
 
@@ -548,7 +547,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{identities_hash, provider_id, hash(package_ids), consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset), and `consent_hash` is the SHA-256 of `consent.gdpr || "|" || consent.tcf_consent || "|" || consent.gpp || "|" || consent.us_privacy` (with absent fields treated as empty strings). Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another. The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
+- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{identities_hash, provider_id, package_ids_hash, consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset); `package_ids_hash` is SHA-256 over the JCS serialization of the sorted `package_ids` array; `consent_hash` is SHA-256 over the JCS serialization of the request's `consent` object (or JCS `null` when the field is absent — this distinguishes "consent unknown" from an explicit-empty consent object). JCS framing prevents delimiter-injection: raw consent strings or package IDs containing `|`, `,`, or `\n` cannot collide two distinct inputs. Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 - Both `ttl_sec` and `cache_ttl` have a schema-enforced maximum of 86400 seconds (24 hours). Routers SHOULD clamp buyer-provided values to a configured maximum (recommended: 3600 seconds) to limit the blast radius of stale caches.
 

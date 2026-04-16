@@ -75,6 +75,14 @@ The identity code path sees user tokens and package IDs. It fans these out to bu
 
 Without TEE, the operator could theoretically modify the binary to bridge the two paths. The code is open-source and auditable, but you are trusting the operator to run it unmodified. With TEE, attestation proves the binary matches the published source, removing that trust requirement.
 
+### Router trust boundary for identity filtering
+
+The router is in the trusted boundary for Identity Match forwarding. When the router filters the `identities` array per provider (sending only tokens the provider's declared `uid_types` include), providers cannot independently verify what the publisher originally sent — they see only the filtered subset signed by the router. This is a deliberate trust placement: the router already performs structural separation of the two code paths, and filtering identity tokens is a simpler guarantee than separating code paths.
+
+The router MUST NOT add, substitute, or transform identity tokens. The forwarded `identities` MUST be a subset of the publisher-origin array. This invariant is provable from code audit (without TEE) and cryptographically verifiable from attestation measurements (with TEE). Operators running non-TEE deployments accept code-audit as the basis for this invariant; operators running TEE-attested deployments get independent verification.
+
+Buyers close a residual risk at the protocol layer: when multiple identity types are present, buyers SHOULD prefer opaque provider IDs over `hashed_email` and other strongly re-identifying tokens, so that even a router that strips everything except `hashed_email` does not gain leverage (see [Responding to Identity Match](/docs/trusted-match/buyer-guide#responding-to-identity-match)).
+
 ### What the publisher retains
 
 The publisher has both context and identity. They are the first party: the user is on their page, using their app, in their conversation. TMP does not change the publisher's data posture. It prevents buyers and intermediaries from obtaining the same combined view.
