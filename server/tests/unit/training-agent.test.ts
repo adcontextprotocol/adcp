@@ -3297,11 +3297,11 @@ describe('get_signals handler', () => {
     stopSessionCleanup();
   });
 
-  it('returns error when neither signal_spec nor signal_ids provided', async () => {
+  it('returns full catalog (capped) when neither signal_spec nor signal_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_signals', { account });
-    expect(result.code).toBeDefined();
-    expect(result.message).toContain('signal_spec or signal_ids');
+    expect(Array.isArray(result.signals)).toBe(true);
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
   });
 
   it('discovers signals by natural language spec', async () => {
@@ -4440,7 +4440,7 @@ describe('MCP Tasks protocol', () => {
     expect(tasks.length).toBe(2);
   });
 
-  it('sets failed status when tool execution errors', async () => {
+  it('structured errors complete the task (with adcp_error in result)', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'create_media_buy', {
       buyer_ref: 'test',
@@ -4448,12 +4448,19 @@ describe('MCP Tasks protocol', () => {
       brand: { domain: 'test.com' },
       start_time: '2025-01-01T00:00:00Z',
       end_time: '2025-02-01T00:00:00Z',
-      // Missing packages — will return validation error
+      // Missing packages — structured INVALID_REQUEST response, not a task failure
     });
 
     const task = response.task as Record<string, unknown>;
-    expect(task.taskId).toBeDefined();
-    expect(task.status).toBe('failed');
+    const taskId = task.taskId as string;
+    expect(taskId).toBeDefined();
+    expect(task.status).toBe('completed');
+
+    const result = await simulateGetTaskResult(server, taskId);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(content[0]!.text) as { adcp_error?: { code: string } };
+    expect(body.adcp_error?.code).toBe('INVALID_REQUEST');
   });
 
   it('rejects task augmentation on forbidden tools', async () => {
@@ -5985,5 +5992,289 @@ describe('context echo', () => {
     expect(parsed.success).toBe(false);
     expect(parsed.error).toBe('NOT_FOUND');
     expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+});
+
+describe('AdCP protocol compliance', () => {
+  beforeEach(() => {
+    clearSessions();
+  });
+  afterEach(() => {
+    clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('rejects unsupported adcp_major_version with VERSION_UNSUPPORTED', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      adcp_major_version: 99,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VERSION_UNSUPPORTED');
+    const details = result.details as { supported_major_versions?: number[] };
+    expect(details?.supported_major_versions).toContain(3);
+  });
+
+  it('accepts supported adcp_major_version', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+    expect(isError).toBeFalsy();
+    expect(Array.isArray(result.products)).toBe(true);
+  });
+
+  it('persists property_list and collection_list in package targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      buying_mode: 'brief',
+      brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const targeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
+    };
+
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting,
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    expect(mediaBuyId).toBeDefined();
+    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
+    expect(createdPackages[0]!.targeting).toEqual(targeting);
+
+    const fetched = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting).toEqual(targeting);
+  });
+
+  it('persists collection_list_exclude in package targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const targeting = {
+      collection_list_exclude: { agent_url: 'https://gov.example/mcp', list_id: 'cl_block_v1', auth_token: 'tok_secret' },
+    };
+
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting,
+      }],
+    });
+    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
+    expect(createdPackages[0]!.targeting).toEqual(targeting);
+  });
+
+  it('update_media_buy round-trips targeting changes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const initialTargeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v1' },
+    };
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting: initialTargeting,
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    const packageId = (created.result.packages as Array<{ package_id: string }>)[0]!.package_id;
+
+    const newTargeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
+    };
+    await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, targeting: newTargeting }],
+    });
+
+    const fetched = await simulateCallTool(server, 'get_media_buys', {
+      account, media_buy_ids: [mediaBuyId],
+    });
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting).toEqual(newTargeting);
+  });
+
+  it('rejects malformed targeting with VALIDATION_ERROR', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    // Missing agent_url
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting: { property_list: { list_id: 'pl_v1' } },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VALIDATION_ERROR');
+    expect(result.field).toContain('property_list.agent_url');
+  });
+
+  it('rejects non-http(s) agent_url in targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting: { property_list: { agent_url: 'javascript:alert(1)', list_id: 'pl_v1' } },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VALIDATION_ERROR');
+    expect(result.message).toContain('http');
+  });
+
+  it('GOVERNANCE_DENIED via task-augmented call completes the task with structured error', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    // Seed a denied governance check via sync_plans + check_governance (shared session key)
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        plan_id: 'gov_test_strict',
+        brand: { domain: 'acmeoutdoor.example' },
+        objectives: 'strict',
+        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        flight: { start: new Date().toISOString(), end: new Date(Date.now() + 90 * 86_400_000).toISOString() },
+      }],
+    });
+    const govContext = 'gov-ctx-test-denied';
+    const checkResponse = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: 'gov_test_strict',
+      governance_context: govContext,
+      caller: 'acmeoutdoor.example',
+      payload: { type: 'media_buy', account, total_budget: 50000 },
+    });
+    expect(checkResponse.result.status).toBe('denied');
+
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    // Task-augmented create_media_buy with denied governance_context
+    const response = await simulateCallToolAsTask(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      governance_context: govContext,
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 50000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      }],
+    });
+    const task = response.task as Record<string, unknown>;
+    expect(task.status).toBe('completed');
+
+    const taskResult = await simulateGetTaskResult(server, task.taskId as string);
+    expect(taskResult.isError).toBe(true);
+    const body = JSON.parse((taskResult.content as Array<{ text: string }>)[0]!.text) as { adcp_error?: { code: string } };
+    expect(body.adcp_error?.code).toBe('GOVERNANCE_DENIED');
   });
 });

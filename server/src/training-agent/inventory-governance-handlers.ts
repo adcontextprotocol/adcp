@@ -123,6 +123,15 @@ interface DeleteInput extends ToolArgs {
   list_id: string;
 }
 
+const MAX_LIST_ID_LEN = 128;
+
+function validateListId(value: unknown): { code: string; message: string; field: string } | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_LIST_ID_LEN) {
+    return { code: 'VALIDATION_ERROR', message: `list_id must be a non-empty string up to ${MAX_LIST_ID_LEN} chars`, field: 'list_id' };
+  }
+  return undefined;
+}
+
 // ── Handlers ─────────────────────────────────────────────────────
 
 export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext) {
@@ -160,21 +169,28 @@ export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as GetCollectionListInput;
 
+  const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
+  if (listIdError) return { errors: [listIdError] };
+
   const list = session.collectionLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
 
   const now = new Date().toISOString();
-  return {
-    list,
-    collections: input.resolve ? generateSampleCollections(list.collection_count) : undefined,
-    resolved_at: input.resolve ? now : undefined,
-    cache_valid_until: input.resolve ? new Date(Date.now() + 168 * 60 * 60 * 1000).toISOString() : undefined,
-  };
+  const response: Record<string, unknown> = { list };
+  if (input.resolve) {
+    response.collections = generateSampleCollections(list.collection_count);
+    response.resolved_at = now;
+    response.cache_valid_until = new Date(Date.now() + 168 * 60 * 60 * 1000).toISOString();
+  }
+  return response;
 }
 
 export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as UpdateCollectionListInput;
+
+  const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
+  if (listIdError) return { errors: [listIdError] };
 
   const list = session.collectionLists.get(input.list_id);
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
@@ -206,6 +222,10 @@ export function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) 
 export function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as DeleteInput;
+
+  const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
+  if (listIdError) return { errors: [listIdError] };
+
   const deleted = session.collectionLists.delete(input.list_id);
   return { deleted, list_id: input.list_id };
 }

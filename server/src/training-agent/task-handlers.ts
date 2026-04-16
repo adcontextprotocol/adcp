@@ -17,7 +17,7 @@ import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
 import { PostgresTaskStore } from '@adcp/client';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
 import type {
   Product,
   Proposal,
@@ -60,7 +60,7 @@ function adcpError(code: string, opts: { message: string; details?: unknown; rec
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
-type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string };
+type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string; targeting?: PackageTargeting };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
@@ -90,12 +90,66 @@ interface PackageInput {
   start_time?: string;
   end_time?: string;
   format_ids?: FormatID[];
+  targeting?: PackageTargeting;
 }
 
 interface CreativeAssignmentInput {
   creative_id: string;
   package_id: string;
   media_buy_id: string;
+}
+
+const MAX_URL_LEN = 2048;
+const MAX_ID_LEN = 256;
+const MAX_TOKEN_LEN = 4096;
+
+function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
+  if (ref === undefined || ref === null) return {};
+  if (typeof ref !== 'object' || Array.isArray(ref)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object with agent_url and list_id`, field: pathLabel } };
+  }
+  const r = ref as Record<string, unknown>;
+  const agent_url = r.agent_url;
+  const list_id = r.list_id;
+  const auth_token = r.auth_token;
+  if (typeof agent_url !== 'string' || agent_url.length === 0 || agent_url.length > MAX_URL_LEN) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars`, field: `${pathLabel}.agent_url` } };
+  }
+  if (!/^https?:\/\//i.test(agent_url)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must use http:// or https://`, field: `${pathLabel}.agent_url` } };
+  }
+  if (typeof list_id !== 'string' || list_id.length === 0 || list_id.length > MAX_ID_LEN) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.list_id: must be a non-empty string up to ${MAX_ID_LEN} chars`, field: `${pathLabel}.list_id` } };
+  }
+  if (auth_token !== undefined && (typeof auth_token !== 'string' || auth_token.length > MAX_TOKEN_LEN)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.auth_token: must be a string up to ${MAX_TOKEN_LEN} chars`, field: `${pathLabel}.auth_token` } };
+  }
+  return { ref: { agent_url, list_id, ...(typeof auth_token === 'string' && { auth_token }) } };
+}
+
+function validateTargeting(t: unknown, pathLabel: string): { targeting?: PackageTargeting; errors: TaskError[] } {
+  if (t === undefined || t === null) return { errors: [] };
+  if (typeof t !== 'object' || Array.isArray(t)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object`, field: pathLabel }] };
+  }
+  const src = t as Record<string, unknown>;
+  const errors: TaskError[] = [];
+  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
+  const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
+  const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
+  if (pl.error) errors.push(pl.error);
+  if (cl.error) errors.push(cl.error);
+  if (cle.error) errors.push(cle.error);
+  if (errors.length) return { errors };
+  if (!pl.ref && !cl.ref && !cle.ref) return { errors: [] };
+  return {
+    targeting: {
+      ...(pl.ref && { property_list: pl.ref }),
+      ...(cl.ref && { collection_list: cl.ref }),
+      ...(cle.ref && { collection_list_exclude: cle.ref }),
+    },
+    errors: [],
+  };
 }
 
 // Proposal lifecycle fields not yet in @adcp/client — remove after client update
@@ -173,6 +227,9 @@ import {
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 
+const SUPPORTED_MAJOR_VERSIONS = [3] as const;
+const MAX_PACKAGES_PER_BUY = 50;
+
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
 /**
@@ -215,7 +272,8 @@ interface TaskError {
   code: string;
   message: string;
   field?: string;
-  suggestion?: string;
+  details?: unknown;
+  recovery?: string;
 }
 
 /** Signal deployment entry in get_signals response. */
@@ -1165,6 +1223,12 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  if (req.packages.length > MAX_PACKAGES_PER_BUY) {
+    return {
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Too many packages: ${req.packages.length} (max ${MAX_PACKAGES_PER_BUY}).` }] as TaskError[],
+    };
+  }
+
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
@@ -1260,6 +1324,11 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     }
 
     // Don't build package state if there are any validation errors (atomic create)
+    const targetingResult = validateTargeting(pkg.targeting, `packages[${i}].targeting`);
+    if (targetingResult.errors.length) {
+      errors.push(...targetingResult.errors);
+    }
+
     if (errors.length > 0) continue;
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
@@ -1276,6 +1345,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       endTime,
       formatIds: pkg.format_ids,
       creativeAssignments: [],
+      targeting: targetingResult.targeting,
     });
   }
 
@@ -1327,6 +1397,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+      ...(pkg.targeting && { targeting: pkg.targeting }),
       creative_assignments: [],
     })),
   };
@@ -1406,6 +1477,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
               creative_id: cid,
               approval_status: 'approved' as const,
             })),
+            ...(pkg.targeting && { targeting: pkg.targeting }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -1891,12 +1963,32 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
           pkg.endTime = update.end_time;
         }
       }
+
+      if (update.targeting !== undefined) {
+        const targetingResult = validateTargeting(update.targeting, `packages[${pkgId}].targeting`);
+        if (targetingResult.errors.length) {
+          return { errors: targetingResult.errors };
+        }
+        const before = pkg.targeting;
+        pkg.targeting = targetingResult.targeting;
+        const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
+        if (changed) {
+          const action = pkg.targeting ? 'targeting_updated' : 'targeting_cleared';
+          const summary = pkg.targeting ? `Package ${pkgId} targeting updated` : `Package ${pkgId} targeting cleared`;
+          mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary, packageId: pkgId });
+        }
+      }
     }
   }
 
   // Add new packages
   const newPackages = req.new_packages;
   if (newPackages?.length) {
+    if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
+      return {
+        errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
+      };
+    }
     const catalog = getCatalog();
     const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
@@ -1909,6 +2001,10 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       }
 
       const pkgId = `pkg-${mb.packages.length + i}`;
+      const targetingResult = validateTargeting(npkg.targeting, `new_packages[${i}].targeting`);
+      if (targetingResult.errors.length) {
+        return { errors: targetingResult.errors };
+      }
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -1921,6 +2017,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         endTime: npkg.end_time || mb.endTime,
         formatIds: npkg.format_ids,
         creativeAssignments: [],
+        targeting: targetingResult.targeting,
       };
       mb.packages.push(newPkg);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
@@ -1946,6 +2043,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
+      ...(pkg.targeting && { targeting: pkg.targeting }),
       ...(pkg.canceledAt && {
         cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
       }),
@@ -1962,7 +2060,7 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
-    adcp: { major_versions: [3] },
+    adcp: { major_versions: [...SUPPORTED_MAJOR_VERSIONS] },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
     protocol_version: '3.0',
     tasks,
@@ -2040,12 +2138,6 @@ function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const signalSpec = req.signal_spec || req.brief;
   const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
-
-  if (!signalSpec && !req.signal_ids?.length) {
-    return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'Either signal_spec or signal_ids is required' }],
-    };
-  }
 
   const allSignals = getAllSignals();
   let results = allSignals;
@@ -2890,6 +2982,18 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
     }
 
+    const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
+    if (
+      requestedVersion !== undefined
+      && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
+    ) {
+      return adcpError('VERSION_UNSUPPORTED', {
+        message: `AdCP major version ${String(requestedVersion)} is not supported`,
+        details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
+        field: 'adcp_major_version',
+      }, callerContext);
+    }
+
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
     // async a dry-run operation, and clients expect immediate results.
@@ -2900,22 +3004,27 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error(`Tool "${name}" does not support task augmentation`);
     }
 
-    // Execute the tool handler
+    // Execute the tool handler. Structured AdCP errors (handler returns
+    // { errors: [...] }) are well-formed responses — the task completes
+    // successfully with an adcp_error envelope. Only thrown exceptions
+    // mark the task as failed.
     let toolResult: CallToolResult;
-    let isError = false;
+    let taskFailed = false;
     try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
-      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
+      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
-        isError = true;
         const firstError = resultObj.errors![0];
         toolResult = adcpError(firstError.code, {
           message: firstError.message,
           ...(firstError.field && { field: firstError.field }),
-          details: resultObj.errors!.length > 1
-            ? { all_errors: resultObj.errors }
-            : undefined,
+          ...(firstError.recovery && { recovery: firstError.recovery }),
+          details: firstError.details !== undefined
+            ? firstError.details
+            : resultObj.errors!.length > 1
+              ? { all_errors: resultObj.errors }
+              : undefined,
         }, callerContext);
       } else {
         const response = callerContext !== undefined
@@ -2927,7 +3036,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      isError = true;
+      taskFailed = true;
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
@@ -2951,7 +3060,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // after storing results, which fails in stateless HTTP mode (each
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
-    const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
+    const terminalStatus: 'completed' | 'failed' = taskFailed ? 'failed' : 'completed';
     const created = await taskStore.createTask(
       { ttl: clampedTtl },
       0,
@@ -2962,7 +3071,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }
-    logger.info({ taskId: task.taskId, tool: name, status: terminalStatus }, 'Created MCP task');
+    const errorCode = toolResult.isError
+      ? (toolResult.structuredContent as { adcp_error?: { code?: string } } | undefined)?.adcp_error?.code
+      : undefined;
+    logger.info(
+      { taskId: task.taskId, tool: name, status: terminalStatus, isError: !!toolResult.isError, ...(errorCode && { errorCode }) },
+      'Created MCP task',
+    );
 
     return { task } as object;
   });
