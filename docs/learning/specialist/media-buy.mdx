@@ -18,7 +18,12 @@ Passing earns the **AdCP specialist — Media buy** credential.
 ## What you'll demonstrate
 
 - Execute the full media buy lifecycle including proposals and forecasting
-- Manage order lifecycle: confirmation, pause/resume, cancellation, and terminal states
+- Trace the state machine: `create_media_buy` returns `pending_creatives` or `pending_start`; `sync_creatives` clears `pending_creatives`; the seller MUST transition `pending_start` → `active` at flight start and webhook the orchestrator. Seller-initiated `rejected` is only valid from the pending states.
+- Reason about which actions are valid in which states (`cancel`, `sync_creatives` from pending states; `pause`/`resume`/`update_media_buy` from `active`), and handle `NOT_CANCELLABLE` and concurrency conflicts via `revision`
+- Select a `pricing_option_id` from a product's `pricing_options[]` array — CPM, vCPM, CPP, CPA, flat rate, time — and explain why different pricing models carry different `parameters`
+- Negotiate `measurement_terms` and `performance_standards` on guaranteed buys: propose overrides on `create_media_buy`, interpret seller acceptance (echoed back), adjustments, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors or accepting product defaults.
+- Know that `update_media_buy` requires `account` (not just `media_buy_id`) so billing routes to the right relationship; omitting it is a protocol error
+- Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
@@ -54,10 +59,13 @@ Passing earns the **AdCP specialist — Media buy** credential.
     The formal specification for the media buy protocol.
   </Card>
   <Card title="Pricing models" icon="tag" href="/docs/media-buy/advanced-topics/pricing-models">
-    CPM, flat rate, performance-based pricing, and rate cards.
+    `pricing_options[]` and `pricing_option_id`: CPM, vCPM, CPP, CPA, flat rate, time.
+  </Card>
+  <Card title="Accountability terms" icon="handshake" href="/docs/media-buy/advanced-topics/accountability">
+    Negotiate `performance_standards`, `measurement_terms`, and `cancellation_policy`. Recovery from `TERMS_REJECTED`.
   </Card>
   <Card title="Media buys overview" icon="layer-group" href="/docs/media-buy/media-buys/index">
-    Campaign structure, states, and the approval lifecycle.
+    Campaign structure, the `pending_creatives` → `pending_start` → `active` state machine, and the approval lifecycle.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
     How TMP handles impression-time decisions such as cross-publisher frequency capping.
@@ -98,10 +106,14 @@ See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 During the module, Addie will guide you through hands-on exercises:
 
 1. **Product discovery and evaluation** — Query multiple sandbox agents, compare products, evaluate pricing
-2. **Proposal and forecasting** — Request proposals, analyze delivery forecasts (spend curves and availability)
-3. **Campaign creation and optimization** — Create a media buy, monitor delivery, execute updates
-4. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
-5. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
+2. **Pricing option selection** — From the same product's `pricing_options[]` array, select a CPM option and a CPP option. Explain what each option's `parameters` mean and why the minimum spend differs.
+3. **Proposal and forecasting** — Request proposals, analyze delivery forecasts (spend curves and availability)
+4. **Terms negotiation** — On a guaranteed product, propose `measurement_terms` with a different vendor than the seller's default, and `performance_standards` with a tighter viewability threshold. Observe seller acceptance, adjustment, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors.
+5. **Campaign creation and optimization** — Create a media buy, monitor delivery, execute updates. Verify `update_media_buy` fails without `account` and succeeds with it.
+6. **State machine walkthrough** — Create a buy and trace it through `pending_creatives` (no creatives attached) → `sync_creatives` → `pending_start` → `active` at flight start. Use `get_media_buys` at each step to read `status`, `valid_actions`, and transition timestamps. Force a seller rejection from `pending_start` via the sandbox controller and verify the terminal state.
+7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
+8. **Broadcast billing** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation.
+9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
 
 ## Assessment
 

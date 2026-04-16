@@ -39,6 +39,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'set_outreach_preference', // Users can always opt out of proactive outreach
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
   'draft_github_issue',  // Bug reports & feature requests should always be possible
+  'get_github_issue',    // Users paste GitHub links in any conversation; reading should never be routed away
 ];
 
 /**
@@ -65,7 +66,7 @@ const ENROLLMENT_TOOLS = [
 export const TOOL_SETS: Record<string, ToolSet> = {
   knowledge: {
     name: 'knowledge',
-    description: 'Search documentation, code repos, Slack history, curated resources, and validate JSON against AdCP schemas for protocol questions, implementation help, and community discussions',
+    description: 'Search documentation, code repos, Slack history, curated resources, GitHub issues/PRs, and validate JSON against AdCP schemas for protocol questions, implementation help, roadmap/RFC lookups, and community discussions',
     tools: [
       'search_docs',
       'get_doc',
@@ -76,6 +77,9 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_recent_news',
       'fetch_url',
       'read_slack_file',
+      // GitHub read tools — issues, PRs, RFCs, epics
+      'get_github_issue',
+      'list_github_issues',
       // Schema validation tools
       'validate_json',
       'get_schema',

@@ -1,4 +1,4 @@
-import { query } from './client.js';
+import { query, getPool } from './client.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from './community-db.js';
 import { createLogger } from '../logger.js';
@@ -97,13 +97,17 @@ export class WorkingGroupDatabase {
     // Auto-extract channel ID from URL if not explicitly provided
     const channelId = input.slack_channel_id || extractSlackChannelId(input.slack_channel_url);
 
+    if (input.parent_id) {
+      await this.assertValidParent(null, input.parent_id);
+    }
+
     const result = await query<WorkingGroup>(
       `INSERT INTO working_groups (
         name, slug, description, slack_channel_url, slack_channel_id,
         is_private, status, display_order, committee_type, region,
         linked_event_id, event_start_date, event_end_date, event_location, auto_archive_after_event,
-        logo_url, website_url, topics
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        logo_url, website_url, topics, parent_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *`,
       [
         input.name,
@@ -124,6 +128,7 @@ export class WorkingGroupDatabase {
         input.logo_url || null,
         input.website_url || null,
         input.topics ? JSON.stringify(input.topics) : '[]',
+        input.parent_id || null,
       ]
     );
 
@@ -198,7 +203,23 @@ export class WorkingGroupDatabase {
       auto_archive_after_event: 'auto_archive_after_event',
       logo_url: 'logo_url',
       website_url: 'website_url',
+      parent_id: 'parent_id',
     };
+
+    if (updates.parent_id !== undefined) {
+      await this.assertValidParent(id, updates.parent_id);
+    }
+
+    // Block committee_type change to a non-parent type if this group has subgroups.
+    if (updates.committee_type && !['working_group', 'governance'].includes(updates.committee_type)) {
+      const children = await query<{ count: string }>(
+        'SELECT COUNT(*)::text as count FROM working_groups WHERE parent_id = $1',
+        [id]
+      );
+      if (parseInt(children.rows[0]?.count || '0', 10) > 0) {
+        throw new Error(`Cannot change committee type to '${updates.committee_type}' while subgroups exist. Reparent or archive subgroups first.`);
+      }
+    }
 
     const setClauses: string[] = [];
     const params: unknown[] = [];
@@ -448,6 +469,379 @@ export class WorkingGroupDatabase {
        ORDER BY display_order, name`
     );
     return result.rows;
+  }
+
+  /**
+   * List direct subgroups of a working group.
+   */
+  async listSubgroups(parentId: string): Promise<WorkingGroup[]> {
+    const result = await query<WorkingGroup>(
+      `SELECT * FROM working_groups
+       WHERE parent_id = $1
+       ORDER BY display_order, name`,
+      [parentId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get a group's ID plus all of its descendant IDs. Hierarchy is capped at
+   * two levels, so we only look one level deep.
+   */
+  async getDescendantIds(groupId: string): Promise<string[]> {
+    const result = await query<{ id: string }>(
+      `SELECT id FROM working_groups WHERE id = $1 OR parent_id = $1`,
+      [groupId]
+    );
+    return result.rows.map(r => r.id);
+  }
+
+  /**
+   * Like `getDescendantIds` but excludes private subgroups the caller is not
+   * a member of. Use this when building aggregated feeds so private subgroup
+   * posts/events don't leak to non-members viewing the public parent.
+   *
+   * The target group itself is always included — visibility of the target is
+   * the caller's responsibility (the route guards against viewing private
+   * groups you aren't in).
+   *
+   * Pass `isAdmin: true` to skip the privacy filter entirely (for admin views).
+   */
+  async getVisibleDescendantIds(
+    groupId: string,
+    userId: string | null,
+    options: { isAdmin?: boolean } = {},
+  ): Promise<string[]> {
+    const result = await query<{ id: string; is_private: boolean; parent_id: string | null }>(
+      `SELECT id, is_private, parent_id FROM working_groups
+       WHERE id = $1 OR parent_id = $1`,
+      [groupId]
+    );
+
+    const allowed: string[] = [];
+    for (const row of result.rows) {
+      // Target group: always include.
+      if (row.id === groupId) {
+        allowed.push(row.id);
+        continue;
+      }
+      // Admins see everything.
+      if (options.isAdmin) {
+        allowed.push(row.id);
+        continue;
+      }
+      // Public subgroup: include.
+      if (!row.is_private) {
+        allowed.push(row.id);
+        continue;
+      }
+      // Private subgroup: only if caller is a direct member.
+      if (userId && await this.isMember(row.id, userId)) {
+        allowed.push(row.id);
+      }
+    }
+    return allowed;
+  }
+
+  /**
+   * True if the user is an active member of the group or any of its descendants.
+   */
+  async isFamilyMember(groupId: string, userId: string): Promise<boolean> {
+    const result = await query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM working_group_memberships m
+         JOIN working_groups g ON g.id = m.working_group_id
+         WHERE (g.id = $1 OR g.parent_id = $1)
+           AND m.workos_user_id = $2
+           AND m.status = 'active'
+       ) as exists`,
+      [groupId, userId]
+    );
+    return !!result.rows[0]?.exists;
+  }
+
+  /**
+   * Count of distinct active members across the group and all descendants.
+   */
+  async countFamilyMembers(groupId: string): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(DISTINCT m.workos_user_id)::text as count
+         FROM working_group_memberships m
+         JOIN working_groups g ON g.id = m.working_group_id
+         WHERE (g.id = $1 OR g.parent_id = $1)
+           AND m.status = 'active'`,
+      [groupId]
+    );
+    return parseInt(result.rows[0]?.count || '0', 10);
+  }
+
+  /**
+   * Resolve the Slack channel to post to for a given group. Walks up the
+   * parent chain until a channel is found. Returns the resolving group so
+   * callers can label cross-group posts with the originating subgroup.
+   */
+  async resolveNotificationChannel(groupId: string): Promise<{
+    channelId: string | null;
+    viaParent: boolean;
+    group: WorkingGroup | null;
+  }> {
+    const origin = await this.getWorkingGroupById(groupId);
+    if (!origin) return { channelId: null, viaParent: false, group: null };
+
+    if (origin.slack_channel_id) {
+      return { channelId: origin.slack_channel_id, viaParent: false, group: origin };
+    }
+
+    // Walk up. Cap at two levels; after that we give up.
+    let cursor: string | null = origin.parent_id ?? null;
+    while (cursor) {
+      const parent = await this.getWorkingGroupById(cursor);
+      if (!parent) break;
+      if (parent.slack_channel_id) {
+        return { channelId: parent.slack_channel_id, viaParent: true, group: origin };
+      }
+      cursor = parent.parent_id ?? null;
+    }
+
+    return { channelId: null, viaParent: false, group: origin };
+  }
+
+  /**
+   * Graduate a topic on a parent WG to a full subgroup.
+   *
+   * Runs in a single transaction:
+   *   1. Creates a new WG with `parent_id = parent.id`, inheriting the topic's
+   *      name/description/slack_channel_id.
+   *   2. Converts topic subscribers (users with `topic.slug` in their
+   *      `topic_slugs`) into active members of the new subgroup.
+   *   3. Removes the topic slug from every affected subscription row.
+   *   4. Reassigns meeting_series, meetings, and perspectives tagged with the
+   *      topic to the new subgroup.
+   *   5. Removes the topic from the parent's topics JSONB.
+   *
+   * Returns the new subgroup plus counts of what moved.
+   */
+  async graduateTopicToSubgroup(
+    parentSlug: string,
+    topicSlug: string
+  ): Promise<{
+    subgroup: WorkingGroup;
+    moved: {
+      subscriptions: number;
+      meeting_series: number;
+      meetings: number;
+      perspectives: number;
+    };
+  }> {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Load parent + find the topic
+      const parentResult = await client.query<WorkingGroup>(
+        'SELECT * FROM working_groups WHERE slug = $1 FOR UPDATE',
+        [parentSlug]
+      );
+      const parent = parentResult.rows[0];
+      if (!parent) throw new Error(`Parent working group not found: ${parentSlug}`);
+
+      const topics = (parent.topics || []) as Array<{ slug: string; name: string; description?: string; slack_channel_id?: string }>;
+      const topic = topics.find(t => t.slug === topicSlug);
+      if (!topic) throw new Error(`Topic '${topicSlug}' not found on '${parentSlug}'`);
+
+      // Ensure parent is a valid parent type (working_group or governance)
+      if (!['working_group', 'governance'].includes(parent.committee_type)) {
+        throw new Error(`Cannot graduate topics from '${parent.committee_type}' committees`);
+      }
+      // Ensure parent isn't already a subgroup (depth cap)
+      if (parent.parent_id) {
+        throw new Error('Cannot graduate a topic on a subgroup (hierarchy is two levels)');
+      }
+
+      // 2. Pick a slug for the new subgroup. If bare slug collides, prefix with parent slug.
+      let newSlug = topic.slug;
+      const collision = await client.query<{ id: string }>(
+        'SELECT id FROM working_groups WHERE slug = $1',
+        [newSlug]
+      );
+      if (collision.rows[0]) {
+        newSlug = `${parent.slug}-${topic.slug}`;
+      }
+
+      // 3. Insert the new subgroup
+      const subgroupResult = await client.query<WorkingGroup>(
+        `INSERT INTO working_groups (
+          name, slug, description, committee_type, status, is_private,
+          display_order, slack_channel_id, parent_id, topics
+        ) VALUES ($1, $2, $3, $4, 'active', $5, 0, $6, $7, '[]'::jsonb)
+        RETURNING *`,
+        [
+          topic.name,
+          newSlug,
+          topic.description || null,
+          parent.committee_type,
+          parent.is_private,
+          topic.slack_channel_id || null,
+          parent.id,
+        ]
+      );
+      const subgroup = subgroupResult.rows[0];
+
+      // 4. Promote subscribers to members
+      const subResult = await client.query<{ workos_user_id: string }>(
+        `SELECT DISTINCT workos_user_id FROM working_group_topic_subscriptions
+         WHERE working_group_id = $1 AND $2 = ANY(topic_slugs)`,
+        [parent.id, topicSlug]
+      );
+      let addedMembers = 0;
+      for (const row of subResult.rows) {
+        const existing = await client.query<{ id: string }>(
+          `SELECT id FROM working_group_memberships
+           WHERE working_group_id = $1 AND workos_user_id = $2`,
+          [subgroup.id, row.workos_user_id]
+        );
+        if (existing.rows[0]) continue;
+        await client.query(
+          `INSERT INTO working_group_memberships (
+            working_group_id, workos_user_id, status, joined_at, updated_at
+          ) VALUES ($1, $2, 'active', NOW(), NOW())`,
+          [subgroup.id, row.workos_user_id]
+        );
+        addedMembers++;
+      }
+
+      // 5. Strip the topic slug from parent subscription rows; delete empty ones
+      await client.query(
+        `UPDATE working_group_topic_subscriptions
+         SET topic_slugs = array_remove(topic_slugs, $2), updated_at = NOW()
+         WHERE working_group_id = $1 AND $2 = ANY(topic_slugs)`,
+        [parent.id, topicSlug]
+      );
+      await client.query(
+        `DELETE FROM working_group_topic_subscriptions
+         WHERE working_group_id = $1 AND (topic_slugs IS NULL OR cardinality(topic_slugs) = 0)`,
+        [parent.id]
+      );
+
+      // 6. Reassign content. meeting_series, meetings, and perspectives all
+      // carry a topic_slugs array. Move rows that include this topic to the
+      // subgroup and strip the topic slug.
+      const movedSeries = await client.query<{ id: string }>(
+        `UPDATE meeting_series
+         SET working_group_id = $1,
+             topic_slugs = array_remove(topic_slugs, $3),
+             updated_at = NOW()
+         WHERE working_group_id = $2 AND $3 = ANY(topic_slugs)
+         RETURNING id`,
+        [subgroup.id, parent.id, topicSlug]
+      );
+      const movedMeetings = await client.query<{ id: string }>(
+        `UPDATE meetings
+         SET working_group_id = $1,
+             topic_slugs = array_remove(topic_slugs, $3),
+             updated_at = NOW()
+         WHERE working_group_id = $2 AND $3 = ANY(topic_slugs)
+         RETURNING id`,
+        [subgroup.id, parent.id, topicSlug]
+      );
+      const movedPerspectives = await client.query<{ id: string }>(
+        `UPDATE perspectives
+         SET working_group_id = $1,
+             tags = array_remove(tags, $3),
+             updated_at = NOW()
+         WHERE working_group_id = $2 AND $3 = ANY(tags)
+         RETURNING id`,
+        [subgroup.id, parent.id, topicSlug]
+      );
+
+      // 7. Remove the topic from the parent's topics JSONB
+      const newTopics = topics.filter(t => t.slug !== topicSlug);
+      await client.query(
+        'UPDATE working_groups SET topics = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(newTopics), parent.id]
+      );
+
+      await client.query('COMMIT');
+      return {
+        subgroup,
+        moved: {
+          subscriptions: addedMembers,
+          meeting_series: movedSeries.rowCount || 0,
+          meetings: movedMeetings.rowCount || 0,
+          perspectives: movedPerspectives.rowCount || 0,
+        },
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Validate that assigning a parent to a working group would not create a cycle
+   * or a self-reference. Throws on invalid parent. Pass childId=null for creates.
+   */
+  private async assertValidParent(childId: string | null, parentId: string | null | undefined): Promise<void> {
+    if (!parentId) return;
+    if (childId && parentId === childId) {
+      throw new Error('Working group cannot be its own parent');
+    }
+
+    // Fetch proposed parent's metadata (existence + committee_type + its own parent_id).
+    const parentMeta = await query<WorkingGroup>(
+      'SELECT id, committee_type, parent_id FROM working_groups WHERE id = $1',
+      [parentId]
+    );
+    if (!parentMeta.rows[0]) {
+      throw new Error(`Parent working group not found: ${parentId}`);
+    }
+
+    // Depth cap: we only allow two levels. If the proposed parent itself has a
+    // parent, creating a grandchild is not allowed.
+    if (parentMeta.rows[0].parent_id) {
+      throw new Error('Working group hierarchy is limited to two levels');
+    }
+
+    // Committee type constraint: only working_group and governance can be parents.
+    const parentType = parentMeta.rows[0].committee_type;
+    if (parentType && !['working_group', 'governance'].includes(parentType)) {
+      throw new Error(`Committee type '${parentType}' cannot have subgroups`);
+    }
+
+    // Walk up the parent chain to ensure the proposed parent isn't a descendant
+    // of the child (which would create a cycle). Redundant with the two-level cap
+    // but cheap insurance.
+    if (childId) {
+      const visited = new Set<string>();
+      let cursor: string | null = parentId;
+      while (cursor !== null) {
+        const current: string = cursor;
+        if (current === childId) {
+          throw new Error('Cannot create a cycle in working group hierarchy');
+        }
+        if (visited.has(current)) {
+          throw new Error('Cycle detected in working group hierarchy');
+        }
+        visited.add(current);
+        const parentResult = await query<WorkingGroup>(
+          'SELECT parent_id FROM working_groups WHERE id = $1',
+          [current]
+        );
+        cursor = parentResult.rows[0]?.parent_id ?? null;
+      }
+    } else {
+      // For creates, we already verified the parent exists above.
+      const result = await query<{ id: string }>(
+        'SELECT id FROM working_groups WHERE id = $1',
+        [parentId]
+      );
+      if (!result.rows[0]) {
+        throw new Error(`Parent working group not found: ${parentId}`);
+      }
+    }
   }
 
   // ============== Memberships ==============

@@ -40,6 +40,11 @@
     "e": {
       "type": "string",
       "description": "Base64url-encoded RSA public exponent."
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional revocation timestamp. When present, verifiers MUST reject any signature produced with this key whose signing epoch (or equivalent time reference) is at or after this timestamp. The key may continue to appear in the trust anchor during a grace period so caches that have not yet refreshed still find the key and can evaluate the revocation marker. Keys past their revocation can be removed once the cache TTL (recommended: 5 minutes) has elapsed across all verifiers."
     }
   },
   "required": [

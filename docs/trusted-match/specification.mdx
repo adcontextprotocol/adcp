@@ -342,6 +342,8 @@ TMP requests carry a signature to prove the request originated from an authorize
 
 The router signs all requests using Ed25519. Both Context Match and Identity Match requests are signed, but with different signed fields reflecting their different contents and caching characteristics.
 
+Signatures bind the request to a specific provider. The router signs a separate signature per fan-out target using the provider's endpoint URL from the router's provider registration. Providers MUST verify that the signed `provider_endpoint_url` matches their own advertised endpoint and reject the request otherwise. This prevents a captured signature from being replayed against a different provider in the registry within the epoch.
+
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
 ### Signature envelope
@@ -363,11 +365,12 @@ Concatenated in this order, UTF-8, newline-separated:
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
+| `provider_endpoint_url` | Provider's registered endpoint URL (exact string match with provider registration, no trailing slash) |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` |
 
 When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
 
-Because the signed fields are static per placement, the same signature can be cached and reused for all requests to the same placement within a 24-hour epoch.
+Because the signed fields are static per placement per provider, the same signature can be cached and reused for all requests to the same `(placement_id, provider_endpoint_url)` pair within a 24-hour epoch. Cache keys MUST include `provider_endpoint_url` — reusing a signature across providers violates the binding and will fail verification.
 
 #### Identity Match signed fields
 
@@ -380,6 +383,7 @@ The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatr
 | `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
 | `consent` | The request's `consent` object verbatim, or `null` when absent |
 | `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |
+| `provider_endpoint_url` | Provider's registered endpoint URL (exact string match with provider registration, no trailing slash). Binds the signature to a specific provider — reusing a signature across providers fails verification. |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` as a JSON integer |
 
 **Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)` using byte-exact match (no case folding, no trimming), sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785). SHA-256 the UTF-8 bytes; hex-encode for the signed input, use raw bytes for cache keys (both conventions hash the same preimage).
@@ -399,6 +403,24 @@ On verification failure, the provider SHOULD suppress the property for a configu
 ### Key rotation
 
 Agents publish new signing keys via `agent-signing-key.json` at their well-known agent URL. Routers SHOULD cache keys with a 5-minute TTL. When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated.
+
+### Key revocation
+
+Rotation replaces a key; revocation kills one. Revocation is for the compromise case where a private key is known or suspected to have leaked.
+
+Publishers mark a compromised key by setting `revoked_at` (ISO 8601 timestamp) on the key entry in `agent-signing-key.json` and leaving the key in the trust anchor during a grace period so stale caches still find it. Verifiers MUST:
+
+- Reject any signature produced with a key where `revoked_at` is present and the signing epoch falls at or after the revocation timestamp.
+- Re-fetch `agent-signing-key.json` on verification failure before rejecting the request, to pick up a revocation that propagated after the last cache refresh.
+- Treat revocation as non-retryable for the offending request — there is no "maybe it'll work on retry" state.
+
+Keys may be removed from the trust anchor entirely once the cache TTL (recommended: 5 minutes) has elapsed across all verifiers. Removing the key earlier can produce a window where verifiers with a cached copy accept signatures that a fresh fetch would reject — keep the `revoked_at` marker in place until cache propagation completes.
+
+**Revocation limits.** Revocation propagates within 5 minutes (cache TTL) but does not retroactively invalidate signatures already accepted by providers before the revocation was observed. Captured signatures with a signing epoch before `revoked_at` remain verifiable for the remainder of the 48-hour replay window. Operators who suspect compromise SHOULD:
+
+- Rotate proactively on any suspicion, not only on confirmed leak.
+- Keep signing keys in HSM or KMS rather than on disk to minimize compromise likelihood in the first place.
+- Accept that a leaked key grants up to ~48 hours of forgery capability until daily-epoch rollover retires the signed payloads that contained it. Shorter custom epoch windows are a deployment option when this window is unacceptable.
 
 ### Key distribution
 

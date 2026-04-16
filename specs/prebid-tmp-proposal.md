@@ -143,6 +143,9 @@ good at.
 - Tree-shakeable — only the functions Prebid uses get bundled
 - Types + pure functions — no network calls, no side effects
 - Prebid already supports npm dependencies for core modules
+- Ed25519 request signing is handled by `@adcp/client/tmp` when a signing
+  key is configured (see [Request signing](#request-signing) below for the
+  requirements that apply to both Prebid.js and PBS)
 
 ## What changes in Prebid Server
 
@@ -150,6 +153,11 @@ good at.
 
 ```yaml
 tmp:
+  signing:
+    # Path to the publisher's Ed25519 private key. Prefer an HSM or KMS
+    # reference over a file mount — see "Signing key storage" below.
+    key_ref: "kms://projects/pub-1/locations/global/keyRings/tmp/cryptoKeys/signing"
+    key_id: "pub-1-2026q2"
   providers:
     - agent_url: "https://scope3.example.com"
       endpoint: "https://scope3.example.com/tmp"
@@ -169,10 +177,130 @@ Uses `adcp-go/tmp/client` for:
 - Fan-out to configured providers in parallel over HTTP/2
 - Per-provider timeouts with graceful degradation
 - Response merging (offers concatenated, signals merged, eligibility conservative-merged)
-- Optional Ed25519 request signing
+- Ed25519 request signing (see [Request signing](#request-signing) below)
 
-Prebid Server handles the integration with existing modules (where in the auction
-flow TMP runs, how targeting is set on bid requests, etc.).
+Prebid Server handles the integration with existing modules. TMP runs at the
+`processed-auction-request` hook stage — after imps are parsed and before bid
+requests are dispatched — so the module can read per-imp `tmp` ext and set
+targeting key-values without racing bidder fan-out.
+
+### Temporal decorrelation in a server-side embed
+
+The goal of temporal decorrelation is to make pairing ambiguous to a **buyer
+agent or network observer between router and buyer** — not to add delay for
+its own sake. The [spec's](/docs/trusted-match/specification#temporal-decorrelation)
+100-2000ms random delay is one lever; volume, batching, and cross-page
+caching are others. Publishers pick a profile that suits their traffic and
+latency budget.
+
+**Delay applies to Identity Match, not Context Match.** Context Match fires
+on the auction critical path — delaying it has no decorrelation value
+(correlation is about the relative timing of the pair, not their absolute
+arrival). Delaying both independently widens the observable window but
+doesn't improve pairing ambiguity and doubles latency cost. Delaying both by
+a correlated random amount gains nothing at all. The deferrable side is
+Identity; that's where randomization goes.
+
+**Levers publishers combine:**
+
+- **Volume / k-anonymity.** A high-traffic publisher firing hundreds or
+  thousands of Identity Match requests per second across users on the same
+  placement naturally produces an ambiguous pairing set. Short or zero
+  explicit delay is defensible when traffic volume alone prevents
+  individual-pair recovery. Low-traffic publishers have no such cover and
+  need explicit delays toward the top of the recommended range.
+- **Cross-page caching.** Cache Identity Match responses per `user_token`
+  for the buyer's `ttl_sec` (typically 60s+). Cache hits produce no wire
+  request, so most auctions have no pair to correlate. Cache misses still
+  emit an Identity Match — publishers pair this with an explicit delay or
+  rely on volume. Each cache refresh MUST generate a new Identity Match
+  `request_id`; reusing a cached `request_id` on a new wire send violates
+  the spec's per-epoch dedup requirement.
+- **Batching.** Identity Match requests for multiple users bundled on the
+  wire within a short window destroy individual-pair timing. Spec permits
+  `Publishers MAY batch Identity Match requests across multiple page views`.
+- **Explicit delay on Identity.** Uniform random delay from an interval
+  appropriate to traffic volume. 100-2000ms is a default that works for
+  most publishers; smaller windows are defensible with high volume,
+  larger with low volume. Context Match fires immediately.
+
+**Server-side embed picks a profile:**
+
+- A large publisher with heavy traffic and aggressive caching may set
+  Identity delay to 0 and rely on volume + caching. The trade-off is
+  auditability: "we're not delaying" needs a defense and a measurable
+  k-anonymity target.
+- A small or long-tail publisher picks a longer explicit delay (closer to
+  2000ms) and runs Identity on a background schedule or a client companion
+  so the auction critical path stays under timeout budget.
+- A hybrid deployment fires Context Match server-side on the auction
+  critical path and defers Identity Match to a Prebid.js companion after
+  a randomized post-auction delay. The decorrelation comes from the
+  delay, not the origination source — the router still emits to the buyer
+  from its own egress IP — but client origination defeats publisher-edge
+  client-IP correlation and removes identity from the auction hot path.
+
+**Publishers SHOULD declare their decorrelation profile publicly** alongside
+`adagents.json` so auditors and users can see what temporal properties the
+publisher is actually providing. "Pure parallel with no explicit delay and
+no volume defense" is a valid configuration only if the publisher is willing
+to surface it; it does not satisfy the spec's temporal decorrelation SHOULD
+on its own.
+
+### Request signing
+
+Per the spec's [Request Authentication](/docs/trusted-match/specification#request-authentication)
+model, the router signs all TMP requests — Context Match and Identity Match —
+with Ed25519. Providers verify signatures using the publisher's public key
+from the property registry. Providers typically sample-verify (e.g., 5% of
+requests) rather than verify every request to keep per-request cost under
+30µs; sustained failures trigger property suppression. This prevents
+unauthorized parties from probing provider targeting logic by forging
+requests.
+
+Implementations using `adcp-go/tmp/client` inherit outbound signing — the
+client loads the publisher's signing key at startup and signs every request.
+Verification cost sits on the provider side and isn't affected. Implementations
+building against the TMP schemas directly without the SDK must implement:
+
+- `X-AdCP-Signature` and `X-AdCP-Key-Id` headers on every request.
+- Daily-epoch replay window (`floor(unix_timestamp / 86400)`); see the
+  [signature envelope](/docs/trusted-match/specification#signature-envelope)
+  for per-message-type signed-field ordering.
+- Per-provider signatures. Context Match signatures are bound to
+  `provider_endpoint_url`, so the router generates one signature per fan-out
+  target. Signature caches key on `(placement_id, provider_endpoint_url)`,
+  not `placement_id` alone.
+- Signature invalidation on active-package-set change. Context Match
+  signatures cover the sorted `package_ids` list; when the buyer's active set
+  changes, cached per-placement-per-provider signatures must be regenerated.
+  Daily-epoch rollover alone isn't sufficient.
+- [Key rotation](/docs/trusted-match/specification#key-rotation) and
+  [revocation](/docs/trusted-match/specification#key-revocation) via
+  `agent-signing-key.json`; providers cache keys with a 5-minute TTL and
+  honor the `revoked_at` marker.
+
+**Operator guidance for the PBS embed:**
+
+- **Signing key storage.** The publisher's Ed25519 private key is high-value
+  material — it authorizes forged Context Match and Identity Match requests
+  to the providers for which the router holds valid registrations, for the
+  remainder of the ~48-hour replay window if leaked. Store in HSM or KMS,
+  not a mounted file. The spec supports explicit revocation via
+  [`revoked_at`](/docs/trusted-match/specification#key-revocation), which
+  propagates within the 5-minute cache TTL — but revocation does not
+  retroactively invalidate signatures already captured before the revocation
+  timestamp. Rotate and revoke proactively on any suspicion.
+- **End-to-end signing verification before go-live.** Per spec
+  [§Signature verification](/docs/trusted-match/specification#signature-verification),
+  providers SHOULD suppress a property for 24 hours on verification failure.
+  Misconfigured signing is silent-then-catastrophic — run a signed probe
+  against at least one provider before flipping traffic.
+- **401 handling.** Treat signature verification failures as non-retryable;
+  exclude the provider from the current auction and alert operations.
+  Sustained failures indicate key rotation drift, clock skew across the
+  epoch boundary, or a `provider_endpoint_url` mismatch between the router's
+  provider registration and the provider's self-advertised endpoint.
 
 ### Dependency: `adcp-go/tmp`
 

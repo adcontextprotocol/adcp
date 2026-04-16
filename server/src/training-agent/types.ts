@@ -264,6 +264,19 @@ export interface PackageState {
   endTime: string;
   formatIds?: FormatID[];
   creativeAssignments: string[];
+  targeting?: PackageTargeting;
+}
+
+export interface ListReference {
+  agent_url: string;
+  list_id: string;
+  auth_token?: string;
+}
+
+export interface PackageTargeting {
+  property_list?: ListReference;
+  collection_list?: ListReference;
+  collection_list_exclude?: ListReference;
 }
 
 /** A single asset slot inside a creative manifest (e.g., headline, hero_image). */

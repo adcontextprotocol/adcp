@@ -9,6 +9,10 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 
 This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades).
 
+<Warning>
+**v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
+</Warning>
+
 <Info>
 **Starting from v2?** See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for the 8 minimum requirements to pass storyboard testing before working through this full migration.
 </Info>
@@ -63,9 +67,11 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 ## Running v2 and v3 side by side
 
-During migration, you can run v2 and v3 handlers in parallel. AdCP does not define a version negotiation mechanism at the transport level.
+Dual-support is a temporary migration tool, not a long-term posture. After August 1, 2026, v3-only is the required configuration — see the [v2 sunset page](/docs/reference/v2-sunset).
 
-1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. If it succeeds, the seller supports v3. If the seller only exposes v2 tools (no `get_adcp_capabilities`), use your v2 code path.
+During migration, sellers can accept both v2 and v3 traffic and buyers can route to each seller on the correct version:
+
+1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. A successful response means the seller supports v3; buyers declare their version via `adcp_major_version` and sellers advertise the versions they accept via `major_versions`. See [version negotiation](/docs/reference/versioning#version-negotiation) for the full flow. A seller that does not respond to `get_adcp_capabilities` is v2-only.
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 
