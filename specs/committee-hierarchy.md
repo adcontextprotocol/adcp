@@ -4,15 +4,18 @@
 
 Let working groups nest under other working groups so we can consolidate a sprawl of dead committees into a coherent tree of five protocol areas. Dead WGs (like `wg-pmp-and-deals`, `wg-sponsored-intelligence`, the nine councils) become subgroups of a living parent without losing their members, documents, meetings, or history. Heavy "topics" that deserve their own members, channel, and docs graduate to first-class subgroups; lightweight tags stay as topics.
 
-The five top-level parents are:
+The top-level parents reuse existing WG slugs wherever possible to preserve URLs, members, documents, and history. Only Builders is genuinely new.
 
-1. `wg-campaign-lifecycle` - discovery, proposals, execution, trafficking, pacing, makegoods, reconciliation
-2. `wg-creative` - creative lifecycle, generative, governance, audit
-3. `wg-signals-measurement` - audience signals, measurement, verification, attribution
-4. `wg-governance` - brand.json, adagents.json, brand safety, compliance, policy
-5. `wg-builders` - SDKs, tooling, integration help (not protocol design)
+1. `media-buying-protocol-wg` → "Campaign Lifecycle" — discovery, proposals, execution, trafficking, pacing, makegoods, reconciliation
+2. `creative-wg` → "Creative" — creative lifecycle, generative, governance, audit
+3. `signals-data-wg` → "Signals and Measurement"
+4. `brand-standards-wg` → "Governance" — brand.json, adagents.json, brand safety, compliance, policy
+5. `events-thought-leadership-wg` → "Community & Events"
+6. `wg-builders` *(new)* — SDKs, tooling, integration help
 
-Everything else is either a subgroup of one of these five, archived, or a chapter/industry gathering (those remain top-level, not nested under the five).
+Migration 405 originally seeded parallel parents with fresh slugs (`wg-campaign-lifecycle`, etc.); migration 406 consolidates onto the existing slugs.
+
+Everything else is either a subgroup of one of these, archived, or a chapter/industry gathering (those remain top-level, not nested).
 
 ## Scope
 
