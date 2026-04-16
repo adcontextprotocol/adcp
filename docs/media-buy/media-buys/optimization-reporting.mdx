@@ -243,19 +243,20 @@ If reporting data is not available within the product's `expected_delay_minutes`
 
 This prevents buyers from incorrectly assuming a missed notification.
 
-#### Broadcast Measurement Windows
+#### Measurement Maturation Windows
 
-Broadcast TV measurement works differently from digital. Measurement data is not delayed — it **matures over time** as time-shifted (DVR) viewing accumulates. Sellers declare `measurement_windows` on their products to describe this maturation:
+For channels where billing-grade data is produced in **phases** rather than arriving final on day one, sellers declare `measurement_windows` on their products. Each window describes a maturation stage with its own expected availability. This pattern is used across channels:
 
-| Window | Accumulation | Typical availability |
-|--------|-------------|---------------------|
-| `live` | Real-time viewers only | ~1 day after broadcast |
-| `c3` | Live + 3 days DVR playback | ~4 days after broadcast |
-| `c7` | Live + 7 days DVR playback | ~15 days after broadcast |
+| Channel | Typical windows |
+|---------|-----------------|
+| Broadcast / linear TV | `live` (same day) → `c3` (~4 days) → `c7` (~15–22 days, guarantee basis) |
+| DOOH | `tentative` (same day) → `final` post-IVT/fraud-check (~1 day, guarantee basis) |
+| Digital with IVT filtering | raw → `post_givt` → `post_sivt` (~2–3 days, guarantee basis) |
+| Podcast | `downloads_7d` → `downloads_30d` (guarantee basis) |
 
-Each window's numbers supersede the previous one. C7 is typically the guarantee basis — the number both sides reconcile against. Note that the measurement vendor (VideoAmp, Nielsen, Comscore) adds processing time on top of the accumulation period — C7 raw data accumulates over 7 days, but vendor-certified C7 numbers may arrive ~15 days after broadcast.
+Each window's numbers supersede the previous one. One window is typically the `is_guarantee_basis` — the number both sides reconcile against. The measurement vendor's processing time is captured in `expected_availability_days` on each window (it includes both accumulation and processing).
 
-Broadcast sellers set `expected_delay_minutes` on their products to reflect the longest measurement pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines via `expected_availability_days`.
+Sellers set `expected_delay_minutes` on their products to reflect the first-available data pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines.
 
 Delivery data for products with measurement windows includes three fields on each package:
 
@@ -320,14 +321,9 @@ When the seller sends updated data for the same period with a wider window, they
 }
 ```
 
-The buyer replaces stored data each time a `window_update` arrives. When `is_final: true`, this is the number to reconcile against the guarantee.
+The buyer replaces stored data each time a `window_update` arrives. When `is_final: true`, this is the number to reconcile against the guarantee. The same lifecycle shape applies to DOOH (`tentative` → `final`), digital with IVT filtering (`post_givt` → `post_sivt`), podcast (`downloads_7d` → `downloads_30d`), and any other channel where data matures in phases — only the window IDs and timing differ.
 
-This pattern also applies beyond broadcast:
-- **Podcast**: 7-day downloads → 30-day downloads
-- **Influencer/YouTube**: 24-hour views → 7-day views → 30-day views
-- **Digital with IVT filtering**: raw impressions → GIVT filtered → SIVT filtered
-
-For broadcast reconciliation timing and the `measurement_window` field on billing measurement terms, see [Accountability](/docs/media-buy/advanced-topics/accountability).
+For how `measurement_window` appears on billing terms and drives reconciliation and invoicing clocks, see [Accountability](/docs/media-buy/advanced-topics/accountability).
 
 #### Webhook Aggregation
 

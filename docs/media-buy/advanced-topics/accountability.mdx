@@ -110,9 +110,9 @@ The seller has three responses:
 
 When the buyer omits `performance_standards` or `measurement_terms`, the product's defaults apply.
 
-#### Broadcast measurement terms
+#### Measurement terms for phased-maturation channels
 
-For broadcast TV, the buyer proposes a `measurement_window` alongside the vendor — this specifies which maturation window (Live, C3, or C7) the guarantee is reconciled against:
+Some channels produce billing-grade data in phases rather than delivering final numbers on day one — broadcast TV, DOOH, digital with IVT filtering, podcast downloads, and others. For these, the buyer proposes a `measurement_window` alongside the vendor, specifying which maturation stage the guarantee is reconciled against:
 
 ```json
 {
@@ -130,7 +130,7 @@ For broadcast TV, the buyer proposes a `measurement_window` alongside the vendor
 }
 ```
 
-The `measurement_window` references a `window_id` from the product's `reporting_capabilities.measurement_windows`. This tells both sides: "VideoAmp's C7 numbers are what we reconcile against." The `agency_estimate_number` is the financial reference that links the order to the agency's media plan — it travels with the order through the transaction lifecycle.
+The `measurement_window` references a `window_id` from the product's `reporting_capabilities.measurement_windows`. This tells both sides: "VideoAmp's C7 numbers are what we reconcile against." For a DOOH product it would be `"final"` (post-IVT/fraud-check); for digital it might be `"post_sivt"`. The same mechanism declares both which data is authoritative for billing and when it becomes available — reconciliation and invoicing clocks follow that declared availability. The `agency_estimate_number` is the financial reference that links the order to the agency's media plan — it travels with the order through the transaction lifecycle.
 
 ### 5. Confirmed Package: The Contract
 
