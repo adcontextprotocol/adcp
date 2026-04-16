@@ -55,6 +55,10 @@
           "sandbox": {
             "type": "boolean",
             "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
+          },
+          "preferred_reporting_protocol": {
+            "$ref": "/schemas/enums/cloud-storage-protocol.json",
+            "description": "Buyer's preferred cloud storage protocol for offline reporting delivery. The seller provisions the account's reporting_bucket using this protocol if supported. When omitted, the seller chooses from its supported offline_delivery_protocols. Only meaningful when the seller's reporting_delivery_methods includes 'offline'."
           }
         },
         "required": [

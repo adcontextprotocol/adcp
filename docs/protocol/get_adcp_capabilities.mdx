@@ -126,6 +126,21 @@ The following fields have been removed from the capabilities response:
 - `brand.identity` — Implied by `brand` in `supported_protocols`. `get_brand_identity` is always available.
 :::
 
+#### reporting_delivery_methods
+
+Declares which push-based delivery methods are available across the seller's product portfolio. Polling via `get_media_buy_delivery` is a required task for all `media_buy` sellers regardless of this field.
+
+| Method | Description | Configuration |
+|--------|-------------|---------------|
+| `webhook` | Seller pushes to buyer-provided URL | Buyer configures `reporting_webhook` per media buy |
+| `offline` | Seller pushes batch files to a cloud storage bucket | Seller provisions `reporting_bucket` per account |
+
+When absent, only polling is available. Cadence and metrics are declared per product in `reporting_capabilities`.
+
+When `offline` is declared, also include `offline_delivery_protocols` to declare which cloud storage protocols are supported (`s3`, `gcs`, `azure_blob`). Buyers express a protocol preference via `preferred_reporting_protocol` in `sync_accounts`; the seller provisions the account's `reporting_bucket` using a supported protocol.
+
+For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location (including `file_retention_days`) appears on the account object returned by `sync_accounts` as `reporting_bucket`. See [Offline File Delivery](/docs/media-buy/media-buys/optimization-reporting#offline-file-delivery-based-reporting) for details.
+
 #### features
 
 Optional media-buy features. **If declared true, seller MUST honor requests using that feature.**

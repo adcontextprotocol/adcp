@@ -118,6 +118,69 @@
       },
       "maxItems": 10
     },
+    "reporting_bucket": {
+      "type": "object",
+      "description": "Cloud storage bucket where the seller delivers offline reporting files for this account. Seller provisions a dedicated bucket or a per-account prefix within a shared bucket, and grants the buyer read access out-of-band. Access MUST be scoped so each account can only read its own prefix. Only present when the seller supports offline delivery (reporting_delivery_methods includes 'offline' in capabilities).",
+      "properties": {
+        "protocol": {
+          "$ref": "/schemas/enums/cloud-storage-protocol.json",
+          "description": "Cloud storage protocol"
+        },
+        "bucket": {
+          "type": "string",
+          "description": "Bucket or container name",
+          "minLength": 3,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Path prefix within the bucket. Seller appends date-based partitioning beneath this prefix.",
+          "maxLength": 512,
+          "pattern": "^[a-zA-Z0-9/_.-]+$",
+          "examples": [
+            "accounts/pinnacle/adcp",
+            "reporting/2024"
+          ]
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region for the bucket",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9-]+$",
+          "examples": [
+            "us-east-1",
+            "europe-west1"
+          ]
+        },
+        "format": {
+          "type": "string",
+          "enum": ["jsonl", "csv", "parquet"],
+          "description": "File format for delivered files",
+          "default": "jsonl"
+        },
+        "compression": {
+          "type": "string",
+          "enum": ["gzip", "none"],
+          "description": "Compression applied to delivered files",
+          "default": "gzip"
+        },
+        "file_retention_days": {
+          "type": "integer",
+          "description": "How long reporting files are retained in the bucket before deletion. Buyers must read files within this window. Minimum recommended: 14 days.",
+          "minimum": 1,
+          "examples": [14, 30, 90]
+        },
+        "setup_instructions": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "URL to documentation for configuring buyer read access to this bucket (IAM role, service account, etc.)"
+        }
+      },
+      "required": ["protocol", "bucket", "file_retention_days"],
+      "additionalProperties": false
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this is a sandbox account — no real platform calls, no real spend. For explicit accounts (require_operator_auth: true), sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts. For implicit accounts, sandbox is part of the natural key: the same brand/operator pair can have both a production and sandbox account."
