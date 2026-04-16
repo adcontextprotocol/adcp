@@ -53,6 +53,10 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
 
+## Protocol versioning
+
+Every request carries `adcp_major_version`; sellers advertise supported versions on `get_adcp_capabilities`. A3 and B1 go deeper on version negotiation and the object-presence pattern sellers use to declare capabilities.
+
 ## What you'll do with Addie
 
 Tell Addie what you want: audience, goals, budget. Then walk through each step as it happens:
