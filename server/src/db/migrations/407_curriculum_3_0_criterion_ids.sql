@@ -58,29 +58,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- C1: Buyer practitioner — multi-agent orchestration
-SELECT _append_criterion('C1', 'c1_ex2', 'c1_ex2_sc_version_declaration',
+-- C1: Buyer practitioner — multi-agent orchestration.
+-- The 274 revision collapsed C1 exercises into c1_ex1.
+SELECT _append_criterion('C1', 'c1_ex1', 'c1_ex1_sc_version_declaration',
   'Declares adcp_major_version on create_media_buy requests and handles VERSION_UNSUPPORTED by selecting a compatible seller or downgrading the payload.');
 
-SELECT _append_criterion('C1', 'c1_ex2', 'c1_ex2_sc_update_media_buy_account',
+SELECT _append_criterion('C1', 'c1_ex1', 'c1_ex1_sc_update_media_buy_account',
   'Includes account on every update_media_buy call so billing resolves to the correct relationship.');
 
-SELECT _append_criterion('C1', 'c1_ex2', 'c1_ex2_sc_measurement_terms_negotiation',
+SELECT _append_criterion('C1', 'c1_ex1', 'c1_ex1_sc_measurement_terms_negotiation',
   'Proposes measurement_terms on a guaranteed buy, interprets seller acceptance vs adjustment vs TERMS_REJECTED, and recovers by aligning to a supported vendor or product defaults.');
 
--- C2: Buyer practitioner — brand identity and compliance
-SELECT _append_criterion('C2', 'c2_ex2', 'c2_ex2_sc_governance_denied_recovery',
+-- C2: Buyer practitioner — brand identity and compliance.
+-- c2_ex3 is the only C2 exercise (from 296_c2_rights_exercise); governance concepts
+-- attach here and are exercised more deeply in S4.
+SELECT _append_criterion('C2', 'c2_ex3', 'c2_ex3_sc_governance_denied_recovery',
   'Handles GOVERNANCE_DENIED by reading governance_context, identifying the failed rule, correcting targeting or creative, and retrying — not treating it as a transport error.');
 
-SELECT _append_criterion('C2', 'c2_ex2', 'c2_ex2_sc_purchase_type_awareness',
+SELECT _append_criterion('C2', 'c2_ex3', 'c2_ex3_sc_purchase_type_awareness',
   'Identifies purchase_type (media_buy, rights_license, signal_activation, creative_services) for each governed action so the governance agent applies the right rules.');
 
--- C3: Buyer practitioner — creative workflows
-SELECT _append_criterion('C3', 'c3_ex1', 'c3_ex1_sc_preview_creative_modes',
-  'Uses preview_creative in single, batch, and variant modes; chooses output_format="html" when rendering speed matters.');
-
-SELECT _append_criterion('C3', 'c3_ex1', 'c3_ex1_sc_industry_identifiers',
-  'Attaches industry_identifiers[] with the correct creative-identifier-type (ad_id, isci, clearcast_clock) on broadcast manifests and assigns a distinct Ad-ID to each cut.');
+-- C3: Buyer practitioner — creative workflows.
+-- C3 has no exercise_definitions after 274; preview modes and industry_identifiers
+-- are exercised in S2 (see s2_ex1_sc_preview_creative_modes and s2_ex1_sc_broadcast_identifiers).
 
 -- B1: Publisher practitioner — building your sales agent
 SELECT _append_criterion('B1', 'b1_ex1', 'b1_ex1_sc_version_negotiation',
