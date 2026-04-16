@@ -109,11 +109,13 @@ Brand agents MUST declare `brand` in `supported_protocols`.
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `sync_accounts` | Required | Account creation and update |
-| `list_accounts` | Required | Account retrieval |
+| `sync_accounts` | Conditional | Implicit accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs |
+| `list_accounts` | Conditional | Explicit accounts (`require_operator_auth: true`) — buyer discovers pre-existing accounts |
 | `sync_governance` | Conditional | Required when the buyer uses campaign governance |
 | `report_usage` | Conditional | Required when the agent charges for services |
 | `get_account_financials` | Optional | Financial summary per account |
+
+Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both (e.g., ad networks that use implicit accounts on the buyer side and explicit accounts with underlying platforms).
 
 **Reference**: [Accounts Protocol](/docs/accounts/overview)
 
