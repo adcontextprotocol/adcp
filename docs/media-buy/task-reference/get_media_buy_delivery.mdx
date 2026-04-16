@@ -540,7 +540,7 @@ asyncio.run(main())
 - Real-time impression counts not available
 - Use for periodic reporting and optimization decisions, not live monitoring
 
-**Broadcast TV**: Data freshness differs significantly for linear TV. Measurement data matures through defined windows (Live, C3, C7) as DVR playback accumulates. Final C7 numbers arrive ~15 days after broadcast. Products with `reporting_capabilities.measurement_windows` declare these timelines. Buyers reconcile against the `measurement_window` specified in `billing_measurement` on the agreed terms. See [Accountability](/docs/media-buy/advanced-topics/accountability) for measurement terms and [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting) for broadcast measurement windows.
+**Phased-maturation channels**: Data freshness differs for channels where billing-grade data is produced in phases rather than arriving final on day one — broadcast TV (Live → C3 → C7 DVR accumulation, final C7 ~15–22 days after broadcast), DOOH (tentative plays → post-IVT/fraud-check final), digital with IVT filtering (raw → post-GIVT → post-SIVT), and podcast (7-day → 30-day downloads). Products with `reporting_capabilities.measurement_windows` declare these timelines. Buyers reconcile against the `measurement_window` specified in `billing_measurement` on the agreed terms. See [Accountability](/docs/media-buy/advanced-topics/accountability) for measurement terms and [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting) for the full lifecycle.
 
 ## Error Handling
 

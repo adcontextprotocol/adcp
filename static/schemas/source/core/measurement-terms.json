@@ -21,11 +21,16 @@
         },
         "measurement_window": {
           "type": "string",
-          "description": "Which measurement window the billing metric is reconciled against. References a window_id from the product's reporting_capabilities.measurement_windows. For broadcast TV, this is typically 'c7' (live + 7 days DVR). When absent, billing is based on the seller's standard reporting without windowed maturation.",
+          "description": "Which measurement maturation stage the billing metric is reconciled against. References a window_id from the product's reporting_capabilities.measurement_windows. Examples: 'c7' for broadcast TV guarantees (live + 7 days DVR), 'final' for DOOH after IVT/fraud-check processing, 'post_sivt' for digital after sophisticated invalid-traffic filtering, 'downloads_30d' for podcast. When absent, billing is based on the seller's standard reporting without windowed maturation.",
           "examples": [
             "live",
             "c3",
-            "c7"
+            "c7",
+            "tentative",
+            "final",
+            "post_ivt",
+            "post_sivt",
+            "downloads_30d"
           ]
         }
       },
