@@ -93,33 +93,18 @@ export async function query<T extends QueryResultRow = any>(
   const p = getPool();
   const start = process.hrtime.bigint();
   try {
-    // CodeQL: text is a parameterized query template (e.g. "SELECT * FROM t WHERE id = $1"),
-    // never raw user input. User values are in params. This is safe by design.
-    const result = await p.query<T>(text, params); // lgtm[js/sql-injection]
-    logSlowQuery(start, text);
-    return result;
+    return await p.query<T>(text, params);
   } catch (err) {
     if (isTransientConnectionError(err)) {
       console.warn("Transient DB connection error, retrying query:", (err as Error).message);
-      const result = await p.query<T>(text, params); // lgtm[js/sql-injection]
-      logSlowQuery(start, text);
-      return result;
+      return p.query<T>(text, params);
     }
     throw err;
-  }
-}
-
-function logSlowQuery(start: bigint, text: string): void {
-  const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-  if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
-    // Truncate query text for logging safety; first 200 chars is enough to identify it
-    logger.warn(
-      {
-        duration_ms: Math.round(durationMs),
-        query: text.slice(0, 200),
-      },
-      "Slow database query"
-    );
+  } finally {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
+      logger.warn({ duration_ms: Math.round(durationMs) }, "Slow database query");
+    }
   }
 }
 
