@@ -79,12 +79,12 @@ async function compileSchema(schemaPath) {
   return ajv.compileAsync(schema);
 }
 
-// VAST 4.2 standard tracking events
-const VAST_PLAYBACK_EVENTS = ['impression', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete'];
-const VAST_INTERACTION_EVENTS = ['mute', 'unmute', 'pause', 'resume', 'rewind', 'skip', 'playerExpand', 'playerCollapse', 'fullscreen', 'exitFullscreen'];
-const VAST_PROGRESS_EVENTS = ['progress'];
-const VAST_CLICK_CLOSE_EVENTS = ['clickTracking', 'click', 'customClick', 'close', 'closeLinear'];
-const VAST_VERIFICATION_EVENTS = ['error', 'notViewable', 'viewable', 'measurableImpression', 'viewableImpression'];
+// VAST 4.2 tracking events (includes flattened Impression, Error, VideoClicks, ViewableImpression)
+const VAST_PLAYBACK_EVENTS = ['impression', 'creativeView', 'loaded', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete'];
+const VAST_INTERACTION_EVENTS = ['mute', 'unmute', 'pause', 'resume', 'rewind', 'skip', 'playerExpand', 'playerCollapse', 'fullscreen', 'exitFullscreen', 'otherAdInteraction', 'interactiveStart'];
+const VAST_PROGRESS_EVENTS = ['progress', 'notUsed'];
+const VAST_CLICK_CLOSE_EVENTS = ['clickTracking', 'customClick', 'close', 'closeLinear'];
+const VAST_VERIFICATION_EVENTS = ['error', 'viewable', 'notViewable', 'viewUndetermined', 'measurableImpression', 'viewableImpression'];
 
 const ALL_VAST_EVENTS = [
   ...VAST_PLAYBACK_EVENTS,
@@ -96,11 +96,11 @@ const ALL_VAST_EVENTS = [
 
 // DAAST tracking events (audio-appropriate subset)
 const ALL_DAAST_EVENTS = [
-  'impression', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete',
+  'impression', 'creativeView', 'loaded', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete',
   'mute', 'unmute', 'pause', 'resume', 'skip',
   'progress',
   'clickTracking', 'customClick', 'close',
-  'error', 'measurableImpression', 'viewableImpression'
+  'error', 'viewable', 'notViewable', 'viewUndetermined', 'measurableImpression', 'viewableImpression'
 ];
 
 async function runTests() {
@@ -203,13 +203,13 @@ async function runTests() {
     if (valid) return 'Expected validation to fail for invalid event name';
   });
 
-  await test('VAST asset with "click" event validates (backward compat)', () => {
+  await test('VAST asset rejects removed "click" event (use clickTracking)', () => {
     const valid = vastAssetValidate({
       delivery_type: 'url',
       url: 'https://vast.example.com/video/123',
       tracking_events: ['click']
     });
-    if (!valid) return JSON.stringify(vastAssetValidate.errors);
+    if (valid) return 'Expected "click" to be rejected — use "clickTracking" instead';
   });
 
   // --- DAAST asset schema validation ---
