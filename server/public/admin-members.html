@@ -384,6 +384,16 @@
               <option value="unsigned">Not Signed</option>
             </select>
           </div>
+
+          <div class="filter-group">
+            <label>Announcement</label>
+            <select id="filterAnnouncement" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="backlog">Ready but not announced</option>
+              <option value="incomplete">Not announce-ready</option>
+              <option value="announced">Already announced</option>
+            </select>
+          </div>
         </div>
 
         <div id="membersCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2_5);">
@@ -400,11 +410,14 @@
               <th>Subscription</th>
               <th>Amount</th>
               <th>Renewal Date</th>
+              <th title="member_profiles.is_public">Profile</th>
+              <th title="brand.json manifest on the primary domain">brand.json</th>
+              <th title="org_activities entry of type announcement_published">Announced</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="membersTableBody">
-            <tr><td colspan="8" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>
+            <tr><td colspan="11" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>
           </tbody>
         </table>
       </div>
@@ -489,7 +502,8 @@
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
       const agreementFilter = document.getElementById('filterAgreement').value;
       const accountTypeFilter = document.getElementById('filterAccountType').value;
-      console.log('[admin-members] Filters:', { statusFilter, expiringFilter, searchFilter, agreementFilter, accountTypeFilter });
+      const announcementFilter = document.getElementById('filterAnnouncement').value;
+      console.log('[admin-members] Filters:', { statusFilter, expiringFilter, searchFilter, agreementFilter, accountTypeFilter, announcementFilter });
 
       filteredMembers = allMembers.filter(member => {
         // Account type filter (Individual vs Company)
@@ -532,6 +546,20 @@
           return false;
         }
 
+        // Announcement filter
+        if (announcementFilter) {
+          const announceReady = member.profile_public && member.has_brand_manifest;
+          if (announcementFilter === 'backlog' && !(announceReady && !member.announced)) {
+            return false;
+          }
+          if (announcementFilter === 'incomplete' && announceReady) {
+            return false;
+          }
+          if (announcementFilter === 'announced' && !member.announced) {
+            return false;
+          }
+        }
+
         return true;
       });
 
@@ -546,7 +574,7 @@
       countDiv.textContent = `Showing ${filteredMembers.length} of ${allMembers.length} members`;
 
       if (filteredMembers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>';
         return;
       }
 
@@ -608,6 +636,12 @@
           ? `https://dashboard.stripe.com/test/customers/${member.stripe_customer_id}`
           : '';
 
+        const checkMark = '<span style="color: var(--color-success-600, #047857); font-weight: 600;">✓</span>';
+        const dashMark = '<span style="color: var(--color-text-muted, #94a3b8);">—</span>';
+        const profileCell = member.profile_public ? checkMark : dashMark;
+        const manifestCell = member.has_brand_manifest ? checkMark : dashMark;
+        const announcedCell = member.announced ? checkMark : dashMark;
+
         return `
           <tr id="row-${member.company_id}">
             <td><a href="/admin/accounts/${member.company_id}" class="company-link">${member.company_name || 'Unknown'}</a></td>
@@ -617,6 +651,9 @@
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td><strong>${amountText}</strong></td>
             <td class="${isExpiringSoon ? 'expiring-soon' : ''}">${periodEndText}</td>
+            <td style="text-align: center;">${profileCell}</td>
+            <td style="text-align: center;">${manifestCell}</td>
+            <td style="text-align: center;">${announcedCell}</td>
             <td style="display: flex; gap: 4px; align-items: flex-start; flex-wrap: wrap;">
               ${stripeLink ? `<a href="${stripeLink}" target="_blank" class="btn-icon" title="View in Stripe">💳</a>` : ''}
               <button class="btn-icon" onclick="viewPayments('${member.company_id}')" title="Payment History">📊</button>
@@ -634,7 +671,7 @@
     }
 
     function exportToCSV() {
-      const headers = ['Company Name', 'Company Type', 'Revenue Tier', 'Owner Email', 'Subscription Status', 'Amount', 'Current Period End', 'Created'];
+      const headers = ['Company Name', 'Company Type', 'Revenue Tier', 'Owner Email', 'Subscription Status', 'Amount', 'Current Period End', 'Created', 'Profile Public', 'brand.json', 'Announced'];
       const rows = filteredMembers.map(member => {
         const periodEnd = member.subscription_current_period_end
           ? new Date(member.subscription_current_period_end * 1000).toLocaleDateString()
@@ -675,7 +712,10 @@
           member.subscription_status || 'none',
           amount,
           periodEnd,
-          created
+          created,
+          member.profile_public ? 'yes' : 'no',
+          member.has_brand_manifest ? 'yes' : 'no',
+          member.announced ? 'yes' : 'no'
         ];
       });
 

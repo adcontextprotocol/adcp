@@ -59,7 +59,21 @@ export function setupMembersRoutes(
           o.subscription_current_period_end,
           o.agreement_signed_at,
           o.agreement_version,
-          COALESCE(first_member.email, 'No contact') as primary_email
+          COALESCE(first_member.email, 'No contact') as primary_email,
+          COALESCE(mp.is_public, false) AS profile_public,
+          (
+            mp.primary_brand_domain IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM brands b
+              WHERE b.domain = LOWER(mp.primary_brand_domain)
+                AND b.brand_manifest IS NOT NULL
+            )
+          ) AS has_brand_manifest,
+          EXISTS (
+            SELECT 1 FROM org_activities oa
+            WHERE oa.organization_id = o.workos_organization_id
+              AND oa.activity_type = 'announcement_published'
+          ) AS announced
         FROM organizations o
         LEFT JOIN LATERAL (
           SELECT email
@@ -68,6 +82,8 @@ export function setupMembersRoutes(
           ORDER BY om.created_at ASC
           LIMIT 1
         ) first_member ON true
+        LEFT JOIN member_profiles mp
+          ON mp.workos_organization_id = o.workos_organization_id
         ORDER BY o.created_at DESC
       `);
 
@@ -100,6 +116,9 @@ export function setupMembersRoutes(
           agreement_signed_at: row.agreement_signed_at,
           agreement_version: row.agreement_version,
           owner_email: row.primary_email, // Backwards compatible field name
+          profile_public: row.profile_public === true,
+          has_brand_manifest: row.has_brand_manifest === true,
+          announced: row.announced === true,
         };
       });
 
