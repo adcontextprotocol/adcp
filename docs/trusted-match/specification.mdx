@@ -138,7 +138,7 @@ A buyer's response for a single package.
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
-| `macros` | Map\<string, string\> | No | Buyer-defined key-value pairs associated with this offer. Usage is surface-dependent and will be refined in a future version. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
+| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
 
 #### OfferPrice
 
