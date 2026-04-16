@@ -1136,6 +1136,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
+      // Record publish event if this flipped is_public from false/null to true
+      await recordProfilePublishedIfNeeded(
+        targetOrgId,
+        existingProfile.is_public,
+        profile?.is_public,
+        user.id
+      );
+
       // Invalidate Addie's member context cache
       invalidateMemberContextCache();
 

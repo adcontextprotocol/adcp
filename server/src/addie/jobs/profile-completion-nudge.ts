@@ -6,8 +6,9 @@
  * 14, and 30 after activation. Stops once the profile is announce-ready or the
  * member opts out.
  *
- * Day windows are ±12 hours around each target so a once-a-day job catches
- * every org in exactly one window.
+ * Eligibility is "≥ N days ago AND no prior nudge recorded for day N" so a
+ * missed run catches up on the next day. Days are iterated highest-first and
+ * each org gets at most one DM per run.
  */
 
 import { createLogger } from '../../logger.js';
@@ -46,9 +47,8 @@ interface NudgeCandidate {
 /**
  * Find orgs eligible for a nudge on a given day. An org is eligible when:
  *  - Subscription is active
- *  - agreement_signed_at falls within ±12h of `day` days ago
+ *  - agreement_signed_at is at least `day` days ago (12h slop on the boundary)
  *  - Member profile is not yet announce-ready (not public OR no brand.json manifest)
- *  - Member has not opted out via member_profiles.metadata.no_announcement
  *  - No prior profile_nudge_sent activity recorded for this same day
  */
 export async function findCandidatesForDay(day: NudgeDay): Promise<NudgeCandidate[]> {
@@ -74,16 +74,13 @@ export async function findCandidatesForDay(day: NudgeDay): Promise<NudgeCandidat
         FROM org_activities
         WHERE organization_id = o.workos_organization_id
           AND activity_type = 'subscription'
-        ORDER BY activity_date ASC
+        ORDER BY activity_date DESC
         LIMIT 1
       ) sub_act ON TRUE
       WHERE o.subscription_status = 'active'
         AND o.agreement_signed_at IS NOT NULL
-        AND o.agreement_signed_at BETWEEN
-              NOW() - make_interval(hours => $1 * 24 + 12)
-          AND NOW() - make_interval(hours => $1 * 24 - 12)
+        AND o.agreement_signed_at <= NOW() - make_interval(hours => $1 * 24 - 12)
         AND (mp.is_public IS NOT TRUE OR b.brand_manifest IS NULL)
-        AND COALESCE(mp.metadata->>'no_announcement', 'false') != 'true'
         AND NOT EXISTS (
           SELECT 1 FROM org_activities oa
           WHERE oa.organization_id = o.workos_organization_id
@@ -171,8 +168,13 @@ async function recordNudgeSent(orgId: string, day: NudgeDay, slackUserId: string
 export async function runProfileCompletionNudgeJob(): Promise<NudgeResult> {
   const result: NudgeResult = { orgsChecked: 0, nudgesSent: 0 };
   const slackDb = new SlackDatabase();
+  const nudgedThisRun = new Set<string>();
 
-  for (const day of NUDGE_DAYS) {
+  // Iterate highest-day first so an org that's overdue gets the latest-stage
+  // message (not day 3) and receives at most one DM per run.
+  const daysDesc = [...NUDGE_DAYS].sort((a, b) => b - a) as NudgeDay[];
+
+  for (const day of daysDesc) {
     let candidates: NudgeCandidate[];
     try {
       candidates = await findCandidatesForDay(day);
@@ -184,6 +186,8 @@ export async function runProfileCompletionNudgeJob(): Promise<NudgeResult> {
     result.orgsChecked += candidates.length;
 
     for (const candidate of candidates) {
+      if (nudgedThisRun.has(candidate.workos_organization_id)) continue;
+
       if (result.nudgesSent >= MAX_NUDGES_PER_RUN) {
         logger.info({ nudgesSent: result.nudgesSent }, 'Hit nudge cap, deferring remaining');
         return result;
@@ -227,16 +231,29 @@ export async function runProfileCompletionNudgeJob(): Promise<NudgeResult> {
 
       try {
         await sendDirectMessage(mapping.slack_user_id, { text: message });
-        await recordNudgeSent(candidate.workos_organization_id, day, mapping.slack_user_id);
-        result.nudgesSent++;
-        logger.info(
-          { orgId: candidate.workos_organization_id, day, slackUserId: mapping.slack_user_id },
-          'Sent profile completion nudge'
-        );
       } catch (err) {
         logger.warn(
           { err, orgId: candidate.workos_organization_id, day },
           'Failed to send profile completion nudge'
+        );
+        continue;
+      }
+
+      nudgedThisRun.add(candidate.workos_organization_id);
+      result.nudgesSent++;
+      logger.info(
+        { orgId: candidate.workos_organization_id, day, slackUserId: mapping.slack_user_id },
+        'Sent profile completion nudge'
+      );
+
+      // DM already sent; if the idempotency insert fails we log and move on.
+      // A duplicate DM on the next run is preferable to aborting the queue.
+      try {
+        await recordNudgeSent(candidate.workos_organization_id, day, mapping.slack_user_id);
+      } catch (err) {
+        logger.error(
+          { err, orgId: candidate.workos_organization_id, day },
+          'Sent nudge but failed to record idempotency activity'
         );
       }
     }
