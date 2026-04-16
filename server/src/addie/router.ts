@@ -152,7 +152,7 @@ export const ROUTING_RULES = {
     },
     adagents_validation: {
       patterns: ['validate', 'check my', 'debug', 'test my', 'verify'],
-      tools: ['validate_adagents', 'check_agent_health', 'check_publisher_authorization'],
+      tools: ['validate_adagents', 'probe_adcp_agent', 'check_publisher_authorization'],
       description: 'Validation and debugging requests - checking setups, testing configs',
     },
     adagents_json: {
