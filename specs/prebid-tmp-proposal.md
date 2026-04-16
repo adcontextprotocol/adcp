@@ -186,55 +186,66 @@ targeting key-values without racing bidder fan-out.
 
 ### Temporal decorrelation in a server-side embed
 
-The [spec](/docs/trusted-match/specification#temporal-decorrelation) requires
-a random 100-2000ms delay between Context Match and Identity Match. The threat
-model is a **buyer agent or network observer between router and buyer**
-correlating a Context Match for a placement with an Identity Match for the
-same user by seeing the two arrive within microseconds of each other. The
-delay breaks that timing link; package-set decorrelation and structural
-separation (already handled by the router) are complementary but do not
-substitute for it.
+The goal of temporal decorrelation is to make pairing ambiguous to a **buyer
+agent or network observer between router and buyer** — not to add delay for
+its own sake. The [spec's](/docs/trusted-match/specification#temporal-decorrelation)
+100-2000ms random delay is one lever; volume, batching, and cross-page
+caching are others. Publishers pick a profile that suits their traffic and
+latency budget.
 
-In a browser-side Prebid.js integration, the delay is cheap — Identity Match
-runs asynchronously after context results are applied, off the auction
-critical path. In a server-side embed, holding the auction for 100-2000ms is
-not an option. Implementations decorrelate without blocking the auction using
-one or more of the following:
+**Delay applies to Identity Match, not Context Match.** Context Match fires
+on the auction critical path — delaying it has no decorrelation value
+(correlation is about the relative timing of the pair, not their absolute
+arrival). Delaying both independently widens the observable window but
+doesn't improve pairing ambiguity and doubles latency cost. Delaying both by
+a correlated random amount gains nothing at all. The deferrable side is
+Identity; that's where randomization goes.
 
-- **Identity caching across page views.** Cache Identity Match responses per
-  user token for the buyer's `ttl_sec` (typically 60s+). Cache hits reuse
-  eligibility without firing a request, so the correlatable pair doesn't
-  exist on those auctions. **Cache misses still produce a correlatable pair
-  if fired in parallel** — the first page view of every new `user_token` is
-  fully exposed. Operators applying this strategy MUST still introduce a
-  randomized delay on cache-miss Identity Match, or combine caching with the
-  hybrid or out-of-band options below. Each cache refresh MUST generate a new
-  Identity Match `request_id` — reusing the cached response's `request_id` on
-  a new wire send violates the spec's per-epoch dedup requirement.
-- **Hybrid client/server split.** Run Context Match server-side in PBS, fire
-  Identity Match from a Prebid.js companion after a randomized post-auction
-  delay. The decorrelation comes from the randomized delay, not from
-  origination source — the router still emits to the buyer from its own egress
-  IP in both cases. This option defeats client-IP correlation at the publisher
-  edge but relies on the post-auction delay to defeat router-to-buyer timing
-  correlation.
-- **Out-of-band batched identity.** Issue Identity Match on a background
-  trigger (page-load-complete, visibility change, idle callback) independent
-  of the auction. The trigger alone is not sufficient — `visibilitychange`
-  and page-load-complete are observable via adjacent pixel fires, so the
-  background path MUST still add a uniformly-distributed 100-2000ms delay
-  after the trigger event, and SHOULD batch across multiple page views where
-  feasible. This typically requires a sidecar service or a Prebid.js
-  companion; PBS modules are request-scoped and don't natively host
-  background schedulers.
+**Levers publishers combine:**
 
-Pure server-side parallel execution at the start of the auction is the
-easiest to implement but does not satisfy the spec's temporal decorrelation
-SHOULD — the two requests arrive at buyer agents within microseconds of each
-other, which is exactly the pattern the SHOULD exists to prevent. Publishers
-accepting this trade-off should surface it in a public manifest (e.g.,
-alongside `adagents.json`) so auditors and users can see which publishers
-have opted out.
+- **Volume / k-anonymity.** A high-traffic publisher firing hundreds or
+  thousands of Identity Match requests per second across users on the same
+  placement naturally produces an ambiguous pairing set. Short or zero
+  explicit delay is defensible when traffic volume alone prevents
+  individual-pair recovery. Low-traffic publishers have no such cover and
+  need explicit delays toward the top of the recommended range.
+- **Cross-page caching.** Cache Identity Match responses per `user_token`
+  for the buyer's `ttl_sec` (typically 60s+). Cache hits produce no wire
+  request, so most auctions have no pair to correlate. Cache misses still
+  emit an Identity Match — publishers pair this with an explicit delay or
+  rely on volume. Each cache refresh MUST generate a new Identity Match
+  `request_id`; reusing a cached `request_id` on a new wire send violates
+  the spec's per-epoch dedup requirement.
+- **Batching.** Identity Match requests for multiple users bundled on the
+  wire within a short window destroy individual-pair timing. Spec permits
+  `Publishers MAY batch Identity Match requests across multiple page views`.
+- **Explicit delay on Identity.** Uniform random delay from an interval
+  appropriate to traffic volume. 100-2000ms is a default that works for
+  most publishers; smaller windows are defensible with high volume,
+  larger with low volume. Context Match fires immediately.
+
+**Server-side embed picks a profile:**
+
+- A large publisher with heavy traffic and aggressive caching may set
+  Identity delay to 0 and rely on volume + caching. The trade-off is
+  auditability: "we're not delaying" needs a defense and a measurable
+  k-anonymity target.
+- A small or long-tail publisher picks a longer explicit delay (closer to
+  2000ms) and runs Identity on a background schedule or a client companion
+  so the auction critical path stays under timeout budget.
+- A hybrid deployment fires Context Match server-side on the auction
+  critical path and defers Identity Match to a Prebid.js companion after
+  a randomized post-auction delay. The decorrelation comes from the
+  delay, not the origination source — the router still emits to the buyer
+  from its own egress IP — but client origination defeats publisher-edge
+  client-IP correlation and removes identity from the auction hot path.
+
+**Publishers SHOULD declare their decorrelation profile publicly** alongside
+`adagents.json` so auditors and users can see what temporal properties the
+publisher is actually providing. "Pure parallel with no explicit delay and
+no volume defense" is a valid configuration only if the publisher is willing
+to surface it; it does not satisfy the spec's temporal decorrelation SHOULD
+on its own.
 
 ### Request signing
 
@@ -256,22 +267,30 @@ building against the TMP schemas directly without the SDK must implement:
 - Daily-epoch replay window (`floor(unix_timestamp / 86400)`); see the
   [signature envelope](/docs/trusted-match/specification#signature-envelope)
   for per-message-type signed-field ordering.
+- Per-provider signatures. Context Match signatures are bound to
+  `provider_endpoint_url`, so the router generates one signature per fan-out
+  target. Signature caches key on `(placement_id, provider_endpoint_url)`,
+  not `placement_id` alone.
 - Signature invalidation on active-package-set change. Context Match
   signatures cover the sorted `package_ids` list; when the buyer's active set
-  changes, cached per-placement signatures must be regenerated. Daily-epoch
-  rollover alone isn't sufficient.
-- [Key rotation](/docs/trusted-match/specification#key-rotation) via
-  `agent-signing-key.json`; providers cache keys with a 5-minute TTL.
+  changes, cached per-placement-per-provider signatures must be regenerated.
+  Daily-epoch rollover alone isn't sufficient.
+- [Key rotation](/docs/trusted-match/specification#key-rotation) and
+  [revocation](/docs/trusted-match/specification#key-revocation) via
+  `agent-signing-key.json`; providers cache keys with a 5-minute TTL and
+  honor the `revoked_at` marker.
 
 **Operator guidance for the PBS embed:**
 
 - **Signing key storage.** The publisher's Ed25519 private key is high-value
   material — it authorizes forged Context Match and Identity Match requests
-  against every provider in the registry for the entire daily epoch if leaked.
-  Store in HSM or KMS, not a mounted file. The spec's current key model
-  supports rotation (5-minute TTL on cached public keys) but has no
-  revocation path; a leaked key's blast radius extends up to the
-  ~48-hour replay window until the daily-epoch rotates it out.
+  to the providers for which the router holds valid registrations, for the
+  remainder of the ~48-hour replay window if leaked. Store in HSM or KMS,
+  not a mounted file. The spec supports explicit revocation via
+  [`revoked_at`](/docs/trusted-match/specification#key-revocation), which
+  propagates within the 5-minute cache TTL — but revocation does not
+  retroactively invalidate signatures already captured before the revocation
+  timestamp. Rotate and revoke proactively on any suspicion.
 - **End-to-end signing verification before go-live.** Per spec
   [§Signature verification](/docs/trusted-match/specification#signature-verification),
   providers SHOULD suppress a property for 24 hours on verification failure.
@@ -279,13 +298,9 @@ building against the TMP schemas directly without the SDK must implement:
   against at least one provider before flipping traffic.
 - **401 handling.** Treat signature verification failures as non-retryable;
   exclude the provider from the current auction and alert operations.
-  Sustained failures indicate key rotation drift or clock skew across the
-  epoch boundary.
-- **Cross-provider replay surface.** Context Match signed fields don't
-  include a provider audience, so a captured signature is valid against every
-  provider in the registry within the epoch. Treat Context Match signatures
-  as bearer tokens across the registry, not as per-provider credentials. A
-  [follow-up spec issue](#) is open to add provider binding.
+  Sustained failures indicate key rotation drift, clock skew across the
+  epoch boundary, or a `provider_endpoint_url` mismatch between the router's
+  provider registration and the provider's self-advertised endpoint.
 
 ### Dependency: `adcp-go/tmp`
 
