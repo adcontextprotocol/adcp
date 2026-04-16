@@ -44,6 +44,7 @@ import { generateNetworkConsistencyReports } from '../../services/network-consis
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
+import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -538,6 +539,18 @@ export function registerAllJobs(): void {
     initialDelay: { value: 12, unit: 'minutes' },
     runner: runMeetingPrepNudgeJob,
     businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
+    shouldLogResult: (r) => r.nudgesSent > 0,
+  });
+
+  // Profile completion nudge - DMs new paying members on days 3/7/14/30 until their
+  // profile and brand.json are ready for a public announcement.
+  jobScheduler.register({
+    name: 'profile-completion-nudge',
+    description: 'Nudge new paying members to publish their profile and brand.json',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 18, unit: 'minutes' },
+    runner: runProfileCompletionNudgeJob,
+    businessHours: { startHour: 10, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.nudgesSent > 0,
   });
 
