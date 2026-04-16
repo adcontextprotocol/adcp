@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-response.json",
   "title": "Identity Match Response",
-  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window.",
+  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
   "properties": {
     "type": {
