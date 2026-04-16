@@ -572,12 +572,25 @@ File contains same structure as webhook payload but aggregated across all campai
 - High data volume (detailed breakdowns, dimensional data)
 - Buyer has batch processing infrastructure
 
-Sellers declare their supported push-based delivery methods in `get_adcp_capabilities`. Polling via `get_media_buy_delivery` is always available as a baseline.
+Sellers declare their supported push-based delivery methods and protocols in `get_adcp_capabilities`. Polling via `get_media_buy_delivery` is always available — it is a required task for all `media_buy` sellers.
 ```json
 {
   "media_buy": {
-    "reporting_delivery_methods": ["webhook", "offline"]
+    "reporting_delivery_methods": ["webhook", "offline"],
+    "offline_delivery_protocols": ["s3", "gcs"]
   }
+}
+```
+
+Buyers express a protocol preference when syncing accounts. The seller provisions the bucket using the preferred protocol if supported:
+```json
+{
+  "accounts": [{
+    "brand": { "domain": "nova-brands.com" },
+    "operator": "pinnacle-media.com",
+    "billing": "operator",
+    "preferred_reporting_protocol": "s3"
+  }]
 }
 ```
 
@@ -605,6 +618,7 @@ For offline delivery, the seller provisions a per-account bucket and grants the 
     "region": "us-east-1",
     "format": "jsonl",
     "compression": "gzip",
+    "file_retention_days": 30,
     "setup_instructions": "https://seller.example.com/docs/bucket-access"
   }
 }
@@ -613,8 +627,9 @@ For offline delivery, the seller provisions a per-account bucket and grants the 
 Buyers read from the bucket on their own schedule. The seller pushes files at the product's reporting frequency.
 
 **Delivery method determines the reporting path:**
-- When `reporting_delivery_methods` includes `offline` and a `reporting_bucket` is present on the account, the seller pushes detailed delivery data to the bucket. Buyers with batch infrastructure should read from the bucket for efficiency.
-- Polling via `get_media_buy_delivery` is always available as a baseline, regardless of which push methods the seller supports. Buyers can use it for reconciliation or as a fallback.
+- `get_media_buy_delivery` is a required task for all `media_buy` sellers. Polling is always available as a baseline, regardless of which push methods the seller supports.
+- When `reporting_delivery_methods` includes `offline` and a `reporting_bucket` is present on the account, the seller also pushes detailed delivery data to the bucket. Buyers with batch infrastructure should read from the bucket for efficiency.
+- Files in the bucket are retained for `file_retention_days` (declared on the `reporting_bucket`). Buyers must read files within this window.
 - `get_media_buys` always returns the media buy object with status, totals, and pacing snapshots. Use it for status checks, not detailed reporting.
 
 For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
