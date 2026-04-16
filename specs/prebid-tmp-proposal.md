@@ -169,10 +169,66 @@ Uses `adcp-go/tmp/client` for:
 - Fan-out to configured providers in parallel over HTTP/2
 - Per-provider timeouts with graceful degradation
 - Response merging (offers concatenated, signals merged, eligibility conservative-merged)
-- Optional Ed25519 request signing
+- Ed25519 request signing (see [Request signing](#request-signing) below)
 
 Prebid Server handles the integration with existing modules (where in the auction
 flow TMP runs, how targeting is set on bid requests, etc.).
+
+### Temporal decorrelation in a server-side embed
+
+The spec requires a random 100-2000ms delay between Context Match and Identity
+Match so a network observer cannot correlate the two by timing alone. In a
+browser-side Prebid.js integration, that delay is cheap — Identity Match runs
+asynchronously after context results are applied, off the auction critical path.
+
+In a server-side embed, holding the auction for 100-2000ms is not an option.
+Implementations SHOULD decorrelate without blocking the auction using one or
+more of the following:
+
+- **Identity caching across page views.** Cache Identity Match responses per
+  user token for the buyer's `ttl_sec` (typically 60s+). The first page view
+  makes the Identity Match call; subsequent views within the TTL reuse the
+  cached eligibility. This naturally decorrelates the two calls in time because
+  Identity Match only fires on a fraction of requests, on a different cadence
+  than Context Match.
+- **Hybrid client/server split.** Run Context Match server-side in PBS but
+  defer Identity Match to a Prebid.js companion that fires after a randomized
+  delay post-auction. The server-side path sets context-based targeting
+  immediately; identity-based eligibility updates on the next page view.
+- **Out-of-band batched identity.** Issue Identity Match on a background
+  schedule (e.g., page load completion, visibility change) independent of the
+  auction. The router and the buyer see identity traffic decorrelated from any
+  specific auction event.
+
+Pure server-side parallel execution at the start of the auction is the
+easiest to implement but does not satisfy the spec's temporal decorrelation
+SHOULD. Publishers who accept that trade-off SHOULD document it in their
+deployment and rely on the spec's other decorrelation guarantees (separate
+request IDs, package-set decorrelation, structural separation in the router).
+This trade-off is local to the embed; buyer agents still receive spec-compliant
+requests because the router strips correlating fields before fan-out.
+
+### Request signing
+
+All TMP requests — Context Match and Identity Match — MUST carry an Ed25519
+signature per the spec's [Request Authentication](/docs/trusted-match/specification#request-authentication)
+section. This prevents unauthorized parties from probing provider targeting
+logic by forging requests. The router signs; providers verify using the
+publisher's public key from the property registry.
+
+Implementations using `adcp-go/tmp/client` get signing for free — the client
+loads the publisher's signing key at startup and signs every outbound request.
+Implementations that build against the TMP schemas directly without the SDK
+MUST implement Ed25519 signing themselves, including:
+
+- `X-AdCP-Signature` and `X-AdCP-Key-Id` headers on every request
+- Daily-epoch replay window (`floor(unix_timestamp / 86400)`)
+- Per-message-type signed-field ordering (see spec for Context vs Identity)
+- Key rotation via `agent-signing-key.json`
+
+The signing key is operator configuration on the router/PBS embed. PBS
+deployments load the key from the publisher's secret store (Vault, KMS, or
+equivalent) at startup.
 
 ### Dependency: `adcp-go/tmp`
 
