@@ -634,9 +634,9 @@ Buyers read from the bucket on their own schedule. The seller pushes files at th
 - Files in the bucket are retained for `file_retention_days` (declared on the `reporting_bucket`). Buyers must read files within this window.
 - `get_media_buys` always returns the media buy object with status, totals, and pacing snapshots. Use it for status checks, not detailed reporting.
 
-For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, Parquet, Avro, or ORC format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
 
-Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
+JSONL and CSV files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`) to reduce storage and transfer costs. Parquet, Avro, and ORC use internal compression — the top-level `compression` field is ignored for these formats.
 
 #### JSON Lines (JSONL)
 
@@ -644,9 +644,9 @@ One media buy delivery per line (newline-delimited JSON). Each line contains a s
 
 **Example JSONL file:**
 ```jsonl
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "media_buy_id": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "media_buy_id": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "media_buy_id": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
 ```
 
 #### CSV
@@ -657,11 +657,11 @@ CSV files require unnesting nested arrays. Each record should be unnested to the
 
 **Example CSV structure:**
 ```csv
-notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,media_buy_id,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,campaign_c,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
+notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
 ```
 
 #### Parquet
@@ -688,7 +688,6 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
       ]
     }},
     {"name": "currency", "type": "string"},
-    {"name": "media_buy_id", "type": "string"},
     {"name": "media_buy_id", "type": "string"},
     {"name": "status", "type": "string"},
     {"name": "totals", "type": {
@@ -721,8 +720,73 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
 }
 ```
 
+#### Avro
+
+**For schema-rich streaming pipelines**
+
+Row-oriented format with embedded schema. Self-describing — readers don't need external schema files. Handles schema evolution (adding/removing fields) gracefully. Common in Kafka and Hadoop ecosystems. Uses internal compression (snappy, deflate, or zstd).
+
+**Example Avro schema:**
+```json
+{
+  "type": "record",
+  "name": "MediaBuyDelivery",
+  "namespace": "org.adcp.reporting",
+  "fields": [
+    {"name": "notification_type", "type": "string"},
+    {"name": "sequence_number", "type": "int"},
+    {"name": "next_expected_at", "type": "string"},
+    {"name": "reporting_period", "type": {
+      "type": "record",
+      "name": "ReportingPeriod",
+      "fields": [
+        {"name": "start", "type": "string"},
+        {"name": "end", "type": "string"}
+      ]
+    }},
+    {"name": "currency", "type": "string"},
+    {"name": "media_buy_id", "type": "string"},
+    {"name": "status", "type": "string"},
+    {"name": "totals", "type": {
+      "type": "record",
+      "name": "Totals",
+      "fields": [
+        {"name": "impressions", "type": "long"},
+        {"name": "spend", "type": "double"},
+        {"name": "clicks", "type": "long"},
+        {"name": "ctr", "type": "double"}
+      ]
+    }},
+    {"name": "by_package", "type": {
+      "type": "array",
+      "items": {
+        "type": "record",
+        "name": "PackageDelivery",
+        "fields": [
+          {"name": "package_id", "type": "string"},
+          {"name": "impressions", "type": "long"},
+          {"name": "spend", "type": "double"},
+          {"name": "pacing_index", "type": "double"},
+          {"name": "pricing_model", "type": "string"},
+          {"name": "rate", "type": "double"},
+          {"name": "currency", "type": "string"}
+        ]
+      }
+    }}
+  ]
+}
+```
+
+#### ORC
+
+**For Hive/Spark analytics**
+
+Columnar format optimized for read-heavy analytics on Hadoop-ecosystem tools (Hive, Spark, Presto). Predicate pushdown, built-in indexes, and lightweight compression (snappy, zlib, or zstd) reduce I/O. Supports nested structures via struct and array types.
+
+ORC uses the same logical schema as Parquet. Choose ORC when your data warehouse is Hive-native; choose Parquet for broader tool compatibility.
+
 **File Structure:**
-Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet). Files may contain:
+Each file contains one media buy delivery per line (JSONL), row (CSV/Parquet/ORC), or record (Avro). Files may contain:
 - Multiple media buy deliveries (one per line/row)
 - Multiple reporting periods for the same media buy (separate rows)
 - Multiple media buys (each with its own rows)
