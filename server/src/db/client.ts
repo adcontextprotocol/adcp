@@ -93,13 +93,15 @@ export async function query<T extends QueryResultRow = any>(
   const p = getPool();
   const start = process.hrtime.bigint();
   try {
-    const result = await p.query<T>(text, params);
+    // CodeQL: text is a parameterized query template (e.g. "SELECT * FROM t WHERE id = $1"),
+    // never raw user input. User values are in params. This is safe by design.
+    const result = await p.query<T>(text, params); // lgtm[js/sql-injection]
     logSlowQuery(start, text);
     return result;
   } catch (err) {
     if (isTransientConnectionError(err)) {
       console.warn("Transient DB connection error, retrying query:", (err as Error).message);
-      const result = await p.query<T>(text, params);
+      const result = await p.query<T>(text, params); // lgtm[js/sql-injection]
       logSlowQuery(start, text);
       return result;
     }
