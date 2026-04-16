@@ -129,17 +129,20 @@ SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_broadcast_identifiers',
 SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_preview_creative_modes',
   'Uses preview_creative in single, batch (5–10× speedup), and variant modes; chooses output_format="html" vs "url" with rationale.');
 
--- S4: Specialist governance
-SELECT _append_criterion('S4', 's4_ex1', 's4_ex1_sc_governance_context_correlation',
-  'Explains the governance_context correlation model: agent issues opaque token on first check; buyer attaches it to the media buy envelope; seller echoes it on execution checks so the agent reconnects each lifecycle event without re-deriving state.');
-
-SELECT _append_criterion('S4', 's4_ex1', 's4_ex1_sc_purchase_type_variation',
-  'Applies governance across purchase_type values (media_buy, rights_license, signal_activation, creative_services); identifies which validations are shared vs media-buy-specific.');
-
-SELECT _append_criterion('S4', 's4_ex1', 's4_ex1_sc_three_layer_distinction',
+-- S4: Specialist governance.
+-- 288_campaign_governance_curriculum replaced S4 exercises with e4_ex1/e4_ex2/e4_ex3.
+-- Three-layer distinction maps to the governance-framework exercise; the rest
+-- belong to the campaign-governance lifecycle exercise.
+SELECT _append_criterion('S4', 'e4_ex1', 'e4_ex1_sc_three_layer_distinction',
   'Distinguishes property lists (where), collection lists (what content), and content standards (per-impression adjacency), and chooses the correct layer for a given brand-safety problem.');
 
-SELECT _append_criterion('S4', 's4_ex1', 's4_ex1_sc_governance_denied_recovery',
+SELECT _append_criterion('S4', 'e4_ex2', 'e4_ex2_sc_governance_context_correlation',
+  'Explains the governance_context correlation model: agent issues opaque token on first check; buyer attaches it to the media buy envelope; seller echoes it on execution checks so the agent reconnects each lifecycle event without re-deriving state.');
+
+SELECT _append_criterion('S4', 'e4_ex2', 'e4_ex2_sc_purchase_type_variation',
+  'Applies governance across purchase_type values (media_buy, rights_license, signal_activation, creative_services); identifies which validations are shared vs media-buy-specific.');
+
+SELECT _append_criterion('S4', 'e4_ex2', 'e4_ex2_sc_governance_denied_recovery',
   'Handles GOVERNANCE_DENIED end-to-end: reads the denial reason, corrects the payload (targeting, creative, or plan reference), and verifies a retry passes.');
 
 -- Foundations: A2 — object-presence and version negotiation
