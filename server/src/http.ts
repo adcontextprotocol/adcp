@@ -478,19 +478,27 @@ export class HTTPServer {
       ? __dirname
       : path.join(__dirname, "../../dist");
     const schemasPath = path.join(distPath, 'schemas');
-    this.app.use('/schemas', express.static(schemasPath, {
+    // Use a middleware wrapper so setHeaders can see the *request* path.
+    // express.static resolves symlinks, so checking the file path would
+    // incorrectly mark aliases (latest, v2.5) as immutable when they
+    // resolve to a versioned directory on disk.
+    const schemasStatic = express.static(schemasPath, {
       maxAge: '10m',
-      setHeaders: (res, filePath) => {
+      etag: true,
+      lastModified: true,
+      setHeaders: (res) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
-        // Versioned schemas (e.g. /schemas/2.6.0/task.json) are immutable —
-        // once published, their content never changes. Cache for a year.
-        // "latest" and unversioned paths use the default 10m TTL since
-        // latest changes on every schema release.
-        if (/\/\d+\.\d+\.\d+\//.test(filePath)) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
       }
-    }));
+    });
+    this.app.use('/schemas', (req, res, next) => {
+      // Only direct versioned paths (/schemas/2.5.3/...) are immutable.
+      // Aliases (/latest/, /v2.5/, /v1/) use the 10m default + ETag so
+      // caches revalidate after the alias target changes.
+      if (/^\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\//.test(req.path)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+      schemasStatic(req, res, next);
+    });
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
