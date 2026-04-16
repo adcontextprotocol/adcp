@@ -8,7 +8,7 @@ const logger = createLogger('notification-db');
  * Reduces DB pressure from the 30-second polling interval across many tabs/users.
  */
 const countCache = new Map<string, { count: number; expiresAt: number }>();
-const COUNT_CACHE_TTL_MS = 10_000; // 10 seconds
+const COUNT_CACHE_TTL_MS = 30_000; // Match the 30s client poll interval
 
 export interface Notification {
   id: string;

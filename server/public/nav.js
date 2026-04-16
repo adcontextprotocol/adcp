@@ -1148,7 +1148,10 @@
       var notifPollTimer = null;
       async function updateNotifCount() {
         try {
-          const res = await fetch('/api/notifications/count', { credentials: 'include' });
+          const res = await fetch('/api/notifications/count', {
+            credentials: 'include',
+            signal: AbortSignal.timeout(5000),
+          });
           if (res.status === 401) {
             // Session expired — stop polling, hide badge
             if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
