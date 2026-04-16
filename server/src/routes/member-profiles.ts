@@ -26,6 +26,7 @@ import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import type { MemberBrandInfo } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
+import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
@@ -373,6 +374,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      // Record publish event if the profile was created already public
+      await recordProfilePublishedIfNeeded(targetOrgId, false, profile.is_public, user.id);
+
       // Invalidate Addie's member context cache - organization profile created
       invalidateMemberContextCache();
 
@@ -557,6 +561,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           logger.warn({ err, orgId: targetOrgId }, 'Failed to write profile data to org_knowledge');
         });
       }
+
+      // Record publish event if this update flipped is_public from false/null to true
+      await recordProfilePublishedIfNeeded(
+        targetOrgId,
+        existingProfile.is_public,
+        profile?.is_public,
+        user.id
+      );
 
       // Invalidate Addie's member context cache - organization profile updated
       invalidateMemberContextCache();
@@ -1123,6 +1135,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (typeof show_in_carousel === 'boolean') updates.show_in_carousel = show_in_carousel;
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+      // Record publish event if this flipped is_public from false/null to true
+      await recordProfilePublishedIfNeeded(
+        targetOrgId,
+        existingProfile.is_public,
+        profile?.is_public,
+        user.id
+      );
 
       // Invalidate Addie's member context cache
       invalidateMemberContextCache();
