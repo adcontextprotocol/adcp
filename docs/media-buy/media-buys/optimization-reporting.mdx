@@ -606,7 +606,9 @@ Products declare supported cadence and metrics in `reporting_capabilities`:
 }
 ```
 
-For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location appears on the account object returned by `sync_accounts`:
+For offline delivery, the seller provisions storage per account and grants the buyer read access out-of-band. Sellers may use a dedicated bucket per account or a shared bucket with per-account `prefix` isolation — either way, the buyer can only access data under their account's path. When multiple buying platforms operate on the same brand, each gets a separate account (scoped by operator/agent), so their data is isolated by prefix.
+
+The bucket location appears on the account object returned by `sync_accounts`:
 ```json
 {
   "account_id": "acc_pinnacle_001",

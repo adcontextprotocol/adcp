@@ -120,7 +120,7 @@
     },
     "reporting_bucket": {
       "type": "object",
-      "description": "Cloud storage bucket where the seller delivers offline reporting files for this account. Seller provisions a per-account bucket (or per-account prefix within a shared bucket) and grants buyer read access out-of-band. Only present when the seller supports offline delivery (reporting_delivery_methods includes 'offline' in capabilities).",
+      "description": "Cloud storage bucket where the seller delivers offline reporting files for this account. Seller provisions a dedicated bucket or a per-account prefix within a shared bucket, and grants the buyer read access out-of-band. Access MUST be scoped so each account can only read its own prefix. Only present when the seller supports offline delivery (reporting_delivery_methods includes 'offline' in capabilities).",
       "properties": {
         "protocol": {
           "$ref": "/schemas/enums/cloud-storage-protocol.json",
