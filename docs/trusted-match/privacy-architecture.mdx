@@ -54,6 +54,8 @@ TEE is an upgrade path, not a prerequisite. The protocol works without it. Publi
 
 - Which user tokens exist (opaque, publisher-scoped)
 - Whether each user is eligible for each of the buyer's active packages
+- **Cross-identity equivalence within the publisher's view**: when an IMR carries multiple `identities` entries, the buyer learns that those tokens resolve to the same user from this publisher's perspective. This is an intentional match-rate optimization, but it is also identity-graph enrichment the buyer did not previously have. Publishers who want to avoid disclosing cross-graph joins can send a single `(user_token, uid_type)` per IMR at the cost of match rate.
+- **Sensitive token exposure**: `hashed_email` and similar strongly-reidentifying tokens carry higher re-identification risk than opaque provider IDs. Publishers SHOULD treat inclusion as a deployment decision, not a default. When the buyer agent runs in a TEE-attested deployment, the risk surface shrinks to what the buyer's model can infer from the match outcome rather than what a logged payload can reveal post-hoc — TEE does not eliminate the disclosure but it closes the offline-retention vector. Non-TEE deployments should weigh `hashed_email` inclusion against legal/consent posture.
 
 The buyer computes eligibility internally from frequency caps, audience membership, purchase history, or whatever signals they have. They return a list of eligible package IDs and a TTL. The publisher does not learn why a user is or is not eligible.
 

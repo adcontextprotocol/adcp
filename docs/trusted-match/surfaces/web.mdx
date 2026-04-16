@@ -79,8 +79,11 @@ Separately, the TMP Prebid module sends an Identity Match request with the user'
 {
   "type": "identity_match_request",
   "request_id": "id-3k9p-oakwood-d4f1",
-  "user_token": "tok_uid2_8f2a3b7c",
-  "uid_type": "uid2",
+  "identities": [
+    { "user_token": "tok_uid2_8f2a3b7c", "uid_type": "uid2" },
+    { "user_token": "XY1a2b3c4d5e6f7g8h9i0jKlMnOpQrSt", "uid_type": "rampid" },
+    { "user_token": "ID5*aB3xY9kL...", "uid_type": "id5" }
+  ],
   "package_ids": [
     "pkg-display-0041",
     "pkg-display-0042",
@@ -98,7 +101,7 @@ Key points:
 
 - `request_id` is unrelated to the context match `request_id`. The two must not be derivable from each other.
 - `package_ids` includes ALL active packages for the buyer across the entire site, not just the three that were on this placement's context match. Sending only the page-specific subset would let the buyer correlate identity with context by comparing package sets.
-- `user_token` is opaque. It comes from an identity provider (UID2, ID5, LiveRamp) or is publisher-generated. The buyer cannot reverse it to PII.
+- `identities` carries every token the publisher has available (UID2, ID5, LiveRamp, hashed email, publisher first-party). Each token is opaque — the buyer cannot reverse it to PII. Sending the full set maximizes match rate because different buyers resolve on different graphs.
 
 ### Identity Match Response
 

@@ -170,18 +170,24 @@ Response-level targeting signals for ad server pass-through.
 
 ### IdentityMatchRequest
 
-Sent by the publisher (via router) to buyer agents. Contains an opaque user token and package IDs. MUST NOT contain page context.
+Sent by the publisher (via router) to buyer agents. Contains one or more opaque identity tokens and package IDs. MUST NOT contain page context.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
-| `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. Required for signature verification. See `uid-type` enum. |
-| `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
+| `identities` | List\<Identity\> | Yes | One or more identity tokens for the user. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches, maximizing match rate. Each entry is an independent identifier for the same user; buyers MUST NOT treat the combination as a new correlated identity. |
+| `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process identity tokens without consent information. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 | `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
+
+Each entry in `identities` is an `{user_token, uid_type}` pair:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
+| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
 
 ### IdentityMatchResponse
 
@@ -286,7 +292,7 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 | `context_match` | bool | No | Whether this provider handles context match for this product. Default: false. |
 | `identity_match` | bool | No | Whether this provider handles identity match for this product. Default: false. |
 | `countries` | List\<string\> | No | ISO 3166-1 alpha-2 country codes this provider serves. The router filters providers by the request's `country` field. Required when `identity_match` is true. |
-| `uid_types` | List\<string\> | No | Identity types this provider can resolve (from `uid-type` enum). The router filters providers whose `uid_types` includes the request's `uid_type`. Required when `identity_match` is true. |
+| `uid_types` | List\<string\> | No | Identity types this provider can resolve (from `uid-type` enum). The router selects providers whose `uid_types` overlaps with any `uid_type` in the request's `identities` array, and filters the forwarded `identities` to the intersection — providers MUST NOT receive tokens for types they did not declare. Required when `identity_match` is true. |
 
 ## Privacy Requirements
 
@@ -371,14 +377,17 @@ Concatenated in this order, UTF-8, newline-separated:
 |---|---|
 | `type` | `identity_match_request` |
 | `request_id` | From the request body |
-| `user_token` | From the request body |
-| `uid_type` | From the request body |
+| `identities_hash` | SHA-256 of the canonical `identities` bytes (see below), hex-encoded |
 | `consent.gdpr` | From the request body (`false` if absent) |
 | `consent.tcf_consent` | From the request body (empty string if absent) |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` |
 
-Identity Match signatures include `request_id` and `user_token`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. Buyers MUST deduplicate Identity Match requests by `request_id` within the daily epoch window. A repeated `request_id` MUST return the same response without updating frequency state.
+**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)`, sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785) (JSON Canonicalization Scheme). SHA-256 the UTF-8 bytes.
+
+The router filters `identities` per provider before forwarding (see [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out)). The signature is computed over each provider's filtered `identities` set — the router re-signs per outbound forward. The same filtered `identities_hash` value is used in the cache key (see [Caching](#caching)), so each provider has its own cache partition keyed on the subset it actually received.
+
+Identity Match signatures include `request_id` and `identities_hash`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. Buyers MUST deduplicate Identity Match requests by `request_id` within the daily epoch window. A repeated `request_id` MUST return the same response without updating frequency state. Buyers SHOULD dedupe by `hash(request_id)` rather than retaining the raw identifier.
 
 ### Signature verification
 
@@ -472,7 +481,7 @@ If a parser encounters an unknown Type ID, it MUST stop parsing and treat the re
 
 The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The ciphertext MUST use unpadded base64url encoding (RFC 4648 section 5, no `=` padding characters). Padding characters break URL query parameters where `=` is the key-value delimiter. The `kid` (key identifier, max 8 characters) is opaque — it MUST NOT encode geographic or deployment information. It maps to a cluster master private key internally.
 
-**Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably.
+**Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably. When the buyer resolves more identities than fit the budget, the TMPX plaintext is truncated to the highest-priority entries according to buyer deployment configuration. The priority order is a buyer-side configuration concern (not protocol-level), typically ranking deterministic graphs (UID2, RampID) above probabilistic or publisher-scoped identifiers. Buyers MUST configure an explicit priority list — the default implementation MUST NOT truncate arbitrarily — and the list SHOULD be documented in the buyer's operational runbook.
 
 ### Key management
 
@@ -539,7 +548,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{user_token, provider_id, hash(package_ids)}`. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
+- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{identities_hash, provider_id, hash(package_ids), consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset), and `consent_hash` is the SHA-256 of `consent.gdpr || "|" || consent.tcf_consent || "|" || consent.gpp || "|" || consent.us_privacy` (with absent fields treated as empty strings). Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another. The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 - Both `ttl_sec` and `cache_ttl` have a schema-enforced maximum of 86400 seconds (24 hours). Routers SHOULD clamp buyer-provided values to a configured maximum (recommended: 3600 seconds) to limit the blast radius of stale caches.
 
