@@ -69,3 +69,8 @@ UPDATE working_groups SET
   description = 'Community building, events, thought leadership, marketing, and training programs.',
   display_order = 60
 WHERE slug = 'events-thought-leadership-wg';
+
+-- 4. Attach #salesagent-dev as the Slack channel for Builders. Channel will be
+-- renamed to #builders separately; ID stays stable across a Slack rename.
+UPDATE working_groups SET slack_channel_id = 'C09J28K9K29'
+WHERE slug = 'wg-builders' AND slack_channel_id IS NULL;
