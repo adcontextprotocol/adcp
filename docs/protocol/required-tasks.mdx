@@ -1,0 +1,204 @@
+---
+title: Required tasks by protocol
+sidebarTitle: Required tasks
+description: "Consolidated reference of required and optional tasks for each AdCP protocol, organized by agent role."
+"og:title": "AdCP — Required tasks by protocol"
+---
+
+# Required tasks by protocol
+
+Each AdCP protocol defines tasks that agents implement depending on their role. This page consolidates the requirements from each protocol specification into a single reference.
+
+**Legend**: **Required** — the specification mandates implementation. **Conditional** — required when the agent has a specific capability. **Optional** — the specification recommends but does not mandate.
+
+Some tasks span protocols. For example, `list_creative_formats` and `sync_creatives` are defined in the Creative Protocol but also implemented by Media Buy sales agents. These appear under both protocols with a note indicating the source.
+
+## Shared
+
+Every AdCP agent, regardless of protocol, implements:
+
+| Task | Requirement | Reference |
+|------|------------|-----------|
+| `get_adcp_capabilities` | Required | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
+
+## Media Buy Protocol
+
+### Sales agent (seller)
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `get_products` | Required | Inventory discovery |
+| `list_creative_formats` | Required | Format specifications (Creative Protocol task) |
+| `create_media_buy` | Required | Campaign creation and order confirmation |
+| `update_media_buy` | Required | Budget, targeting, pause, cancel |
+| `get_media_buys` | Required | Operational state retrieval |
+| `get_media_buy_delivery` | Required | Delivery metrics at the package level; `reporting_capabilities` MUST be included on every product |
+| `provide_performance_feedback` | Required | Accept buyer optimization signals |
+| `sync_creatives` | Conditional | Required when the sales agent hosts a creative library (Creative Protocol task) |
+| `list_creatives` | Optional | Creative catalog browsing (Creative Protocol task) |
+| `sync_catalogs` | Optional | Product/inventory catalog sync |
+| `sync_event_sources` | Optional | Conversion tracking setup |
+| `log_event` | Conditional | Required when event sources are configured |
+| `sync_audiences` | Optional | First-party CRM audience upload |
+
+Sales agents MUST also support at least one transport (MCP or A2A) and declare `media_buy` in `supported_protocols`.
+
+**Reference**: [Media Buy Specification](/docs/media-buy/specification) · [Seller integration guide](/docs/building/implementation/seller-integration)
+
+### Orchestrator (buyer)
+
+Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conformant orchestrators MUST:
+
+1. Authenticate with sales agents
+2. Include required fields per request schemas
+3. Handle asynchronous responses (`submitted`, `working`, `pending_approval`)
+4. Use `media_buy_id` for all subsequent operations
+5. Respect `creative_deadline` for creative uploads
+
+**Reference**: [Media Buy Specification — Orchestrator conformance](/docs/media-buy/specification#orchestrator-conformance)
+
+## Creative Protocol
+
+### Creative agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `list_creative_formats` | Required | Format discovery with technical specs |
+| `build_creative` | Optional | Generation, transformation, or library retrieval |
+| `preview_creative` | Optional | Preview rendering |
+| `list_creatives` | Conditional | Required when `has_creative_library: true` |
+| `sync_creatives` | Conditional | Required when the agent accepts creative uploads |
+| `get_creative_delivery` | Optional | Variant-level delivery metrics |
+
+Creative agents MUST return authoritative format definitions only for formats they own.
+
+**Reference**: [Creative Specification](/docs/creative/specification)
+
+## Signals Protocol
+
+### Signal agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `get_signals` | Required | Signal discovery |
+| `activate_signal` | Required | Signal activation on decisioning platforms |
+
+Signal agents MUST enforce access control for private signals and activation keys.
+
+**Reference**: [Signals Specification](/docs/signals/specification)
+
+## Brand Protocol
+
+### Brand agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `get_brand_identity` | Required | Core identity is public; authorized callers get deeper data |
+| `get_rights` | Conditional | Required when the agent manages brand rights |
+| `acquire_rights` | Conditional | Required when the agent manages brand rights |
+| `update_rights` | Conditional | Required when the agent manages brand rights |
+
+Brand agents MUST declare `brand` in `supported_protocols`.
+
+**Reference**: [Brand Protocol](/docs/brand-protocol) · [Building a brand agent](/docs/brand-protocol/building-a-brand-agent)
+
+## Accounts Protocol
+
+### Any agent accepting accounts
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `sync_accounts` | Required | Account creation and update |
+| `list_accounts` | Required | Account retrieval |
+| `sync_governance` | Conditional | Required when the buyer uses campaign governance |
+| `report_usage` | Conditional | Required when the agent charges for services |
+| `get_account_financials` | Optional | Financial summary per account |
+
+**Reference**: [Accounts Protocol](/docs/accounts/overview)
+
+## Governance: Campaign
+
+### Governance agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `sync_plans` | Required | Plan creation and amendment |
+| `check_governance` | Required | Validation at purchase, modification, and delivery phases |
+| `report_plan_outcome` | Required | Outcome reporting and budget commitment |
+| `get_plan_audit_logs` | Required | Audit trail retrieval |
+
+**Reference**: [Campaign Governance Specification](/docs/governance/campaign/specification)
+
+## Governance: Property
+
+### Governance agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `create_property_list` | Required | List creation with filters |
+| `get_property_list` | Required | Resolved property retrieval |
+| `update_property_list` | Required | List modification |
+| `delete_property_list` | Required | List removal |
+| `list_property_lists` | Required | List enumeration |
+| `validate_property_delivery` | Optional | Post-campaign compliance validation |
+
+**Reference**: [Property Governance Specification](/docs/governance/property/specification)
+
+## Governance: Collection
+
+### Governance agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `create_collection_list` | Required | List creation with collection sources and filters |
+| `get_collection_list` | Required | Resolved collection retrieval |
+| `update_collection_list` | Required | List modification |
+| `list_collection_lists` | Required | List enumeration |
+| `delete_collection_list` | Required | List removal |
+
+**Reference**: [Collection Governance](/docs/governance/collection)
+
+## Governance: Content Standards
+
+### Content standards agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `create_content_standards` | Required | Standards creation |
+| `get_content_standards` | Required | Standards retrieval |
+| `list_content_standards` | Required | Standards enumeration |
+| `update_content_standards` | Required | Standards modification |
+| `calibrate_content` | Optional | Seller calibration against standards |
+| `validate_content_delivery` | Optional | Post-delivery content compliance |
+| `get_media_buy_artifacts` | Optional | Artifact retrieval for validation |
+
+**Reference**: [Content Standards](/docs/governance/content-standards)
+
+## Governance: Creative
+
+### Creative governance agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `get_creative_features` | Required | Security scanning, content categorization |
+
+**Reference**: [Creative Governance](/docs/governance/creative)
+
+## Sponsored Intelligence Protocol
+
+### Brand agent
+
+| Task | Requirement | Notes |
+|------|------------|-------|
+| `si_get_offering` | Optional | Pre-session offering lookup |
+| `si_initiate_session` | Required | Session creation with consent |
+| `si_send_message` | Required | Conversational messaging |
+| `si_terminate_session` | Required | Session cleanup |
+
+Brand agents MUST declare `sponsored_intelligence` in `supported_protocols`.
+
+**Reference**: [Sponsored Intelligence Specification](/docs/sponsored-intelligence/specification)
+
+## Trusted Match Protocol
+
+TMP uses a different communication model (direct HTTP, not MCP/A2A tasks). See the [TMP Specification](/docs/trusted-match/specification) for message types and conformance requirements.
