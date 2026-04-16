@@ -1,5 +1,10 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 import { DatabaseConfig } from "../config.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("db");
+
+const SLOW_QUERY_THRESHOLD_MS = 500;
 
 let pool: Pool | null = null;
 
@@ -86,6 +91,7 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<QueryResult<T>> {
   const p = getPool();
+  const start = process.hrtime.bigint();
   try {
     return await p.query<T>(text, params);
   } catch (err) {
@@ -94,6 +100,11 @@ export async function query<T extends QueryResultRow = any>(
       return p.query<T>(text, params);
     }
     throw err;
+  } finally {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
+      logger.warn({ duration_ms: Math.round(durationMs) }, "Slow database query");
+    }
   }
 }
 

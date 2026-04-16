@@ -32,6 +32,21 @@ async function main() {
   const port = parseInt(process.env.PORT || process.env.CONDUCTOR_PORT || "3000", 10);
   await httpServer.start(port);
 
+  // Log memory usage every 60s so PostHog/OTEL can chart heap trends.
+  // On 1GB Fly machines this is critical for spotting leaks early.
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    logger.info(
+      {
+        heap_used_mb: Math.round(mem.heapUsed / 1024 / 1024),
+        heap_total_mb: Math.round(mem.heapTotal / 1024 / 1024),
+        rss_mb: Math.round(mem.rss / 1024 / 1024),
+        external_mb: Math.round(mem.external / 1024 / 1024),
+      },
+      "Memory usage"
+    );
+  }, 60_000).unref();
+
   // Addie (AAO Community Agent) with Bolt SDK — initialized after server is running.
   // The router is stored in the Bolt app and retrieved via getAddieBoltRouter().
   initializeAddieBolt().then((result) => {
