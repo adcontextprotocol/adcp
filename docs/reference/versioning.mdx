@@ -74,6 +74,37 @@ Every release with schema changes is called out in the changelog, release notes,
 
 ---
 
+## 3.x stability guarantees
+
+Implementations built against 3.0 can rely on the following through the 3.x cycle:
+
+| Artifact | Guarantee within 3.x |
+|---|---|
+| **Fields** | Never removed. May be renamed with a documented alias that accepts both names in the same release. Optional → required only after a prior deprecation release. |
+| **Enums** | Only additive. Existing values are never removed or renamed. Clients must tolerate unknown values and fall back to sensible defaults. |
+| **Error codes** | Only additive. Existing codes retain their semantics. Clients that handle unknown error codes generically remain compatible. |
+| **Task names** | Never removed or renamed. New tasks may be added. |
+| **Authentication, transport, core security** | Never changed. These are version-level changes only. |
+
+### Patch releases
+
+A patch release (`3.0.1`, `3.1.2`) changes only documentation, wording, or validation that was diverging from the documented spec. Patches never change schema — no new fields, no renamed fields, no new enum values. Upgrading to the latest patch of your current release is always safe.
+
+### Security fixes
+
+Security-relevant fixes are documented in release notes with a `security` label and land in the current release. Implementations SHOULD upgrade promptly after a security advisory. Older releases within 3.x do not receive routine backports; upgrading to the current release is the expected remediation path. The same posture applies to v2 during its security-only window — see the [v2 sunset page](/docs/reference/v2-sunset) for that timeline.
+
+### Breaking-change notice
+
+Any change that requires an implementation to adapt — renamed field, required-to-optional transition, tightened validation — ships with all of the following:
+
+- An entry in the [release notes](/docs/reference/release-notes) with a migration note
+- An entry in the [changelog](/docs/reference/changelog)
+- A section in the [migration guide](/docs/reference/migration) or a dedicated deep-dive page
+- Where possible, an alias accepting both old and new names in the release that introduces the change
+
+---
+
 ## Release cadence
 
 AdCP releases frequently early in a version cycle (every 6–8 weeks) and stretches toward quarterly as the version stabilizes. This gives builders fast iteration when they need it and predictability when they don't.
