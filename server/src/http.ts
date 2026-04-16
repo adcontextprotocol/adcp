@@ -470,6 +470,21 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
+    // Serve JSON schemas as static files before any other middleware.
+    // These are high-traffic, read-only JSON files that don't need body parsing,
+    // cookies, CSRF, or session handling.
+    const distPath = process.env.NODE_ENV === 'production'
+      ? __dirname
+      : path.join(__dirname, "../../dist");
+    const schemasPath = path.join(distPath, 'schemas');
+    this.app.use('/schemas', express.static(schemasPath, {
+      maxAge: '1h',
+      immutable: false,
+      setHeaders: (res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
+    }));
+
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
 
@@ -497,13 +512,7 @@ export class HTTPServer {
     this.app.use(cookieParser());
     this.app.use(csrfProtection);
 
-    // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
-    // In dev: __dirname is server/src, dist is at ../../dist
-    // In prod: __dirname is dist, schemas are at ./schemas
-    const distPath = process.env.NODE_ENV === 'production'
-      ? __dirname
-      : path.join(__dirname, "../../dist");
-    const schemasPath = path.join(distPath, 'schemas');
+    // Schema version aliasing and discovery (static serving handled above, before middleware)
 
     // Cache for schema version directories (refreshed every 60 seconds)
     let versionCache: { versions: string[], timestamp: number } | null = null;
@@ -664,8 +673,6 @@ export class HTTPServer {
         res.status(500).json({ error: "Failed to list schema versions" });
       }
     });
-
-    this.app.use('/schemas', express.static(schemasPath));
 
     // Serve brand.json for both AAO domains.
     // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
