@@ -168,7 +168,6 @@ async function zoomRequest<T>(
 
   if (!response.ok) {
     const error = await response.text();
-    logger.error({ status: response.status, endpoint, error }, 'Zoom API request failed');
     throw new Error(`Zoom API error: ${response.status} - ${error}`);
   }
 
