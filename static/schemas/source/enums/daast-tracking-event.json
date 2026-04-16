@@ -2,19 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/daast-tracking-event.json",
   "title": "DAAST Tracking Event",
-  "description": "Standard DAAST tracking events for audio ad playback and interaction",
+  "description": "Standard DAAST tracking events for audio ad playback and interaction. Event names align to IAB VAST/DAAST conventions.",
   "type": "string",
   "enum": [
+    "impression",
     "start",
     "firstQuartile",
     "midpoint",
     "thirdQuartile",
     "complete",
-    "impression",
+    "mute",
+    "unmute",
     "pause",
     "resume",
     "skip",
-    "mute",
-    "unmute"
+    "progress",
+    "clickTracking",
+    "customClick",
+    "close",
+    "error",
+    "measurableImpression",
+    "viewableImpression"
   ]
 }
