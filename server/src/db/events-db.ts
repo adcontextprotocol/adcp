@@ -1069,9 +1069,10 @@ export class EventsDatabase {
    * Get events linked to a committee
    */
   async getEventsByCommittee(
-    committeeId: string,
+    committeeId: string | string[],
     options: { includeUnpublished?: boolean } = {}
   ): Promise<{ upcoming: Event[]; past: Event[] }> {
+    const committeeIds = Array.isArray(committeeId) ? committeeId : [committeeId];
     const statusCondition = options.includeUnpublished
       ? ''
       : "AND e.status = 'published' AND e.visibility != 'invite_unlisted'";
@@ -1079,23 +1080,23 @@ export class EventsDatabase {
     const upcomingResult = await query<Event>(
       `SELECT e.* FROM events e
        INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
-       WHERE ecl.committee_id = $1
+       WHERE ecl.committee_id = ANY($1::uuid[])
          ${statusCondition}
          AND e.start_time > NOW()
        ORDER BY e.start_time ASC
        LIMIT 20`,
-      [committeeId]
+      [committeeIds]
     );
 
     const pastResult = await query<Event>(
       `SELECT e.* FROM events e
        INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
-       WHERE ecl.committee_id = $1
+       WHERE ecl.committee_id = ANY($1::uuid[])
          ${statusCondition}
          AND e.start_time <= NOW()
        ORDER BY e.start_time DESC
        LIMIT 10`,
-      [committeeId]
+      [committeeIds]
     );
 
     return {

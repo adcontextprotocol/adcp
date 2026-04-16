@@ -781,6 +781,7 @@ export interface WorkingGroup {
   display_order: number;
   committee_type: CommitteeType;
   region?: string;
+  parent_id?: string;
   // Topics for filtering meetings/docs
   topics?: WorkingGroupTopic[];
   // Industry gathering fields
@@ -829,6 +830,7 @@ export interface CreateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  parent_id?: string | null;
   topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
@@ -852,6 +854,7 @@ export interface UpdateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  parent_id?: string | null;
   topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
