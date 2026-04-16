@@ -138,9 +138,10 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   agent_testing: {
     name: 'agent_testing',
-    description: 'Validate and test AdCP agent implementations - check adagents.json, probe endpoints, verify publisher authorization, run compliance tests, resolve and manage properties',
+    description: 'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests. Use for any "my agent can\'t see properties", "authorization not working", or publisher setup questions.',
     tools: [
       'validate_adagents',
+      'resolve_brand',
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
