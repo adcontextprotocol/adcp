@@ -581,13 +581,13 @@ Sellers declare their supported push-based delivery methods in `get_adcp_capabil
 }
 ```
 
-Products declare supported frequencies and protocols in `reporting_capabilities`:
+Products declare supported cadence and metrics in `reporting_capabilities`:
 ```json
 {
   "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
     "supports_webhooks": true,
-    "supports_offline_delivery": true,
-    "offline_delivery_protocols": ["s3", "gcs"],
+    "available_metrics": ["impressions", "spend", "clicks"],
     "date_range_support": "date_range"
   }
 }
