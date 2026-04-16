@@ -149,9 +149,12 @@ The router filters Identity Match providers by country and identity type:
 
 1. The router reads the `country` field from the request (a routing directive, not an identity signal).
 2. It selects providers whose `countries` list includes that country code.
-3. It further filters to providers whose `uid_types` list includes the request's `uid_type`.
-4. It **strips the `country` field** before forwarding the request to the buyer agent.
-5. It fans out to all matching providers in parallel, merges eligibility results, and returns a unified response.
+3. It further filters to providers whose `uid_types` list overlaps with any `uid_type` in the request's `identities` array.
+4. For each selected provider, it **filters the `identities` array** to the intersection of the request's identities and that provider's declared `uid_types`. Providers MUST NOT receive identity tokens for types they did not declare — this enforces minimum-necessary-data as a structural privacy property, not an operational one. The router MUST NOT add, substitute, or transform identity tokens; the forwarded set MUST be a subset of the publisher-origin `identities` array.
+5. If the intersection is empty, the router MUST skip that provider entirely. An empty `identities` array is not a valid IMR payload (schema enforces `minItems: 1`), and emitting skip-vs-forward as distinguishable telemetry would leak which identity types each user had available.
+6. It **strips the `country` field** before forwarding the request to the buyer agent.
+7. Because the per-provider payload differs from the inbound request, the router **re-signs** each per-provider forward using the canonical `identities_hash` of the filtered set. Providers verify signatures against the router's public key.
+8. It fans out to all matching providers in parallel, merges eligibility results, and returns a unified response.
 
 Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `ttl_sec` across providers and SHOULD log a warning.
 

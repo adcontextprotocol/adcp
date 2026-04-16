@@ -141,8 +141,10 @@ Request from StreamHaus to Sam's buyer agent:
 {
   "type": "identity_match_request",
   "request_id": "id-7c9e1d",
-  "user_token": "opaque-streamhaus-token-abc123",
-  "uid_type": "uid2",
+  "identities": [
+    { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
+    { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
+  ],
   "package_ids": [
     "pkg-outdoor-display",
     "pkg-outdoor-ctv",

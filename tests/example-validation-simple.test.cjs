@@ -43,30 +43,52 @@ async function validateExample(data, schemaId, description) {
   totalTests++;
   try {
     // Create fresh AJV instance for each validation
-    const ajv = new Ajv({ 
+    const ajv = new Ajv({
       allErrors: true,
       verbose: false,
       strict: false,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
-    
+
     // Load the specific schema
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-    
+
     // Compile and validate
     const validate = await ajv.compileAsync(schema);
     const isValid = validate(data);
-    
+
     if (isValid) {
       log(`✅ ${description}`, 'success');
       passedTests++;
     } else {
-      const errors = validate.errors.map(err => 
+      const errors = validate.errors.map(err =>
         `${err.instancePath || 'root'}: ${err.message}`
       ).join('; ');
       log(`❌ ${description}: ${errors}`, 'error');
+      failedTests++;
+    }
+  } catch (error) {
+    log(`❌ ${description}: ${error.message}`, 'error');
+    failedTests++;
+  }
+}
+
+async function expectInvalid(data, schemaId, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, loadSchema: loadExternalSchema });
+    addFormats(ajv);
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const validate = await ajv.compileAsync(schema);
+    const isValid = validate(data);
+    if (!isValid) {
+      log(`✅ ${description}`, 'success');
+      passedTests++;
+    } else {
+      log(`❌ ${description}: expected schema violation but passed`, 'error');
       failedTests++;
     }
   } catch (error) {
@@ -525,8 +547,10 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-7c9e1d",
-      "user_token": "opaque-streamhaus-token-abc123",
-      "uid_type": "uid2",
+      "identities": [
+        { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
+        { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
+      ],
       "package_ids": [
         "pkg-outdoor-display",
         "pkg-outdoor-ctv",
@@ -600,8 +624,11 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-9b2c",
-      "user_token": "tok_hk82mfp1",
-      "uid_type": "uid2",
+      "identities": [
+        { "user_token": "tok_hk82mfp1", "uid_type": "uid2" },
+        { "user_token": "ID5*aB3xY...", "uid_type": "id5" },
+        { "user_token": "a1b2c3d4e5f6...", "uid_type": "hashed_email" }
+      ],
       "consent": {
         "gdpr": true,
         "tcf_consent": "CPx2XYZABC..."
@@ -610,6 +637,37 @@ async function runTests() {
     },
     '/schemas/tmp/identity-match-request.json',
     'TMP Identity Match request with consent (context-and-identity walkthrough)'
+  );
+
+  // Identity Match request — single-identity minItems:1 boundary (ai-assistant surface)
+  await validateExample(
+    {
+      "type": "identity_match_request",
+      "request_id": "id-e5f6g7h8",
+      "identities": [
+        { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
+      ],
+      "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — single identity (ai-assistant walkthrough)'
+  );
+
+  // Identity Match request — maxItems:3 upper boundary (4 identities MUST fail)
+  await expectInvalid(
+    {
+      "type": "identity_match_request",
+      "request_id": "id-boundary-4",
+      "identities": [
+        { "user_token": "a", "uid_type": "uid2" },
+        { "user_token": "b", "uid_type": "id5" },
+        { "user_token": "c", "uid_type": "rampid" },
+        { "user_token": "d", "uid_type": "hashed_email" }
+      ],
+      "package_ids": ["pkg-1"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
   );
 
   // Print results

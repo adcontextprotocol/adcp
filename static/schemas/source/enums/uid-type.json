@@ -6,6 +6,7 @@
   "type": "string",
   "enum": [
     "rampid",
+    "rampid_derived",
     "id5",
     "uid2",
     "euid",
@@ -16,7 +17,8 @@
     "other"
   ],
   "enumDescriptions": {
-    "rampid": "LiveRamp RampID",
+    "rampid": "LiveRamp RampID maintained form (XY, 32 bytes on the wire)",
+    "rampid_derived": "LiveRamp RampID derived form (Xi, 48 bytes on the wire)",
     "id5": "ID5 universal ID",
     "uid2": "Unified ID 2.0",
     "euid": "European Unified ID",
