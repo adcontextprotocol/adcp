@@ -3640,7 +3640,7 @@ export function createMemberToolHandlers(
               name: brief.name, vertical: brief.vertical, products_count: 0,
               channels_found: [], formats_found: [], pricing_models_found: [],
               has_audience_targeting: false,
-              error: typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
+              error: result.error,
             };
           }
 
@@ -3841,7 +3841,7 @@ export function createMemberToolHandlers(
       ]);
 
       if (!result.success) {
-        const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
+        const errMsg = result.error.slice(0, 500);
         return `**Error:** Agent returned an error for get_products:\n\n<external_error>${errMsg}</external_error>`;
       }
 
@@ -4059,7 +4059,7 @@ export function createMemberToolHandlers(
       ]);
 
       if (!result.success) {
-        const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
+        const errMsg = result.error.slice(0, 500);
         return `**Error:** Agent returned an error for get_products (wholesale):\n\n<external_error>${errMsg}</external_error>`;
       }
 
@@ -4295,7 +4295,7 @@ export function createMemberToolHandlers(
           } else {
             executeResult = {
               success: false,
-              error: typeof mbResult.error === 'string' ? mbResult.error : JSON.stringify(mbResult.error),
+              error: mbResult.error,
             };
           }
         } catch (err) {

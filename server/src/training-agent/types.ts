@@ -172,7 +172,9 @@ export interface SessionState {
   rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
   lastGetProductsContext?: {
-    products: Product[];
+    /** Products are deterministic from the catalog — not persisted across requests.
+     * After a cross-machine rehydration, this is undefined and callers must re-derive. */
+    products?: Product[];
     proposals?: Proposal[];
   };
   createdAt: Date;

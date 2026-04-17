@@ -151,7 +151,7 @@ function extractDomains(properties: unknown[]): string[] {
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-export function handleCreatePropertyList(
+export async function handleCreatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -164,7 +164,7 @@ export function handleCreatePropertyList(
     brand?: unknown;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (session.propertyLists.size >= MAX_PROPERTY_LISTS_PER_SESSION) {
     return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_PROPERTY_LISTS_PER_SESSION} property lists).` }] };
@@ -203,12 +203,12 @@ export function handleCreatePropertyList(
   };
 }
 
-export function handleListPropertyLists(
+export async function handleListPropertyLists(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { name_contains?: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let lists = [...session.propertyLists.values()];
 
@@ -222,12 +222,12 @@ export function handleListPropertyLists(
   };
 }
 
-export function handleGetPropertyList(
+export async function handleGetPropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
@@ -245,12 +245,12 @@ export function handleGetPropertyList(
   };
 }
 
-export function handleUpdatePropertyList(
+export async function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
@@ -289,12 +289,12 @@ export function handleUpdatePropertyList(
   };
 }
 
-export function handleDeletePropertyList(
+export async function handleDeletePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { list_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const existed = session.propertyLists.delete(req.list_id);
   if (!existed) {
@@ -304,7 +304,7 @@ export function handleDeletePropertyList(
   return { list_id: req.list_id, deleted: true };
 }
 
-export function handleValidatePropertyDelivery(
+export async function handleValidatePropertyDelivery(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -313,7 +313,7 @@ export function handleValidatePropertyDelivery(
     records: Array<{ identifier: { type: string; value: string }; impressions: number; record_id?: string }>;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {

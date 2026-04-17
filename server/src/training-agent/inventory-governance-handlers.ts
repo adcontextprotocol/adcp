@@ -134,8 +134,8 @@ function validateListId(value: unknown): { code: string; message: string; field:
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as CreateCollectionListInput;
 
   if (!input.name) {
@@ -165,8 +165,8 @@ export function handleCreateCollectionList(args: ToolArgs, ctx: TrainingContext)
   };
 }
 
-export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as GetCollectionListInput;
 
   const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
@@ -185,8 +185,8 @@ export function handleGetCollectionList(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
-export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as UpdateCollectionListInput;
 
   const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
@@ -209,8 +209,8 @@ export function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingContext)
   return { list };
 }
 
-export function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as ListInput;
   const lists = Array.from(session.collectionLists.values());
   const filtered = input.name_contains
@@ -219,8 +219,8 @@ export function handleListCollectionLists(args: ToolArgs, ctx: TrainingContext) 
   return { lists: filtered, pagination: { has_more: false } };
 }
 
-export function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as DeleteInput;
 
   const listIdError = validateListId((input as unknown as { list_id: unknown }).list_id);
