@@ -12,17 +12,16 @@ const FONT_SIZE = 11;
 const PADDING = 8;
 const BADGE_HEIGHT = 20;
 
-// Only roles that have storyboard tracks mapping to them in TRACK_TO_ROLE.
-// Add 'buying' and 'measurement' when those tracks have storyboards.
-export const VALID_BADGE_ROLES = ['sales', 'creative', 'governance', 'signals'] as const;
+// Badge roles correspond to AdCP domains (static/schemas/source/enums/adcp-domain.json).
+export const VALID_BADGE_ROLES = ['media-buy', 'creative', 'signals', 'governance', 'brand', 'sponsored-intelligence'] as const;
 
 const ROLE_LABELS: Record<string, string> = {
-  sales: 'Sales Agent',
-  buying: 'Buying Agent',
-  creative: 'Creative Agent',
-  governance: 'Governance Agent',
-  signals: 'Signals Agent',
-  measurement: 'Measurement Agent',
+  'media-buy': 'Media Buy Agent',
+  'creative': 'Creative Agent',
+  'signals': 'Signals Agent',
+  'governance': 'Governance Agent',
+  'brand': 'Brand Agent',
+  'sponsored-intelligence': 'SI Agent',
 };
 
 // Per-character width table for Verdana 11px (from font metrics).

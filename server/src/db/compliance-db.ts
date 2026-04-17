@@ -71,7 +71,8 @@ export interface AgentComplianceStatus {
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
 const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
 
-export type BadgeRole = 'sales' | 'buying' | 'creative' | 'governance' | 'signals' | 'measurement';
+// Badge roles map to AdCP domains (see static/schemas/source/enums/adcp-domain.json).
+export type BadgeRole = 'media-buy' | 'creative' | 'signals' | 'governance' | 'brand' | 'sponsored-intelligence';
 export type BadgeStatus = 'active' | 'degraded' | 'revoked';
 
 export interface AgentVerificationBadge {
@@ -79,7 +80,7 @@ export interface AgentVerificationBadge {
   role: BadgeRole;
   verified_at: Date;
   verified_protocol_version: string | null;
-  verified_storyboards: string[];
+  verified_specialisms: string[];
   verification_token: string | null;
   token_expires_at: Date | null;
   membership_org_id: string | null;
@@ -633,7 +634,7 @@ export class ComplianceDatabase {
   async upsertBadge(badge: {
     agent_url: string;
     role: BadgeRole;
-    verified_storyboards: string[];
+    verified_specialisms: string[];
     verified_protocol_version?: string;
     verification_token?: string;
     token_expires_at?: Date;
@@ -641,12 +642,12 @@ export class ComplianceDatabase {
   }): Promise<AgentVerificationBadge> {
     const result = await query(
       `INSERT INTO agent_verification_badges (
-        agent_url, role, verified_storyboards, verified_protocol_version,
+        agent_url, role, verified_specialisms, verified_protocol_version,
         verification_token, token_expires_at, membership_org_id,
         status, verified_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), NOW())
       ON CONFLICT (agent_url, role) DO UPDATE SET
-        verified_storyboards = $3,
+        verified_specialisms = $3,
         verified_protocol_version = COALESCE($4, agent_verification_badges.verified_protocol_version),
         verification_token = COALESCE($5, agent_verification_badges.verification_token),
         token_expires_at = COALESCE($6, agent_verification_badges.token_expires_at),
@@ -660,7 +661,7 @@ export class ComplianceDatabase {
       [
         badge.agent_url,
         badge.role,
-        badge.verified_storyboards,
+        badge.verified_specialisms,
         badge.verified_protocol_version ?? null,
         badge.verification_token ?? null,
         badge.token_expires_at ?? null,

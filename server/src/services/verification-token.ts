@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto';
 export interface VerificationTokenPayload {
   agent_url: string;
   role: string;
-  verified_storyboards: string[];
+  verified_specialisms: string[];
   protocol_version?: string;
 }
 
@@ -80,7 +80,7 @@ export async function signVerificationToken(
   const token = await new jose.SignJWT({
     agent_url: payload.agent_url,
     role: payload.role,
-    verified_storyboards: payload.verified_storyboards,
+    verified_specialisms: payload.verified_specialisms,
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })

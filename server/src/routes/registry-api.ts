@@ -3520,7 +3520,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         verified_badges: badges.map(b => ({
           role: b.role,
           verified_at: b.verified_at.toISOString(),
-          verified_storyboards: b.verified_storyboards,
+          verified_specialisms: b.verified_specialisms,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -3601,7 +3601,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         badges: badges.map(b => ({
           role: b.role,
           verified_at: b.verified_at.toISOString(),
-          verified_storyboards: b.verified_storyboards,
+          verified_specialisms: b.verified_specialisms,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -3675,7 +3675,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const encodedUrl = encodeURIComponent(agentUrl);
       const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}.svg`;
       const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
-      const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+      // Convert kebab-case domain to Title Case (e.g. "media-buy" → "Media Buy")
+      const roleLabel = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
       // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
       const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);

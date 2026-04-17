@@ -7,53 +7,53 @@ function makeStatus(id: string, status: StoryboardStatusEntry['status']): Storyb
 }
 
 describe('deriveVerificationStatus', () => {
-  it('returns not verified when no storyboards declared', () => {
+  it('returns not verified when no specialisms declared', () => {
     const result = deriveVerificationStatus([], []);
     expect(result.verified).toBe(false);
     expect(result.roles).toHaveLength(0);
   });
 
-  it('verifies sales role when all declared media_buy storyboards pass', () => {
-    const declared = ['media_buy_seller'];
-    const statuses = [makeStatus('media_buy_seller', 'passing')];
+  it('verifies media-buy role when the declared sales specialism passes', () => {
+    const declared = ['sales-non-guaranteed'];
+    const statuses = [makeStatus('media_buy_non_guaranteed', 'passing')];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(true);
     expect(result.roles).toHaveLength(1);
-    expect(result.roles[0].role).toBe('sales');
+    expect(result.roles[0].role).toBe('media-buy');
     expect(result.roles[0].verified).toBe(true);
-    expect(result.roles[0].passing).toEqual(['media_buy_seller']);
+    expect(result.roles[0].passing).toEqual(['sales-non-guaranteed']);
     expect(result.roles[0].failing).toHaveLength(0);
   });
 
-  it('does not verify when a declared storyboard is failing', () => {
-    const declared = ['media_buy_seller', 'media_buy_non_guaranteed'];
+  it('does not verify when a declared specialism is failing', () => {
+    const declared = ['sales-non-guaranteed', 'sales-guaranteed'];
     const statuses = [
-      makeStatus('media_buy_seller', 'passing'),
-      makeStatus('media_buy_non_guaranteed', 'failing'),
+      makeStatus('media_buy_non_guaranteed', 'passing'),
+      makeStatus('media_buy_guaranteed_approval', 'failing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(false);
-    expect(result.roles[0].role).toBe('sales');
+    expect(result.roles[0].role).toBe('media-buy');
     expect(result.roles[0].verified).toBe(false);
-    expect(result.roles[0].failing).toEqual(['media_buy_non_guaranteed']);
+    expect(result.roles[0].failing).toEqual(['sales-guaranteed']);
   });
 
-  it('does not verify when a declared storyboard has no status (untested)', () => {
-    const declared = ['media_buy_seller'];
+  it('does not verify when a declared specialism has no status (untested)', () => {
+    const declared = ['sales-non-guaranteed'];
     const statuses: StoryboardStatusEntry[] = [];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(false);
     expect(result.roles[0].verified).toBe(false);
-    expect(result.roles[0].failing).toEqual(['media_buy_seller']);
+    expect(result.roles[0].failing).toEqual(['sales-non-guaranteed']);
   });
 
-  it('handles multiple roles from different storyboard tracks', () => {
-    const declared = ['media_buy_seller', 'creative_template'];
+  it('handles multiple domains when specialisms from different domains all pass', () => {
+    const declared = ['sales-non-guaranteed', 'creative-template'];
     const statuses = [
-      makeStatus('media_buy_seller', 'passing'),
+      makeStatus('media_buy_non_guaranteed', 'passing'),
       makeStatus('creative_template', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
@@ -61,55 +61,51 @@ describe('deriveVerificationStatus', () => {
     expect(result.verified).toBe(true);
     expect(result.roles).toHaveLength(2);
 
-    const salesRole = result.roles.find(r => r.role === 'sales');
-    const creativeRole = result.roles.find(r => r.role === 'creative');
-    expect(salesRole?.verified).toBe(true);
-    expect(creativeRole?.verified).toBe(true);
+    const mediaBuy = result.roles.find(r => r.role === 'media-buy');
+    const creative = result.roles.find(r => r.role === 'creative');
+    expect(mediaBuy?.verified).toBe(true);
+    expect(creative?.verified).toBe(true);
   });
 
-  it('can verify one role while another fails', () => {
-    const declared = ['media_buy_seller', 'creative_template'];
+  it('can verify one domain while another fails', () => {
+    const declared = ['sales-non-guaranteed', 'creative-template'];
     const statuses = [
-      makeStatus('media_buy_seller', 'passing'),
+      makeStatus('media_buy_non_guaranteed', 'passing'),
       makeStatus('creative_template', 'failing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(true); // at least one role verified
 
-    const salesRole = result.roles.find(r => r.role === 'sales');
-    const creativeRole = result.roles.find(r => r.role === 'creative');
-    expect(salesRole?.verified).toBe(true);
-    expect(creativeRole?.verified).toBe(false);
+    const mediaBuy = result.roles.find(r => r.role === 'media-buy');
+    const creative = result.roles.find(r => r.role === 'creative');
+    expect(mediaBuy?.verified).toBe(true);
+    expect(creative?.verified).toBe(false);
   });
 
-  it('ignores core storyboards that do not map to a role', () => {
-    const declared = ['capability_discovery', 'schema_validation'];
-    const statuses = [
-      makeStatus('capability_discovery', 'passing'),
-      makeStatus('schema_validation', 'passing'),
-    ];
+  it('ignores unknown specialisms', () => {
+    const declared = ['not-a-real-specialism'];
+    const statuses: StoryboardStatusEntry[] = [];
     const result = deriveVerificationStatus(declared, statuses);
 
-    // Core storyboards don't map to any role badge
     expect(result.verified).toBe(false);
     expect(result.roles).toHaveLength(0);
   });
 
   it('handles partial storyboard status as not verified', () => {
-    const declared = ['media_buy_seller'];
-    const statuses = [makeStatus('media_buy_seller', 'partial')];
+    const declared = ['sales-non-guaranteed'];
+    const statuses = [makeStatus('media_buy_non_guaranteed', 'partial')];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(false);
     expect(result.roles[0].verified).toBe(false);
   });
 
-  it('groups governance storyboards from both governance and campaign_governance tracks', () => {
-    const declared = ['property_governance', 'campaign_governance_denied'];
+  it('groups multiple governance specialisms under the governance domain', () => {
+    const declared = ['inventory-lists', 'governance-spend-authority'];
     const statuses = [
-      makeStatus('property_governance', 'passing'),
-      makeStatus('campaign_governance_denied', 'passing'),
+      makeStatus('inventory_lists', 'passing'),
+      makeStatus('campaign_governance_conditions', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
@@ -117,6 +113,6 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles).toHaveLength(1);
     expect(result.roles[0].role).toBe('governance');
     expect(result.roles[0].verified).toBe(true);
-    expect(result.roles[0].storyboards).toHaveLength(2);
+    expect(result.roles[0].specialisms).toHaveLength(2);
   });
 });

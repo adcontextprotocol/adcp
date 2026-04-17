@@ -19,7 +19,7 @@ describe('verification-token', () => {
       const result = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
         role: 'sales',
-        verified_storyboards: ['media_buy_seller'],
+        verified_specialisms: ['media_buy_seller'],
       });
       expect(result).toBeNull();
     });
@@ -64,7 +64,7 @@ describe('verification-token', () => {
       const signed = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
         role: 'sales',
-        verified_storyboards: ['media_buy_seller', 'media_buy_non_guaranteed'],
+        verified_specialisms: ['media_buy_seller', 'media_buy_non_guaranteed'],
         protocol_version: '3.0.0',
       });
 
@@ -77,7 +77,7 @@ describe('verification-token', () => {
       expect(claims).not.toBeNull();
       expect(claims!.agent_url).toBe('https://example.com/mcp');
       expect(claims!.role).toBe('sales');
-      expect(claims!.verified_storyboards).toEqual(['media_buy_seller', 'media_buy_non_guaranteed']);
+      expect(claims!.verified_specialisms).toEqual(['media_buy_seller', 'media_buy_non_guaranteed']);
       expect(claims!.protocol_version).toBe('3.0.0');
       expect(claims!.iss).toBe('https://aao.org');
     });
@@ -86,7 +86,7 @@ describe('verification-token', () => {
       const signed = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
         role: 'sales',
-        verified_storyboards: ['media_buy_seller'],
+        verified_specialisms: ['media_buy_seller'],
       });
 
       // Tamper with the token payload

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS agent_verification_badges (
   role                    TEXT NOT NULL,
   verified_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   verified_protocol_version TEXT,
-  verified_storyboards    TEXT[] NOT NULL DEFAULT '{}',
+  verified_specialisms    TEXT[] NOT NULL DEFAULT '{}',
 
   -- JWT token issued by AAO for decentralized verification
   verification_token      TEXT,
@@ -25,8 +25,9 @@ CREATE TABLE IF NOT EXISTS agent_verification_badges (
 
   PRIMARY KEY (agent_url, role),
 
+  -- Badge roles correspond to AdCP domains (see static/schemas/source/enums/adcp-domain.json)
   CONSTRAINT valid_badge_role CHECK (
-    role IN ('sales', 'buying', 'creative', 'governance', 'signals', 'measurement')
+    role IN ('media-buy', 'creative', 'signals', 'governance', 'brand', 'sponsored-intelligence')
   ),
   CONSTRAINT valid_badge_status CHECK (
     status IN ('active', 'degraded', 'revoked')

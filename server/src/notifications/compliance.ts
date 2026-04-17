@@ -198,7 +198,7 @@ export async function notifyComplianceChange(input: ComplianceChangeInput): Prom
 
 interface VerificationChangeInput {
   agentUrl: string;
-  issued: Array<{ role: string; storyboards: string[] }>;
+  issued: Array<{ role: string; specialisms: string[] }>;
   revoked: Array<{ role: string; reason: string }>;
 }
 
@@ -221,7 +221,7 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `*AAO Verified:* \`${name}\` is now a verified ${badge.role} agent. Storyboards: ${badge.storyboards.join(', ')}`,
+                text: `*AAO Verified:* \`${name}\` is now a verified ${badge.role} agent. Specialisms: ${badge.specialisms.join(', ')}`,
               },
             },
           ],
@@ -289,7 +289,7 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
         payload: {
           agent_url: agentUrl,
           role: badge.role,
-          verified_storyboards: badge.storyboards,
+          verified_specialisms: badge.specialisms,
         },
         actor: 'pipeline:compliance-heartbeat',
       });

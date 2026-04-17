@@ -232,9 +232,9 @@ export const AgentComplianceSchema = z
 
 export const VerificationBadgeSchema = z
   .object({
-    role: z.enum(["sales", "buying", "creative", "governance", "signals", "measurement"]),
+    role: z.enum(["media-buy", "creative", "signals", "governance", "brand", "sponsored-intelligence"]),
     verified_at: z.string(),
-    verified_storyboards: z.array(z.string()),
+    verified_specialisms: z.array(z.string()),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional(),
   })

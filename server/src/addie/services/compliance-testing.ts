@@ -135,22 +135,54 @@ export function deriveStoryboardStatuses(
 
 // ── Verification Status Derivation ───────────────────────────────
 
-export type BadgeRole = 'sales' | 'buying' | 'creative' | 'governance' | 'signals' | 'measurement';
+/**
+ * AAO Verified badge roles map to AdCP domains.
+ * Each declared specialism rolls up to exactly one domain.
+ */
+export type BadgeRole = 'media-buy' | 'creative' | 'signals' | 'governance' | 'brand' | 'sponsored-intelligence';
 
 /**
- * Maps storyboard tracks to badge roles. A storyboard's track determines
- * which role badge it counts toward. Core and error_handling storyboards
- * are not role-specific — they're tested but don't determine role eligibility.
+ * Specialism metadata: which domain it rolls up to, plus its root storyboard ID
+ * (the `id:` field in static/compliance/source/specialisms/{specialism}/index.yaml).
+ *
+ * The agent declares specialisms in get_adcp_capabilities; the compliance runner
+ * reports pass/fail keyed by storyboard_id. This table connects the two.
+ *
+ * TODO(adcp-client#553): once @adcp/client exposes specialism results directly,
+ * drop the storyboard_id lookup and trust the runner output.
  */
-const TRACK_TO_ROLE: Record<string, BadgeRole> = {
-  media_buy: 'sales',
-  creative: 'creative',
-  signals: 'signals',
-  governance: 'governance',
-  campaign_governance: 'governance',
-  audiences: 'signals',
-  products: 'sales',
-  si: 'sales',
+interface SpecialismInfo {
+  domain: BadgeRole;
+  storyboard_id: string;
+}
+
+const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
+  // media-buy
+  'sales-broadcast-tv': { domain: 'media-buy', storyboard_id: 'media_buy_broadcast_seller' },
+  'sales-catalog-driven': { domain: 'media-buy', storyboard_id: 'media_buy_catalog_creative' },
+  'sales-exchange': { domain: 'media-buy', storyboard_id: 'sales_exchange' },
+  'sales-guaranteed': { domain: 'media-buy', storyboard_id: 'media_buy_guaranteed_approval' },
+  'sales-non-guaranteed': { domain: 'media-buy', storyboard_id: 'media_buy_non_guaranteed' },
+  'sales-proposal-mode': { domain: 'media-buy', storyboard_id: 'media_buy_proposal_mode' },
+  'sales-retail-media': { domain: 'media-buy', storyboard_id: 'sales_retail_media' },
+  'sales-social': { domain: 'media-buy', storyboard_id: 'social_platform' },
+  'sales-streaming-tv': { domain: 'media-buy', storyboard_id: 'sales_streaming_tv' },
+  // creative
+  'creative-ad-server': { domain: 'creative', storyboard_id: 'creative_ad_server' },
+  'creative-generative': { domain: 'creative', storyboard_id: 'creative_generative' },
+  'creative-template': { domain: 'creative', storyboard_id: 'creative_template' },
+  // signals
+  'audience-sync': { domain: 'signals', storyboard_id: 'audience_sync' },
+  'signal-marketplace': { domain: 'signals', storyboard_id: 'signal_marketplace' },
+  'signal-owned': { domain: 'signals', storyboard_id: 'signal_owned' },
+  // governance
+  'content-standards': { domain: 'governance', storyboard_id: 'content_standards' },
+  'governance-delivery-monitor': { domain: 'governance', storyboard_id: 'campaign_governance_delivery' },
+  'governance-spend-authority': { domain: 'governance', storyboard_id: 'campaign_governance_conditions' },
+  'inventory-lists': { domain: 'governance', storyboard_id: 'inventory_lists' },
+  'measurement-verification': { domain: 'governance', storyboard_id: 'measurement_verification' },
+  // brand
+  'brand-rights': { domain: 'brand', storyboard_id: 'brand_rights' },
 };
 
 export interface VerificationResult {
@@ -158,67 +190,60 @@ export interface VerificationResult {
   roles: Array<{
     role: BadgeRole;
     verified: boolean;
-    storyboards: string[];
+    specialisms: string[];
     passing: string[];
     failing: string[];
   }>;
 }
 
 /**
- * Determine which badge roles an agent qualifies for based on
- * declared storyboards and their pass/fail status.
+ * Determine which badge roles an agent qualifies for based on its
+ * declared specialisms and their pass/fail status.
  *
- * An agent is verified for a role when ALL declared storyboards
- * that map to that role are passing. The declared storyboards
- * come from the agent's get_adcp_capabilities response.
+ * An agent earns a role badge when ALL declared specialisms that
+ * roll up to that domain are passing. Specialisms come from the
+ * agent's get_adcp_capabilities response (specialisms field).
  */
 export function deriveVerificationStatus(
-  declaredStoryboards: string[],
+  declaredSpecialisms: string[],
   storyboardStatuses: StoryboardStatusEntry[],
 ): VerificationResult {
-  if (declaredStoryboards.length === 0) {
+  if (declaredSpecialisms.length === 0) {
     return { verified: false, roles: [] };
   }
 
-  // Build a status map from the latest compliance results
   const statusMap = new Map<string, StoryboardStatusEntry>();
   for (const entry of storyboardStatuses) {
     statusMap.set(entry.storyboard_id, entry);
   }
 
-  // Group declared storyboards by role
-  const roleStoryboards = new Map<BadgeRole, string[]>();
-  for (const sbId of declaredStoryboards) {
-    const sb = getStoryboard(sbId);
-    if (!sb) continue;
-
-    const role = TRACK_TO_ROLE[sb.track || ''];
-    if (!role) continue; // core/error_handling storyboards don't map to a role badge
-
-    const existing = roleStoryboards.get(role) || [];
-    existing.push(sbId);
-    roleStoryboards.set(role, existing);
+  // Group declared specialisms by the domain they roll up to
+  const domainSpecialisms = new Map<BadgeRole, string[]>();
+  for (const specialism of declaredSpecialisms) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) continue;
+    const existing = domainSpecialisms.get(info.domain) || [];
+    existing.push(specialism);
+    domainSpecialisms.set(info.domain, existing);
   }
 
   const roles: VerificationResult['roles'] = [];
-
-  for (const [role, storyboards] of roleStoryboards) {
+  for (const [role, specialisms] of domainSpecialisms) {
     const passing: string[] = [];
     const failing: string[] = [];
-
-    for (const sbId of storyboards) {
-      const status = statusMap.get(sbId);
+    for (const specialism of specialisms) {
+      const info = SPECIALISM_CATALOG[specialism];
+      const status = info ? statusMap.get(info.storyboard_id) : undefined;
       if (status?.status === 'passing') {
-        passing.push(sbId);
+        passing.push(specialism);
       } else {
-        failing.push(sbId);
+        failing.push(specialism);
       }
     }
-
     roles.push({
       role,
       verified: failing.length === 0 && passing.length > 0,
-      storyboards,
+      specialisms,
       passing,
       failing,
     });

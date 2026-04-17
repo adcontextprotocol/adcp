@@ -108,7 +108,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
 
       // Process AAO Verified badges
-      if (storyboardStatuses.length > 0) {
+      const agentProfile = complianceResult.agent_profile as unknown as Record<string, unknown> | undefined;
+      const rawSpecialisms = agentProfile?.specialisms;
+      const declaredSpecialisms = Array.isArray(rawSpecialisms)
+        ? rawSpecialisms.filter((s): s is string => typeof s === 'string')
+        : [];
+
+      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
         try {
           // Resolve membership org for this agent
           const orgResult = await query(
@@ -121,13 +127,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           );
           const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
 
-          // Use the storyboard IDs that were tested as the declared set
-          const declaredStoryboards = storyboardStatuses.map(s => s.storyboard_id);
-
           const badgeResult = await processAgentBadges(
             complianceDb,
             agent.agent_url,
-            declaredStoryboards,
+            declaredSpecialisms,
             storyboardStatuses,
             dbInput.overall_status === 'passing',
             membershipOrgId,
