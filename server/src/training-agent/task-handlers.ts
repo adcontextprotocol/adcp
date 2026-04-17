@@ -511,6 +511,15 @@ const ACCOUNT_REF_SCHEMA = {
   ],
 } as const;
 
+// Tools whose response schema defines an Error variant at top level
+// (oneOf success | {errors: [...]}). Handler-returned errors are placed
+// in the response body rather than wrapped in an MCP isError envelope,
+// matching spec-compliant agents and allowing field_present validations
+// on the errors array.
+const ERROR_IN_BODY_TOOLS = new Set<string>([
+  'update_media_buy',
+]);
+
 // ── Tool definitions ──────────────────────────────────────────────
 
 const TOOLS = [
@@ -1869,7 +1878,12 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   // Terminal state check
   const currentStatus = deriveStatus(mb);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
-    return { errors: [{ code: 'INVALID_STATE', message: `Media buy is ${currentStatus} and cannot be updated` }] };
+    const isRecancel = req.canceled === true && currentStatus === 'canceled';
+    const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
+    const message = isRecancel
+      ? `Media buy is already canceled and cannot be canceled again`
+      : `Media buy is ${currentStatus} and cannot be updated`;
+    return { errors: [{ code, message }] };
   }
 
   // Revision check for optimistic concurrency
@@ -1927,6 +1941,25 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
+
+    // Pre-validate all creative_assignments across every package before
+    // mutating anything, so a bad creative_id in pkg[N] doesn't leave
+    // pkg[0..N-1] with partially-applied assignments.
+    for (const update of req.packages as PackageUpdateExt[]) {
+      const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (assignments === undefined) continue;
+      const pkgId = update.package_id || '';
+      for (const assignment of assignments) {
+        const cid = assignment.creative_id;
+        if (!cid) {
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments[].creative_id is required for package ${pkgId}`, field: `packages[${pkgId}].creative_assignments` }] };
+        }
+        if (!session.creatives.has(cid)) {
+          return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
+        }
+      }
+    }
+
     for (const update of req.packages as PackageUpdateExt[]) {
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
@@ -1981,6 +2014,16 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
           const summary = pkg.targeting ? `Package ${pkgId} targeting updated` : `Package ${pkgId} targeting cleared`;
           mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary, packageId: pkgId });
         }
+      }
+
+      // Replacement semantics: the provided array replaces pkg.creativeAssignments
+      // entirely. An empty array clears assignments and may regress the buy to
+      // pending_creatives. Validity of creative_ids was checked in the pre-pass.
+      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (creativeAssignments !== undefined) {
+        const creativeIds = creativeAssignments.map(a => a.creative_id);
+        pkg.creativeAssignments = creativeIds;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
     }
   }
@@ -3032,16 +3075,25 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
         const firstError = resultObj.errors![0];
-        toolResult = adcpError(firstError.code, {
-          message: firstError.message,
-          ...(firstError.field && { field: firstError.field }),
-          ...(firstError.recovery && { recovery: firstError.recovery }),
-          details: firstError.details !== undefined
-            ? firstError.details
-            : resultObj.errors!.length > 1
-              ? { all_errors: resultObj.errors }
-              : undefined,
-        }, callerContext);
+        if (ERROR_IN_BODY_TOOLS.has(name)) {
+          const body: Record<string, unknown> = { errors: resultObj.errors };
+          if (callerContext !== undefined) body.context = callerContext;
+          toolResult = {
+            content: [{ type: 'text', text: JSON.stringify(body) }],
+            structuredContent: body,
+          };
+        } else {
+          toolResult = adcpError(firstError.code, {
+            message: firstError.message,
+            ...(firstError.field && { field: firstError.field }),
+            ...(firstError.recovery && { recovery: firstError.recovery }),
+            details: firstError.details !== undefined
+              ? firstError.details
+              : resultObj.errors!.length > 1
+                ? { all_errors: resultObj.errors }
+                : undefined,
+          }, callerContext);
+        }
       } else {
         const response = callerContext !== undefined
           ? { ...result as object, context: callerContext }

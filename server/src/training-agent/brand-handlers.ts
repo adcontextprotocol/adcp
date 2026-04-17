@@ -622,6 +622,39 @@ function getTalentName(talent: TalentEntry): string {
   return talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
 }
 
+// Shape a brand record into the brand.json "brand" definition. Fields not
+// applicable to the caller's authorization level are omitted from the inner
+// brand and surfaced via available_fields on the outer response.
+function buildBrandJsonEntry(
+  brand: AnyBrand,
+  opts: { authorized: boolean; requested: string[]; withheld: string[] },
+): Record<string, unknown> {
+  const record = brand as unknown as { [key: string]: unknown };
+  const entry: Record<string, unknown> = {
+    id: brand.brand_id,
+    names: brand.names,
+  };
+
+  const includeIfPresent = (key: string) => {
+    const value = record[key];
+    if (value !== undefined) entry[key] = value;
+  };
+
+  for (const field of opts.requested) {
+    if ((PUBLIC_FIELDS as readonly string[]).includes(field)) {
+      includeIfPresent(field);
+    } else if ((AUTHORIZED_FIELDS as readonly string[]).includes(field)) {
+      if (opts.authorized) {
+        includeIfPresent(field);
+      } else if (record[field] !== undefined) {
+        opts.withheld.push(field);
+      }
+    }
+  }
+
+  return entry;
+}
+
 export function handleGetBrandIdentity(
   args: ToolArgs,
   _ctx: TrainingContext,
@@ -636,37 +669,27 @@ export function handleGetBrandIdentity(
     return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
   }
 
-  // Dynamic field access by name — TalentEntry has no index signature
-  const talentRecord = talent as unknown as { [key: string]: unknown };
-  const response: { [key: string]: unknown } = {
+  const requested = fields ?? [...ALL_FIELDS];
+  const withheld: string[] = [];
+  const brandEntry = buildBrandJsonEntry(talent, { authorized, requested, withheld });
+
+  // brand.json-shaped response: house (object), brands[] with inner brand entry,
+  // plus brand_id and identity fields echoed at top level so the response also
+  // satisfies get-brand-identity-response.json's required top-level fields.
+  const response: Record<string, unknown> = {
     brand_id: talent.brand_id,
     house: talent.house,
     names: talent.names,
+    brands: [brandEntry],
     sandbox: true,
   };
 
-  const requested = fields ?? [...ALL_FIELDS];
-  const withheld: string[] = [];
-
-  for (const field of requested) {
-    if ((PUBLIC_FIELDS as readonly string[]).includes(field)) {
-      const value = talentRecord[field];
-      if (value !== undefined) {
-        response[field] = value;
-      }
-    } else if ((AUTHORIZED_FIELDS as readonly string[]).includes(field)) {
-      if (authorized) {
-        const value = talentRecord[field];
-        if (value !== undefined) {
-          response[field] = value;
-        }
-      } else {
-        const value = talentRecord[field];
-        if (value !== undefined) {
-          withheld.push(field);
-        }
-      }
-    }
+  // Echo the per-brand identity fields at the top level as well — the
+  // get-brand-identity-response.json schema places description, logos,
+  // colors, etc. at the top level (not nested under brands[]).
+  for (const [key, value] of Object.entries(brandEntry)) {
+    if (key === 'id' || key === 'names') continue;
+    response[key] = value;
   }
 
   if (withheld.length > 0) {
