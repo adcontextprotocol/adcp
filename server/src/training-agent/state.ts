@@ -15,16 +15,13 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type {
-  SessionState, AccountRef, BrandRef,
-  MediaBuyState, CreativeState, SignalActivationState, GovernancePlanState,
-  GovernanceCheckState, GovernanceOutcomeState, PropertyListState,
-  CollectionListState, ContentStandardsState, RightsGrantState, UsageRecord,
-} from './types.js';
+import type { SessionState, AccountRef, BrandRef } from './types.js';
 import { cleanupExpiredTasks } from '@adcp/client';
 import {
   InMemoryStateStore,
   PostgresStateStore,
+  structuredSerialize,
+  structuredDeserialize,
   type AdcpStateStore,
 } from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
@@ -87,14 +84,17 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
   return requestCtx.run(ctx, fn);
 }
 
-const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
-
 /**
  * Persist sessions that were actually mutated during the current request.
  *
  * Mutation is detected by comparing the current serialized shape to a snapshot
  * taken when the session was first loaded. Read-only accesses do not write,
  * eliminating unnecessary DB traffic on `get_*` / `list_*` tools.
+ *
+ * Size enforcement (5 MB default) and key validation live in the SDK's
+ * state store — `store.put` throws `StateError('PAYLOAD_TOO_LARGE')` or
+ * `StateError('INVALID_ID')` automatically. Failures bubble to the MCP
+ * transport layer so operators notice in alert pipelines.
  *
  * Known limitation: concurrent requests against the same session key use
  * last-writer-wins semantics. Acceptable for the sandbox training agent where
@@ -111,17 +111,6 @@ export async function flushDirtySessions(): Promise<void> {
     const currentJson = stableStringify(current);
     const snapshotJson = ctx.snapshots.get(key);
     if (snapshotJson === currentJson) continue;
-    if (currentJson.length > MAX_SESSION_JSON_BYTES) {
-      // Size cap is a defense-in-depth backstop on top of per-collection
-      // mutation limits. If we hit it, something grew unexpectedly —
-      // don't silently drop the write (the caller already got 200 OK).
-      const err = new Error(
-        `Training agent session "${key}" exceeds ${MAX_SESSION_JSON_BYTES} bytes (${currentJson.length}); refusing to persist`,
-      );
-      logger.error({ key, bytes: currentJson.length }, err.message);
-      errors.push({ key, err });
-      continue;
-    }
     try {
       await store.put(SESSIONS_COLLECTION, key, current);
       ctx.snapshots.set(key, currentJson);
@@ -184,64 +173,47 @@ function createSession(): SessionState {
   };
 }
 
-/** Serialize a SessionState to a JSON-safe object for the state store.
- *
- * `lastGetProductsContext.products` is deterministic from the catalog, so we
- * drop it from persistence and let callers recompute on next request.
- * `proposals` (session-specific drafts) are persisted.
+/**
+ * Serialize a SessionState via the SDK's `structuredSerialize` (tagged
+ * envelopes for Map/Date). `lastGetProductsContext.products` is deterministic
+ * from the catalog so we drop it — `proposals` (session-specific drafts) ride
+ * along. Returns a JSON-safe Record.
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
-  return {
-    mediaBuys: Object.fromEntries(session.mediaBuys),
-    creatives: Object.fromEntries(session.creatives),
-    signalActivations: Object.fromEntries(session.signalActivations),
-    governancePlans: Object.fromEntries(session.governancePlans),
-    governanceChecks: Object.fromEntries(session.governanceChecks),
-    governanceOutcomes: Object.fromEntries(session.governanceOutcomes),
-    propertyLists: Object.fromEntries(session.propertyLists),
-    collectionLists: Object.fromEntries(session.collectionLists),
-    contentStandards: Object.fromEntries(session.contentStandards),
-    rightsGrants: Object.fromEntries(session.rightsGrants),
-    usageRecords: session.usageRecords,
-    lastGetProductsProposals: session.lastGetProductsContext?.proposals,
-    createdAt: session.createdAt.toISOString(),
-    lastAccessedAt: session.lastAccessedAt.toISOString(),
+  const persisted = {
+    ...session,
+    lastGetProductsContext: session.lastGetProductsContext?.proposals?.length
+      ? { proposals: session.lastGetProductsContext.proposals }
+      : undefined,
   };
+  return structuredSerialize(persisted) as Record<string, unknown>;
 }
 
-const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/** Deserialize a stored doc back into a SessionState with Map/Date types. */
+/** Inverse — hydrate a stored doc back into a SessionState. */
 function deserializeSession(data: Record<string, unknown>): SessionState {
-  const asMap = <V>(obj: unknown): Map<string, V> => {
-    if (!obj || typeof obj !== 'object') return new Map();
-    const entries = Object.entries(obj as Record<string, V>)
-      .filter(([k]) => !RESERVED_KEYS.has(k));
-    return new Map(entries);
-  };
-  const asDate = (v: unknown): Date => {
-    if (typeof v === 'string') return new Date(v);
-    return new Date();
-  };
+  const hydrated = structuredDeserialize(data) as Partial<SessionState> & { lastGetProductsContext?: unknown };
+  const fresh = createSession();
+  // Merge hydrated fields onto a fresh skeleton — missing maps stay empty,
+  // missing dates stay fresh. Guards against incomplete stored rows.
+  const asMap = <V>(v: unknown, fallback: Map<string, V>): Map<string, V> =>
+    v instanceof Map ? (v as Map<string, V>) : fallback;
   return {
-    mediaBuys: asMap<MediaBuyState>(data.mediaBuys),
-    creatives: asMap<CreativeState>(data.creatives),
-    signalActivations: asMap<SignalActivationState>(data.signalActivations),
-    governancePlans: asMap<GovernancePlanState>(data.governancePlans),
-    governanceChecks: asMap<GovernanceCheckState>(data.governanceChecks),
-    governanceOutcomes: asMap<GovernanceOutcomeState>(data.governanceOutcomes),
-    propertyLists: asMap<PropertyListState>(data.propertyLists),
-    collectionLists: asMap<CollectionListState>(data.collectionLists),
-    contentStandards: asMap<ContentStandardsState>(data.contentStandards),
-    rightsGrants: asMap<RightsGrantState>(data.rightsGrants),
-    usageRecords: Array.isArray(data.usageRecords) ? data.usageRecords as UsageRecord[] : [],
-    // Only proposals persist; products are deterministic from the catalog, so callers
-    // re-derive on the next request via the fallback in the get_products handler.
-    lastGetProductsContext: Array.isArray(data.lastGetProductsProposals) && data.lastGetProductsProposals.length > 0
-      ? { proposals: data.lastGetProductsProposals as NonNullable<SessionState['lastGetProductsContext']>['proposals'] }
-      : undefined,
-    createdAt: asDate(data.createdAt),
-    lastAccessedAt: asDate(data.lastAccessedAt),
+    ...fresh,
+    ...hydrated,
+    mediaBuys: asMap(hydrated.mediaBuys, fresh.mediaBuys),
+    creatives: asMap(hydrated.creatives, fresh.creatives),
+    signalActivations: asMap(hydrated.signalActivations, fresh.signalActivations),
+    governancePlans: asMap(hydrated.governancePlans, fresh.governancePlans),
+    governanceChecks: asMap(hydrated.governanceChecks, fresh.governanceChecks),
+    governanceOutcomes: asMap(hydrated.governanceOutcomes, fresh.governanceOutcomes),
+    propertyLists: asMap(hydrated.propertyLists, fresh.propertyLists),
+    collectionLists: asMap(hydrated.collectionLists, fresh.collectionLists),
+    contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
+    rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
+    usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
+    lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
+    createdAt: hydrated.createdAt instanceof Date ? hydrated.createdAt : fresh.createdAt,
+    lastAccessedAt: hydrated.lastAccessedAt instanceof Date ? hydrated.lastAccessedAt : fresh.lastAccessedAt,
   };
 }
 
