@@ -44,13 +44,15 @@ These tools diagnose publisher and agent setup. When someone has verification or
 - probe_adcp_agent: Test if an agent is online and responding
 - resolve_property: Check if a publisher domain's properties are in the registry. If adagents.json is valid but this returns nothing, the registry is still crawling or the file uses property_ids (registry handles this).
 
-**Storyboard Testing (discover → recommend → run):**
+**Storyboard Testing (probe → recommend → run):**
 When a developer pastes a URL or asks to test an agent, follow this flow:
-1. recommend_storyboards: Connect to agent, discover tools, show applicable storyboards. This is ALWAYS the first step.
+1. recommend_storyboards: Probe get_adcp_capabilities and show the bundles that will run. The agent's declared \`supported_protocols\` and \`specialisms\` drive selection — don't ask the member what kind of agent they're building. If the agent declares nothing, coach them on what to add to their \`get_adcp_capabilities\` response. This is ALWAYS the first step.
 2. get_storyboard_detail: Show what a storyboard tests before running it (phases, steps, validations).
 3. run_storyboard: Run a complete storyboard and return step-by-step results with coaching.
 4. run_storyboard_step: Run one step at a time for debugging. Pass context from previous step to maintain state.
-- evaluate_agent_quality: [Legacy] Runs all applicable storyboards at once via comply(). Prefer the storyboard tools above for interactive testing.
+- evaluate_agent_quality: Runs the full capability-driven suite via comply() — universal + domain baselines + declared specialisms. Prefer the storyboard tools above for interactive, one-at-a-time testing.
+
+**When an agent hasn't declared capabilities yet:** Don't invent a parallel concept. Tell the developer what \`supported_protocols\` and \`specialisms\` they should add to their \`get_adcp_capabilities\` response, then re-run \`recommend_storyboards\`. If they ask "what specialisms should my agent declare?", answer conversationally from the docs — there's no tool for this; it's advice.
 - test_rfp_response: Test how a publisher's agent responds to a real RFP. Takes the RFP brief, calls get_products with buying_mode 'brief', and runs deterministic gap analysis (channels, formats, budget feasibility, KPIs). If the publisher provides their actual sales response (publisher_response), includes it for comparison. Ask for publisher_response before calling — it's the highest-value input.
 - test_io_execution: Test whether a buyer agent can execute deals through a publisher's agent. Takes real IO line items, maps each to the agent's product catalog using normalized channel/format/pricing matching, and constructs the exact create_media_buy JSON a buyer agent would send. Set execute=true to submit the request to the agent. The JSON output is the artifact — publishers can hand it to their eng team.
 
