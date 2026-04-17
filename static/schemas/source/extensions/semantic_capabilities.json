@@ -7,6 +7,7 @@
   "docs_url": "https://adcontextprotocol.org/docs/governance/semantic-transparency",
   "type": "object",
   "required": ["supported_taxonomies"],
+  "additionalProperties": true,
   "properties": {
     "supported_taxonomies": {
       "type": "array",

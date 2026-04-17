@@ -302,6 +302,24 @@ The `decision_type` enum is extensible — implementations MAY define additional
 
 </Accordion>
 
+<Accordion title="Lightweight traces">
+
+The `candidates` array is optional. Sellers MAY omit it and return only the `candidates_evaluated` count for lightweight traces where full candidate details would be excessive:
+
+```json
+{
+  "decision_id": "dp-product-selection",
+  "decision_type": "product_selection",
+  "description": "Select products matching brief constraints",
+  "candidates_evaluated": 47,
+  "selection_strategy": "inventory_constrained_optimization"
+}
+```
+
+This is useful for high-frequency buys where full candidate enumeration per transaction is impractical. Sellers SHOULD support a `trace_detail` parameter on media buy requests with values `none` (no trace), `summary` (counts and strategies only), and `full` (complete candidate details) to give buyers control over response size.
+
+</Accordion>
+
 ## Governance integration
 
 These extensions integrate with AdCP's governance protocol at four points:
@@ -322,7 +340,7 @@ const supportsTrace = capabilities.extensions_supported
 
 ### 2. Pre-buy check
 
-When `check_governance` is called, the orchestrator MAY include semantic context:
+When `check_governance` is called, the orchestrator MAY include semantic context within the existing `payload` field:
 
 ```json
 {
@@ -339,6 +357,10 @@ When `check_governance` is called, the orchestrator MAY include semantic context
   }
 }
 ```
+
+<Info>
+The `semantic_context` object is passed within the existing `payload` field as buyer-defined metadata. It is not schema-validated by the governance protocol — it is a convention that governance agents supporting these extensions SHOULD recognize. The `check_governance` request schema treats `payload` as pass-through, so no schema changes are required.
+</Info>
 
 The governance agent validates that the seller declared the requested taxonomy in capabilities, and flags if expected confidence exceeds historical performance.
 
@@ -369,7 +391,7 @@ Findings use the standard governance format:
 
 ### 4. Audit trail
 
-Decision traces are stored alongside existing governance audit entries. When `get_plan_audit_logs` is called, entries include trace references:
+Decision traces are stored alongside existing governance audit entries. When `get_plan_audit_logs` is called, entries include trace references via the `ext.*` namespace — consistent with the extension pattern used throughout:
 
 ```json
 {
@@ -377,17 +399,23 @@ Decision traces are stored alongside existing governance audit entries. When `ge
     {
       "event_type": "buy_executed",
       "timestamp": "2026-04-16T16:44:30Z",
-      "decision_trace_id": "dt-acme-2026-04-16-001",
-      "semantic_alignment_summary": {
-        "terms_resolved": 3,
-        "terms_unresolved": 0,
-        "overall_confidence": 0.97,
-        "alignment_methods_used": ["notation", "lexical", "structural"]
+      "ext": {
+        "decision_trace_summary": {
+          "decision_trace_id": "dt-acme-2026-04-16-001",
+          "terms_resolved": 3,
+          "terms_unresolved": 0,
+          "overall_confidence": 0.97,
+          "alignment_methods_used": ["notation", "lexical", "structural"]
+        }
       }
     }
   ]
 }
 ```
+
+<Info>
+The `ext.decision_trace_summary` field uses the existing `ext.*` namespace rather than adding top-level fields to audit entries. The `get-plan-audit-logs-response.json` schema uses `"additionalProperties": false` on entry objects, so new top-level fields would be rejected by validators. The `ext.*` pattern avoids this and is consistent with how the extensions surface on other response types.
+</Info>
 
 Every decision, every resolution, every confidence score — structured, timestamped, attributable.
 

@@ -7,6 +7,7 @@
   "docs_url": "https://adcontextprotocol.org/docs/governance/semantic-transparency",
   "type": "object",
   "required": ["resolutions", "overall_confidence", "unresolved_terms", "alignment_timestamp"],
+  "additionalProperties": true,
   "properties": {
     "resolutions": {
       "type": "array",
@@ -55,7 +56,14 @@
                 "step": { "type": "integer", "minimum": 1 },
                 "method": { "type": "string" },
                 "input": { "type": "string" },
-                "result": { "description": "Resolution result, or null if no match at this step." },
+                "result": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "array", "items": { "type": "string" } },
+                    { "type": "null" }
+                  ],
+                  "description": "Resolution result: a string, array of strings (when one term resolves to multiple concepts), or null if no match at this step."
+                },
                 "note": { "type": "string", "description": "Human-readable explanation of this step." },
                 "taxonomy_path": { "type": "string", "description": "Taxonomy hierarchy path traversed." }
               }
