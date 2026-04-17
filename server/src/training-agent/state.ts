@@ -175,13 +175,14 @@ function createSession(): SessionState {
 
 /**
  * Serialize a SessionState via the SDK's `structuredSerialize` (tagged
- * envelopes for Map/Date). `lastGetProductsContext.products` is deterministic
- * from the catalog so we drop it — `proposals` (session-specific drafts) ride
- * along. Returns a JSON-safe Record.
+ * envelopes for Map/Date). Returns a JSON-safe Record.
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
   const persisted = {
     ...session,
+    // `products` is deterministic from the catalog — dropped from persistence
+    // so callers re-derive on the next request. Only `proposals` (session-
+    // specific drafts from refine workflows) ride along.
     lastGetProductsContext: session.lastGetProductsContext?.proposals?.length
       ? { proposals: session.lastGetProductsContext.proposals }
       : undefined,
@@ -189,12 +190,26 @@ function serializeSession(session: SessionState): Record<string, unknown> {
   return structuredSerialize(persisted) as Record<string, unknown>;
 }
 
-/** Inverse — hydrate a stored doc back into a SessionState. */
+/**
+ * Hydrate a stored doc back into a SessionState.
+ *
+ * Security invariant (per #2283 security review): `structuredDeserialize`
+ * walks untrusted JSONB via `Object.entries` and can reconstitute a Map
+ * whose entries include a "constructor" or "__proto__" key. Those are safe
+ * on Map lookups (`.get(k)` returns the stored value, not Object.prototype)
+ * — but only as long as handlers never spread raw request payloads into
+ * session state. A handler that does `session.propertyLists.set(id, req)`
+ * verbatim would re-open the vector. Every existing handler builds
+ * PropertyListState/MediaBuyState/etc field-by-field from validated
+ * primitives, not raw spread. Maintainers: keep it that way.
+ *
+ * Map-field safety: each `SessionState` Map gets an explicit `asMap(...)`
+ * override below. If you add a new Map field to `SessionState`, add a
+ * matching line here or it will hydrate as a raw envelope object.
+ */
 function deserializeSession(data: Record<string, unknown>): SessionState {
   const hydrated = structuredDeserialize(data) as Partial<SessionState> & { lastGetProductsContext?: unknown };
   const fresh = createSession();
-  // Merge hydrated fields onto a fresh skeleton — missing maps stay empty,
-  // missing dates stay fresh. Guards against incomplete stored rows.
   const asMap = <V>(v: unknown, fallback: Map<string, V>): Map<string, V> =>
     v instanceof Map ? (v as Map<string, V>) : fallback;
   return {

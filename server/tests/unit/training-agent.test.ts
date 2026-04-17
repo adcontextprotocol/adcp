@@ -812,6 +812,47 @@ describe('session state', () => {
       }
     });
 
+    it('disk format uses structuredSerialize envelopes (Maps round-trip losslessly)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'format-test';
+      try {
+        const createdAt = new Date('2026-04-17T10:00:00Z');
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          s.mediaBuys.set('mb_abc', { mediaBuyId: 'mb_abc', status: 'active' } as any);
+          s.mediaBuys.set('mb_def', { mediaBuyId: 'mb_def', status: 'paused' } as any);
+          s.createdAt = createdAt;
+          await flushDirtySessions();
+        });
+
+        // Inspect the raw stored doc — must use SDK's tagged-envelope format.
+        const raw = await store.get('training_sessions', key) as Record<string, unknown>;
+        expect(raw).toBeDefined();
+        const mediaBuys = raw.mediaBuys as { __adcpType?: string; entries?: unknown[] };
+        expect(mediaBuys.__adcpType).toBe('Map');
+        expect(Array.isArray(mediaBuys.entries)).toBe(true);
+        expect(mediaBuys.entries!.length).toBe(2);
+        const created = raw.createdAt as { __adcpType?: string; value?: string };
+        expect(created.__adcpType).toBe('Date');
+        expect(created.value).toBe(createdAt.toISOString());
+
+        // Hydrate via getSession and verify both entries come back as real Maps/Dates.
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          expect(s.mediaBuys).toBeInstanceOf(Map);
+          expect(s.mediaBuys.get('mb_abc')).toEqual({ mediaBuyId: 'mb_abc', status: 'active' });
+          expect(s.mediaBuys.get('mb_def')).toEqual({ mediaBuyId: 'mb_def', status: 'paused' });
+          expect(s.createdAt).toBeInstanceOf(Date);
+          expect(s.createdAt.toISOString()).toBe(createdAt.toISOString());
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
     it('dispatcher skips flush when handler throws (real MCP path)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
       const { InMemoryStateStore } = await import('@adcp/client/server');
