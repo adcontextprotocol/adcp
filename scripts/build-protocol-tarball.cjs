@@ -90,7 +90,7 @@ curl -OL https://adcontextprotocol.org/protocol/latest.tgz
 curl -OL https://adcontextprotocol.org/protocol/latest.tgz.sha256
 shasum -a 256 -c latest.tgz.sha256
 tar xzf latest.tgz
-cd adcp-latest
+cd ${extractedDir}
 \`\`\``
     : `\`\`\`bash
 # Pull and verify this exact version
