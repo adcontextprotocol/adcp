@@ -1,0 +1,34 @@
+id: measurement_verification
+version: "1.0.0"
+title: "Measurement and verification"
+domain: governance
+summary: "Third-party measurement and verification — viewability, brand safety, attribution, and SI outcome measurement across domains."
+track: governance
+
+narrative: |
+  You run a third-party measurement or verification agent. Buyers integrate your
+  signals into their pre-bid and post-bid workflows to confirm that inventory meets
+  quality, safety, and performance standards.
+
+  Measurement and verification agents can serve any domain — display, video, CTV,
+  sponsored intelligence — so long as the measurement signal is clearly defined and
+  reproducible.
+
+  3.1 placeholder: storyboard phases for this specialism are defined as the MV
+  protocol surface stabilizes. Until then, agents claiming this specialism pass only
+  the universal and governance baseline storyboards.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - measurement_verification
+  examples:
+    - "IAS"
+    - "DoubleVerify"
+    - "Nielsen"
+    - "Comscore"
+
+caller:
+  role: buyer_agent
+
+phases: []

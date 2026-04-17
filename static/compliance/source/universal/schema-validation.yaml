@@ -1,0 +1,366 @@
+id: schema_validation
+version: "1.0.0"
+title: "Schema compliance and temporal validation"
+category: schema_validation
+summary: "Validates that agent responses conform to AdCP schemas and that temporal constraints are enforced."
+track: core
+required_tools:
+  - get_products
+
+narrative: |
+  Every AdCP agent must return responses that match the published JSON schemas. Fields defined
+  in the spec — product_id, delivery_type, pricing_options — must be present and correctly typed.
+  Agents must also enforce temporal constraints: flight dates must be logically consistent
+  (end after start) and start dates should not be in the past.
+
+  This storyboard checks schema compliance on get_products responses and validates that
+  create_media_buy rejects temporally invalid requests. These are foundational requirements
+  that every agent must satisfy regardless of platform type.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for product discovery requests.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before validating response schemas.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "schema_validation--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: schema_compliance
+    title: "Response schema compliance"
+    narrative: |
+      The buyer sends a standard get_products request and validates that the response
+      matches the published schema. Each product must have the required fields defined
+      in the AdCP spec.
+
+    steps:
+      - id: get_products_schema
+        title: "Validate get_products response schema"
+        narrative: |
+          Send a brief and validate the response structure. Every product in the response
+          must conform to the get-products-response.json schema, with required v3 fields
+          present.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product must have:
+          - product_id: unique identifier
+          - name: human-readable name
+          - delivery_type: guaranteed or non_guaranteed
+          - pricing_options: at least one pricing option
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show all available advertising products"
+          brand:
+            domain: "acmeoutdoor.example"
+
+          context:
+            correlation_id: "schema_validation--get_products_schema"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed or non_guaranteed delivery"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_products_schema"
+            description: "Context correlation_id returned unchanged"
+      - id: pricing_options_present
+        title: "Validate pricing options structure"
+        narrative: |
+          Verify that products include pricing_options with the required fields:
+          pricing_option_id and pricing_model. These are required for buyers to
+          construct valid create_media_buy requests.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Products include pricing_options with:
+          - pricing_option_id: unique identifier for the pricing option
+          - pricing_model: CPM, CPC, flat_rate, etc.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium display inventory with pricing details"
+          brand:
+            domain: "acmeoutdoor.example"
+
+          context:
+            correlation_id: "schema_validation--pricing_options_present"
+        validations:
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options have a pricing_option_id"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_model"
+            description: "Pricing options declare a pricing_model"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--pricing_options_present"
+            description: "Context correlation_id returned unchanged"
+  - id: format_id_reconciliation
+    title: "Format ID and pricing option reconciliation"
+    narrative: |
+      Identifiers returned by get_products must be accepted back by the same agent in
+      subsequent calls. Two common reconciliation failures:
+
+      1. Format IDs: the seller returns format_id objects in products that their own
+         validation rejects when the buyer echoes them back in sync_creatives.
+      2. Pricing option IDs: the seller returns pricing_option_id values in products
+         that create_media_buy rejects when the buyer references them.
+
+      These validations confirm structural correctness — that required fields exist and
+      are well-formed. Full roundtrip verification (echoing a product's format_id into
+      sync_creatives and confirming acceptance) requires a stateful multi-step test,
+      which is covered by the media_buy_seller storyboard's creative_sync phase.
+
+    steps:
+      - id: get_products_for_formats
+        title: "Get products and verify identifiers"
+        narrative: |
+          Request products and verify that each product includes format_ids and
+          pricing_options with the required fields. These identifiers will be echoed
+          back in create_media_buy and sync_creatives — if they are malformed or
+          missing, the buyer cannot complete the purchase.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return products with format_ids and pricing_options. Each format_id must have:
+          - agent_url: URI of the agent that defines the format
+          - id: format identifier within that agent's namespace
+          - Optional: width, height, duration_ms for parameterized formats
+
+          Each pricing_option must have:
+          - pricing_option_id: unique identifier echoed in create_media_buy
+          - pricing_model: CPM, CPC, flat_rate, etc.
+
+          These identifiers must be accepted unchanged in subsequent requests.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show all available advertising products with creative format requirements"
+          brand:
+            domain: "acmeoutdoor.example"
+          context:
+            correlation_id: "schema_validation--get_products_for_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids array"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options include pricing_option_id — must be accepted in create_media_buy"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_model"
+            description: "Pricing options include pricing_model"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_products_for_formats"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_formats_match
+        title: "Verify format catalog includes product formats"
+        narrative: |
+          Call list_creative_formats and verify that the formats returned include
+          the same agent_url as the format_ids on products. The seller's format
+          catalog must cover every format referenced by its products.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return formats matching the agent's own product format_ids:
+          - format_id.agent_url must match the agent's own URL
+          - format_id.id values must include those referenced by products
+          - Each format must define asset requirements (types, dimensions, mime types)
+
+          If the agent returns format_ids in products that don't appear in
+          list_creative_formats, buyers cannot construct valid sync_creatives requests.
+
+        sample_request:
+          context:
+            correlation_id: "schema_validation--list_formats_match"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Formats include format_id with agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Formats include format_id with id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--list_formats_match"
+            description: "Context correlation_id returned unchanged"
+
+  - id: temporal_validation
+    title: "Temporal constraint enforcement"
+    narrative: |
+      The buyer sends media buy requests with invalid temporal constraints. The agent
+      must reject reversed dates (end before start) and handle past start dates
+      appropriately.
+
+    steps:
+      - id: reversed_dates
+        title: "Reject reversed flight dates"
+        narrative: |
+          Send a create_media_buy request where end_time is before start_time. The agent
+          must reject this with an INVALID_REQUEST error.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject the request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating the date constraint violation
+
+        sample_request:
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "schema_validation--reversed_dates"
+        validations:
+          - check: field_present
+            path: "adcp_error"
+            description: "Response contains an error for reversed dates"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--reversed_dates"
+            description: "Context correlation_id returned unchanged"
+      - id: past_start_date
+        title: "Handle past start date"
+        narrative: |
+          Send a create_media_buy request with a start_time in the past. The agent
+          should either reject the request or auto-adjust the start date forward.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        stateful: false
+        expected: |
+          Either reject with INVALID_REQUEST or accept with adjusted dates.
+          Both behaviors are valid — the key is that the agent does not silently
+          accept a past start date without acknowledgment.
+
+        sample_request:
+          start_time: "2020-01-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "schema_validation--past_start_date"
+        validations:
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--past_start_date"
+            description: "Context correlation_id returned unchanged"

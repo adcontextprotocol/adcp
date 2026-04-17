@@ -84,9 +84,103 @@ export function findMatchingVersion(
  * Mounted before body-parsing / cookie / CSRF middleware so schema reads stay cheap.
  */
 export function mountSchemasRoutes(app: Application, schemasPath: string): void {
-  const getSchemaVersions = makeVersionCache(schemasPath);
+  mountVersionedStaticRoutes(app, "/schemas", schemasPath);
+}
 
-  const schemasStatic = express.static(schemasPath, {
+/**
+ * Mount /compliance routes: same alias + versioned-directory semantics as
+ * /schemas. Serves the compliance manifest tree (universal, domains,
+ * specialisms, test-kits) per AdCP release.
+ */
+export function mountComplianceRoutes(app: Application, compliancePath: string): void {
+  mountVersionedStaticRoutes(app, "/compliance", compliancePath);
+}
+
+/**
+ * Mount /protocol routes: serves the gzipped protocol tarballs
+ * (/protocol/latest.tgz, /protocol/{version}.tgz) plus a discovery endpoint
+ * listing available versions. No alias rewriting — clients name the exact
+ * artifact they want.
+ */
+export function mountProtocolRoutes(app: Application, protocolPath: string): void {
+  app.get("/protocol/", async (_req, res) => {
+    try {
+      const entries = await fs.readdir(protocolPath, { withFileTypes: true });
+      const tarballs = entries
+        .filter(
+          (e) =>
+            e.isFile() &&
+            e.name.endsWith(".tgz") &&
+            (e.name === "latest.tgz" ||
+              /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\.tgz$/.test(e.name)),
+        )
+        .map((e) => e.name);
+
+      const versioned = tarballs
+        .filter((name) => name !== "latest.tgz")
+        .sort((a, b) => {
+          const pa = parseSemver(a.replace(/\.tgz$/, ""));
+          const pb = parseSemver(b.replace(/\.tgz$/, ""));
+          if (pa.major !== pb.major) return pb.major - pa.major;
+          if (pa.minor !== pb.minor) return pb.minor - pa.minor;
+          if (pa.patch !== pb.patch) return pb.patch - pa.patch;
+          if (!pa.prerelease && pb.prerelease) return -1;
+          if (pa.prerelease && !pb.prerelease) return 1;
+          if (pa.prerelease && pb.prerelease)
+            return pb.prerelease.localeCompare(pa.prerelease);
+          return 0;
+        });
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({
+        versions: versioned.map((name) => ({
+          version: name.replace(/\.tgz$/, ""),
+          tarball: `/protocol/${name}`,
+          checksum: `/protocol/${name}.sha256`,
+        })),
+        latest: tarballs.includes("latest.tgz")
+          ? {
+              tarball: "/protocol/latest.tgz",
+              checksum: "/protocol/latest.tgz.sha256",
+              note: "Development bundle — changes with every merge. Pin a version for production.",
+            }
+          : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Failed to list protocol tarballs");
+      res.status(500).json({ error: "Failed to list protocol tarballs" });
+    }
+  });
+
+  app.use(
+    "/protocol",
+    express.static(protocolPath, {
+      maxAge: "10m",
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, filePath) => {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        if (filePath.endsWith(".tgz")) {
+          res.setHeader("Content-Type", "application/gzip");
+        } else if (filePath.endsWith(".sha256")) {
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        }
+        if (/\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\.tgz(\.sha256)?$/.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }),
+  );
+}
+
+function mountVersionedStaticRoutes(
+  app: Application,
+  mountPath: string,
+  rootPath: string,
+): void {
+  const getSchemaVersions = makeVersionCache(rootPath);
+
+  const schemasStatic = express.static(rootPath, {
     maxAge: "10m",
     etag: true,
     lastModified: true,
@@ -95,7 +189,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
     },
   });
 
-  app.use("/schemas", async (req, res, next) => {
+  app.use(mountPath, async (req, res, next) => {
     // Capture before any rewrite — caches key on the original URL, so the
     // immutable-cache decision must be based on what the client requested.
     const originalPath = req.path;
@@ -131,7 +225,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
 
     // 2. Redirect bare version directories to their index.json.
     if (VERSIONED_DIR.test(req.path)) {
-      return res.redirect("/schemas" + req.path + "index.json");
+      return res.redirect(mountPath + req.path + "index.json");
     }
 
     // 3. Only direct versioned paths (client pinned a full semver) are immutable.
@@ -144,7 +238,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
     schemasStatic(req, res, next);
   });
 
-  app.get("/schemas/", async (_req, res) => {
+  app.get(mountPath + "/", async (_req, res) => {
     try {
       const versions = await getSchemaVersions();
       const latestPerMinor: Record<string, string> = {};
@@ -168,7 +262,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
         aliases.push({
           alias: `v${major}`,
           resolves_to: latestMajorVersion,
-          path: `/schemas/v${major}/`,
+          path: `${mountPath}/v${major}/`,
         });
       }
 
@@ -176,7 +270,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
         aliases.push({
           alias: `v${minorKey}`,
           resolves_to: version,
-          path: `/schemas/v${minorKey}/`,
+          path: `${mountPath}/v${minorKey}/`,
         });
       }
 
@@ -185,16 +279,16 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
       );
 
       res.json({
-        versions: versions.map((v) => ({ version: v, path: `/schemas/${v}/` })),
+        versions: versions.map((v) => ({ version: v, path: `${mountPath}/${v}/` })),
         aliases,
         latest: {
-          path: "/schemas/latest/",
+          path: `${mountPath}/latest/`,
           note: "Development version, may differ from released versions",
         },
       });
     } catch (error) {
-      logger.error({ err: error }, "Failed to list schema versions");
-      res.status(500).json({ error: "Failed to list schema versions" });
+      logger.error({ err: error, mountPath }, "Failed to list versions");
+      res.status(500).json({ error: "Failed to list versions" });
     }
   });
 }

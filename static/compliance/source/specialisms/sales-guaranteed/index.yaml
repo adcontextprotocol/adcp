@@ -1,0 +1,511 @@
+id: media_buy_guaranteed_approval
+version: "1.0.0"
+title: "Guaranteed media buy with human IO approval"
+domain: media-buy
+category: media_buy_guaranteed_approval
+summary: "Seller agent that requires human-in-the-loop IO signing before guaranteed media buys go live."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/governance_approved
+  - media_buy_seller/governance_denied
+  - media_buy_seller/governance_conditions
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+
+narrative: |
+  You run a sell-side platform that requires human approval before guaranteed media buys go
+  live. When a buyer creates a guaranteed buy, your platform returns a submitted status with
+  an estimated completion time. A human reviewer on your side reviews the deal terms and
+  signs the IO through a URL your platform provides.
+
+  The buyer either polls get_media_buys or configures a push_notification_config webhook to
+  receive a callback when the IO is signed. Once approved, the media buy transitions from
+  pending_approval to active and the buyer can sync creatives and monitor delivery.
+
+  This storyboard isolates the guaranteed approval path — the async handshake between agent
+  automation and human decision-making that makes guaranteed buys work in practice.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_guaranteed
+    - requires_io_approval
+  examples:
+    - "Premium publisher with IO requirements"
+    - "Retail media network with sales approval"
+    - "CTV platform with guaranteed deals"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials for account setup.
+    The test kit provides a sample brand (Acme Outdoor) with campaign parameters
+    suitable for testing the guaranteed approval flow.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "media_buy_guaranteed_approval--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      Before buying anything, the buyer establishes an account relationship with
+      your platform. This is the handshake: the buyer tells you which brand and
+      agency (operator) they represent, and you return an account ID, status, and
+      any setup requirements.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account relationship"
+        narrative: |
+          The buyer registers their brand and operator with your platform. This is
+          the first call in any new relationship. Your platform validates the request,
+          provisions the account, and returns its status.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with:
+          - account_id: your platform's identifier for this relationship
+          - action: created or updated
+          - status: active or pending_approval
+          - account_scope: operator, brand, operator_brand, or agent
+          - setup: URL and message if pending_approval
+          - payment_terms: net_30, prepay, etc.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.com"
+              operator: "pinnacle-agency.com"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "accounts[0].status"
+            description: "Account has a status (active or pending_approval)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+  - id: product_discovery
+    title: "Discover guaranteed products"
+    narrative: |
+      The buyer sends a brief to discover your guaranteed inventory. The emphasis
+      here is on products with delivery_type: guaranteed — fixed-price, reserved
+      inventory that requires an IO commitment. Your platform returns products with
+      pricing, delivery forecasts, and SLA commitments.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief targeting guaranteed inventory"
+        narrative: |
+          The buyer describes what they want, emphasizing guaranteed delivery. Your
+          platform returns products with delivery_type: guaranteed, including SLA
+          commitments, minimum spend requirements, and IO terms.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return guaranteed products matching the brief. Each product should include:
+          - product_id: unique identifier
+          - name and description
+          - delivery_type: guaranteed
+          - pricing_models: fixed CPM or flat-rate pricing
+          - forecast: committed impressions with SLA guarantees
+          - creative_format_ids: required creative formats
+          - minimum_spend or commitment terms if applicable
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Guaranteed premium video on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US only. Need completion rate SLA."
+          brand:
+            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--get_products_brief"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares delivery_type: guaranteed"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
+  - id: create_buy_submitted
+    title: "Create guaranteed buy (submitted for approval)"
+    narrative: |
+      The buyer creates a guaranteed media buy. Because your platform requires human
+      IO signing for guaranteed deals, the response comes back as submitted — not
+      completed. The buyer gets an estimated_completion timestamp indicating when the
+      IO review should finish. The buyer configures a webhook to be notified when the
+      status changes.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a guaranteed media buy"
+        narrative: |
+          The buyer commits to guaranteed products with budgets and flight dates. Your
+          platform accepts the request but does not confirm it immediately. Instead,
+          it enters an IO approval workflow and returns submitted status with an
+          estimated_completion timestamp.
+
+          The buyer includes push_notification_config so your platform can call back
+          when the IO is signed (or rejected).
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return the media buy in submitted status:
+          - media_buy_id: your platform's identifier
+          - status: submitted (NOT completed — this requires human approval)
+          - estimated_completion: timestamp when the IO review should finish
+          - packages: the proposed line items echoed back
+          - The buyer's push_notification_config is acknowledged
+
+          Do NOT return completed status for guaranteed buys that require IO signing.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "acmeoutdoor.com"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_preroll_q2_guaranteed"
+              budget: 30000
+              pricing_option_id: "cpm_guaranteed_fixed"
+              creative_assignments:
+                - creative_id: "video_30s_trail_pro"
+            - product_id: "outdoor_ctv_q2_guaranteed"
+              budget: 20000
+              pricing_option_id: "cpm_guaranteed_fixed"
+          push_notification_config:
+            url: "https://buyer.example/webhooks/adcp"
+            authentication:
+              scheme: "HMAC-SHA256"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: poll_approval
+    title: "Poll for IO approval"
+    narrative: |
+      The media buy is sitting in an approval queue. A human on the seller side needs
+      to review the deal terms and sign the IO. The buyer polls get_media_buys to check
+      the current status. Your platform returns pending_approval with a setup URL where
+      the human reviewer signs the IO and a message explaining what is needed.
+
+    steps:
+      - id: get_media_buys_pending
+        title: "Check media buy status (pending approval)"
+        narrative: |
+          The buyer polls for the media buy status. Your platform returns
+          pending_approval with a setup object containing the URL where the human
+          reviewer signs the IO and a message describing what action is needed.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the media buy in pending_approval status:
+          - media_buy_id: matches the buy created earlier
+          - status: pending_approval
+          - setup.url: where the human goes to review and sign the IO
+          - setup.message: explains what the human needs to do (e.g., "Review and sign the IO for Acme Outdoor Q2 campaign")
+          - packages: line items with their current state
+          - valid_actions: what the buyer can do in this state
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_guaranteed"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--get_media_buys_pending"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Media buy has a status"
+          - check: field_present
+            path: "media_buys[0].valid_actions"
+            description: "Pending approval buy includes valid actions"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--get_media_buys_pending"
+            description: "Context correlation_id returned unchanged"
+  - id: confirm_active
+    title: "Confirm active after IO signing"
+    narrative: |
+      The human has reviewed the IO and signed it through the setup URL. The buyer
+      polls get_media_buys again (or received a webhook notification) and sees that the
+      media buy has transitioned from pending_approval to active. The buy
+      is now live.
+
+    steps:
+      - id: get_media_buys_active
+        title: "Check media buy status (active)"
+        narrative: |
+          After the human signs the IO, the buyer checks the media buy status again.
+          Your platform returns active, indicating the buy is approved
+          and inventory is reserved.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the media buy in active status:
+          - media_buy_id: matches the buy created earlier
+          - status: active (IO has been signed)
+          - confirmed_at: timestamp when the IO was signed
+          - packages: line items with reserved inventory
+          - valid_actions: updated for active state (creative sync, pause, etc.)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_guaranteed"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--get_media_buys_active"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Media buy status is active"
+          - check: field_present
+            path: "media_buys[0].confirmed_at"
+            description: "Active buy includes a confirmed_at timestamp"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--get_media_buys_active"
+            description: "Context correlation_id returned unchanged"
+  - id: creative_sync
+    title: "Creative sync"
+    narrative: |
+      With the IO signed and the media buy active, the buyer syncs creative assets
+      to your platform. Each package has creative format requirements that the buyer
+      discovered during product discovery.
+
+    steps:
+      - id: sync_creatives
+        title: "Push creative assets"
+        narrative: |
+          The buyer uploads creative assets for the confirmed packages. Your platform
+          validates each creative against the format specs and returns per-creative status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept and validate creatives:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation errors for rejected creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          creatives:
+            - creative_id: "video_30s_trail_pro"
+              name: "Trail Pro 3000 - 30s CTV Spot"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "ssai_30s"
+              assets:
+                video:
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  mime_type: "video/mp4"
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: delivery_monitoring
+    title: "Delivery and reporting"
+    narrative: |
+      The campaign is live with guaranteed delivery commitments. The buyer monitors
+      delivery to ensure the seller is meeting the SLA guarantees from the IO.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data for the active guaranteed media buy. Your
+          platform returns performance metrics with pacing against the guaranteed
+          commitment.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics for the guaranteed media buy:
+          - Per-package delivery: impressions, clicks, spend, completion rates
+          - Pacing against guaranteed commitment: on track, ahead, behind
+          - Budget utilization: spent vs. committed
+          - SLA compliance: completion rate vs. guaranteed threshold
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_guaranteed"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "media_buy_guaranteed_approval--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_guaranteed_approval--get_delivery"
+            description: "Context correlation_id returned unchanged"

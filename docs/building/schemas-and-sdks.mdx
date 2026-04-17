@@ -17,6 +17,55 @@ AdCP schemas are available from two sources:
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
 
+### One-shot protocol bundle
+
+Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
+
+| Path | Contents | Stability |
+|------|----------|-----------|
+| `https://adcontextprotocol.org/protocol/latest.tgz` | Current development bundle | Changes with every merge |
+| `https://adcontextprotocol.org/protocol/{version}.tgz` | Pinned release bundle | Immutable once published |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.sha256` | SHA-256 checksum | Use to verify download integrity |
+
+Every tarball extracts into a single `adcp-{version}/` directory (safe extraction, no tarbomb). Inside:
+
+```
+adcp-{version}/
+  README.md               # quickstart + links
+  CHANGELOG.md            # release notes
+  manifest.json           # version, generated_at, contents summary
+  schemas/                # full JSON schema tree (same as /schemas/{version}/)
+  compliance/             # domains/, specialisms/, universal/, test-kits/, index.json
+  openapi/registry.yaml   # OpenAPI description
+```
+
+Verify the checksum before extracting:
+
+```bash
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz.sha256
+shasum -a 256 -c 3.1.0.tgz.sha256
+tar xzf 3.1.0.tgz
+cd adcp-3.1.0
+```
+
+Pull it once per version, cache by SHA, and you have everything needed to validate requests, run storyboards, and render documentation offline. The `@adcp/client` `sync-schemas` command uses this under the hood.
+
+Available tarballs are also listed at [`/protocol/`](https://adcontextprotocol.org/protocol/).
+
+### Compliance storyboards
+
+Storyboards live alongside schemas at `/compliance/{version}/`. They define the test scenarios AAO runs to verify an agent's capability claims.
+
+| Path | Purpose |
+|------|---------|
+| `/compliance/{version}/universal/` | Required for every agent (capability discovery, error handling, schema validation) |
+| `/compliance/{version}/domains/{domain}/` | Baseline required to claim a domain (`media-buy`, `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`) |
+| `/compliance/{version}/specialisms/{id}/` | Optional specialization claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`) |
+| `/compliance/{version}/index.json` | Enumerates available domains, specialisms, and universal storyboards |
+
+Declare the domains and specialisms your agent supports in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/compliance-catalog) for every domain and specialism an agent can claim.
+
 ### Common Schemas
 
 | Schema | URL |
@@ -133,9 +182,11 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 | Path | Example | Best For |
 |------|---------|----------|
-| Exact version | `/schemas/2.5.3/` | Production, SDK generation |
-| Major version | `/schemas/v3/` | Development, documentation |
-| Minor version | `/schemas/v2.5/` | Stable development (patch updates only) |
+| Exact version | `/schemas/2.5.3/`, `/compliance/2.5.3/`, `/protocol/2.5.3.tgz` | Production, SDK generation |
+| Major version | `/schemas/v3/`, `/compliance/v3/` | Development, documentation |
+| Minor version | `/schemas/v2.5/`, `/compliance/v2.5/` | Stable development (patch updates only) |
+
+The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{version}.tgz` — one release cuts all three.
 
 ### Production (Recommended)
 

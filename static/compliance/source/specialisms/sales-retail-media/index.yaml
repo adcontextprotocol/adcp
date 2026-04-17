@@ -1,0 +1,31 @@
+id: sales_retail_media
+version: "1.0.0"
+title: "Retail media sales"
+domain: media-buy
+summary: "Retail media network seller — onsite, offsite, and in-store inventory tied to commerce signals and SKU-level reporting."
+track: media-buy
+
+narrative: |
+  You run a retail media network. Inventory spans owned-and-operated digital
+  properties (site, app, kiosks), offsite extensions syndicated through DSPs, and
+  in-store placements. Reporting is tied to SKU-level sales attribution.
+
+  3.1 placeholder: retail-media-specific phases (SKU targeting, closed-loop
+  attribution, ROAS reporting, commerce-media signal activation) will be
+  populated as the retail-media additions to media-buy and signals stabilize.
+  Agents claiming this specialism today pass the media-buy baseline storyboard.
+
+agent:
+  interaction_model: media_buy_agent
+  capabilities:
+    - retail_media_sales
+  examples:
+    - "Amazon Ads"
+    - "Walmart Connect"
+    - "Target Roundel"
+    - "Kroger Precision Marketing"
+
+caller:
+  role: buyer_agent
+
+phases: []

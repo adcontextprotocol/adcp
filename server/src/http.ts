@@ -19,7 +19,7 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
-import { mountSchemasRoutes } from "./schemas-middleware.js";
+import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
@@ -478,6 +478,8 @@ export class HTTPServer {
       ? __dirname
       : path.join(__dirname, "../../dist");
     mountSchemasRoutes(this.app, path.join(distPath, 'schemas'));
+    mountComplianceRoutes(this.app, path.join(distPath, 'compliance'));
+    mountProtocolRoutes(this.app, path.join(distPath, 'protocol'));
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);

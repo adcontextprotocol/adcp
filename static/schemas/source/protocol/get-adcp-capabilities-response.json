@@ -787,6 +787,22 @@
       },
       "additionalProperties": true
     },
+    "domains": {
+      "type": "array",
+      "description": "AdCP domains this agent operates in. Each domain has a baseline compliance storyboard published at /compliance/{version}/domains/{domain}/ that every agent claiming the domain must pass. Domains are broader than supported_protocols — a single domain can span multiple protocols, and an agent can claim a domain without implementing every protocol tool.",
+      "items": {
+        "$ref": "/schemas/enums/adcp-domain.json"
+      },
+      "uniqueItems": true
+    },
+    "specialisms": {
+      "type": "array",
+      "description": "Specialized compliance claims this agent supports. Each specialism maps to a storyboard bundle at /compliance/{version}/specialisms/{id}/ that the AAO compliance runner executes to verify the claim. Only list specialisms your agent actually implements — the AAO Verified badge requires passing every declared specialism.",
+      "items": {
+        "$ref": "/schemas/enums/specialism.json"
+      },
+      "uniqueItems": true
+    },
     "extensions_supported": {
       "type": "array",
       "description": "Extension namespaces this agent supports. Buyers can expect meaningful data in ext.{namespace} fields on responses from this agent. Extension schemas are published in the AdCP extension registry.",

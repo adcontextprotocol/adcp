@@ -1,0 +1,23 @@
+id: signals_baseline
+version: "1.0.0"
+title: "Signals baseline"
+domain: signals
+summary: "Baseline domain storyboard — every signal agent must discover signals, return typed signal responses, and support activation handoff to media-buy agents."
+track: signals
+
+narrative: |
+  Signals domain agents expose audience signals, contextual signals, and
+  activation endpoints. The baseline requires capability discovery,
+  get_signals, and activate_signal.
+
+  3.1 placeholder: full signals baseline phases will be populated as the
+  signals protocol stabilizes further. Until then, agents claiming this
+  domain must pass universal storyboards.
+
+agent:
+  interaction_model: signals_agent
+
+caller:
+  role: buyer_agent
+
+phases: []
