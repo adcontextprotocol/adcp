@@ -31,6 +31,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const yaml = require('js-yaml');
 const { execSync } = require('child_process');
 
 const SOURCE_DIR = path.join(__dirname, '../static/compliance/source');
@@ -67,21 +68,16 @@ function copyTree(srcDir, dstDir) {
 }
 
 function readYamlFrontmatter(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
+  const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+  if (doc == null || typeof doc !== 'object') return {};
   const out = {};
-  for (const line of content.split('\n')) {
-    const m = line.match(/^([a-z_]+):\s*(.*)$/);
-    if (!m) continue;
-    const [, key, rawValue] = m;
-    if (['id', 'domain', 'title', 'role', 'track', 'status'].includes(key)) {
-      out[key] = rawValue.replace(/^["']|["']$/g, '').trim();
-    }
-    if (Object.keys(out).length >= 6) break;
+  for (const key of ['id', 'domain', 'title', 'role', 'track', 'status']) {
+    if (doc[key] != null) out[key] = String(doc[key]).trim();
   }
   return out;
 }
 
-const VALID_STATUSES = new Set(['stable', 'preview']);
+const VALID_STATUSES = new Set(['stable', 'preview', 'deprecated']);
 
 function discoverSpecialisms(sourceDir) {
   const specialismsDir = path.join(sourceDir, 'specialisms');

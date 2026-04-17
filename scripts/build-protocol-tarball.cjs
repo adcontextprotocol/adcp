@@ -80,10 +80,31 @@ function walk(dir, base = dir) {
   return out;
 }
 
-function writeBundleReadme(bundleDir, version) {
+function writeBundleReadme(bundleDir, version, isDev) {
+  const tarballName = isDev ? 'latest.tgz' : `${version}.tgz`;
+  const extractedDir = isDev ? 'adcp-latest' : `adcp-${version}`;
+  const quickstart = isDev
+    ? `\`\`\`bash
+# Development bundle — contents change with every merge.
+# Pin a release version for production (see /protocol/ for the list).
+curl -OL https://adcontextprotocol.org/protocol/latest.tgz
+curl -OL https://adcontextprotocol.org/protocol/latest.tgz.sha256
+shasum -a 256 -c latest.tgz.sha256
+tar xzf latest.tgz
+cd adcp-latest
+\`\`\``
+    : `\`\`\`bash
+# Pull and verify this exact version
+curl -OL https://adcontextprotocol.org/protocol/${version}.tgz
+curl -OL https://adcontextprotocol.org/protocol/${version}.tgz.sha256
+shasum -a 256 -c ${version}.tgz.sha256
+tar xzf ${version}.tgz
+cd adcp-${version}
+\`\`\``;
+
   const readme = `# AdCP Protocol Bundle
 
-This tarball contains the complete AdCP protocol for version \`${version}\`:
+This tarball contains the complete AdCP protocol for version \`${version}\`${isDev ? ' (development snapshot)' : ''}:
 
 - \`schemas/\` — JSON Schemas for every task (request + response)
 - \`compliance/\` — Storyboard bundles (universal, domains/, specialisms/, test-kits/)
@@ -93,14 +114,7 @@ This tarball contains the complete AdCP protocol for version \`${version}\`:
 
 ## Quick start
 
-\`\`\`bash
-# Pull and verify this exact version
-curl -OL https://adcontextprotocol.org/protocol/${version}.tgz
-curl -OL https://adcontextprotocol.org/protocol/${version}.tgz.sha256
-shasum -a 256 -c ${version}.tgz.sha256
-tar xzf ${version}.tgz
-cd adcp-${version}
-\`\`\`
+${quickstart}
 
 ## Validate an agent
 
@@ -146,7 +160,7 @@ async function buildTarball(label, stagingRoot, rootDirName, outFile) {
   console.log(`   ✓ ${label}: ${outFile.replace(ROOT + '/', '')} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-function stageBundle(bundleParent, version, schemasSource, rootDirName) {
+function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = false) {
   if (fs.existsSync(bundleParent)) fs.rmSync(bundleParent, { recursive: true, force: true });
   ensureDir(bundleParent);
   const bundleDir = path.join(bundleParent, rootDirName);
@@ -171,7 +185,7 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName) {
     fs.copyFileSync(CHANGELOG_FILE, path.join(bundleDir, 'CHANGELOG.md'));
   }
 
-  writeBundleReadme(bundleDir, version);
+  writeBundleReadme(bundleDir, version, isDev);
 
   const fileCount = walk(bundleDir).length;
   const manifest = {
@@ -232,7 +246,7 @@ async function main() {
 
     console.log(`📋 Staging latest bundle (mirrors release)`);
     const latestStage = path.join(stagingRoot, 'latest');
-    stageBundle(latestStage, version, versionSchemas, versionRoot);
+    stageBundle(latestStage, version, versionSchemas, versionRoot, true);
     const latestTar = path.join(OUT_DIR, `latest.tgz`);
     await buildTarball(`latest tarball`, latestStage, versionRoot, latestTar);
     fs.writeFileSync(latestTar + '.sha256', `${sha256(latestTar)}  latest.tgz\n`);
@@ -250,7 +264,7 @@ async function main() {
     console.log(`📋 Staging latest bundle`);
     const latestStage = path.join(stagingRoot, 'latest');
     const latestRoot = `adcp-latest`;
-    const manifest = stageBundle(latestStage, 'latest', latestSchemas, latestRoot);
+    const manifest = stageBundle(latestStage, 'latest', latestSchemas, latestRoot, true);
     console.log(`   ✓ manifest: ${manifest.file_count} files, root: ${manifest.root_dir}`);
     const latestTar = path.join(OUT_DIR, `latest.tgz`);
     await buildTarball(`latest tarball`, latestStage, latestRoot, latestTar);

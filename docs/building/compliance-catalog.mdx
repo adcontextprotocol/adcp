@@ -13,7 +13,11 @@ This page is the human-readable index of that taxonomy. The machine-readable equ
 
 Broad agent categories. An agent claims a domain by listing the matching protocol in `supported_protocols` and must pass the domain's baseline storyboard plus every [universal](/docs/building/validate-your-agent#storyboard-taxonomy) storyboard.
 
-`supported_protocols` uses snake_case on the wire; compliance paths use kebab-case. The runner maps between them (`media_buy` ↔ `/compliance/.../domains/media-buy/`).
+`supported_protocols` uses snake_case on the wire; compliance paths and specialism IDs use kebab-case.
+
+<Note>
+The case split is deliberate. `supported_protocols` is a pre-existing 3.0 field with snake_case values already shipped to production agents — changing it would break every live deployment. Specialisms are new in this release and use kebab-case because they are URL-first: each specialism ID is a directory name under `/compliance/.../specialisms/{id}/`. The runner handles the mapping transparently (`media_buy` ↔ `/compliance/.../domains/media-buy/`).
+</Note>
 
 | `supported_protocols` value | Compliance path | Purpose |
 |------------------------------|-----------------|---------|
@@ -36,7 +40,10 @@ Specific capability claims. Each specialism lives under exactly one domain (pare
 Specialisms carry a `status`:
 
 - **`stable`** — fully specified storyboard. Compliance runner executes every phase; `AAO Verified` means the agent demonstrably passed.
-- **`preview`** — ID and scope are reserved; the storyboard is a placeholder while the underlying protocol surface stabilizes. Agents may claim these but the runner only checks that the ID is valid — the compliance runner warns rather than verifies, and badges render with a **preview** indicator.
+- **`preview`** — ID and scope are reserved; the storyboard is a placeholder while the underlying protocol surface stabilizes. Agents may claim these; the runner emits a result of `{ status: "preview", passed: null, reason: "storyboard not yet defined" }` instead of a verified pass/fail. AAO badges render preview specialisms with a distinct indicator.
+- **`deprecated`** — retained for backward compatibility but scheduled for removal in a future major. Runner emits `{ status: "deprecated", passed: <boolean>, reason: "..." }` — still executes the storyboard if one exists, but warns the claim should be migrated.
+
+Status is declared per-specialism in the YAML frontmatter and surfaced in `/compliance/{version}/index.json`.
 
 ### media-buy
 

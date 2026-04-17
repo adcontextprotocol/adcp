@@ -6,11 +6,11 @@ import { createLogger } from "./logger.js";
 const logger = createLogger("schemas-middleware");
 
 // Bare version directory requests (/2.5.3/, /3.0.0-rc.3/, /latest/).
-const VERSIONED_DIR = /^\/(\d+\.\d+\.\d+(?:-[a-zA-Z]+\.\d+)?|latest)\/$/;
+const VERSIONED_DIR = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|latest)\/$/;
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
 // Direct versioned paths (/2.5.3/..., /3.0.0-rc.3/...) — immutable.
-const IMMUTABLE_PATH = /^\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\//;
+const IMMUTABLE_PATH = /^\/\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\//;
 
 /**
  * Cache of versioned schema directories, refreshed every 60 seconds.
@@ -28,7 +28,7 @@ function makeVersionCache(schemasPath: string) {
     const versions = entries
       .filter(
         (e) =>
-          e.isDirectory() && /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?$/.test(e.name),
+          e.isDirectory() && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(e.name),
       )
       .map((e) => e.name)
       .sort((a, b) => {
@@ -56,7 +56,9 @@ export function parseSemver(version: string): {
   patch: number;
   prerelease?: string;
 } {
-  const [base, prerelease] = version.split("-");
+  const dashIdx = version.indexOf("-");
+  const base = dashIdx === -1 ? version : version.slice(0, dashIdx);
+  const prerelease = dashIdx === -1 ? undefined : version.slice(dashIdx + 1);
   const [major, minor, patch] = base.split(".").map(Number);
   return { major, minor, patch, prerelease };
 }
@@ -112,7 +114,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
             e.isFile() &&
             e.name.endsWith(".tgz") &&
             (e.name === "latest.tgz" ||
-              /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\.tgz$/.test(e.name)),
+              /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.tgz$/.test(e.name)),
         )
         .map((e) => e.name);
 
@@ -131,20 +133,40 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           return 0;
         });
 
+      let latestBlock: {
+        tarball: string;
+        checksum: string;
+        adcp_version?: string;
+        generated_at?: string;
+        note: string;
+      } | null = null;
+      if (tarballs.includes("latest.tgz")) {
+        const latestPath = `${protocolPath}/latest.tgz`;
+        let generatedAt: string | undefined;
+        try {
+          const stat = await fs.stat(latestPath);
+          generatedAt = stat.mtime.toISOString();
+        } catch {
+          // ignore — absent file is already handled upstream
+        }
+        latestBlock = {
+          tarball: "/protocol/latest.tgz",
+          checksum: "/protocol/latest.tgz.sha256",
+          adcp_version: versioned[0]?.replace(/\.tgz$/, ""),
+          generated_at: generatedAt,
+          note: "Development bundle — changes with every merge. Pin a version for production.",
+        };
+      }
+
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.json({
+        generated_at: new Date().toISOString(),
         versions: versioned.map((name) => ({
           version: name.replace(/\.tgz$/, ""),
           tarball: `/protocol/${name}`,
           checksum: `/protocol/${name}.sha256`,
         })),
-        latest: tarballs.includes("latest.tgz")
-          ? {
-              tarball: "/protocol/latest.tgz",
-              checksum: "/protocol/latest.tgz.sha256",
-              note: "Development bundle — changes with every merge. Pin a version for production.",
-            }
-          : null,
+        latest: latestBlock,
       });
     } catch (error) {
       logger.error({ err: error }, "Failed to list protocol tarballs");
@@ -165,7 +187,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
         } else if (filePath.endsWith(".sha256")) {
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
         }
-        if (/\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\.tgz(\.sha256)?$/.test(filePath)) {
+        if (/\/\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.tgz(\.sha256)?$/.test(filePath)) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         }
       },
