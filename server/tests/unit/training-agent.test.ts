@@ -68,8 +68,11 @@ async function simulateCallTool(
   );
   const text = response.content?.[0]?.text;
   const parsed = text ? JSON.parse(text) : {};
-  // Unwrap adcp_error envelope for error responses (L3 compliance format)
-  const result = parsed.adcp_error ?? parsed;
+  // Unwrap adcp_error envelope (MCP isError responses) and errors-in-body
+  // responses (spec-compliant oneOf error variant) uniformly so tests can
+  // assert against `result.code` regardless of surface.
+  const errorInBody = Array.isArray(parsed.errors) && parsed.errors.length > 0 ? parsed.errors[0] : undefined;
+  const result = parsed.adcp_error ?? errorInBody ?? parsed;
   return {
     result,
     isError: response.isError,
@@ -2313,6 +2316,189 @@ describe('update_media_buy handler', () => {
     });
 
     expect(result.code).toBe('PACKAGE_NOT_FOUND');
+  });
+
+  it('transitions from pending_creatives to pending_start when creative_assignments are added via update', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-update.example' }, operator: 'assign-update.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: preBuy } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((preBuy.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_creatives');
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_assign_via_update',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Assign Via Update',
+      }],
+    });
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: pkgId,
+        creative_assignments: [{ creative_id: 'cr_assign_via_update' }],
+      }],
+    });
+
+    expect(updateResult.status).toBe('pending_start');
+
+    const { result: postBuy } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((postBuy.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_start');
+  });
+
+  it('clears creative_assignments when given an empty array, regressing to pending_creatives', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-clear.example' }, operator: 'assign-clear.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-clear.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_clear_test',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Clear Test',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_clear_test' }],
+    });
+
+    const { result: afterAdd } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((afterAdd.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_start');
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creative_assignments: [] }],
+    });
+    expect(updateResult.status).toBe('pending_creatives');
+  });
+
+  it('rejects all creative_assignments atomically when any creative_id is missing', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-atomic.example' }, operator: 'assign-atomic.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-atomic.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgs = createResult.packages as Array<Record<string, unknown>>;
+    const pkgId0 = pkgs[0].package_id as string;
+    const pkgId1 = pkgs[1].package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_valid',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Valid',
+      }],
+    });
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [
+        { package_id: pkgId0, creative_assignments: [{ creative_id: 'cr_valid' }] },
+        { package_id: pkgId1, creative_assignments: [{ creative_id: 'cr_missing' }] },
+      ],
+    });
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
+
+    const { result: buyResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buyPkgs = (buyResult.media_buys as Array<Record<string, unknown>>)[0].packages as Array<Record<string, unknown>>;
+    const pkg0 = buyPkgs.find(p => p.package_id === pkgId0)!;
+    const approvals = pkg0.creative_approvals as Array<unknown>;
+    expect(approvals.length).toBe(0);
+  });
+
+  it('returns CREATIVE_NOT_FOUND when assigning an unknown creative', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-missing.example' }, operator: 'assign-missing.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-missing.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: pkgId,
+        creative_assignments: [{ creative_id: 'cr_does_not_exist' }],
+      }],
+    });
+
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
   });
 });
 
@@ -5959,8 +6145,10 @@ describe('context echo', () => {
         media_buy_id: mediaBuyId,
         paused: true,
       });
-      expect(isError).toBe(true);
-      expect(parsed.adcp_error).toBeDefined();
+      // update_media_buy spec-compliant error variant: errors-in-body, no MCP isError.
+      expect(isError).toBeFalsy();
+      expect(Array.isArray(parsed.errors)).toBe(true);
+      expect(parsed.errors[0].code).toBe('INVALID_STATE');
       expect(parsed.context).toEqual(TEST_CONTEXT);
     });
 
@@ -5971,8 +6159,21 @@ describe('context echo', () => {
         media_buy_id: mediaBuyId,
         paused: false,
       });
-      expect(isError).toBe(true);
-      expect(parsed.adcp_error).toBeDefined();
+      expect(isError).toBeFalsy();
+      expect(Array.isArray(parsed.errors)).toBe(true);
+      expect(parsed.errors[0].code).toBe('INVALID_STATE');
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+
+    it('returns NOT_CANCELLABLE when re-canceling a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+      });
+      expect(isError).toBeFalsy();
+      expect(parsed.errors[0].code).toBe('NOT_CANCELLABLE');
       expect(parsed.context).toEqual(TEST_CONTEXT);
     });
   });
@@ -6276,5 +6477,75 @@ describe('AdCP protocol compliance', () => {
     expect(taskResult.isError).toBe(true);
     const body = JSON.parse((taskResult.content as Array<{ text: string }>)[0]!.text) as { adcp_error?: { code: string } };
     expect(body.adcp_error?.code).toBe('GOVERNANCE_DENIED');
+  });
+});
+
+describe('get_brand_identity handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  it('returns brand.json-shaped response with house object and brands array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.brand_id).toBe('daan_janssen');
+
+    const house = result.house as Record<string, unknown>;
+    expect(typeof house).toBe('object');
+    expect(typeof house.domain).toBe('string');
+    expect(typeof house.name).toBe('string');
+
+    expect(Array.isArray(result.names)).toBe(true);
+    const names = result.names as Array<Record<string, string>>;
+    expect(names[0]?.en).toBe('Daan Janssen');
+
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(Array.isArray(brands)).toBe(true);
+    expect(brands.length).toBe(1);
+    expect(brands[0].id).toBe('daan_janssen');
+    expect(Array.isArray(brands[0].names)).toBe(true);
+  });
+
+  it('omits authorized fields and reports them via available_fields when not authorized', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+      authorized: false,
+    });
+
+    // voice_synthesis is an authorized-only field that exists on Daan Janssen
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(brands[0].voice_synthesis).toBeUndefined();
+    expect(result.voice_synthesis).toBeUndefined();
+
+    const available = result.available_fields as string[];
+    expect(Array.isArray(available)).toBe(true);
+    expect(available).toContain('voice_synthesis');
+  });
+
+  it('includes authorized fields in the brand entry when authorized=true', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+      authorized: true,
+    });
+
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(brands[0].voice_synthesis).toBeDefined();
+    expect(result.available_fields).toBeUndefined();
+  });
+
+  it('returns error for unknown brand_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'does_not_exist',
+    });
+
+    expect(result.code).toBe('brand_not_found');
   });
 });
