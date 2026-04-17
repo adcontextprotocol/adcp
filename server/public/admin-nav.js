@@ -8,8 +8,7 @@
   const NAV_CONFIG = {
     logo: 'AdCP Admin',
     links: [
-      { href: '/admin/prospects', label: 'Prospects' },
-      { href: '/admin/members', label: 'Members' },
+      { href: '/admin/accounts', label: 'Accounts' },
       { href: '/admin/products', label: 'Products' },
       { href: '/admin/users', label: 'Users' },
       { href: '/admin/working-groups', label: 'Working Groups' },

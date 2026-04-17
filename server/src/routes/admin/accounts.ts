@@ -820,6 +820,9 @@ export function setupAccountRoutes(
             ? {
                 status: org.subscription_status,
                 product_name: org.subscription_product_name,
+                amount: org.subscription_amount,
+                interval: org.subscription_interval,
+                currency: org.subscription_currency,
                 current_period_end: org.subscription_current_period_end,
                 canceled_at: org.subscription_canceled_at,
               }
@@ -2148,9 +2151,6 @@ export function setupAccountRoutes(
   /**
    * Update a member's role in an organization
    * PUT /api/admin/accounts/:orgId/members/:userId/role
-   *
-   * Note: This endpoint uses userId for lookup (available in the account detail UI),
-   * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
    */
   apiRouter.put(
     "/accounts/:orgId/members/:userId/role",
