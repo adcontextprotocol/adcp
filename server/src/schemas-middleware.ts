@@ -16,9 +16,11 @@ function isPinnedVersionPath(requestPath: string): boolean {
 }
 
 function isPinnedTarballPath(filePath: string): boolean {
-  // Match the final path component against <semver>.tgz or <semver>.tgz.sha256.
+  // Match the final path component against <semver>.tgz or any of its
+  // sidecar suffixes (.sha256, .sig, .crt). Pinned semver artifacts are
+  // immutable once published, so they get the long immutable cache header.
   const name = filePath.split("/").pop() ?? "";
-  const m = name.match(/^(.+)\.tgz(?:\.sha256)?$/);
+  const m = name.match(/^(.+)\.tgz(?:\.sha256|\.sig|\.crt)?$/);
   return !!m && semver.valid(m[1]) !== null;
 }
 
@@ -114,9 +116,27 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
         .filter((name) => name !== "latest.tgz")
         .sort((a, b) => semver.rcompare(a.replace(/\.tgz$/, ""), b.replace(/\.tgz$/, "")));
 
+      const sidecarFiles = new Set(
+        entries.filter((e) => e.isFile()).map((e) => e.name),
+      );
+      const sidecarsFor = (tarballName: string) => {
+        const sigName = `${tarballName}.sig`;
+        const crtName = `${tarballName}.crt`;
+        return {
+          signature: sidecarFiles.has(sigName)
+            ? `/protocol/${sigName}`
+            : undefined,
+          certificate: sidecarFiles.has(crtName)
+            ? `/protocol/${crtName}`
+            : undefined,
+        };
+      };
+
       let latestBlock: {
         tarball: string;
         checksum: string;
+        signature?: string;
+        certificate?: string;
         adcp_version?: string;
         generated_at?: string;
         note: string;
@@ -130,9 +150,12 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
         } catch {
           // ignore — absent file is already handled upstream
         }
+        const latestSidecars = sidecarsFor("latest.tgz");
         latestBlock = {
           tarball: "/protocol/latest.tgz",
           checksum: "/protocol/latest.tgz.sha256",
+          ...(latestSidecars.signature && { signature: latestSidecars.signature }),
+          ...(latestSidecars.certificate && { certificate: latestSidecars.certificate }),
           adcp_version: versioned[0]?.replace(/\.tgz$/, ""),
           generated_at: generatedAt,
           note: "Development bundle — changes with every merge. Pin a version for production.",
@@ -142,11 +165,23 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.json({
         generated_at: new Date().toISOString(),
-        versions: versioned.map((name) => ({
-          version: name.replace(/\.tgz$/, ""),
-          tarball: `/protocol/${name}`,
-          checksum: `/protocol/${name}.sha256`,
-        })),
+        signature_verification: {
+          tool: "cosign verify-blob",
+          certificate_identity_regexp:
+            "^https://github\\.com/adcontextprotocol/adcp/\\.github/workflows/release\\.yml@refs/heads/.*$",
+          certificate_oidc_issuer: "https://token.actions.githubusercontent.com",
+          docs: "/docs/building/schemas-and-sdks#verifying-protocol-bundle-signatures",
+        },
+        versions: versioned.map((name) => {
+          const sidecars = sidecarsFor(name);
+          return {
+            version: name.replace(/\.tgz$/, ""),
+            tarball: `/protocol/${name}`,
+            checksum: `/protocol/${name}.sha256`,
+            ...(sidecars.signature && { signature: sidecars.signature }),
+            ...(sidecars.certificate && { certificate: sidecars.certificate }),
+          };
+        }),
         latest: latestBlock,
       });
     } catch (error) {
@@ -167,6 +202,10 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           res.setHeader("Content-Type", "application/gzip");
         } else if (filePath.endsWith(".sha256")) {
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        } else if (filePath.endsWith(".sig")) {
+          res.setHeader("Content-Type", "application/octet-stream");
+        } else if (filePath.endsWith(".crt")) {
+          res.setHeader("Content-Type", "application/x-pem-file");
         }
         if (isPinnedTarballPath(filePath)) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");

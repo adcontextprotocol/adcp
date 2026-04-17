@@ -97,6 +97,17 @@ cd ${extractedDir}
 curl -OL https://adcontextprotocol.org/protocol/${version}.tgz
 curl -OL https://adcontextprotocol.org/protocol/${version}.tgz.sha256
 shasum -a 256 -c ${version}.tgz.sha256
+
+# Optional: verify the publisher with Sigstore (requires cosign 2.x)
+curl -OL https://adcontextprotocol.org/protocol/${version}.tgz.sig
+curl -OL https://adcontextprotocol.org/protocol/${version}.tgz.crt
+cosign verify-blob \\
+  --signature ${version}.tgz.sig \\
+  --certificate ${version}.tgz.crt \\
+  --certificate-identity-regexp '^https://github\\.com/adcontextprotocol/adcp/\\.github/workflows/release\\.yml@refs/heads/.*$' \\
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+  ${version}.tgz
+
 tar xzf ${version}.tgz
 cd adcp-${version}
 \`\`\``;
@@ -259,6 +270,8 @@ async function main() {
     } catch {
       console.log(`   (git add skipped — not in git context)`);
     }
+    // .sig and .crt are produced by sign-protocol-tarball.sh after this script
+    // runs; that script handles its own staging.
   } else {
     console.log(`📋 Staging latest bundle`);
     const latestStage = path.join(stagingRoot, 'latest');
