@@ -101,6 +101,36 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].verified).toBe(false);
   });
 
+  it('excludes preview specialisms from badge issuance', () => {
+    // sales-exchange is `status: preview` in the catalog; sales-broadcast-tv is stable
+    const declared = ['sales-exchange', 'sales-broadcast-tv'];
+    const statuses = [
+      makeStatus('sales_exchange', 'passing'),
+      makeStatus('media_buy_broadcast_seller', 'passing'),
+    ];
+    const result = deriveVerificationStatus(declared, statuses);
+
+    expect(result.verified).toBe(true);
+    expect(result.roles).toHaveLength(1);
+    expect(result.roles[0].role).toBe('media-buy');
+    // Only the stable specialism shows up in the badge
+    expect(result.roles[0].specialisms).toEqual(['sales-broadcast-tv']);
+    expect(result.roles[0].passing).toEqual(['sales-broadcast-tv']);
+  });
+
+  it('does not issue a badge when only preview specialisms are declared', () => {
+    // All declared specialisms are preview — no stable badge should issue
+    const declared = ['sales-exchange', 'sales-streaming-tv'];
+    const statuses = [
+      makeStatus('sales_exchange', 'passing'),
+      makeStatus('sales_streaming_tv', 'passing'),
+    ];
+    const result = deriveVerificationStatus(declared, statuses);
+
+    expect(result.verified).toBe(false);
+    expect(result.roles).toHaveLength(0);
+  });
+
   it('groups multiple governance specialisms under the governance domain', () => {
     const declared = ['inventory-lists', 'governance-spend-authority'];
     const statuses = [

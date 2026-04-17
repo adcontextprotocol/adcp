@@ -1,9 +1,11 @@
 /**
  * SVG badge rendering for AAO Verified agents.
  *
- * Generates shields.io-style badges: "AAO Verified | Sales Agent"
+ * Generates shields.io-style badges: "AAO Verified | Media Buy Agent"
  * with the AAO teal color scheme.
  */
+
+import { ADCP_DOMAINS } from './adcp-taxonomy.js';
 
 const AAO_TEAL = '#076D63'; // WCAG AA contrast ≥ 4.5:1 against white
 const LABEL_BG = '#555';
@@ -12,8 +14,8 @@ const FONT_SIZE = 11;
 const PADDING = 8;
 const BADGE_HEIGHT = 20;
 
-// Badge roles correspond to AdCP domains (static/schemas/source/enums/adcp-domain.json).
-export const VALID_BADGE_ROLES = ['media-buy', 'creative', 'signals', 'governance', 'brand', 'sponsored-intelligence'] as const;
+// Badge roles = AdCP domains. Sourced from enums/adcp-domain.json via adcp-taxonomy.
+export const VALID_BADGE_ROLES = ADCP_DOMAINS;
 
 const ROLE_LABELS: Record<string, string> = {
   'media-buy': 'Media Buy Agent',

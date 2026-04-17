@@ -135,11 +135,13 @@ export function deriveStoryboardStatuses(
 
 // ── Verification Status Derivation ───────────────────────────────
 
+import { isStableSpecialism, type AdcpDomain } from '../../services/adcp-taxonomy.js';
+
 /**
- * AAO Verified badge roles map to AdCP domains.
+ * AAO Verified badge roles map to AdCP domains (enums/adcp-domain.json).
  * Each declared specialism rolls up to exactly one domain.
  */
-export type BadgeRole = 'media-buy' | 'creative' | 'signals' | 'governance' | 'brand' | 'sponsored-intelligence';
+export type BadgeRole = AdcpDomain;
 
 /**
  * Specialism metadata: which domain it rolls up to, plus its root storyboard ID
@@ -217,9 +219,13 @@ export function deriveVerificationStatus(
     statusMap.set(entry.storyboard_id, entry);
   }
 
+  // Preview specialisms are tested but don't count toward stable badge issuance.
+  // They'll be reported separately once the compliance runner emits preview results.
+  const stableSpecialisms = declaredSpecialisms.filter(isStableSpecialism);
+
   // Group declared specialisms by the domain they roll up to
   const domainSpecialisms = new Map<BadgeRole, string[]>();
-  for (const specialism of declaredSpecialisms) {
+  for (const specialism of stableSpecialisms) {
     const info = SPECIALISM_CATALOG[specialism];
     if (!info) continue;
     const existing = domainSpecialisms.get(info.domain) || [];
