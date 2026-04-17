@@ -554,12 +554,17 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        ON om.workos_user_id = u.workos_user_id
      LEFT JOIN organizations o
        ON o.workos_organization_id = om.workos_organization_id
+     -- "Active track" = the track the user most recently touched. A learner
+     -- halfway through track A who briefly opens a track-B module will get
+     -- B-scoped counts on the next digest; that's the intended nudge behavior.
+     -- module_id tiebreaker keeps the choice deterministic across identical
+     -- updated_at values (possible on backfills or same-request writes).
      LEFT JOIN LATERAL (
        SELECT cm.track_id
        FROM learner_progress lp
        JOIN certification_modules cm ON cm.id = lp.module_id
        WHERE lp.workos_user_id = u.workos_user_id
-       ORDER BY lp.updated_at DESC
+       ORDER BY lp.updated_at DESC, lp.module_id DESC
        LIMIT 1
      ) active_track ON TRUE
      WHERE u.email IS NOT NULL
