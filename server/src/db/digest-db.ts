@@ -541,7 +541,7 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        om.seat_type,
        COALESCE((SELECT COUNT(*) FROM working_group_memberships wgm WHERE wgm.workos_user_id = u.workos_user_id AND wgm.status = 'active'), 0)::int AS wg_count,
        COALESCE((SELECT COUNT(*) FROM certification_attempts ca WHERE ca.workos_user_id = u.workos_user_id AND ca.status = 'completed'), 0)::int AS cert_modules_completed,
-       COALESCE((SELECT COUNT(DISTINCT module_id) FROM certification_modules WHERE is_active = TRUE), 0)::int AS cert_total_modules,
+       COALESCE((SELECT COUNT(*) FROM certification_modules WHERE format = 'capstone'), 0)::int AS cert_total_modules,
        COALESCE(o.subscription_status = 'active', FALSE) AS is_member,
        (u.first_name IS NOT NULL AND u.last_name IS NOT NULL) AS has_profile
      FROM users u
