@@ -293,6 +293,7 @@
                     "pages": [
                       "docs/governance/overview",
                       "docs/governance/embedded-human-judgment",
+                      "docs/governance/semantic-transparency",
                       "docs/governance/policy-registry",
                       {
                         "group": "Property Governance",
@@ -781,6 +782,7 @@
                 "pages": [
                   "docs/governance/overview",
                   "docs/governance/embedded-human-judgment",
+                  "docs/governance/semantic-transparency",
                   "docs/governance/policy-registry",
                   {
                     "group": "Property Governance",

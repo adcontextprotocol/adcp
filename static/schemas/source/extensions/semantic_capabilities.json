@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/semantic_capabilities.json",
+  "title": "Ontology Capability Declaration",
+  "description": "Allows sellers to declare which ontologies and taxonomies they support, enabling buyers to discover semantic interoperability before issuing a brief. Designed for use in get_adcp_capabilities responses.",
+  "valid_from": "3.0",
+  "docs_url": "https://adcontextprotocol.org/docs/governance/semantic-transparency",
+  "type": "object",
+  "required": ["supported_taxonomies"],
+  "properties": {
+    "supported_taxonomies": {
+      "type": "array",
+      "description": "Taxonomies this seller can resolve buyer terms against.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["taxonomy_id", "version", "authority", "coverage"],
+        "properties": {
+          "taxonomy_id": {
+            "type": "string",
+            "description": "Identifier for the taxonomy (e.g., 'iab_ad_product_taxonomy', 'nielsen_dma')."
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the taxonomy supported."
+          },
+          "authority": {
+            "type": "string",
+            "format": "uri",
+            "description": "Canonical URI of the taxonomy authority."
+          },
+          "coverage": {
+            "type": "string",
+            "enum": ["full", "partial", "mapping_only"],
+            "description": "full=fully indexed, partial=subset, mapping_only=can resolve terms but may not have direct inventory."
+          }
+        }
+      }
+    },
+    "alignment_methods": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["exact", "structural", "notation", "lexical"]
+      },
+      "description": "Alignment methods the seller supports, ordered by priority."
+    },
+    "resolution_transparency": {
+      "type": "boolean",
+      "description": "When true, seller includes semantic_alignment attestations in media buy responses."
+    },
+    "ontology_uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI of the seller's published ontology."
+    },
+    "max_alignment_confidence_precision": {
+      "type": "integer",
+      "description": "Decimal places in confidence scores (default: 2).",
+      "default": 2
+    }
+  }
+}

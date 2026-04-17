@@ -1,0 +1,477 @@
+---
+title: Semantic Transparency
+sidebarTitle: Semantic transparency
+description: "Semantic alignment attestation, decision traces, and ontology capability discovery for transparent, auditable agentic advertising."
+"og:title": "AdCP — Semantic Transparency"
+---
+
+A buyer agent sends a brief requesting `half_page_300x600` placements across California. The seller's catalog uses `medium_rectangle_300x600` and `US-CA`. The seller resolves the terms, returns three products, and the buyer runs the campaign.
+
+Six months later, an auditor asks: "How did the system decide that `half_page_300x600` means the same thing as `medium_rectangle_300x600`?" Nobody can answer. The resolution happened inside the seller's implementation, and nothing in the AdCP response documented the reasoning. The protocol tracked *what* was bought but not *how* the system understood the brief.
+
+This is the semantic gap. AdCP's governance protocol validates budgets, policies, and brand safety — but until now, it had no way to validate the reasoning that connects a buyer's intent to a seller's inventory.
+
+Three extensions close this gap using AdCP's existing `ext.*` mechanism.
+
+## The three extensions
+
+| Extension | Namespace | Surfaces on | Purpose |
+|---|---|---|---|
+| **Semantic Alignment Attestation** | `ext.semantic_alignment` | `create_media_buy` responses | Documents how each buyer term was resolved to seller concepts |
+| **Decision Trace Protocol** | `ext.decision_trace` | `create_media_buy` and governance responses | Captures candidate evaluation, scoring, and selection rationale |
+| **Ontology Capability Declaration** | `ext.semantic_capabilities` | `get_adcp_capabilities` responses | Declares supported taxonomies and alignment methods |
+
+These extensions are additive — no existing schemas are modified. Sellers that don't support them simply omit the `ext.*` fields. Buyers check `extensions_supported` before relying on them.
+
+## Capability discovery
+
+Before issuing a brief, a buyer agent calls `get_adcp_capabilities` and discovers the seller's semantic capabilities:
+
+```json
+{
+  "extensions_supported": [
+    "semantic_alignment",
+    "decision_trace",
+    "semantic_capabilities"
+  ],
+  "ext": {
+    "semantic_capabilities": {
+      "supported_taxonomies": [
+        {
+          "taxonomy_id": "iab_ad_product_taxonomy",
+          "version": "2.0",
+          "authority": "https://iabtechlab.com/ad-product-taxonomy/2.0/",
+          "coverage": "full"
+        },
+        {
+          "taxonomy_id": "nielsen_dma",
+          "version": "2026",
+          "authority": "https://www.nielsen.com/dma-regions/",
+          "coverage": "full"
+        },
+        {
+          "taxonomy_id": "iso_3166",
+          "version": "2020",
+          "authority": "https://www.iso.org/iso-3166-country-codes.html",
+          "coverage": "full"
+        }
+      ],
+      "alignment_methods": ["exact", "structural", "notation", "lexical"],
+      "resolution_transparency": true
+    }
+  }
+}
+```
+
+The buyer now knows:
+- The seller understands IAB Ad Product Taxonomy 2.0, Nielsen DMAs, and ISO 3166 codes
+- The seller supports four alignment methods, from exact string matching to lexical/NLP resolution
+- The seller will include `semantic_alignment` attestations in media buy responses
+
+This happens *before* the brief is sent. No capability surprise at execution time.
+
+<Accordion title="What each coverage level means">
+
+| Coverage | Meaning |
+|---|---|
+| `full` | Seller's catalog is fully indexed against this taxonomy. All taxonomy entries can be resolved. |
+| `partial` | Subset coverage. Some taxonomy entries may not resolve. |
+| `mapping_only` | Seller can resolve terms using this taxonomy but may not have direct inventory for all entries. |
+
+A seller with `mapping_only` for Nielsen DMAs can translate "San Francisco-Oakland-San Jose" to DMA code 807, but may not have inventory specifically targeted to that DMA.
+
+</Accordion>
+
+## Semantic alignment in action
+
+When Pinnacle Agency's orchestrator sends a brief for Acme Corp's Q2 campaign, the seller returns products with full alignment attestation:
+
+```json
+{
+  "packages": [
+    {
+      "product_id": "42",
+      "product_name": "Premium Display 300x600",
+      "ext": {
+        "semantic_alignment": {
+          "resolutions": [
+            {
+              "buyer_term": "half_page_300x600",
+              "seller_concept": "medium_rectangle_300x600",
+              "taxonomy_id": "iab_ad_product_taxonomy",
+              "taxonomy_version": "2.0",
+              "alignment_method": "notation",
+              "confidence": 0.98,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "exact",
+                  "input": "half_page_300x600",
+                  "result": null,
+                  "note": "No exact match in seller catalog"
+                },
+                {
+                  "step": 2,
+                  "method": "notation",
+                  "input": "half_page_300x600",
+                  "result": "medium_rectangle_300x600",
+                  "note": "IAB Ad Product Taxonomy 2.0 cross-reference: half_page maps to 300x600 fixed format",
+                  "taxonomy_path": "Display > Fixed Size > Half Page (300x600)"
+                }
+              ]
+            },
+            {
+              "buyer_term": "California",
+              "seller_concept": "US-CA",
+              "taxonomy_id": "iso_3166",
+              "taxonomy_version": "2020",
+              "alignment_method": "lexical",
+              "confidence": 1.0,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "lexical",
+                  "input": "California",
+                  "result": "US-CA",
+                  "note": "Colloquial state name resolved to ISO 3166-2 subdivision code"
+                }
+              ]
+            },
+            {
+              "buyer_term": "Bay Area",
+              "seller_concept": ["807", "828"],
+              "taxonomy_id": "nielsen_dma",
+              "taxonomy_version": "2026",
+              "alignment_method": "structural",
+              "confidence": 0.95,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "lexical",
+                  "input": "Bay Area",
+                  "result": "San Francisco Bay Area (colloquial region)",
+                  "note": "Recognized as colloquial US geographic region"
+                },
+                {
+                  "step": 2,
+                  "method": "structural",
+                  "input": "San Francisco Bay Area",
+                  "result": ["807", "828"],
+                  "note": "Decomposed to overlapping Nielsen DMAs: 807 (San Francisco-Oakland-San Jose), 828 (Monterey-Salinas)"
+                }
+              ]
+            }
+          ],
+          "overall_confidence": 0.97,
+          "unresolved_terms": [],
+          "alignment_timestamp": "2026-04-16T16:44:00Z"
+        }
+      }
+    }
+  ]
+}
+```
+
+Every resolution is documented:
+- **What** the buyer asked for (`buyer_term`)
+- **What** the seller matched it to (`seller_concept`)
+- **How** the match was made (`alignment_method`, `alignment_chain`)
+- **How confident** the match is (`confidence`)
+
+The `alignment_chain` shows the full resolution path. For "Bay Area," the system first recognized it as a colloquial region name (lexical), then decomposed it to the two overlapping Nielsen DMAs (structural). An auditor can trace every step.
+
+<Accordion title="Understanding confidence scores">
+
+Confidence scores range from 0.0 to 1.0:
+
+| Range | Meaning | Governance action |
+|---|---|---|
+| 0.95 - 1.0 | High confidence — exact or near-exact match | No action needed |
+| 0.70 - 0.94 | Medium confidence — reasonable match via structural or lexical methods | Governance agent MAY flag for review |
+| Below 0.70 | Low confidence — uncertain match | Governance agent SHOULD escalate |
+
+The `overall_confidence` is the geometric mean of all individual resolution confidences. A single low-confidence resolution pulls the overall score down, ensuring that partial mismatches are visible.
+
+Sellers calibrate confidence scores based on their alignment implementation. Scores are seller-relative — a 0.95 from one seller is not directly comparable to a 0.95 from another.
+
+</Accordion>
+
+## Decision traces
+
+While semantic alignment documents *how terms were understood*, decision traces document *why specific products were chosen*. The decision trace captures the full evaluation path:
+
+```json
+{
+  "ext": {
+    "decision_trace": {
+      "trace_id": "dt-acme-2026-04-16-001",
+      "trace_version": "1.0.0",
+      "decision_points": [
+        {
+          "decision_id": "dp-product-selection",
+          "decision_type": "product_selection",
+          "description": "Select products matching brief constraints",
+          "candidates_evaluated": 47,
+          "candidates": [
+            {
+              "candidate_id": "product-42",
+              "scores": {
+                "composite_score": 0.92,
+                "targeting_overlap": 1.0,
+                "format_match": 1.0,
+                "cpm_efficiency": 0.80
+              },
+              "outcome": "selected",
+              "selection_rationale": "Highest format match for 300x600 requirement with perfect targeting overlap across all specified DMAs"
+            },
+            {
+              "candidate_id": "product-17",
+              "scores": {
+                "composite_score": 0.71,
+                "targeting_overlap": 0.75,
+                "format_match": 1.0,
+                "cpm_efficiency": 0.60
+              },
+              "outcome": "rejected",
+              "rejection_reason": "Targeting overlap below threshold (0.75 < 0.80 minimum) — limited audience segment overlap"
+            }
+          ],
+          "selection_strategy": "inventory_constrained_optimization",
+          "constraints_applied": [
+            {
+              "constraint": "budget_cap",
+              "value": "$5,000",
+              "effect": "Limits total product count to stay within budget"
+            },
+            {
+              "constraint": "targeting_overlap_minimum",
+              "value": 0.8,
+              "effect": "Requires composite targeting overlap >= 0.8 for selection"
+            }
+          ]
+        },
+        {
+          "decision_id": "dp-budget-allocation",
+          "decision_type": "budget_allocation",
+          "description": "Allocate budget across selected products",
+          "candidates_evaluated": 3,
+          "candidates": [
+            {
+              "candidate_id": "product-42",
+              "scores": { "composite_score": 0.92 },
+              "outcome": "selected",
+              "selection_rationale": "Primary driver — allocated 40% of budget for broadest reach"
+            }
+          ],
+          "selection_strategy": "tiered_budget_allocation"
+        }
+      ],
+      "governance_compatibility": {
+        "plan_id": null,
+        "governance_context": null,
+        "exportable_as_governance_findings": true
+      },
+      "metadata": {
+        "protocol_version": "adcp-3.0",
+        "trace_generated_at": "2026-04-16T16:44:30Z",
+        "retention_policy": "90_days"
+      }
+    }
+  }
+}
+```
+
+The trace answers questions that product lists alone cannot:
+- **How many candidates were considered?** 47 products evaluated, not just the 3 returned.
+- **Why was product-17 rejected?** Targeting overlap (0.75) fell below the 0.80 minimum threshold.
+- **What constraints bounded the decision?** Budget cap and targeting overlap minimum.
+- **Can this trace feed into governance?** Yes — `exportable_as_governance_findings: true`.
+
+<Accordion title="Decision types">
+
+| Type | When used |
+|---|---|
+| `product_selection` | Choosing which products to include in the response |
+| `budget_allocation` | Distributing budget across selected products |
+| `forecast_selection` | Choosing impression estimation methodology |
+| `creative_assignment` | Matching creatives to placements |
+| `targeting_resolution` | Resolving targeting parameters to inventory constraints |
+| `policy_evaluation` | Evaluating compliance with governance policies |
+
+The `decision_type` enum is extensible — implementations MAY define additional types as needs emerge.
+
+</Accordion>
+
+## Governance integration
+
+These extensions integrate with AdCP's governance protocol at four points:
+
+### 1. Capability discovery
+
+A governance agent can discover whether a seller supports semantic transparency:
+
+```javascript
+const capabilities = await seller.getAdcpCapabilities();
+
+const supportsAlignment = capabilities.extensions_supported
+  .includes("semantic_alignment");
+
+const supportsTrace = capabilities.extensions_supported
+  .includes("decision_trace");
+```
+
+### 2. Pre-buy check
+
+When `check_governance` is called, the orchestrator MAY include semantic context:
+
+```json
+{
+  "plan_id": "acme-q2-outdoor",
+  "tool": "create_media_buy",
+  "payload": {
+    "seller": "https://seller.example",
+    "amount": 5000,
+    "semantic_context": {
+      "buyer_taxonomy_version": "iab_ad_product_taxonomy_2.0",
+      "expected_resolution_confidence": 0.9,
+      "require_attestation": true
+    }
+  }
+}
+```
+
+The governance agent validates that the seller declared the requested taxonomy in capabilities, and flags if expected confidence exceeds historical performance.
+
+### 3. Post-buy validation
+
+After a media buy completes, the governance agent validates the attestation:
+
+- **Confidence check**: Are all resolution confidences above the governance threshold?
+- **Coverage check**: Were all buyer terms resolved? Are there unresolved terms?
+- **Consistency check**: Do the alignment methods used match the seller's declared capabilities?
+- **Regulatory check**: For campaigns in EU/CA jurisdictions, does the attestation satisfy algorithmic transparency requirements?
+
+Findings use the standard governance format:
+
+```json
+{
+  "findings": [
+    {
+      "category_id": "semantic_alignment",
+      "policy_id": "registry:eu_ai_act_article_50",
+      "severity": "should",
+      "explanation": "Resolution for 'Bay Area' used lexical+structural alignment with 0.95 confidence. Full alignment chain provided. Meets Article 50 algorithmic transparency requirements.",
+      "confidence": 0.95
+    }
+  ]
+}
+```
+
+### 4. Audit trail
+
+Decision traces are stored alongside existing governance audit entries. When `get_plan_audit_logs` is called, entries include trace references:
+
+```json
+{
+  "audit_entries": [
+    {
+      "event_type": "buy_executed",
+      "timestamp": "2026-04-16T16:44:30Z",
+      "decision_trace_id": "dt-acme-2026-04-16-001",
+      "semantic_alignment_summary": {
+        "terms_resolved": 3,
+        "terms_unresolved": 0,
+        "overall_confidence": 0.97,
+        "alignment_methods_used": ["notation", "lexical", "structural"]
+      }
+    }
+  ]
+}
+```
+
+Every decision, every resolution, every confidence score — structured, timestamped, attributable.
+
+## Error handling
+
+When some buyer terms cannot be resolved, the seller SHOULD return a warning with suggestions:
+
+```json
+{
+  "warnings": [
+    {
+      "code": "semantic_resolution_partial",
+      "message": "1 of 4 buyer terms could not be resolved",
+      "details": {
+        "unresolved": ["display_static"],
+        "suggestions": [
+          {
+            "buyer_term": "display_static",
+            "candidates": [
+              { "concept": "medium_rectangle_300x250", "confidence": 0.72 },
+              { "concept": "half_page_300x600", "confidence": 0.65 }
+            ],
+            "hint": "Did you mean a specific IAB fixed-size format? Try: half_page_300x600, medium_rectangle_300x250, leaderboard_728x90"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Semantic failures become actionable — the buyer agent can retry with corrected terms, and the interaction is fully logged for governance.
+
+## Extension graduation path
+
+Following AdCP's extension model, these enhancements follow a three-phase graduation:
+
+| Phase | Version | What happens |
+|---|---|---|
+| **1. Extension namespace** | AdCP 3.0.x | All fields live under `ext.*`. Sellers declare support via `extensions_supported`. |
+| **2. Community validation** | AdCP 3.1.0-beta | Three or more independent implementations validate the schema. Extension schemas published in registry. Conformance tests added. |
+| **3. Core protocol** | AdCP 3.2.0+ | With community consensus, fields promote from `ext.*` to top-level. Governance agents MAY require attestation for regulated jurisdictions. |
+
+Sellers and buyers never change their code between phases — the protocol handles the namespace migration.
+
+## Regulatory alignment
+
+These extensions address requirements from three regulatory frameworks:
+
+- **EU Digital Services Act (Article 26)** — Decision traces satisfy the requirement to explain the main parameters of recommender systems and options to modify them.
+- **EU AI Act (Article 50)** — Semantic alignment attestations demonstrate how AI systems resolved user inputs to outputs, with confidence scoring.
+- **California SB 942** — Decision traces provide the "explanation of how the AI system works" required for generative AI disclosures.
+
+The [Policy Registry](/docs/governance/policy-registry) already includes entries for these regulations. These extensions provide the structured evidence format that satisfies the requirements those policies define.
+
+## Open questions
+
+These extensions are submitted for community discussion. Key questions:
+
+1. **Trace verbosity vs. performance.** Full alignment chains increase response size. Should there be a protocol-level maximum for `alignment_chain` length, or should this be implementation-specific?
+
+2. **Confidence score calibration.** Different sellers calibrate confidence differently. Should AdCP standardize a calibration methodology, or accept that scores are seller-relative?
+
+3. **Rejected candidate limits.** How many rejected candidates should sellers include in decision traces? A recommended range (e.g., "top 3 by composite score") may balance auditability with response size.
+
+4. **Cross-seller trace correlation.** When a buyer orchestrator queries multiple sellers, the buyer-side selection is currently outside AdCP scope. Should the protocol define a buyer-side trace format?
+
+5. **Taxonomy registry governance.** Who maintains the community taxonomy ID registry? AgenticAdvertising.org is the natural home, but taxonomy authorities should validate their entries.
+
+<Info>
+**Extension schemas**
+
+The JSON Schema definitions for these extensions are published at:
+- [`semantic_alignment.json`](/schemas/extensions/semantic_alignment.json)
+- [`decision_trace.json`](/schemas/extensions/decision_trace.json)
+- [`semantic_capabilities.json`](/schemas/extensions/semantic_capabilities.json)
+
+All schemas follow the [extension-meta.json](/schemas/extensions/extension-meta.json) meta-schema and are auto-discovered by the AdCP build system.
+</Info>
+
+## Go deeper
+
+- **Governance overview**: [How governance works](/docs/governance/overview) — three-party model, plan registration, escalation, audit trails
+- **Embedded human judgment**: [The five principles](/docs/governance/embedded-human-judgment) that ensure humans remain accountable in agentic systems
+- **Policy registry**: [Community policies](/docs/governance/policy-registry) — standardized regulations including EU DSA and AI Act entries
+- **Campaign governance**: [Full specification](/docs/governance/campaign/specification) — plans, checks, outcomes, and policy resolution
+- **Content standards**: [Brand suitability](/docs/governance/content-standards/index) — privacy-preserving calibration for content evaluation

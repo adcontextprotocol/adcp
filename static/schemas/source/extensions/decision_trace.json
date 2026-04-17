@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/decision_trace.json",
+  "title": "Decision Trace Protocol",
+  "description": "Captures the full decision-making path for a media buy or governance action. Records candidate evaluation, scoring, selection rationale, and rejection reasons at each decision point. Designed for governance agent consumption and regulatory compliance (EU DSA Article 26, EU AI Act Article 50).",
+  "valid_from": "3.0",
+  "docs_url": "https://adcontextprotocol.org/docs/governance/semantic-transparency",
+  "type": "object",
+  "required": ["trace_id", "trace_version", "decision_points", "metadata"],
+  "properties": {
+    "trace_id": {
+      "type": "string",
+      "description": "Unique identifier for this decision trace."
+    },
+    "trace_version": {
+      "type": "string",
+      "description": "Schema version of this trace (e.g., '1.0.0')."
+    },
+    "decision_points": {
+      "type": "array",
+      "description": "Ordered decision points in the decision-making path.",
+      "items": {
+        "type": "object",
+        "required": ["decision_id", "decision_type", "description"],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "description": "Unique identifier for this decision point within the trace."
+          },
+          "decision_type": {
+            "type": "string",
+            "enum": ["product_selection", "budget_allocation", "forecast_selection", "creative_assignment", "targeting_resolution", "policy_evaluation"],
+            "description": "Category of decision. Extensible via future enum additions."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what decision was being made."
+          },
+          "candidates_evaluated": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total number of candidates considered."
+          },
+          "candidates": {
+            "type": "array",
+            "description": "Evaluated candidates with scores and outcomes. Sellers MAY limit to selected + top-N rejected.",
+            "items": {
+              "type": "object",
+              "required": ["candidate_id", "scores", "outcome"],
+              "properties": {
+                "candidate_id": { "type": "string", "description": "Identifier for the candidate (e.g., product ID)." },
+                "scores": {
+                  "type": "object",
+                  "description": "Scoring breakdown. MUST include composite_score (0.0-1.0).",
+                  "required": ["composite_score"],
+                  "properties": {
+                    "composite_score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Overall score for cross-candidate comparison." }
+                  },
+                  "additionalProperties": true
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": ["selected", "rejected", "deferred"],
+                  "description": "Result of evaluation for this candidate."
+                },
+                "selection_rationale": {
+                  "type": "string",
+                  "description": "Required when outcome is 'selected'."
+                },
+                "rejection_reason": {
+                  "type": "string",
+                  "description": "Required when outcome is 'rejected'."
+                }
+              }
+            }
+          },
+          "selection_strategy": {
+            "type": "string",
+            "description": "Optimization strategy applied (e.g., 'inventory_constrained_optimization')."
+          },
+          "constraints_applied": {
+            "type": "array",
+            "description": "Business constraints that bounded the decision.",
+            "items": {
+              "type": "object",
+              "required": ["constraint", "value", "effect"],
+              "properties": {
+                "constraint": { "type": "string", "description": "Name of the constraint." },
+                "value": { "description": "Constraint value (string, number, or object)." },
+                "effect": { "type": "string", "description": "How this constraint affected the decision." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "governance_compatibility": {
+      "type": "object",
+      "description": "Enables decision traces to feed into AdCP's existing governance protocol.",
+      "properties": {
+        "plan_id": { "type": ["string", "null"], "description": "Associated governance plan ID, if any." },
+        "governance_context": { "type": ["string", "null"], "description": "Governance context token from check_governance." },
+        "exportable_as_governance_findings": { "type": "boolean", "description": "Whether this trace can be submitted as evidence to a governance agent." }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Trace metadata for provenance and lifecycle management.",
+      "required": ["trace_generated_at"],
+      "properties": {
+        "agent_version": { "type": "string", "description": "Version of the agent that generated this trace." },
+        "protocol_version": { "type": "string", "description": "AdCP protocol version used." },
+        "trace_generated_at": { "type": "string", "format": "date-time", "description": "When this trace was generated (ISO 8601)." },
+        "retention_policy": { "type": "string", "description": "How long this trace should be retained." }
+      }
+    }
+  }
+}

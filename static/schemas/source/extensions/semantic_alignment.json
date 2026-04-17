@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/semantic_alignment.json",
+  "title": "Semantic Alignment Attestation",
+  "description": "Documents how buyer terms were resolved to seller concepts during a media buy. Provides resolution method, confidence scores, and alignment chains for full traceability. Enables governance agents to validate resolution quality and supports regulatory transparency requirements (EU DSA Article 26, EU AI Act Article 50, CA SB 942).",
+  "valid_from": "3.0",
+  "docs_url": "https://adcontextprotocol.org/docs/governance/semantic-transparency",
+  "type": "object",
+  "required": ["resolutions", "overall_confidence", "unresolved_terms", "alignment_timestamp"],
+  "properties": {
+    "resolutions": {
+      "type": "array",
+      "description": "One entry per buyer term that required resolution for this product.",
+      "items": {
+        "type": "object",
+        "required": ["buyer_term", "seller_concept", "taxonomy_id", "alignment_method", "confidence"],
+        "properties": {
+          "buyer_term": {
+            "type": "string",
+            "description": "The original term from the buyer's brief."
+          },
+          "seller_concept": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ],
+            "description": "The seller's internal concept(s) the buyer term resolved to. Array when a single buyer term maps to multiple seller concepts."
+          },
+          "taxonomy_id": {
+            "type": "string",
+            "description": "Which taxonomy was used for resolution. Must match an entry from get_adcp_capabilities extensions_supported."
+          },
+          "taxonomy_version": {
+            "type": "string",
+            "description": "Version of the taxonomy used."
+          },
+          "alignment_method": {
+            "type": "string",
+            "enum": ["exact", "structural", "notation", "lexical"],
+            "description": "The method that produced the final resolution. exact=string-equal, structural=hierarchy traversal, notation=code cross-reference, lexical=synonym/NLP."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score (0.0-1.0) for this resolution."
+          },
+          "alignment_chain": {
+            "type": "array",
+            "description": "Ordered steps showing how the resolution was reached.",
+            "items": {
+              "type": "object",
+              "required": ["step", "method", "input"],
+              "properties": {
+                "step": { "type": "integer", "minimum": 1 },
+                "method": { "type": "string" },
+                "input": { "type": "string" },
+                "result": { "description": "Resolution result, or null if no match at this step." },
+                "note": { "type": "string", "description": "Human-readable explanation of this step." },
+                "taxonomy_path": { "type": "string", "description": "Taxonomy hierarchy path traversed." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "overall_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Geometric mean of individual resolution confidences."
+    },
+    "unresolved_terms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Buyer terms that could not be resolved. Empty array when all terms resolved."
+    },
+    "alignment_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the alignment was performed (ISO 8601)."
+    }
+  }
+}
