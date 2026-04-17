@@ -865,6 +865,7 @@
               <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
             </div>
             <div class="collapsible-content" id="membersContent" style="margin-top: var(--space-4);">
+              <div id="paidStatusSummary" style="display: none; padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary);"></div>
               <!-- Website Members -->
               <div id="membersSectionWrapper">
                 <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Website Members</h3>
@@ -1645,6 +1646,34 @@
       // Set total user count in header
       document.getElementById('memberCount').textContent = totalUserCount > 0 ? `(${totalUserCount})` : '';
 
+      // Paid status summary: subscription + seat breakdown
+      const paidSummaryEl = document.getElementById('paidStatusSummary');
+      if (memberCount > 0 || a.subscription) {
+        const contributorCount = (a.members || []).filter(m => (m.seat_type || 'contributor') === 'contributor').length;
+        const communityCount = (a.members || []).filter(m => m.seat_type === 'community_only').length;
+        const parts = [];
+        if (a.subscription) {
+          const statusClass = a.subscription.status === 'active' ? 'status-active' : 'status-prospect';
+          const label = a.subscription.product_name || a.subscription.status || 'subscription';
+          parts.push(`<span class="status-badge ${statusClass}" style="font-size: var(--text-xs);">${escapeHtml(label)}</span>`);
+          if (a.subscription.current_period_end) {
+            parts.push(`renews ${formatDate(a.subscription.current_period_end)}`);
+          }
+          if (a.subscription.canceled_at) {
+            parts.push(`canceled ${formatDate(a.subscription.canceled_at)}`);
+          }
+        } else {
+          parts.push(`<span class="status-badge status-prospect" style="font-size: var(--text-xs);">no subscription</span>`);
+        }
+        if (memberCount > 0) {
+          parts.push(`${contributorCount} contributor${contributorCount === 1 ? '' : 's'}, ${communityCount} community`);
+        }
+        paidSummaryEl.innerHTML = parts.join(' &middot; ');
+        paidSummaryEl.style.display = '';
+      } else {
+        paidSummaryEl.style.display = 'none';
+      }
+
       // Website members
       if (a.members && a.members.length > 0) {
         // Show migrate button if there are members
@@ -1670,17 +1699,27 @@
           </li>`;
         }
 
+        const SEAT_LABELS = {
+          contributor: 'Contributor',
+          community_only: 'Community',
+        };
         for (const m of a.members) {
           const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
           const role = m.role || 'member';
+          const seat = m.seat_type || 'contributor';
+          const seatLabel = SEAT_LABELS[seat] || seat;
+          const joinedLabel = m.joined_at ? `Joined ${formatDate(m.joined_at)}` : '';
           membersHtml += `<li data-member-id="${escapeHtml(m.id)}" data-current-role="${escapeHtml(role)}">
             <span class="member-name-link" onclick="viewMemberContext(this.parentElement.dataset.memberId)">${escapeHtml(name)}</span>
+            <span class="status-badge status-prospect" style="margin-left: var(--space-2); font-size: var(--text-xs);">${escapeHtml(seatLabel)}</span>
             <select class="role-select" onchange="updateUserRole(this.parentElement.dataset.memberId, this.value, this.parentElement.dataset.currentRole)">
               <option value="member" ${role === 'member' ? 'selected' : ''}>Member</option>
               <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
               <option value="owner" ${role === 'owner' ? 'selected' : ''}>Owner</option>
             </select>
-            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</div>
+            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">
+              ${escapeHtml(m.email)}${joinedLabel ? ` &middot; ${escapeHtml(joinedLabel)}` : ''}
+            </div>
           </li>`;
         }
         document.getElementById('membersList').innerHTML = membersHtml;

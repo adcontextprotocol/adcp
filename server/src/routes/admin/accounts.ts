@@ -499,7 +499,9 @@ export function setupAccountRoutes(
               email,
               first_name,
               last_name,
-              role
+              role,
+              seat_type,
+              created_at
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
@@ -848,6 +850,8 @@ export function setupAccountRoutes(
             firstName: m.first_name,
             lastName: m.last_name,
             role: m.role || "member",
+            seat_type: m.seat_type || "contributor",
+            joined_at: m.created_at,
           })),
           member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
