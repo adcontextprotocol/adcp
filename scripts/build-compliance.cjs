@@ -73,13 +73,15 @@ function readYamlFrontmatter(filePath) {
     const m = line.match(/^([a-z_]+):\s*(.*)$/);
     if (!m) continue;
     const [, key, rawValue] = m;
-    if (['id', 'domain', 'title', 'role', 'track'].includes(key)) {
+    if (['id', 'domain', 'title', 'role', 'track', 'status'].includes(key)) {
       out[key] = rawValue.replace(/^["']|["']$/g, '').trim();
     }
-    if (Object.keys(out).length >= 5) break;
+    if (Object.keys(out).length >= 6) break;
   }
   return out;
 }
+
+const VALID_STATUSES = new Set(['stable', 'preview']);
 
 function discoverSpecialisms(sourceDir) {
   const specialismsDir = path.join(sourceDir, 'specialisms');
@@ -99,10 +101,17 @@ function discoverSpecialisms(sourceDir) {
         `Every specialism must declare its parent domain (media-buy, creative, signals, governance, brand, sponsored-intelligence).`
       );
     }
+    const status = fm.status || 'stable';
+    if (!VALID_STATUSES.has(status)) {
+      throw new Error(
+        `Specialism "${entry.name}" has invalid status "${status}". Valid values: ${[...VALID_STATUSES].join(', ')}.`
+      );
+    }
     items.push({
       id: entry.name,
       domain: fm.domain,
       title: fm.title || null,
+      status,
       path: `specialisms/${entry.name}/`
     });
   }
@@ -195,6 +204,7 @@ function generateIndex(version, sourceDir) {
       id: s.id,
       domain: s.domain,
       title: s.title,
+      status: s.status,
       path: s.path
     }))
   };

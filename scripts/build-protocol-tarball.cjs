@@ -117,6 +117,13 @@ See \`manifest.json\` for the generated file count, and \`compliance/index.json\
 for the enumerated domains + specialisms that agents can claim in
 \`get_adcp_capabilities\`.
 
+## Layout stability
+
+The directory structure inside \`adcp-{version}/\` (\`schemas/\`, \`compliance/\`,
+\`openapi/\`, \`manifest.json\`) is a stable contract within a given major
+version. Renames or moves inside this tree are breaking changes and only ship
+with a major bump.
+
 ## Docs
 
 - https://adcontextprotocol.org/docs/building/schemas-and-sdks

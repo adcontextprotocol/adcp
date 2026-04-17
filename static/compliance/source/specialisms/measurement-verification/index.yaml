@@ -2,6 +2,7 @@ id: measurement_verification
 version: "1.0.0"
 title: "Measurement and verification"
 domain: governance
+status: preview
 summary: "Third-party measurement and verification — viewability, brand safety, attribution, and SI outcome measurement across domains."
 track: governance
 

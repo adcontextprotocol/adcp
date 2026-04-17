@@ -2,6 +2,7 @@ id: sales_exchange
 version: "1.0.0"
 title: "Programmatic exchange sales"
 domain: media-buy
+status: preview
 summary: "Programmatic exchange or SSP — auction-based inventory access with real-time bidding semantics and multi-seller inventory pooling."
 track: media-buy
 

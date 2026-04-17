@@ -19,7 +19,7 @@ Storyboards are organized into three layers so agents declare only what they act
 | **Domain** | `/compliance/{version}/domains/{domain}/` | Any agent claiming a domain (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
 | **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/docs/building/compliance-catalog) |
 
-Declare your `domains` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically.
+Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
 
 ## Setup
 

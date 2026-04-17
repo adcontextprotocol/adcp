@@ -7,18 +7,21 @@ Move storyboards from `@adcp/client` into the protocol repo as `/compliance/`
 protocol tarball at `/protocol/{version}.tgz` so clients can bulk-sync in one
 request.
 
-Introduces the two-axis capability model that `get_adcp_capabilities` uses
-going forward:
+Compliance model for `get_adcp_capabilities`:
 
-- `domains` (new field) — broad agent categories. Valid values: `media-buy`,
-  `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`
+- `supported_protocols` (existing field, expanded) now doubles as the
+  compliance-domain claim: each protocol listed commits the agent to pass the
+  baseline storyboard at `/compliance/{version}/domains/{protocol}/`
+  (snake_case → kebab-case mapping). `compliance_testing` is an RPC surface
+  only and has no baseline. `sponsored_intelligence` is a full protocol
   (promoted from a specialism).
-- `specialisms` (new field) — 21 specialization claims, each rolling up to
-  exactly one domain. Includes renames (`broadcast-platform` →
-  `sales-broadcast-tv`, `social-platform` → `sales-social`), a merge
-  (`property-governance` + `collection-governance` → `inventory-lists`), and
-  four new 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`,
-  `sales-retail-media`, `measurement-verification`).
+- `specialisms` (new field) — 21 specialization claims, each rolling up to one
+  protocol. Includes renames (`broadcast-platform` → `sales-broadcast-tv`,
+  `social-platform` → `sales-social`), a merge (`property-governance` +
+  `collection-governance` → `inventory-lists`), and four 3.1 archetypes
+  flagged `status: preview` (`sales-streaming-tv`, `sales-exchange`,
+  `sales-retail-media`, `measurement-verification`) — runner warns rather
+  than verifies until their storyboards land.
 
 Also publishes the `/protocol/` discovery endpoint and a new Compliance
-Catalog page enumerating every domain + specialism an agent can claim.
+Catalog page enumerating every protocol + specialism an agent can claim.

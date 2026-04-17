@@ -64,7 +64,7 @@ Storyboards live alongside schemas at `/compliance/{version}/`. They define the 
 | `/compliance/{version}/specialisms/{id}/` | Optional specialization claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`) |
 | `/compliance/{version}/index.json` | Enumerates available domains, specialisms, and universal storyboards |
 
-Declare the domains and specialisms your agent supports in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/compliance-catalog) for every domain and specialism an agent can claim.
+Declare `supported_protocols` (for domain baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/compliance-catalog) for every protocol and specialism an agent can claim.
 
 ### Common Schemas
 

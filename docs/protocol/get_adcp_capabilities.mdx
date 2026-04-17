@@ -79,29 +79,21 @@ Core AdCP protocol information:
 
 ### supported_protocols
 
-Array of RPC protocol surfaces this seller exposes. This is independent of the compliance classification below — `supported_protocols` answers *"which tools does this agent implement"*, while `domains` and `specialisms` answer *"which compliance storyboards does this agent commit to pass"*.
+AdCP domain protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/domains/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../domains/media-buy/`).
 
 ```json
 {
-  "supported_protocols": ["media_buy"]
+  "supported_protocols": ["media_buy", "creative"]
 }
 ```
 
-### domains
+Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`, `compliance_testing`. `compliance_testing` is an RPC surface only (the [compliance test controller](/docs/building/implementation/comply-test-controller)) — it has no compliance baseline.
 
-Compliance domains this agent claims. Each entry corresponds to a baseline storyboard bundle at `/compliance/{version}/domains/{domain}/` that the agent commits to pass. See the [Compliance Catalog](/docs/building/compliance-catalog) for every domain's scope and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/adcp-domain.json) for the full list.
-
-```json
-{
-  "domains": ["media-buy", "creative"]
-}
-```
-
-Valid values: `media-buy`, `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`.
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope.
 
 ### specialisms
 
-Optional specialization claims. Each entry corresponds to a storyboard at `/compliance/{version}/specialisms/{id}/`. Every specialism rolls up to one domain — claiming `sales-guaranteed` implies claiming `media-buy`. The runner rejects a specialism claim if the parent domain is missing.
+Optional specialization claims. Each entry corresponds to a narrow storyboard at `/compliance/{version}/specialisms/{id}/`. Every specialism rolls up to one protocol in `supported_protocols` — claiming `sales-guaranteed` requires `media_buy`. The runner rejects a specialism whose parent protocol is missing.
 
 ```json
 {
