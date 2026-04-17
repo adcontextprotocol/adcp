@@ -71,62 +71,6 @@ describe('Admin Endpoints Integration Tests', () => {
     await pool.query('DELETE FROM agreements WHERE TRUE');
   });
 
-  describe('GET /api/admin/members', () => {
-    it('should list all organization members', async () => {
-      const response = await request(app)
-        .get('/api/admin/members')
-        .expect(200);
-
-      expect(response.body).toBeInstanceOf(Array);
-
-      // Should include our test organization
-      const testOrg = response.body.find((m: any) => m.company_id === TEST_ORG_ID);
-      expect(testOrg).toBeDefined();
-      expect(testOrg.company_name).toBe('Test Admin Org');
-      expect(testOrg.subscription_status).toMatch(/none|active|expired|canceled/);
-    });
-
-    it('should compute subscription status correctly', async () => {
-      // Set up organization with active subscription
-      await pool.query(
-        `UPDATE organizations
-         SET subscription_amount = 2999,
-             subscription_interval = 'month',
-             subscription_current_period_end = NOW() + INTERVAL '30 days',
-             subscription_canceled_at = NULL
-         WHERE workos_organization_id = $1`,
-        [TEST_ORG_ID]
-      );
-
-      const response = await request(app)
-        .get('/api/admin/members')
-        .expect(200);
-
-      const testOrg = response.body.find((m: any) => m.company_id === TEST_ORG_ID);
-      expect(testOrg.subscription_status).toBe('active');
-    });
-
-    it('should show canceled status when subscription is canceled', async () => {
-      // Set up organization with canceled subscription
-      await pool.query(
-        `UPDATE organizations
-         SET subscription_amount = 2999,
-             subscription_interval = 'month',
-             subscription_current_period_end = NOW() + INTERVAL '30 days',
-             subscription_canceled_at = NOW()
-         WHERE workos_organization_id = $1`,
-        [TEST_ORG_ID]
-      );
-
-      const response = await request(app)
-        .get('/api/admin/members')
-        .expect(200);
-
-      const testOrg = response.body.find((m: any) => m.company_id === TEST_ORG_ID);
-      expect(testOrg.subscription_status).toBe('canceled');
-    });
-  });
-
   describe('GET /api/admin/agreements', () => {
     it('should list all agreements without text', async () => {
       // Create a test agreement
@@ -226,7 +170,7 @@ describe('Admin Endpoints Integration Tests', () => {
     });
   });
 
-  describe('POST /api/admin/members/:orgId/sync', () => {
+  describe('POST /api/admin/accounts/:orgId/sync', () => {
     it('should sync organization data from WorkOS and Stripe', async () => {
       // First check that organization exists and has subscription data
       const beforeSync = await pool.query(
@@ -236,7 +180,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
       // Call the sync endpoint
       const response = await request(app)
-        .post(`/api/admin/members/${TEST_ORG_ID}/sync`)
+        .post(`/api/admin/accounts/${TEST_ORG_ID}/sync`)
         .expect(200);
 
       // Check response structure
@@ -253,7 +197,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should return 404 for non-existent organization', async () => {
       const response = await request(app)
-        .post('/api/admin/members/org_nonexistent/sync')
+        .post('/api/admin/accounts/org_nonexistent/sync')
         .expect(404);
 
       expect(response.body.error).toBe('Organization not found');
@@ -270,7 +214,7 @@ describe('Admin Endpoints Integration Tests', () => {
       );
 
       const response = await request(app)
-        .post(`/api/admin/members/${fakeOrgId}/sync`)
+        .post(`/api/admin/accounts/${fakeOrgId}/sync`)
         .expect(200);
 
       // WorkOS should fail for non-existent org
@@ -282,7 +226,7 @@ describe('Admin Endpoints Integration Tests', () => {
     });
   });
 
-  describe('DELETE /api/admin/members/:orgId', () => {
+  describe('DELETE /api/admin/accounts/:orgId', () => {
     const DELETE_TEST_ORG_ID = 'org_delete_test';
     const DELETE_TEST_PAID_ORG_ID = 'org_delete_test_paid';
 
@@ -319,7 +263,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should return 404 for non-existent organization', async () => {
       const response = await request(app)
-        .delete('/api/admin/members/org_nonexistent')
+        .delete('/api/admin/accounts/org_nonexistent')
         .send({ confirmation: 'Some Name' })
         .expect(404);
 
@@ -328,7 +272,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should require confirmation to delete', async () => {
       const response = await request(app)
-        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
         .send({})
         .expect(400);
 
@@ -339,7 +283,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should reject wrong confirmation name', async () => {
       const response = await request(app)
-        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
         .send({ confirmation: 'Wrong Name' })
         .expect(400);
 
@@ -348,7 +292,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should prevent deletion of organization with payment history', async () => {
       const response = await request(app)
-        .delete(`/api/admin/members/${DELETE_TEST_PAID_ORG_ID}`)
+        .delete(`/api/admin/accounts/${DELETE_TEST_PAID_ORG_ID}`)
         .send({ confirmation: 'Paid Test Org' })
         .expect(400);
 
@@ -365,7 +309,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
     it('should successfully delete unpaid organization with correct confirmation', async () => {
       const response = await request(app)
-        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
         .send({ confirmation: 'Delete Test Org' })
         .expect(200);
 
@@ -398,7 +342,7 @@ describe('Admin Endpoints Integration Tests', () => {
 
       // Delete the organization
       await request(app)
-        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
         .send({ confirmation: 'Delete Test Org' })
         .expect(200);
 
@@ -431,7 +375,7 @@ describe('Admin Endpoints Integration Tests', () => {
       });
 
       const response = await request(app)
-        .delete(`/api/admin/members/${SUB_ORG_ID}`)
+        .delete(`/api/admin/accounts/${SUB_ORG_ID}`)
         .send({ confirmation: 'Subscribed Test Org' })
         .expect(400);
 

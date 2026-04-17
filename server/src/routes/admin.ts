@@ -27,8 +27,8 @@ import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
 import { setupStatsRoutes } from "./admin/stats.js";
 import { setupDiscountRoutes } from "./admin/discounts.js";
-import { setupMembersRoutes } from "./admin/members.js";
 import { setupAccountRoutes } from "./admin/accounts.js";
+import { setupAccountsBillingRoutes } from "./admin/accounts-billing.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
@@ -147,11 +147,11 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Discount management routes
   setupDiscountRoutes(apiRouter);
 
-  // Members management routes (list, sync, payments, delete)
-  setupMembersRoutes(apiRouter, { workos });
-
   // Unified account management routes (replaces separate prospect/org detail)
   setupAccountRoutes(pageRouter, apiRouter, { workos });
+
+  // Per-account billing actions (sync from Stripe/WorkOS, payment history, delete)
+  setupAccountsBillingRoutes(apiRouter, { workos });
 
   // Brand registry enrichment routes (Brandfetch)
   setupBrandEnrichmentRoutes(apiRouter);

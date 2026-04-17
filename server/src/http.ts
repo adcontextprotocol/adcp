@@ -5387,9 +5387,12 @@ Disallow: /api/admin/
     // Serve admin pages
     // Note: /admin/prospects route is now in routes/admin.ts
 
-    this.app.get('/admin/members', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-members.html');
-    });
+    // /admin/members was folded into /admin/accounts (members filter tab).
+    // Billing actions live on the account detail page.
+    this.app.get('/admin/members', requireAuth, requireAdmin, (_req, res) =>
+      res.redirect(301, '/admin/accounts?view=members'));
+    this.app.get('/admin/members/:orgId', requireAuth, requireAdmin, (req, res) =>
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`));
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
