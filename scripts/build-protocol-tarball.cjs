@@ -81,7 +81,6 @@ function walk(dir, base = dir) {
 }
 
 function writeBundleReadme(bundleDir, version, isDev) {
-  const tarballName = isDev ? 'latest.tgz' : `${version}.tgz`;
   const extractedDir = isDev ? 'adcp-latest' : `adcp-${version}`;
   const quickstart = isDev
     ? `\`\`\`bash
