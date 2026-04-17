@@ -23,15 +23,12 @@ import {
   comply,
   getBriefsByVertical,
   SAMPLE_BRIEFS,
-  getAllPlatformTypes,
-  getPlatformProfile,
   type ComplyOptions,
   type ComplianceTrack,
-  type PlatformType,
 } from '../services/compliance-testing.js';
 import {
-  loadBundledStoryboards,
-  getStoryboardById,
+  listAllComplianceStoryboards,
+  getComplianceStoryboardById,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
@@ -891,8 +888,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
-        tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable)' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Declare the platform type for coherence checking — verifies the agent supports the tracks and tools expected for its platform category' },
+        tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
       },
       required: ['agent_url'],
     },
@@ -910,7 +906,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         verticals: { type: 'array', items: { type: 'string' }, description: 'Verticals the publisher serves (e.g., automotive, healthcare, tech)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels from the media kit (e.g., display, video, podcast, audio, newsletter, dooh, ctv)' },
         formats: { type: 'array', items: { type: 'string' }, description: 'Specific format types offered' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type for expected channel/tool context' },
         sample_io: { type: 'string', description: 'Text of a sample IO or RFP response for additional comparison' },
       },
       required: ['agent_url', 'media_kit_summary'],
@@ -1065,7 +1060,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type — determines which compliance tracks and tools are expected. Ask the user what type of agent this is.' },
       },
       required: ['agent_url'],
     },
@@ -3127,7 +3121,6 @@ export function createMemberToolHandlers(
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
-    const platformType = input.platform_type as PlatformType | undefined;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3140,27 +3133,6 @@ export function createMemberToolHandlers(
       auth: buildAuthOption(resolved),
     };
     if (tracks) complyOptions.tracks = tracks;
-
-    // platform_type is optional — storyboards self-select based on agent tools.
-    // If provided, it adds advisory coherence checking but doesn't gate execution.
-    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-    let effectivePlatformType = platformType;
-    if (!effectivePlatformType) {
-      try {
-        const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
-        if (metadata?.platform_type && validPlatformTypes.has(metadata.platform_type)) {
-          effectivePlatformType = metadata.platform_type as PlatformType;
-        }
-      } catch { /* ignore lookup failures */ }
-    }
-    if (platformType && validPlatformTypes.has(platformType as string)) {
-      try {
-        await complianceDb.upsertRegistryMetadata(resolved.resolvedUrl, { platform_type: platformType });
-      } catch { /* ignore save failures */ }
-    }
-    if (effectivePlatformType) {
-      complyOptions.platform_type = effectivePlatformType;
-    }
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
@@ -3228,26 +3200,6 @@ export function createMemberToolHandlers(
         }
       }
 
-      // Platform coherence section (only when platform_type was provided)
-      if (result.platform_coherence) {
-        const pc = result.platform_coherence;
-        output += `\n### Platform Coherence: ${pc.label}\n\n`;
-        output += `**Coherent:** ${pc.coherent ? 'yes' : 'no'}\n`;
-        output += `**Expected tracks:** ${pc.expected_tracks.join(', ')}\n`;
-        if (pc.missing_tracks.length > 0) {
-          output += `**Missing tracks:** ${pc.missing_tracks.join(', ')}\n`;
-        }
-        if (pc.findings.length > 0) {
-          output += `\n**Findings:**\n`;
-          for (const finding of pc.findings) {
-            const sev = finding.severity.toUpperCase();
-            output += `- [${sev}] Expected: ${finding.expected} | Actual: ${finding.actual}\n`;
-            output += `  → ${finding.guidance}\n`;
-          }
-        }
-        output += '\n';
-      }
-
       if (result.observations.length > 0) {
         output += `\n### Advisory Observations\n\n`;
         for (const obs of result.observations) {
@@ -3259,7 +3211,7 @@ export function createMemberToolHandlers(
         }
       }
 
-      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.${platformType ? ` Consider the platform coherence findings — missing tracks or capabilities that are expected for a ${platformType} are high-priority gaps.` : ''}`;
+      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
       return output;
     } catch (error) {
@@ -3301,7 +3253,7 @@ export function createMemberToolHandlers(
     }
 
     // Match storyboards to agent tools
-    const allStoryboards = loadBundledStoryboards();
+    const allStoryboards = listAllComplianceStoryboards();
     const applicable = allStoryboards.filter(sb => {
       if (!sb.required_tools?.length) return true;
       return sb.required_tools.some(tool => agentTools.includes(tool));
@@ -3356,9 +3308,9 @@ export function createMemberToolHandlers(
   handlers.set('get_storyboard_detail', async (input) => {
     const storyboardId = input.storyboard_id as string;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) {
-      const all = loadBundledStoryboards();
+      const all = listAllComplianceStoryboards();
       const ids = all.map(s => `\`${s.id}\``).join(', ');
       return `Storyboard "${storyboardId}" not found. Available: ${ids}`;
     }
@@ -3409,7 +3361,7 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -3472,7 +3424,7 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -3550,7 +3502,6 @@ export function createMemberToolHandlers(
     const verticals = input.verticals as string[] | undefined;
     const channels = (input.channels as string[] | undefined)?.slice(0, 20);
     const formats = (input.formats as string[] | undefined)?.slice(0, 20);
-    const platformType = input.platform_type as PlatformType | undefined;
     const sampleIo = input.sample_io as string | undefined;
 
     const urlError = validateAgentUrl(agentUrl);
@@ -3596,9 +3547,6 @@ export function createMemberToolHandlers(
     if (briefsToRun.length === 0) {
       return 'No briefs could be constructed from the media kit summary. Provide at least one vertical or channel.';
     }
-
-    // Get platform profile for expected channels/tools context
-    const platformProfile = platformType ? getPlatformProfile(platformType) : undefined;
 
     try {
       const { AdCPClient } = await import('@adcp/client');
@@ -3741,25 +3689,6 @@ export function createMemberToolHandlers(
         output += `**Coverage:** ${foundChannels.length}/${effectiveChannels.length} stated channels\n\n`;
       }
 
-      // Platform profile context (when platform_type provided)
-      if (platformProfile) {
-        const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
-        const foundChannelSet = Array.from(allChannelsFound);
-        output += `### Platform expectations: ${platformProfile.label}\n\n`;
-        if (platformProfile.expected_channels?.length) {
-          const missingPlatformChannels = platformProfile.expected_channels.filter(ch =>
-            !foundChannelSet.some(found => normalize(found) === normalize(ch))
-          );
-          if (missingPlatformChannels.length > 0) {
-            output += `**Expected channels not found:** ${missingPlatformChannels.join(', ')}\n`;
-          } else {
-            output += `**All expected channels present**\n`;
-          }
-        }
-        output += `**Expected tracks:** ${platformProfile.expected_tracks.join(', ')}\n`;
-        output += `**Expected tools:** ${platformProfile.expected_tools.join(', ')}\n\n`;
-      }
-
       // Per-brief results
       output += `### Per-brief results\n\n`;
       for (const br of briefResults) {
@@ -3776,11 +3705,8 @@ export function createMemberToolHandlers(
       // Available sample briefs for context
       const availableVerticals = [...new Set(SAMPLE_BRIEFS.map(b => b.vertical))];
       output += `\n_Curated sample briefs available for: ${availableVerticals.join(', ')}_\n`;
-      if (platformType) {
-        output += `_Platform type: ${platformProfile?.label ?? platformType}_\n`;
-      }
 
-      output += `\nInterpret these results for the publisher. Highlight specific gaps between their media kit and what the agent returns. For missing channels or formats, explain what buyers would expect and suggest how to add them.${platformProfile ? ` Factor in the platform expectations — a ${platformProfile.label} should support ${platformProfile.expected_tracks.join(', ')} tracks.` : ''}`;
+      output += `\nInterpret these results for the publisher. Highlight specific gaps between their media kit and what the agent returns. For missing channels or formats, explain what buyers would expect and suggest how to add them.`;
 
       return output;
     } catch (error) {
@@ -4712,13 +4638,6 @@ export function createMemberToolHandlers(
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
-    const platformType = input.platform_type as string | undefined;
-
-    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-
-    if (platformType && !validPlatformTypes.has(platformType)) {
-      return `Invalid platform_type "${platformType}". Valid types: ${[...validPlatformTypes].join(', ')}`;
-    }
 
     async function ensureAgentInProfile(displayName: string): Promise<void> {
       if (!saveOrgId) return;
@@ -4750,9 +4669,6 @@ export function createMemberToolHandlers(
         }
         context = await agentContextDb.getById(context.id);
 
-        if (platformType) {
-          await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
-        }
         await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
@@ -4778,9 +4694,6 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
       }
 
-      if (platformType) {
-        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
-      }
       await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;

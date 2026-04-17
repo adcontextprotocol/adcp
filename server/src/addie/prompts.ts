@@ -64,7 +64,7 @@ When to use ask_about_adcp_task: For uncommon tasks (governance, SI, signals), w
 
 **Agent Management (compliance monitoring for seller agents):**
 Compliance monitoring is for **seller agents** — MCP servers that expose inventory to buyer agents. This is how publishers and platforms track whether their agent stays protocol-compliant over time.
-- save_agent: Register a seller agent for ongoing compliance monitoring. The agent must be an MCP server the user's organization operates. Accepts optional platform_type for advisory coherence checking, but storyboards auto-select based on agent tools so it's not required.
+- save_agent: Register a seller agent for ongoing compliance monitoring. The agent must be an MCP server the user's organization operates. Storyboards auto-select based on the agent's get_adcp_capabilities response (supported_protocols + specialisms).
 - list_saved_agents: List all agents saved for the organization
 - remove_saved_agent: Remove a saved agent
 

@@ -10,7 +10,7 @@
 
 import {
   runStoryboard,
-  loadBundledStoryboards,
+  listAllComplianceStoryboards,
   type StoryboardResult,
   type StoryboardStepResult,
 } from '@adcp/client/testing';
@@ -28,7 +28,7 @@ async function main() {
   console.log(`Agent: ${agentUrl}`);
   console.log(`Filter: ${storyboardFilter || '(all storyboards)'}\n`);
 
-  const allStoryboards = loadBundledStoryboards()
+  const allStoryboards = listAllComplianceStoryboards()
     .filter(sb => !storyboardFilter || sb.id === storyboardFilter);
 
   if (allStoryboards.length === 0) {

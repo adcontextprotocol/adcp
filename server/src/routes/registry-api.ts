@@ -9,7 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { createTestClient, loadBundledStoryboards, runStoryboardStep, getStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
+import { createTestClient, listAllComplianceStoryboards, runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -69,7 +69,6 @@ import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
-import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 
@@ -1613,7 +1612,7 @@ registry.registerPath({
   operationId: "connectAgent",
   summary: "Connect agent credentials",
   description:
-    "Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.",
+    "Store authentication credentials for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -1626,7 +1625,6 @@ registry.registerPath({
           schema: z.object({
             auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
             auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
-            platform_type: z.string().optional().openapi({ description: "Agent platform type" }),
           }),
         },
       },
@@ -1641,7 +1639,6 @@ registry.registerPath({
             connected: z.literal(true),
             has_auth: z.boolean(),
             agent_context_id: z.string(),
-            platform_type: z.string().optional(),
           }),
         },
       },
@@ -3781,7 +3778,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const { auth_token, auth_type, platform_type } = req.body;
+      const { auth_token, auth_type } = req.body;
 
       if (auth_token && typeof auth_token !== "string") {
         return res.status(400).json({ error: "auth_token must be a string" });
@@ -3795,16 +3792,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
       }
       const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
-
-      if (platform_type && typeof platform_type !== "string") {
-        return res.status(400).json({ error: "platform_type must be a string" });
-      }
-      const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-      if (platform_type && !validPlatformTypes.has(platform_type)) {
-        return res.status(400).json({
-          error: `Invalid platform_type. Valid types: ${[...validPlatformTypes].join(", ")}`,
-        });
-      }
 
       // Verify ownership and get org ID in a single query
       const orgResult = await query(
@@ -3839,16 +3826,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
       }
 
-      // Set platform type if provided
-      if (platform_type) {
-        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type });
-      }
-
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
         agent_context_id: context.id,
-        platform_type: platform_type || undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to connect agent");
@@ -3923,7 +3904,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
       const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
-      const allStoryboards = loadBundledStoryboards();
+      const allStoryboards = listAllComplianceStoryboards();
       const applicable = allStoryboards.filter(sb => {
         if (!sb.required_tools?.length) return true;
         return sb.required_tools.some(tool => agentTools.includes(tool));
@@ -3982,7 +3963,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -4020,7 +4001,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }

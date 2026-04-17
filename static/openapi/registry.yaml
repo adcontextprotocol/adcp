@@ -1264,10 +1264,6 @@ components:
             - testing
             - production
             - deprecated
-        platform_type:
-          type:
-            - string
-            - "null"
         compliance_opt_out:
           type: boolean
         monitoring_paused:
@@ -1285,7 +1281,6 @@ components:
       required:
         - agent_url
         - lifecycle_stage
-        - platform_type
         - compliance_opt_out
         - monitoring_paused
         - check_interval_hours
@@ -4755,7 +4750,7 @@ paths:
     put:
       operationId: connectAgent
       summary: Connect agent credentials
-      description: Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.
+      description: Store authentication credentials for an agent. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -4784,9 +4779,6 @@ paths:
                     - bearer
                     - basic
                   description: "Auth type (default: bearer)"
-                platform_type:
-                  type: string
-                  description: Agent platform type
       responses:
         "200":
           description: Connection result
@@ -4802,8 +4794,6 @@ paths:
                   has_auth:
                     type: boolean
                   agent_context_id:
-                    type: string
-                  platform_type:
                     type: string
                 required:
                   - connected
