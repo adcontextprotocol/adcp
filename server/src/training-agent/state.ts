@@ -77,14 +77,24 @@ interface RequestSessionCtx {
   sessions: Map<string, SessionState>;
   /** Serialized snapshot taken at load time. Compared at flush to detect real mutations. */
   snapshots: Map<string, string>;
+  /** Set by the dispatcher when a handler throws. flushDirtySessions() refuses to
+   * persist state from a request that bailed mid-way — we'd risk writing partially
+   * mutated data. */
+  handlerFailed: boolean;
 }
 
 const requestCtx = new AsyncLocalStorage<RequestSessionCtx>();
 
 /** Wrap a request so getSession()/flushDirtySessions() use a per-request cache. */
 export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
-  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map() };
+  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map(), handlerFailed: false };
   return requestCtx.run(ctx, fn);
+}
+
+/** Mark the current request as failed so subsequent flushDirtySessions() is a no-op. */
+export function markHandlerFailed(): void {
+  const ctx = requestCtx.getStore();
+  if (ctx) ctx.handlerFailed = true;
 }
 
 const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -104,6 +114,10 @@ const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
   if (!ctx || ctx.sessions.size === 0) return;
+  if (ctx.handlerFailed) {
+    logger.warn({ keys: [...ctx.sessions.keys()] }, 'Skipping flush: handler threw mid-request');
+    return;
+  }
   const store = getStore();
   for (const [key, session] of ctx.sessions) {
     const current = serializeSession(session);
@@ -215,10 +229,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     // Only proposals persist; products are deterministic from the catalog, so callers
     // re-derive on the next request via the fallback in the get_products handler.
     lastGetProductsContext: Array.isArray(data.lastGetProductsProposals) && data.lastGetProductsProposals.length > 0
-      ? {
-          products: undefined as unknown as NonNullable<SessionState['lastGetProductsContext']>['products'],
-          proposals: data.lastGetProductsProposals as NonNullable<SessionState['lastGetProductsContext']>['proposals'],
-        }
+      ? { proposals: data.lastGetProductsProposals as NonNullable<SessionState['lastGetProductsContext']>['proposals'] }
       : undefined,
     createdAt: asDate(data.createdAt),
     lastAccessedAt: asDate(data.lastAccessedAt),
@@ -302,7 +313,8 @@ export function sessionKeyFromArgs(
   }
   const domain = account?.brand?.domain ?? args.brand?.domain;
   const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
-  return `open:${safeDomain || 'default'}`;
+  // DNS is case-insensitive — normalise so Example.com and example.com share a session.
+  return `open:${safeDomain ? safeDomain.toLowerCase() : 'default'}`;
 }
 
 // ── TTL cleanup ──────────────────────────────────────────────────

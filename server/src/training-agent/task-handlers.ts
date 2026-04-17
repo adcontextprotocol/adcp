@@ -166,7 +166,7 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
-  runWithSessionContext, flushDirtySessions,
+  runWithSessionContext, flushDirtySessions, markHandlerFailed,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -3093,6 +3093,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
       taskFailed = true;
+      markHandlerFailed();
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',

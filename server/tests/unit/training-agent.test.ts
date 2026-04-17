@@ -750,6 +750,30 @@ describe('session state', () => {
         expect(s2.lastAccessedAt.getTime()).toBeGreaterThanOrEqual(firstAccess.getTime());
       });
     });
+
+    it('does not flush when handler failed mid-request', async () => {
+      const { markHandlerFailed } = await import('../../src/training-agent/state.js');
+      const key = 'flush-skip-test';
+      // Seed: persist mb1 via a clean request
+      await runWithSessionContext(async () => {
+        const s = await getSession(key);
+        s.mediaBuys.set('mb1', { status: 'active' } as any);
+        await flushDirtySessions();
+      });
+      // Simulate a failing request: mutate then mark failed
+      await runWithSessionContext(async () => {
+        const s = await getSession(key);
+        s.mediaBuys.set('mb2', { status: 'broken' } as any);
+        markHandlerFailed();
+        await flushDirtySessions();
+      });
+      // Verify mb2 was NOT persisted
+      await runWithSessionContext(async () => {
+        const s = await getSession(key);
+        expect(s.mediaBuys.has('mb1')).toBe(true);
+        expect(s.mediaBuys.has('mb2')).toBe(false);
+      });
+    });
   });
 
   describe('sessionKeyFromArgs', () => {
@@ -769,6 +793,13 @@ describe('session state', () => {
         'open',
       );
       expect(key).toBe('open:acme.example');
+    });
+
+    it('lowercases brand domain so DNS casing does not fork sessions', () => {
+      const a = sessionKeyFromArgs({ brand: { domain: 'Acme.Example' } }, 'open');
+      const b = sessionKeyFromArgs({ brand: { domain: 'acme.example' } }, 'open');
+      expect(a).toBe(b);
+      expect(a).toBe('open:acme.example');
     });
 
     it('uses account_id when account has account_id form', () => {
