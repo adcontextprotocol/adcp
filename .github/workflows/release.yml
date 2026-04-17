@@ -12,6 +12,13 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    # id-token: write lets cosign request a Sigstore OIDC token from the
+    # Actions runner during `npm run version` — this is what binds the
+    # detached signature to the workflow identity that produced it.
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
@@ -23,6 +30,11 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
 
       - name: Install Dependencies
         run: npm ci
