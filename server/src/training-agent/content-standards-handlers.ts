@@ -139,7 +139,7 @@ function toStandardsResponse(state: ContentStandardsState) {
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-export function handleCreateContentStandards(
+export async function handleCreateContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -154,7 +154,7 @@ export function handleCreateContentStandards(
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (session.contentStandards.size >= MAX_CONTENT_STANDARDS_PER_SESSION) {
     return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CONTENT_STANDARDS_PER_SESSION} content standards).` }] };
@@ -184,12 +184,12 @@ export function handleCreateContentStandards(
   };
 }
 
-export function handleListContentStandards(
+export async function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let standards = [...session.contentStandards.values()];
 
@@ -216,12 +216,12 @@ export function handleListContentStandards(
   };
 }
 
-export function handleGetContentStandards(
+export async function handleGetContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -233,7 +233,7 @@ export function handleGetContentStandards(
   };
 }
 
-export function handleUpdateContentStandards(
+export async function handleUpdateContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -249,7 +249,7 @@ export function handleUpdateContentStandards(
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -279,12 +279,12 @@ export function handleUpdateContentStandards(
   };
 }
 
-export function handleCalibrateContent(
+export async function handleCalibrateContent(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string; artifact: unknown };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -315,7 +315,7 @@ export function handleCalibrateContent(
   };
 }
 
-export function handleValidateContentDelivery(
+export async function handleValidateContentDelivery(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -324,7 +324,7 @@ export function handleValidateContentDelivery(
     records: Array<{ record_id: string; artifact?: unknown }>;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {

@@ -164,7 +164,11 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION } from './state.js';
+import {
+  getSession, sessionKeyFromArgs,
+  runWithSessionContext, flushDirtySessions,
+  MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
+} from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -834,10 +838,10 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -1048,7 +1052,7 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
+async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
   let formats = getFormats();
 
@@ -1072,9 +1076,9 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
   return { formats };
 }
 
-function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
@@ -1416,30 +1420,16 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuysArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
-    // If explicit IDs requested but not found in this session, search all sessions.
-    // Mirrors real seller behavior where media_buy_ids is a global lookup.
-    if (buys.length < filterIds.length) {
-      const foundIds = new Set(buys.map(b => b.mediaBuyId));
-      const missing = filterIds.filter(id => !foundIds.has(id));
-      for (const [, s] of getAllSessions()) {
-        if (s === session) continue;
-        for (const mb of s.mediaBuys.values()) {
-          if (missing.includes(mb.mediaBuyId)) {
-            buys.push(mb);
-            missing.splice(missing.indexOf(mb.mediaBuyId), 1);
-          }
-        }
-        if (missing.length === 0) break;
-      }
-    }
+    // Media buy lookup is scoped to the caller's session (brand/account-derived).
+    // Unknown IDs simply fall out of the filter — the response omits them.
   }
 
   // Apply status_filter (default to ['active'] when no IDs provided)
@@ -1518,22 +1508,13 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
+async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  let mb = session.mediaBuys.get(mediaBuyId);
-
-  // Cross-session fallback for explicit ID lookup
-  if (!mb) {
-    for (const [, s] of getAllSessions()) {
-      if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId);
-      if (mb) break;
-    }
-  }
+  const mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb) {
     return {
@@ -1699,9 +1680,9 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
   };
 }
 
-function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
+async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const isDryRun = req.dry_run === true;
 
   if (!req.creatives?.length) {
@@ -1798,9 +1779,9 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
+async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
@@ -1856,20 +1837,11 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as UpdateMediaBuyArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
-  let mb = session.mediaBuys.get(mediaBuyId);
-
-  // Cross-session fallback for explicit ID lookup
-  if (!mb) {
-    for (const [, s] of getAllSessions()) {
-      if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId);
-      if (mb) break;
-    }
-  }
+  const mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
@@ -2100,7 +2072,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Record<string, unknown> {
+async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Promise<Record<string, unknown>> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -2179,13 +2151,13 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
 
 const MAX_SIGNAL_RESULTS = 10;
 
-function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
   const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   const allSignals = getAllSignals();
   let results = allSignals;
@@ -2311,7 +2283,7 @@ function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
-function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
+async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ActivateSignalRequest & ToolArgs & {
     signal_id?: string;
     destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
@@ -2333,7 +2305,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
@@ -2428,9 +2400,9 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
+async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
@@ -2572,9 +2544,9 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
+async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
-  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
@@ -2713,9 +2685,9 @@ interface PreviewCreativeArgs {
   item_limit?: number;
 }
 
-function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
+async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PreviewCreativeArgs;
-  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
@@ -2829,9 +2801,9 @@ interface ReportUsageArgs extends ToolArgs {
   }>;
 }
 
-function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
+async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period || !req.usage?.length) {
     return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
@@ -3028,6 +3000,22 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    // Wrap handler execution + task storage in a per-request session context so
+    // getSession() calls cache within the request and real mutations are flushed
+    // at the end (solves cross-Fly-machine persistence). Flush only on clean
+    // return from the handler — if the handler threw, discard any in-progress
+    // session state rather than persisting half-mutated data.
+    return runWithSessionContext(async () => {
+      const { result, flushable } = await dispatchCallTool(request, extra);
+      if (flushable) await flushDirtySessions();
+      return result;
+    });
+  });
+
+  async function dispatchCallTool(
+    request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
+    _extra: unknown,
+  ): Promise<{ result: object; flushable: boolean }> {
     const { name, arguments: args } = request.params;
 
     // Extract and strip context before passing args to handlers (AdCP requirement:
@@ -3038,7 +3026,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
+      // Pre-handler validation failures don't touch session state, so flushing
+      // is a no-op; leaving flushable=true keeps behaviour consistent for
+      // requests whose handlers DO legitimately mutate before failing.
+      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext), flushable: true };
     }
 
     const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
@@ -3046,11 +3037,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       requestedVersion !== undefined
       && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
     ) {
-      return adcpError('VERSION_UNSUPPORTED', {
-        message: `AdCP major version ${String(requestedVersion)} is not supported`,
-        details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
-        field: 'adcp_major_version',
-      }, callerContext);
+      return {
+        result: adcpError('VERSION_UNSUPPORTED', {
+          message: `AdCP major version ${String(requestedVersion)} is not supported`,
+          details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
+          field: 'adcp_major_version',
+        }, callerContext),
+        flushable: true,
+      };
     }
 
     // Check for task-augmented request (explicit `task` field in params).
@@ -3069,6 +3063,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // mark the task as failed.
     let toolResult: CallToolResult;
     let taskFailed = false;
+    let handlerThrew = false;
     try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
@@ -3105,15 +3100,19 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
       taskFailed = true;
+      handlerThrew = true;
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
       }, callerContext);
     }
 
-    // If not task-augmented, return result directly
+    // If not task-augmented, return result directly.
+    // flushable=!handlerThrew: if the handler threw, discard in-progress session
+    // state. Structured { errors: [...] } responses still flush — they are
+    // well-formed outcomes that legitimately mutate state.
     if (!isTaskRequest) {
-      return toolResult;
+      return { result: toolResult, flushable: !handlerThrew };
     }
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
@@ -3147,8 +3146,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { task } as object;
-  });
+    return { result: { task } as object, flushable: !handlerThrew };
+  }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered
   // by the SDK when taskStore is provided to the Server constructor.

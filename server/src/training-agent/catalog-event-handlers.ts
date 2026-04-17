@@ -272,7 +272,7 @@ export const CATALOG_EVENT_TOOLS = [
 
 const VALID_CATALOG_TYPES = ['product', 'offering', 'inventory', 'store', 'promotion', 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination'];
 
-export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCatalogsInput;
 
   if (!req.account) {
@@ -392,7 +392,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncEventSourcesInput;
 
   if (!req.account) {
@@ -464,7 +464,7 @@ export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   return { event_sources: results };
 }
 
-export function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
+export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as LogEventInput;
 
   if (!req.event_source_id) {
@@ -525,7 +525,7 @@ export function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-export function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingContext) {
+export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PerformanceFeedbackInput;
 
   if (!req.media_buy_id) {
@@ -548,7 +548,7 @@ export function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingCo
 
   // Validate media buy exists in session
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = getSession(sessionKey);
+  const session = await getSession(sessionKey);
   if (!session.mediaBuys.has(req.media_buy_id)) {
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy '${req.media_buy_id}' not found. Create a media buy first via create_media_buy.` }],

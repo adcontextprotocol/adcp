@@ -275,8 +275,8 @@ const GOVERNANCE_CATEGORIES = [
 
 // ── Handler implementations ─────────────────────────────────────
 
-export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as SyncPlansInput;
 
   if (!input.plans?.length) {
@@ -368,9 +368,9 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   return { plans: results };
 }
 
-export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
+export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const caller = req.caller;
   const purchaseType = req.purchase_type || 'media_buy';
@@ -759,9 +759,9 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   return buildCheckResponse(check);
 }
 
-export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
+export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
   const req = args as ReportPlanOutcomeInput;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const checkId = req.check_id;
   const governanceContext = req.governance_context;
@@ -855,9 +855,9 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as GetPlanAuditLogsInput;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
   const governanceContextsFilter = req.governance_contexts;

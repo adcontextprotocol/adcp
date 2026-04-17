@@ -473,7 +473,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const store = createStore(session);
   return dispatch(store, args as Record<string, unknown>);
 }
