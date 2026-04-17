@@ -1709,7 +1709,7 @@ export function setupAccountRoutes(
               'email' as source,
               eca.email_date as timestamp,
               'email_received' as action,
-              COALESCE(ec.name, ec.email) as actor_name,
+              COALESCE(ec.display_name, ec.email) as actor_name,
               o.name as org_name,
               o.workos_organization_id as org_id,
               eca.subject as description,
@@ -1730,7 +1730,7 @@ export function setupAccountRoutes(
                 WHEN er.attended THEN 'attended'
                 ELSE er.registration_status
               END as action,
-              COALESCE(ec.name, u.first_name || ' ' || u.last_name, ec.email, 'Unknown') as actor_name,
+              COALESCE(ec.display_name, u.first_name || ' ' || u.last_name, ec.email, 'Unknown') as actor_name,
               e.title as org_name,
               NULL as org_id,
               e.title as description,
