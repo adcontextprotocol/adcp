@@ -146,12 +146,12 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
         category: string | null;
         excerpt: string | null;
       }>(
-        `SELECT id, title, category, excerpt FROM perspectives WHERE slug = $1 AND status = 'published'`,
+        `SELECT id, title, category, excerpt FROM perspectives WHERE slug = $1`,
         [slug]
       );
 
       if (rows.length === 0) {
-        return res.status(404).json({ error: 'Published perspective not found' });
+        return res.status(404).json({ error: 'Content not found' });
       }
 
       const perspective = rows[0];

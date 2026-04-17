@@ -296,7 +296,7 @@
         <div class="card">
           <div class="section-header">
             <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
-            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write Content</button>
           </div>
           <div id="participationSummary" class="hidden"></div>
           <div class="filter-bar">
@@ -320,22 +320,28 @@
         <div class="card">
           <div class="section-header">
             <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
-            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write Content</button>
           </div>
           <div class="filter-bar">
             <input type="search" id="adminSearch" placeholder="Search titles..." oninput="renderAdminTable()">
             <select id="adminStatusFilter" onchange="renderAdminTable()">
-              <option value="all">All Statuses</option>
-              <option value="published" selected>Published</option>
+              <option value="all" selected>All Statuses</option>
+              <option value="published">Published</option>
               <option value="pending_review">Pending Review</option>
               <option value="draft">Draft</option>
               <option value="archived">Archived</option>
             </select>
-            <select id="adminOriginFilter" onchange="renderAdminTable()">
-              <option value="all">All Sources</option>
-              <option value="official">Official</option>
-              <option value="member">Member</option>
-              <option value="external">External</option>
+            <select id="adminSectionFilter" onchange="renderAdminTable()">
+              <option value="all">All Sections</option>
+              <option value="official">Reports &amp; Research</option>
+              <option value="member">Member Perspectives</option>
+              <option value="external">External Link</option>
+            </select>
+            <select id="adminSourceTypeFilter" onchange="renderAdminTable()">
+              <option value="editorial" selected>Editorial only</option>
+              <option value="all">Include RSS &amp; email</option>
+              <option value="rss">RSS only</option>
+              <option value="email">Email only</option>
             </select>
             <select id="adminCategoryFilter" onchange="renderAdminTable()">
               <option value="all">All Categories</option>
@@ -347,7 +353,7 @@
           <table class="content-table">
             <thead><tr>
               <th data-sort="title" onclick="sortAdminTable('title')">Title <span class="sort-arrow">&#9650;</span></th>
-              <th data-sort="content_origin" onclick="sortAdminTable('content_origin')">Source <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="content_origin" onclick="sortAdminTable('content_origin')">Section <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="category" onclick="sortAdminTable('category')">Category <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="author_name" onclick="sortAdminTable('author_name')">Author <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="committee_name" onclick="sortAdminTable('committee_name')">Committee <span class="sort-arrow">&#9650;</span></th>
@@ -379,7 +385,7 @@
       <button class="modal-close" onclick="closeModal()" aria-label="Close">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
-      <h2 id="modalTitle">New Perspective</h2>
+      <h2 id="modalTitle">New Content</h2>
       <div class="type-toggle">
         <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">Article</button>
         <button type="button" id="typeLink" onclick="setContentType('link')">External Link</button>
@@ -390,7 +396,16 @@
         <div class="form-group">
           <label>Publish To</label>
           <select id="collection" required></select>
-          <small id="collectionHint">Where this perspective will appear on the site</small>
+          <small id="collectionHint">Where this content will appear on the site</small>
+        </div>
+        <div class="form-group hidden" id="sectionGroup">
+          <label>Section</label>
+          <select id="sectionSelect">
+            <option value="member">Member Perspectives</option>
+            <option value="official">Reports &amp; Research</option>
+            <option value="external">External Link</option>
+          </select>
+          <small>Admins only. Controls which section the piece appears in on /stories.</small>
         </div>
         <div id="linkFields" class="hidden">
           <div class="form-group">
@@ -421,11 +436,15 @@
           </div>
         </div>
 
-        <!-- Hero image upload -->
+        <!-- Hero image -->
         <div class="form-group" id="heroUploadGroup">
           <label>Cover Image</label>
+          <label style="display: flex; align-items: center; gap: var(--space-2); font-weight: normal; font-size: var(--text-sm); margin-bottom: var(--space-2);">
+            <input type="checkbox" id="autoCoverToggle" checked onchange="toggleAutoCover()" style="width: auto;">
+            Auto-generate a cover image when I save (no upload needed).
+          </label>
           <div class="image-upload-zone" id="heroDropzone" onclick="document.getElementById('heroFileInput').click()">
-            <div id="heroPreview"><p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p></div>
+            <div id="heroPreview"><p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save. Uncheck the toggle above to upload your own.</p></div>
           </div>
           <input type="file" id="heroFileInput" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="previewHeroImage(this)">
         </div>
@@ -547,11 +566,11 @@
             <option value="published">Published</option>
             <option value="archived">Archived</option>
           </select>
-          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Source:</label>
+          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Section:</label>
           <select id="detailOriginSelect" onchange="updateAdminOrigin(this.value)">
-            <option value="official">Official</option>
-            <option value="member">Member</option>
-            <option value="external">External</option>
+            <option value="official">Reports &amp; Research</option>
+            <option value="member">Member Perspectives</option>
+            <option value="external">External Link</option>
           </select>
           <button class="btn btn-small btn-danger" onclick="deleteArticle()">Delete</button>
         </div>
@@ -861,7 +880,7 @@
         const hasAny = myContent.length > 0;
         list.innerHTML = hasAny
           ? '<div class="empty-state"><h3>No matches</h3><p>Try adjusting your filters.</p></div>'
-          : '<div class="empty-state"><h3>Your first perspective</h3><p>What\'s the one thing your corner of ad tech gets wrong? Start there.</p><div style="display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);"><button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button><button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button></div></div>';
+          : '<div class="empty-state"><h3>Your first perspective</h3><p>What\'s the one thing your corner of ad tech gets wrong? Start there.</p><div style="display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);"><button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button><button class="btn btn-primary" onclick="showCreateModal()">Write Content</button></div></div>';
         return;
       }
       list.innerHTML = filtered.map(item => renderContentItem(item, false)).join('');
@@ -874,7 +893,7 @@
       if (colFilter) filtered = filtered.filter(c => c.collection?.committee_slug === colFilter);
 
       if (filtered.length === 0) {
-        list.innerHTML = '<div class="empty-state"><h3>All caught up</h3><p>No perspectives pending review.</p></div>';
+        list.innerHTML = '<div class="empty-state"><h3>All caught up</h3><p>No content pending review.</p></div>';
         return;
       }
       list.innerHTML = filtered.map(item => renderContentItem(item, true)).join('');
@@ -985,9 +1004,16 @@
       renderAdminTable();
     }
 
+    const SECTION_LABELS = {
+      official: 'Reports & Research',
+      member: 'Member Perspectives',
+      external: 'External Link',
+    };
+
     function renderAdminTable() {
       const status = document.getElementById('adminStatusFilter').value;
-      const origin = document.getElementById('adminOriginFilter').value;
+      const origin = document.getElementById('adminSectionFilter').value;
+      const sourceType = document.getElementById('adminSourceTypeFilter').value;
       const category = document.getElementById('adminCategoryFilter').value;
       const committee = document.getElementById('adminCommitteeFilter').value;
       const search = document.getElementById('adminSearch').value.toLowerCase().trim();
@@ -995,6 +1021,9 @@
       let items = adminContent.filter(item => {
         if (status !== 'all' && item.status !== status) return false;
         if (origin !== 'all' && item.content_origin !== origin) return false;
+        if (sourceType === 'editorial') {
+          if (item.source_type === 'rss' || item.source_type === 'email') return false;
+        } else if (sourceType !== 'all' && item.source_type !== sourceType) return false;
         if (category !== 'all' && item.category !== category) return false;
         if (committee !== 'all' && item.committee_name !== committee) return false;
         if (search && !item.title.toLowerCase().includes(search)) return false;
@@ -1020,7 +1049,7 @@
 
       const tbody = document.getElementById('adminTableBody');
       if (pageItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No perspectives match filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No content matches filters.</td></tr>';
         document.getElementById('adminPagination').innerHTML = '';
         return;
       }
@@ -1028,9 +1057,10 @@
       tbody.innerHTML = pageItems.map(item => {
         const statusClass = 'badge-' + esc(item.status || 'draft');
         const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
+        const sectionLabel = SECTION_LABELS[item.content_origin] || item.content_origin || '-';
         return `<tr onclick="openDetailModal('${safeId(item.id)}')">
           <td class="content-title-cell">${esc(item.title)}</td>
-          <td>${esc(item.content_origin || '-')}</td>
+          <td>${esc(sectionLabel)}</td>
           <td>${esc(item.category || '-')}</td>
           <td>${esc(item.author_name || '-')}</td>
           <td>${esc(item.committee_name || '-')}</td>
@@ -1041,7 +1071,7 @@
 
       // Pagination controls
       const pagEl = document.getElementById('adminPagination');
-      if (totalPages <= 1) { pagEl.innerHTML = `<span>${total} perspectives</span><span></span>`; return; }
+      if (totalPages <= 1) { pagEl.innerHTML = `<span>${total} ${total === 1 ? 'piece' : 'pieces'}</span><span></span>`; return; }
       pagEl.innerHTML = `
         <span>Showing ${adminPage * PAGE_SIZE + 1}-${Math.min((adminPage + 1) * PAGE_SIZE, total)} of ${total}</span>
         <span>
@@ -1101,7 +1131,7 @@
       if (!currentDetailItem) return;
       closeArticleModal();
       editingContent = currentDetailItem;
-      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('modalTitle').textContent = 'Edit Content';
       document.getElementById('contentId').value = currentDetailItem.id;
       document.getElementById('title').value = currentDetailItem.title || '';
       document.getElementById('excerpt').value = currentDetailItem.excerpt || '';
@@ -1109,6 +1139,10 @@
       document.getElementById('externalUrl').value = currentDetailItem.external_url || '';
       document.getElementById('category').value = currentDetailItem.category || '';
       document.getElementById('tagsInput').value = (currentDetailItem.tags || []).join(', ');
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = currentDetailItem.content_origin || 'member';
+      document.getElementById('autoCoverToggle').checked = !currentDetailItem.featured_image_url;
+      toggleAutoCover();
 
       // Map actual status to edit options
       const st = currentDetailItem.status;
@@ -1193,7 +1227,7 @@
     // Create/Edit modal
     function showCreateModal() {
       editingContent = null;
-      document.getElementById('modalTitle').textContent = 'New Perspective';
+      document.getElementById('modalTitle').textContent = 'New Content';
       document.getElementById('contentForm').reset();
       document.getElementById('contentId').value = '';
       document.getElementById('tagsInput').value = '';
@@ -1201,7 +1235,10 @@
       updateExcerptCount();
       updateStatusHint();
       document.getElementById('coauthorSection').classList.add('hidden');
-      document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p>';
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = 'member';
+      document.getElementById('autoCoverToggle').checked = true;
+      document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save. Uncheck the toggle above to upload your own.</p>';
       document.getElementById('contentModal').style.display = 'flex';
     }
 
@@ -1209,7 +1246,7 @@
       const item = myContent.find(c => c.id === id);
       if (!item) return;
       editingContent = item;
-      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('modalTitle').textContent = 'Edit Content';
       document.getElementById('contentId').value = item.id;
       document.getElementById('title').value = item.title || '';
       document.getElementById('excerpt').value = item.excerpt || '';
@@ -1217,6 +1254,10 @@
       document.getElementById('articleContent').value = item.content || '';
       document.getElementById('category').value = item.category || '';
       document.getElementById('tagsInput').value = (item.tags || []).join(', ');
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = item.content_origin || 'member';
+      document.getElementById('autoCoverToggle').checked = !item.featured_image_url;
+      toggleAutoCover();
 
       // Map status correctly
       const st = item.status;
@@ -1327,6 +1368,7 @@
       document.getElementById('typeLink').classList.toggle('active', type === 'link');
       document.getElementById('articleFields').classList.toggle('hidden', type !== 'article');
       document.getElementById('linkFields').classList.toggle('hidden', type !== 'link');
+      document.getElementById('heroUploadGroup').classList.toggle('hidden', type === 'link');
     }
 
     function updateExcerptCount() {
@@ -1400,11 +1442,38 @@
     function previewHeroImage(input) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      document.getElementById('autoCoverToggle').checked = false;
       const reader = new FileReader();
       reader.onload = (e) => {
         document.getElementById('heroPreview').innerHTML = `<img src="${e.target.result}" alt="Cover preview">`;
       };
       reader.readAsDataURL(file);
+    }
+
+    function toggleAutoCover() {
+      const auto = document.getElementById('autoCoverToggle').checked;
+      const preview = document.getElementById('heroPreview');
+      const input = document.getElementById('heroFileInput');
+      if (auto) {
+        input.value = '';
+        preview.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save.</p>';
+      } else if (!input.files || !input.files[0]) {
+        preview.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP).</p>';
+      }
+    }
+
+    async function autoGenerateCover(slug) {
+      try {
+        const res = await fetch(`/api/admin/illustrations/regenerate/${encodeURIComponent(slug)}`, {
+          method: 'POST', credentials: 'include',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          console.warn('Auto cover generation failed:', err);
+        }
+      } catch (e) {
+        console.warn('Auto cover generation error:', e);
+      }
     }
 
     async function uploadHeroImage(contentId, slug) {
@@ -1434,6 +1503,9 @@
         tags,
         collection: { slug: document.getElementById('collection').value },
       };
+      if (isAdmin) {
+        data.content_origin = document.getElementById('sectionSelect').value;
+      }
       const btn = document.getElementById('saveBtn');
       btn.disabled = true; const origText = btn.textContent; btn.textContent = 'Saving...';
       try {
@@ -1446,12 +1518,15 @@
         }
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed to save'); }
 
-        // Upload hero image if selected
+        // Upload hero image if selected, or auto-generate if toggle is on
         const heroInput = document.getElementById('heroFileInput');
+        const autoCover = document.getElementById('autoCoverToggle')?.checked;
+        const result = id ? { id, slug: editingContent?.slug } : await res.clone().json().catch(() => ({}));
+        const resolvedSlug = result.slug || editingContent?.slug;
         if (heroInput.files && heroInput.files[0]) {
-          const result = id ? { id } : await res.json();
-          const slug = editingContent?.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-          await uploadHeroImage(result.id, slug);
+          await uploadHeroImage(result.id, resolvedSlug);
+        } else if (autoCover && resolvedSlug && data.content_type === 'article') {
+          await autoGenerateCover(resolvedSlug);
         }
 
         closeModal();

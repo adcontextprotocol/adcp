@@ -43,7 +43,7 @@ interface ProposeContentRequest {
   tags?: string[];
   author_title?: string;
   featured_image_url?: string;
-  content_origin?: 'official' | 'member';
+  content_origin?: 'official' | 'member' | 'external';
   collection: {
     type?: 'personal' | 'committee';  // Deprecated - kept for backwards compatibility
     committee_slug?: string;
@@ -1130,6 +1130,7 @@ export function createMyContentRouter(): Router {
         category,
         tags,
         author_name,
+        content_origin,
         status: requestedStatus,
       } = req.body;
       const pool = getPool();
@@ -1210,6 +1211,13 @@ export function createMyContentRouter(): Router {
       if (author_name !== undefined) {
         updates.push(`author_name = $${paramIndex++}`);
         values.push(author_name);
+      }
+      if (content_origin !== undefined && userIsAdmin) {
+        const allowedOrigins = ['official', 'member', 'external'];
+        if (allowedOrigins.includes(content_origin)) {
+          updates.push(`content_origin = $${paramIndex++}`);
+          values.push(content_origin);
+        }
       }
       // Allow status changes: members can resubmit rejected→pending_review, or draft↔pending_review
       // Admins can set any status

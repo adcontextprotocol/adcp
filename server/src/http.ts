@@ -5414,7 +5414,11 @@ Disallow: /api/admin/
           `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
                   p.tags,
                   p.external_url, p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
@@ -5483,7 +5487,11 @@ Disallow: /api/admin/
                   p.excerpt, p.content, p.tags,
                   p.external_url, p.external_site_name,
                   p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type, p.updated_at,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
