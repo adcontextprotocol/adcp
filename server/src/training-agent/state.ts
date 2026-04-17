@@ -1,30 +1,146 @@
 /**
- * In-memory session state for the training agent.
+ * Session state for the training agent.
  *
  * Sessions are keyed by account identifier (open mode) or userId+moduleId
- * (training mode). State is ephemeral — cleared on server restart.
- * TTL-based cleanup runs every 5 minutes.
+ * (training mode). Backed by @adcp/client's AdcpStateStore so state survives
+ * across Fly.io machines (in production, via PostgresStateStore).
+ *
+ * Per request we cache loaded sessions in AsyncLocalStorage so multiple
+ * handler calls within the same request share state without re-querying
+ * the DB. Mutated sessions are flushed at the end of the request by
+ * flushDirtySessions(), called from the MCP endpoint wrapper.
+ *
+ * Tests use InMemoryStateStore (no DB) — behaviour is identical from the
+ * handlers' perspective.
  */
 
-import type { SessionState, AccountRef, BrandRef, UsageRecord } from './types.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type {
+  SessionState, AccountRef, BrandRef,
+  MediaBuyState, CreativeState, SignalActivationState, GovernancePlanState,
+  GovernanceCheckState, GovernanceOutcomeState, PropertyListState,
+  CollectionListState, ContentStandardsState, RightsGrantState, UsageRecord,
+} from './types.js';
 import { cleanupExpiredTasks } from '@adcp/client';
+import {
+  InMemoryStateStore,
+  PostgresStateStore,
+  type AdcpStateStore,
+} from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('training-agent-state');
 
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_SESSIONS = 1000;
+const SESSION_TTL_MS = 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_MEDIA_BUYS_PER_SESSION = 100;
 const MAX_CREATIVES_PER_SESSION = 500;
 const MAX_PROPERTY_LISTS_PER_SESSION = 100;
 const MAX_CONTENT_STANDARDS_PER_SESSION = 100;
 const MAX_RIGHTS_GRANTS_PER_SESSION = 100;
+const MAX_USAGE_RECORDS_PER_SESSION = 1000;
+const SESSIONS_COLLECTION = 'training_sessions';
 
-const sessions = new Map<string, SessionState>();
+export {
+  MAX_MEDIA_BUYS_PER_SESSION,
+  MAX_CREATIVES_PER_SESSION,
+  MAX_USAGE_RECORDS_PER_SESSION,
+  MAX_PROPERTY_LISTS_PER_SESSION,
+  MAX_CONTENT_STANDARDS_PER_SESSION,
+  MAX_RIGHTS_GRANTS_PER_SESSION,
+};
 
-let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+// ── Store factory ────────────────────────────────────────────────
+
+let storeInstance: AdcpStateStore | null = null;
+
+function getStore(): AdcpStateStore {
+  if (storeInstance) return storeInstance;
+  storeInstance = isDatabaseInitialized()
+    ? new PostgresStateStore(getPool())
+    : new InMemoryStateStore();
+  return storeInstance;
+}
+
+/** Override the store (tests only — refuses to run in production). */
+export function setStateStore(store: AdcpStateStore | null): void {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('setStateStore is not allowed in production');
+  }
+  storeInstance = store;
+}
+
+// ── Per-request cache via AsyncLocalStorage ──────────────────────
+
+interface RequestSessionCtx {
+  sessions: Map<string, SessionState>;
+  /** Serialized snapshot taken at load time. Compared at flush to detect real mutations. */
+  snapshots: Map<string, string>;
+}
+
+const requestCtx = new AsyncLocalStorage<RequestSessionCtx>();
+
+/** Wrap a request so getSession()/flushDirtySessions() use a per-request cache. */
+export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
+  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map() };
+  return requestCtx.run(ctx, fn);
+}
+
+const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Persist sessions that were actually mutated during the current request.
+ *
+ * Mutation is detected by comparing the current serialized shape to a snapshot
+ * taken when the session was first loaded. Read-only accesses do not write,
+ * eliminating unnecessary DB traffic on `get_*` / `list_*` tools.
+ *
+ * Known limitation: concurrent requests against the same session key use
+ * last-writer-wins semantics. Acceptable for the sandbox training agent where
+ * storyboards are sequential. Production sellers should use per-entity
+ * collections via @adcp/client's createAdcpServer instead.
+ */
+export async function flushDirtySessions(): Promise<void> {
+  const ctx = requestCtx.getStore();
+  if (!ctx || ctx.sessions.size === 0) return;
+  const store = getStore();
+  for (const [key, session] of ctx.sessions) {
+    const current = serializeSession(session);
+    const currentJson = stableStringify(current);
+    const snapshotJson = ctx.snapshots.get(key);
+    if (snapshotJson === currentJson) continue;
+    if (currentJson.length > MAX_SESSION_JSON_BYTES) {
+      logger.warn(
+        { key, bytes: currentJson.length },
+        'Skipping session flush: serialized state exceeds size cap',
+      );
+      continue;
+    }
+    try {
+      await store.put(SESSIONS_COLLECTION, key, current);
+      ctx.snapshots.set(key, currentJson);
+    } catch (err) {
+      logger.error({ err, key }, 'Failed to flush training-agent session');
+    }
+  }
+}
+
+/** Stable stringify: sort keys so object equality is positional-independent. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+        sorted[k] = (v as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return v;
+  });
+}
+
+// ── Session shape helpers ────────────────────────────────────────
 
 function createSession(): SessionState {
   const now = new Date();
@@ -45,50 +161,128 @@ function createSession(): SessionState {
   };
 }
 
+/** Serialize a SessionState to a JSON-safe object for the state store.
+ *
+ * `lastGetProductsContext.products` is deterministic from the catalog, so we
+ * drop it from persistence and let callers recompute on next request.
+ * `proposals` (session-specific drafts) are persisted.
+ */
+function serializeSession(session: SessionState): Record<string, unknown> {
+  return {
+    mediaBuys: Object.fromEntries(session.mediaBuys),
+    creatives: Object.fromEntries(session.creatives),
+    signalActivations: Object.fromEntries(session.signalActivations),
+    governancePlans: Object.fromEntries(session.governancePlans),
+    governanceChecks: Object.fromEntries(session.governanceChecks),
+    governanceOutcomes: Object.fromEntries(session.governanceOutcomes),
+    propertyLists: Object.fromEntries(session.propertyLists),
+    collectionLists: Object.fromEntries(session.collectionLists),
+    contentStandards: Object.fromEntries(session.contentStandards),
+    rightsGrants: Object.fromEntries(session.rightsGrants),
+    usageRecords: session.usageRecords,
+    lastGetProductsProposals: session.lastGetProductsContext?.proposals,
+    createdAt: session.createdAt.toISOString(),
+    lastAccessedAt: session.lastAccessedAt.toISOString(),
+  };
+}
+
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Deserialize a stored doc back into a SessionState with Map/Date types. */
+function deserializeSession(data: Record<string, unknown>): SessionState {
+  const asMap = <V>(obj: unknown): Map<string, V> => {
+    if (!obj || typeof obj !== 'object') return new Map();
+    const entries = Object.entries(obj as Record<string, V>)
+      .filter(([k]) => !RESERVED_KEYS.has(k));
+    return new Map(entries);
+  };
+  const asDate = (v: unknown): Date => {
+    if (typeof v === 'string') return new Date(v);
+    return new Date();
+  };
+  return {
+    mediaBuys: asMap<MediaBuyState>(data.mediaBuys),
+    creatives: asMap<CreativeState>(data.creatives),
+    signalActivations: asMap<SignalActivationState>(data.signalActivations),
+    governancePlans: asMap<GovernancePlanState>(data.governancePlans),
+    governanceChecks: asMap<GovernanceCheckState>(data.governanceChecks),
+    governanceOutcomes: asMap<GovernanceOutcomeState>(data.governanceOutcomes),
+    propertyLists: asMap<PropertyListState>(data.propertyLists),
+    collectionLists: asMap<CollectionListState>(data.collectionLists),
+    contentStandards: asMap<ContentStandardsState>(data.contentStandards),
+    rightsGrants: asMap<RightsGrantState>(data.rightsGrants),
+    usageRecords: Array.isArray(data.usageRecords) ? data.usageRecords as UsageRecord[] : [],
+    // Only proposals persist; products are deterministic from the catalog, so callers
+    // re-derive on the next request via the fallback in the get_products handler.
+    lastGetProductsContext: Array.isArray(data.lastGetProductsProposals) && data.lastGetProductsProposals.length > 0
+      ? {
+          products: undefined as unknown as NonNullable<SessionState['lastGetProductsContext']>['products'],
+          proposals: data.lastGetProductsProposals as NonNullable<SessionState['lastGetProductsContext']>['proposals'],
+        }
+      : undefined,
+    createdAt: asDate(data.createdAt),
+    lastAccessedAt: asDate(data.lastAccessedAt),
+  };
+}
+
+// ── Public session API (async) ───────────────────────────────────
+
 /**
  * Get or create a session for the given key.
- * Updates lastAccessedAt on every access.
+ *
+ * Within a single request (wrapped by runWithSessionContext), the same
+ * SessionState object is returned on repeat calls, letting handlers mutate
+ * freely. Mutations are persisted at end of request by flushDirtySessions().
+ *
+ * Between requests, a fresh read from the store happens, so different Fly
+ * machines see each other's writes.
  */
-export function getSession(key: string): SessionState {
-  let session = sessions.get(key);
+export async function getSession(key: string): Promise<SessionState> {
+  const ctx = requestCtx.getStore();
+  if (ctx) {
+    const cached = ctx.sessions.get(key);
+    if (cached) return cached;
+  }
+
+  let session: SessionState | undefined;
+  let storedShape: Record<string, unknown> | null = null;
+  try {
+    storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    if (storedShape) session = deserializeSession(storedShape);
+  } catch (err) {
+    logger.warn({ err, key }, 'Failed to load session from store; creating fresh');
+  }
   if (!session) {
-    // Evict oldest session if at capacity
-    if (sessions.size >= MAX_SESSIONS) {
-      let oldestKey: string | undefined;
-      let oldestTime = Infinity;
-      for (const [k, s] of sessions) {
-        if (s.lastAccessedAt.getTime() < oldestTime) {
-          oldestTime = s.lastAccessedAt.getTime();
-          oldestKey = k;
-        }
-      }
-      if (oldestKey) sessions.delete(oldestKey);
-    }
     session = createSession();
-    sessions.set(key, session);
   }
   session.lastAccessedAt = new Date();
+
+  if (ctx) {
+    ctx.sessions.set(key, session);
+    // Snapshot the shape we loaded (or serialize the freshly-created session).
+    // flushDirtySessions() compares against this snapshot to decide whether to write.
+    ctx.snapshots.set(key, stableStringify(storedShape ?? serializeSession(session)));
+  }
   return session;
 }
 
-const MAX_USAGE_RECORDS_PER_SESSION = 1000;
 
-export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, MAX_PROPERTY_LISTS_PER_SESSION, MAX_CONTENT_STANDARDS_PER_SESSION, MAX_RIGHTS_GRANTS_PER_SESSION };
+const MAX_DOMAIN_LEN = 253; // RFC 1035 max hostname length
+const MAX_ACCOUNT_ID_LEN = 128;
+const SAFE_DOMAIN_RE = /^[a-z0-9.-]+$/i;
+const SAFE_ACCOUNT_ID_RE = /^[a-zA-Z0-9._-]+$/;
 
-/** Read-only access to all sessions (for cross-session lookups). */
-export function getAllSessions(): ReadonlyMap<string, SessionState> {
-  return sessions;
+function safeKey(value: string | undefined, max: number, pattern: RegExp): string | null {
+  if (!value || value.length === 0 || value.length > max) return null;
+  if (!pattern.test(value)) return null;
+  return value;
 }
 
-/**
- * Derive a session key from the request context.
+/** Derive a session key from the request context.
  *
- * Open mode: keyed by account brand domain. This is intentionally shared —
- * callers using the same brand.domain see the same session state, which
- * mirrors how a real publisher scopes state per advertiser account.
- * The bearer token is shared across all sandbox callers.
- *
- * Training mode: keyed by userId + moduleId for per-learner isolation.
+ * Rejects malformed domain/account_id values — they become part of a Postgres
+ * primary key, so we bound length and restrict charset to prevent bloating
+ * the adcp_state table with arbitrary caller-supplied data.
  */
 export function sessionKeyFromArgs(
   args: { account?: AccountRef; brand?: BrandRef },
@@ -97,42 +291,49 @@ export function sessionKeyFromArgs(
   moduleId?: string,
 ): string {
   if (mode === 'training' && userId) {
-    return `training:${userId}:${moduleId || 'default'}`;
+    const safeUser = safeKey(userId, 128, SAFE_ACCOUNT_ID_RE) ?? 'default';
+    const safeModule = safeKey(moduleId, 128, SAFE_ACCOUNT_ID_RE) ?? 'default';
+    return `training:${safeUser}:${safeModule}`;
   }
   const account = args.account;
-  // account-ref is either {account_id} or {brand: {domain}, operator}
-  if (account?.account_id) return `open:${account.account_id}`;
+  if (account?.account_id) {
+    const safe = safeKey(account.account_id, MAX_ACCOUNT_ID_LEN, SAFE_ACCOUNT_ID_RE);
+    if (safe) return `open:${safe}`;
+  }
   const domain = account?.brand?.domain ?? args.brand?.domain;
-  return `open:${domain || 'default'}`;
+  const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+  return `open:${safeDomain || 'default'}`;
 }
 
-/** Start the TTL cleanup interval */
+// ── TTL cleanup ──────────────────────────────────────────────────
+
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Start the TTL cleanup interval. Deletes stale sessions from the store. */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
   cleanupTimer = setInterval(async () => {
-    const now = Date.now();
-    for (const [key, session] of sessions) {
-      if (now - session.lastAccessedAt.getTime() > SESSION_TTL_MS) {
-        sessions.delete(key);
-      }
-    }
-    // Clean up expired MCP tasks from PostgreSQL
     try {
       if (isDatabaseInitialized()) {
-        const deleted = await cleanupExpiredTasks(getPool());
-        if (deleted > 0) {
-          logger.info({ deleted }, 'Cleaned up expired MCP tasks');
+        const { rowCount } = await getPool().query(
+          `DELETE FROM adcp_state WHERE collection = $1 AND updated_at < NOW() - ($2 || ' milliseconds')::interval`,
+          [SESSIONS_COLLECTION, String(SESSION_TTL_MS)],
+        );
+        if ((rowCount ?? 0) > 0) {
+          logger.info({ deleted: rowCount }, 'Cleaned up expired training-agent sessions');
+        }
+        const taskDeleted = await cleanupExpiredTasks(getPool());
+        if (taskDeleted > 0) {
+          logger.info({ deleted: taskDeleted }, 'Cleaned up expired MCP tasks');
         }
       }
     } catch (err) {
-      logger.warn({ err }, 'Failed to clean up expired MCP tasks');
+      logger.warn({ err }, 'Session/task cleanup failed');
     }
   }, CLEANUP_INTERVAL_MS);
-  // Don't block process exit
   if (cleanupTimer.unref) cleanupTimer.unref();
 }
 
-/** Stop the cleanup interval (for tests) */
 export function stopSessionCleanup(): void {
   if (cleanupTimer) {
     clearInterval(cleanupTimer);
@@ -140,7 +341,23 @@ export function stopSessionCleanup(): void {
   }
 }
 
-/** Clear all sessions (for tests) */
-export function clearSessions(): void {
-  sessions.clear();
+/** Clear all sessions (tests only). */
+export async function clearSessions(): Promise<void> {
+  const ctx = requestCtx.getStore();
+  if (ctx) {
+    ctx.sessions.clear();
+    ctx.snapshots.clear();
+  }
+  const store = storeInstance;
+  if (!store) return;
+  if (store instanceof InMemoryStateStore) {
+    store.clear();
+    return;
+  }
+  // PostgresStateStore exposes clearCollection (not on the interface).
+  const maybeClear = (store as { clearCollection?: (c: string) => Promise<number> }).clearCollection;
+  if (typeof maybeClear === 'function') {
+    await maybeClear.call(store, SESSIONS_COLLECTION);
+  }
 }
+

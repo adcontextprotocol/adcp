@@ -9,6 +9,8 @@ import {
   clearSessions,
   startSessionCleanup,
   stopSessionCleanup,
+  runWithSessionContext,
+  flushDirtySessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
 } from '../../src/training-agent/state.js';
@@ -700,34 +702,53 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
-    it('creates a new session with empty maps', () => {
-      const session = getSession('test-key');
-      expect(session.mediaBuys).toBeInstanceOf(Map);
-      expect(session.mediaBuys.size).toBe(0);
-      expect(session.creatives).toBeInstanceOf(Map);
-      expect(session.creatives.size).toBe(0);
+    it('creates a new session with empty maps', async () => {
+      await runWithSessionContext(async () => {
+        const session = await getSession('test-key');
+        expect(session.mediaBuys).toBeInstanceOf(Map);
+        expect(session.mediaBuys.size).toBe(0);
+        expect(session.creatives).toBeInstanceOf(Map);
+        expect(session.creatives.size).toBe(0);
+      });
     });
 
-    it('returns the same session for the same key', () => {
-      const s1 = getSession('test-key');
-      s1.mediaBuys.set('mb1', {} as any);
-      const s2 = getSession('test-key');
-      expect(s2.mediaBuys.has('mb1')).toBe(true);
+    it('returns the same session for the same key within a request', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-key');
+        s1.mediaBuys.set('mb1', {} as any);
+        const s2 = await getSession('test-key');
+        expect(s2.mediaBuys.has('mb1')).toBe(true);
+      });
     });
 
-    it('returns different sessions for different keys', () => {
-      const s1 = getSession('key-a');
-      const s2 = getSession('key-b');
-      s1.mediaBuys.set('mb1', {} as any);
-      expect(s2.mediaBuys.has('mb1')).toBe(false);
+    it('persists mutations across requests via the store', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-persist-key');
+        s1.mediaBuys.set('mb1', {} as any);
+        await flushDirtySessions();
+      });
+      await runWithSessionContext(async () => {
+        const s2 = await getSession('test-persist-key');
+        expect(s2.mediaBuys.has('mb1')).toBe(true);
+      });
     });
 
-    it('updates lastAccessedAt on every access', () => {
-      const s1 = getSession('test-key');
-      const firstAccess = s1.lastAccessedAt;
-      // Tiny delay to get a different timestamp
-      const s2 = getSession('test-key');
-      expect(s2.lastAccessedAt.getTime()).toBeGreaterThanOrEqual(firstAccess.getTime());
+    it('returns different sessions for different keys', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('key-a');
+        const s2 = await getSession('key-b');
+        s1.mediaBuys.set('mb1', {} as any);
+        expect(s2.mediaBuys.has('mb1')).toBe(false);
+      });
+    });
+
+    it('updates lastAccessedAt on every access', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-key');
+        const firstAccess = s1.lastAccessedAt;
+        const s2 = await getSession('test-key');
+        expect(s2.lastAccessedAt.getTime()).toBeGreaterThanOrEqual(firstAccess.getTime());
+      });
     });
   });
 
@@ -791,13 +812,17 @@ describe('session state', () => {
       stopSessionCleanup(); // second call should not throw
     });
 
-    it('clearSessions removes all sessions', () => {
-      getSession('a');
-      getSession('b');
-      clearSessions();
-      // After clearing, getting a key should produce a fresh session
-      const s = getSession('a');
-      expect(s.mediaBuys.size).toBe(0);
+    it('clearSessions removes all sessions', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('a');
+        s1.mediaBuys.set('mb1', {} as any);
+        await flushDirtySessions();
+      });
+      await clearSessions();
+      await runWithSessionContext(async () => {
+        const s = await getSession('a');
+        expect(s.mediaBuys.size).toBe(0);
+      });
     });
   });
 });
@@ -3134,22 +3159,25 @@ describe('session limits', () => {
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
     const account = { brand: { domain: 'limit-mb.example' }, operator: 'limit-mb.example' };
 
-    // Fill the session to the limit by directly manipulating state
+    // Fill the session to the limit by directly manipulating state (persist via store)
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    const session = getSession(sessionKey);
-    for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
-      session.mediaBuys.set(`mb_fill_${i}`, {
-        mediaBuyId: `mb_fill_${i}`,
-        status: 'active',
-        currency: 'USD',
-        packages: [],
-        startTime: '2027-01-01T00:00:00Z',
-        endTime: '2027-12-31T00:00:00Z',
-        accountRef: account,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } as any);
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
+        session.mediaBuys.set(`mb_fill_${i}`, {
+          mediaBuyId: `mb_fill_${i}`,
+          status: 'active',
+          currency: 'USD',
+          packages: [],
+          startTime: '2027-01-01T00:00:00Z',
+          endTime: '2027-12-31T00:00:00Z',
+          accountRef: account,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as any);
+      }
+      await flushDirtySessions();
+    });
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -3170,16 +3198,19 @@ describe('session limits', () => {
   it('rejects sync_creatives when session creative limit reached', async () => {
     const account = { brand: { domain: 'limit-cr.example' }, operator: 'limit-cr.example' };
 
-    // Fill creatives to the limit
+    // Fill creatives to the limit (persist via store)
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    const session = getSession(sessionKey);
-    for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
-      session.creatives.set(`cr_fill_${i}`, {
-        creativeId: `cr_fill_${i}`,
-        status: 'active',
-        syncedAt: new Date().toISOString(),
-      } as any);
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
+        session.creatives.set(`cr_fill_${i}`, {
+          creativeId: `cr_fill_${i}`,
+          status: 'active',
+          syncedAt: new Date().toISOString(),
+        } as any);
+      }
+      await flushDirtySessions();
+    });
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
@@ -4918,15 +4949,18 @@ describe('proposal lifecycle', () => {
       refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
     });
 
-    // Manually expire the proposal in session state
+    // Manually expire the proposal in session state (persist via store)
     const sessionKey = `open:proposal-test.example`;
-    const session = getSession(sessionKey);
-    const committedProposal = session.lastGetProductsContext?.proposals?.find(
-      p => p.proposal_id === draftProposal!.proposal_id,
-    );
-    if (committedProposal) {
-      (committedProposal as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      const committedProposal = session.lastGetProductsContext?.proposals?.find(
+        p => p.proposal_id === draftProposal!.proposal_id,
+      );
+      if (committedProposal) {
+        (committedProposal as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
+      }
+      await flushDirtySessions();
+    });
 
     // Try to buy the expired proposal
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
@@ -6547,5 +6581,84 @@ describe('get_brand_identity handler', () => {
     });
 
     expect(result.code).toBe('brand_not_found');
+  });
+});
+
+describe('cross-machine session persistence', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('property list created on one server survives on another via the state store', async () => {
+    const account = { brand: { domain: 'machine-test.example' }, operator: 'pinnacle-agency.com' };
+
+    // "Machine A": create a property list through one server instance
+    const serverA = createTrainingAgentServer(DEFAULT_CTX);
+    const createResponse = await simulateCallTool(serverA, 'create_property_list', {
+      account,
+      brand: { domain: 'machine-test.example' },
+      name: 'Cross-machine list',
+      base_properties: [
+        { selection_type: 'identifiers', identifiers: [{ type: 'domain', value: 'pub.example' }] },
+      ],
+    });
+    const listId = (createResponse.result.list as { list_id: string }).list_id;
+    expect(listId).toBeDefined();
+
+    // "Machine B": a fresh server instance with no in-memory carryover
+    const serverB = createTrainingAgentServer(DEFAULT_CTX);
+    const getResponse = await simulateCallTool(serverB, 'get_property_list', {
+      account,
+      brand: { domain: 'machine-test.example' },
+      list_id: listId,
+    });
+    expect(getResponse.result.adcp_error).toBeUndefined();
+    expect((getResponse.result.list as { list_id: string }).list_id).toBe(listId);
+  });
+
+  it('media buy created on one server is visible via get_media_buys on another', async () => {
+    const account = { brand: { domain: 'mb-machine-test.example' }, operator: 'pinnacle-agency.com' };
+
+    const serverA = createTrainingAgentServer(DEFAULT_CTX);
+    const productsResponse = await simulateCallTool(serverA, 'get_products', {
+      account,
+      brand: { domain: 'mb-machine-test.example' },
+      buying_mode: 'brief',
+      brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const created = await simulateCallTool(serverA, 'create_media_buy', {
+      account,
+      brand: { domain: 'mb-machine-test.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    expect(mediaBuyId).toBeDefined();
+
+    const serverB = createTrainingAgentServer(DEFAULT_CTX);
+    const fetched = await simulateCallTool(serverB, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = fetched.result.media_buys as Array<{ media_buy_id: string }>;
+    expect(buys.length).toBe(1);
+    expect(buys[0]!.media_buy_id).toBe(mediaBuyId);
   });
 });
