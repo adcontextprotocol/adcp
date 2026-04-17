@@ -540,8 +540,13 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        o.journey_stage,
        om.seat_type,
        COALESCE((SELECT COUNT(*) FROM working_group_memberships wgm WHERE wgm.workos_user_id = u.workos_user_id AND wgm.status = 'active'), 0)::int AS wg_count,
-       COALESCE((SELECT COUNT(*) FROM certification_attempts ca WHERE ca.workos_user_id = u.workos_user_id AND ca.status = 'completed'), 0)::int AS cert_modules_completed,
-       COALESCE((SELECT COUNT(DISTINCT module_id) FROM certification_modules WHERE is_active = TRUE), 0)::int AS cert_total_modules,
+       COALESCE((SELECT COUNT(*) FROM learner_progress lp
+                 JOIN certification_modules cm ON cm.id = lp.module_id
+                 WHERE lp.workos_user_id = u.workos_user_id
+                   AND lp.status IN ('completed', 'tested_out')
+                   AND cm.track_id = active_track.track_id), 0)::int AS cert_modules_completed,
+       COALESCE((SELECT COUNT(*) FROM certification_modules
+                 WHERE track_id = active_track.track_id), 0)::int AS cert_total_modules,
        COALESCE(o.subscription_status = 'active', FALSE) AS is_member,
        (u.first_name IS NOT NULL AND u.last_name IS NOT NULL) AS has_profile
      FROM users u
@@ -549,6 +554,19 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        ON om.workos_user_id = u.workos_user_id
      LEFT JOIN organizations o
        ON o.workos_organization_id = om.workos_organization_id
+     -- "Active track" = the track the user most recently touched. A learner
+     -- halfway through track A who briefly opens a track-B module will get
+     -- B-scoped counts on the next digest; that's the intended nudge behavior.
+     -- module_id tiebreaker keeps the choice deterministic across identical
+     -- updated_at values (possible on backfills or same-request writes).
+     LEFT JOIN LATERAL (
+       SELECT cm.track_id
+       FROM learner_progress lp
+       JOIN certification_modules cm ON cm.id = lp.module_id
+       WHERE lp.workos_user_id = u.workos_user_id
+       ORDER BY lp.updated_at DESC, lp.module_id DESC
+       LIMIT 1
+     ) active_track ON TRUE
      WHERE u.email IS NOT NULL
        AND u.email != ''
        AND NOT EXISTS (
