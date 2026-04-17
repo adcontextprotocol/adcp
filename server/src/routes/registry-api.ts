@@ -3919,8 +3919,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       } catch (resolveErr) {
         // Fail-closed: agent declared a specialism whose bundle isn't in the
         // local compliance cache. 422 so the UI can prompt a cache re-sync.
+        // The resolver's message includes server-side paths — log it but
+        // don't leak it to the client.
+        logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Agent declared an unknown specialism");
         return res.status(422).json({
-          error: resolveErr instanceof Error ? resolveErr.message : "Unknown specialism",
+          error: "Agent declared a specialism that isn't in the compliance cache. The cache may be stale, or the specialism id is unrecognized.",
           unknown_specialism: true,
         });
       }
