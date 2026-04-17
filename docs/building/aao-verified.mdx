@@ -56,12 +56,7 @@ An agent can earn multiple badges (one per domain it claims). A full-stack platf
 
 ## Decentralized verification
 
-Each badge is backed by a signed JWT (EdDSA / Ed25519). AAO publishes its public key at `/.well-known/jwks.json` so any third party — buyer, publisher, or another ad tech company — can verify a badge's authenticity *without* calling AAO's API.
-
-```bash
-# Verify a badge JWT against AAO's public key
-curl -s https://agenticadvertising.org/.well-known/jwks.json
-```
+Each badge is backed by a signed JWT (EdDSA / Ed25519). AAO publishes its public key set at `/.well-known/jwks.json` so any third party — buyer, publisher, or another ad tech company — can verify a badge's authenticity *without* calling AAO's API.
 
 JWT claims include `iss`, `sub` (agent URL), `aud: aao-verification`, `jti`, `iat`, `exp` (30 days), plus `role`, `verified_specialisms[]`, and `verified_protocol_version`. The registry API is authoritative for real-time status; the JWT is a cacheable proof that narrows the verification window to 30 days.
 
