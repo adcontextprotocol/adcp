@@ -1,16 +1,35 @@
 import type { Application } from "express";
 import express from "express";
 import * as fs from "fs/promises";
+import semver from "semver";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("schemas-middleware");
 
-// Bare version directory requests (/2.5.3/, /3.0.0-rc.3/, /latest/).
-const VERSIONED_DIR = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|latest)\/$/;
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
-// Direct versioned paths (/2.5.3/..., /3.0.0-rc.3/...) — immutable.
-const IMMUTABLE_PATH = /^\/\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\//;
+
+function isPinnedVersionPath(requestPath: string): boolean {
+  // /X.Y.Z(-prerelease)?/... where the first segment is a valid semver.
+  const firstSeg = requestPath.split("/")[1];
+  return !!firstSeg && semver.valid(firstSeg) !== null;
+}
+
+function isPinnedTarballPath(filePath: string): boolean {
+  // Match the final path component against <semver>.tgz or <semver>.tgz.sha256.
+  const name = filePath.split("/").pop() ?? "";
+  const m = name.match(/^(.+)\.tgz(?:\.sha256)?$/);
+  return !!m && semver.valid(m[1]) !== null;
+}
+
+function matchVersionedDir(requestPath: string): string | null {
+  // Match "/<segment>/" where <segment> is either "latest" or a valid semver.
+  const m = requestPath.match(/^\/([^/]+)\/$/);
+  if (!m) return null;
+  const seg = m[1];
+  if (seg === "latest" || semver.valid(seg) !== null) return seg;
+  return null;
+}
 
 /**
  * Cache of versioned schema directories, refreshed every 60 seconds.
@@ -26,41 +45,13 @@ function makeVersionCache(schemasPath: string) {
 
     const entries = await fs.readdir(schemasPath, { withFileTypes: true });
     const versions = entries
-      .filter(
-        (e) =>
-          e.isDirectory() && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(e.name),
-      )
+      .filter((e) => e.isDirectory() && semver.valid(e.name) !== null)
       .map((e) => e.name)
-      .sort((a, b) => {
-        const pa = parseSemver(a);
-        const pb = parseSemver(b);
-        if (pa.major !== pb.major) return pb.major - pa.major;
-        if (pa.minor !== pb.minor) return pb.minor - pa.minor;
-        if (pa.patch !== pb.patch) return pb.patch - pa.patch;
-        // Stable beats prerelease for the same base version.
-        if (!pa.prerelease && pb.prerelease) return -1;
-        if (pa.prerelease && !pb.prerelease) return 1;
-        if (pa.prerelease && pb.prerelease)
-          return pb.prerelease.localeCompare(pa.prerelease);
-        return 0;
-      });
+      .sort(semver.rcompare);
 
     cache = { versions, timestamp: now };
     return versions;
   };
-}
-
-export function parseSemver(version: string): {
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease?: string;
-} {
-  const dashIdx = version.indexOf("-");
-  const base = dashIdx === -1 ? version : version.slice(0, dashIdx);
-  const prerelease = dashIdx === -1 ? undefined : version.slice(dashIdx + 1);
-  const [major, minor, patch] = base.split(".").map(Number);
-  return { major, minor, patch, prerelease };
 }
 
 export function findMatchingVersion(
@@ -69,9 +60,10 @@ export function findMatchingVersion(
   requestedMinor?: number,
 ): string | undefined {
   return versions.find((v) => {
-    const { major, minor } = parseSemver(v);
-    if (major !== requestedMajor) return false;
-    if (requestedMinor !== undefined && minor !== requestedMinor) return false;
+    const parsed = semver.parse(v);
+    if (!parsed) return false;
+    if (parsed.major !== requestedMajor) return false;
+    if (requestedMinor !== undefined && parsed.minor !== requestedMinor) return false;
     return true;
   });
 }
@@ -114,24 +106,13 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
             e.isFile() &&
             e.name.endsWith(".tgz") &&
             (e.name === "latest.tgz" ||
-              /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.tgz$/.test(e.name)),
+              semver.valid(e.name.replace(/\.tgz$/, "")) !== null),
         )
         .map((e) => e.name);
 
       const versioned = tarballs
         .filter((name) => name !== "latest.tgz")
-        .sort((a, b) => {
-          const pa = parseSemver(a.replace(/\.tgz$/, ""));
-          const pb = parseSemver(b.replace(/\.tgz$/, ""));
-          if (pa.major !== pb.major) return pb.major - pa.major;
-          if (pa.minor !== pb.minor) return pb.minor - pa.minor;
-          if (pa.patch !== pb.patch) return pb.patch - pa.patch;
-          if (!pa.prerelease && pb.prerelease) return -1;
-          if (pa.prerelease && !pb.prerelease) return 1;
-          if (pa.prerelease && pb.prerelease)
-            return pb.prerelease.localeCompare(pa.prerelease);
-          return 0;
-        });
+        .sort((a, b) => semver.rcompare(a.replace(/\.tgz$/, ""), b.replace(/\.tgz$/, "")));
 
       let latestBlock: {
         tarball: string;
@@ -187,7 +168,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
         } else if (filePath.endsWith(".sha256")) {
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
         }
-        if (/\/\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.tgz(\.sha256)?$/.test(filePath)) {
+        if (isPinnedTarballPath(filePath)) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         }
       },
@@ -252,14 +233,14 @@ function mountVersionedStaticRoutes(
     //      Without this, edge caches can serve different versions from different
     //      POPs within their TTL window and cause drift for consumers generating
     //      types from the schemas.
-    if (!isAlias && IMMUTABLE_PATH.test(originalPath)) {
+    if (!isAlias && isPinnedVersionPath(originalPath)) {
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     } else {
       res.setHeader("Cache-Control", "public, no-cache, must-revalidate");
     }
 
     // 3. Redirect bare version directories to their index.json.
-    if (VERSIONED_DIR.test(req.path)) {
+    if (matchVersionedDir(req.path)) {
       return res.redirect(mountPath + req.path + "index.json");
     }
 
@@ -273,8 +254,9 @@ function mountVersionedStaticRoutes(
       let latestMajorVersion: string | undefined;
 
       for (const version of versions) {
-        const { major, minor } = parseSemver(version);
-        const minorKey = `${major}.${minor}`;
+        const parsed = semver.parse(version);
+        if (!parsed) continue;
+        const minorKey = `${parsed.major}.${parsed.minor}`;
         if (!latestMajorVersion) latestMajorVersion = version;
         if (!latestPerMinor[minorKey]) latestPerMinor[minorKey] = version;
       }
@@ -286,12 +268,14 @@ function mountVersionedStaticRoutes(
       }> = [];
 
       if (latestMajorVersion) {
-        const { major } = parseSemver(latestMajorVersion);
-        aliases.push({
-          alias: `v${major}`,
-          resolves_to: latestMajorVersion,
-          path: `${mountPath}/v${major}/`,
-        });
+        const major = semver.parse(latestMajorVersion)?.major;
+        if (major !== undefined) {
+          aliases.push({
+            alias: `v${major}`,
+            resolves_to: latestMajorVersion,
+            path: `${mountPath}/v${major}/`,
+          });
+        }
       }
 
       for (const [minorKey, version] of Object.entries(latestPerMinor)) {
