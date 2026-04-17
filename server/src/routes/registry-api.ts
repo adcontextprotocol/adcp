@@ -9,7 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities } from "@adcp/client/testing";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -92,6 +92,22 @@ const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
+}
+
+/**
+ * Coarse classification of probe failures so the UI can differentiate a
+ * mistyped URL from a TLS failure. Keep the mapping conservative — when in
+ * doubt, return "unknown" rather than guess.
+ */
+function classifyProbeError(err: unknown): "network" | "tls" | "timeout" | "protocol" | "unknown" {
+  if (!(err instanceof Error)) return "unknown";
+  const message = err.message.toLowerCase();
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "ETIMEDOUT" || /timed?\s*out|timeout/.test(message)) return "timeout";
+  if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ECONNRESET" || code === "EAI_AGAIN") return "network";
+  if (code?.startsWith("ERR_TLS") || code === "CERT_HAS_EXPIRED" || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || /tls|ssl|certificate/.test(message)) return "tls";
+  if (/jsonrpc|mcp|protocol|invalid response|parse error/.test(message)) return "protocol";
+  return "unknown";
 }
 
 // ── Config ──────────────────────────────────────────────────────
@@ -1693,8 +1709,31 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
-    422: { description: "Agent requires authentication, or declares a specialism not in the local compliance cache", content: { "application/json": { schema: z.object({ error: z.string(), needs_auth: z.boolean().optional(), unknown_specialism: z.boolean().optional() }) } } },
-    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description: "Agent requires authentication, or declares a specialism not in the local compliance cache",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            needs_auth: z.boolean().optional(),
+            unknown_specialism: z.boolean().optional(),
+            declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared, for unknown-specialism errors" }),
+            known_specialisms: z.array(z.string()).optional().openapi({ description: "Specialism ids present in this server's local compliance cache" }),
+          }),
+        },
+      },
+    },
+    500: {
+      description: "Server error",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            reason: z.enum(["network", "tls", "timeout", "protocol", "unknown"]).optional().openapi({ description: "Coarse error classification for UI differentiation" }),
+          }),
+        },
+      },
+    },
     504: { description: "Connection timeout", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3918,13 +3957,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         });
       } catch (resolveErr) {
         // Fail-closed: agent declared a specialism whose bundle isn't in the
-        // local compliance cache. 422 so the UI can prompt a cache re-sync.
-        // The resolver's message includes server-side paths — log it but
-        // don't leak it to the client.
+        // local compliance cache. The resolver's message includes server-side
+        // paths — log it but don't leak it to the client. Return the
+        // declared vs known lists so a UI can name the offender without
+        // asking the developer to re-read their own config.
         logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Agent declared an unknown specialism");
+        let knownSpecialisms: string[] = [];
+        try {
+          knownSpecialisms = loadComplianceIndex().specialisms.map(s => s.id).sort();
+        } catch (indexErr) {
+          logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
+        }
         return res.status(422).json({
           error: "Agent declared a specialism that isn't in the compliance cache. The cache may be stale, or the specialism id is unrecognized.",
           unknown_specialism: true,
+          declared_specialisms: specialisms,
+          known_specialisms: knownSpecialisms,
         });
       }
 
@@ -3962,7 +4010,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout" });
       }
 
-      return res.status(500).json({ error: "Failed to probe agent capabilities" });
+      return res.status(500).json({
+        error: "Failed to probe agent capabilities",
+        reason: classifyProbeError(error),
+      });
     }
   });
 

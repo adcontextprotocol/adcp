@@ -30,6 +30,7 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
+  loadComplianceIndex,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
@@ -3260,28 +3261,45 @@ export function createMemberToolHandlers(
     const specialisms = profile?.specialisms ?? [];
     const probeError = profile?.capabilities_probe_error;
 
+    // Load the compliance index once so coaching paths can interpolate the
+    // real cache version instead of emitting a literal `{version}` placeholder.
+    let index;
+    try {
+      index = loadComplianceIndex();
+    } catch (err) {
+      logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
+    }
+    const docsVersion = index?.adcp_version || 'latest';
+    const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
+
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
     output += `## Agent: ${profile?.name || resolved.resolvedUrl}\n\n`;
 
     // No capabilities declared → coach the developer on how to fix it.
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
-      output += `**This agent doesn't declare any capabilities.**\n\n`;
+      output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
-        output += `\`get_adcp_capabilities\` responded with an error: _${probeError}_\n\n`;
+        output += `\`get_adcp_capabilities\` returned an error, so the runner can only fall back to universal baselines (schema, error handling, capability discovery). Agent-side log: the compliance cache doesn't know what to run for this agent until it declares its domains and specialisms.\n\n`;
       } else {
-        output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`.\n\n`;
+        output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`. Without those, only the universal baselines (schema, errors, capability discovery) can run.\n\n`;
       }
-      output += `Without these, the compliance runner can only execute the universal baseline bundles (schema, error handling, capability discovery). To get domain and specialism coverage, the agent needs to declare what it implements:\n\n`;
-      output += `- \`supported_protocols\`: which AdCP domains the agent serves (e.g. \`media_buy\`, \`creative\`, \`signals\`, \`governance\`, \`brand\`, \`sponsored_intelligence\`).\n`;
-      output += `- \`specialisms\`: specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). See the full list at /compliance/{version}/index.json or the AdCP docs.\n\n`;
-      output += `Once the agent declares these, \`recommend_storyboards\` will resolve them to bundles automatically.\n`;
+      output += `Add those two fields to the response. Here's the minimum shape:\n\n`;
+      output += '```json\n';
+      output += '{\n';
+      output += '  "supported_protocols": ["media_buy"],\n';
+      output += '  "specialisms": ["sales-guaranteed"]\n';
+      output += '}\n';
+      output += '```\n\n';
+      output += `- \`supported_protocols\`: AdCP domains the agent serves (\`media_buy\`, \`creative\`, \`signals\`, \`governance\`, \`brand\`, \`sponsored_intelligence\`).\n`;
+      output += `- \`specialisms\`: specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
+      output += `Redeploy, then re-run \`recommend_storyboards\` and we'll map them to bundles.\n`;
       return output;
     }
 
     // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
-    // closed if a declared specialism has no local bundle — surface that to the
-    // developer as a cache/version mismatch rather than letting it crash.
+    // closed if a declared specialism has no local bundle — log the raw error
+    // server-side (it includes cache paths) but show the member a clean message.
     let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
     try {
       const res = resolveStoryboardsForCapabilities({
@@ -3290,9 +3308,13 @@ export function createMemberToolHandlers(
       });
       resolvedBundles = res.bundles;
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      output += `**Couldn't resolve bundles:** ${msg}\n\n`;
-      output += `This usually means the agent declares a specialism that the local compliance cache doesn't know about. Re-sync schemas or check the specialism id against the current registry.\n`;
+      logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
+      const knownIds = index?.specialisms.map(s => s.id).sort() || [];
+      output += `**Can't resolve bundles.** The agent declared one of ${specialisms.map(s => `\`${s}\``).join(', ')} as a specialism, but the local compliance cache doesn't have a matching bundle.\n\n`;
+      if (knownIds.length > 0) {
+        output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
+      }
+      output += `Either the cache is stale (re-sync the \`@adcp/client\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
       return output;
     }
 
@@ -3301,22 +3323,37 @@ export function createMemberToolHandlers(
     const nonEmpty = resolvedBundles.filter(b => b.storyboards.length > 0);
     const totalStoryboards = nonEmpty.reduce((n, b) => n + b.storyboards.length, 0);
 
-    output += `**Declared:** `;
-    output += supportedProtocols.length > 0 ? supportedProtocols.join(', ') : '(no supported_protocols)';
-    if (specialisms.length > 0) output += ` | specialisms: ${specialisms.join(', ')}`;
-    output += `\n`;
-    output += `**Will run:** ${totalStoryboards} storyboards across ${nonEmpty.length} bundles\n\n`;
+    // Verdict first. "6 domains declared, 23 checks ready. Nothing's failing
+    // because nothing's run yet" tells the member where they stand.
+    const protocolCount = supportedProtocols.length;
+    const specialismCount = specialisms.length;
+    const declaredPieces: string[] = [];
+    if (protocolCount > 0) declaredPieces.push(`${protocolCount} domain${protocolCount === 1 ? '' : 's'}`);
+    if (specialismCount > 0) declaredPieces.push(`${specialismCount} specialism${specialismCount === 1 ? '' : 's'}`);
+    output += `**${declaredPieces.join(' + ')} declared. ${totalStoryboards} compliance check${totalStoryboards === 1 ? '' : 's'} ready to run** — nothing is failing yet because nothing has been run.\n\n`;
 
-    // Group by bundle kind for a clean read.
-    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], specialism: [] };
-    for (const b of nonEmpty) {
-      (byKind[b.ref.kind] ??= []).push(b);
+    // Probe error surfaces even when some caps came back — partial failures
+    // shouldn't silently degrade the result.
+    if (probeError) {
+      output += `_Note: \`get_adcp_capabilities\` partially failed (${probeError}). Bundle selection below reflects what did come through._\n\n`;
     }
 
-    const sections: Array<[string, string, typeof resolvedBundles]> = [
-      ['Universal', 'Mandatory for every agent (schema, errors, capability discovery).', byKind.universal],
-      ['Domain baselines', 'From `supported_protocols` — one baseline per declared domain.', byKind.domain],
-      ['Specialisms', 'From `specialisms` — specialized claims the agent made.', byKind.specialism],
+    // Group by bundle kind.
+    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], specialism: [] };
+    for (const b of nonEmpty) {
+      byKind[b.ref.kind]!.push(b);
+    }
+
+    // Universal is the same for every agent. Collapse to one line so domain +
+    // specialism results are above the fold.
+    if (byKind.universal.length > 0) {
+      const universalStoryboards = byKind.universal.reduce((n, b) => n + b.storyboards.length, 0);
+      output += `**Universal baseline**: ${byKind.universal.length} bundle${byKind.universal.length === 1 ? '' : 's'}, ${universalStoryboards} storyboard${universalStoryboards === 1 ? '' : 's'}. Always runs — schema, errors, capability discovery.\n\n`;
+    }
+
+    const sections: Array<[string, string, typeof nonEmpty]> = [
+      ['Domain baselines', 'One baseline per declared `supported_protocols` entry.', byKind.domain],
+      ['Specialisms', 'One bundle per declared specialism.', byKind.specialism],
     ];
 
     for (const [title, blurb, bundles] of sections) {
@@ -3332,7 +3369,27 @@ export function createMemberToolHandlers(
       }
     }
 
-    output += `Use \`get_storyboard_detail\` to inspect any storyboard, \`run_storyboard\` to execute one, or \`evaluate_agent_quality\` to run the full suite.`;
+    // Action-first CTAs. Name the action, keep the tool name in parens so the
+    // LLM still knows what to call.
+    output += `**What next?**\n`;
+    output += `1. Run the full suite — \`evaluate_agent_quality\`\n`;
+    output += `2. Walk one storyboard step-by-step for debugging — \`run_storyboard_step\`\n`;
+    output += `3. Inspect a storyboard before running it — \`get_storyboard_detail\`\n`;
+
+    // Activation hinge: if this is a member with an org and the agent isn't
+    // saved yet, offer to save. Converts drive-by testing into an ongoing
+    // compliance-monitored relationship.
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (orgId && resolved.source !== 'saved') {
+      try {
+        const existing = await agentContextDb.getByOrgAndUrl(orgId, resolved.resolvedUrl);
+        if (!existing) {
+          output += `\nWant me to save this agent so compliance is tracked over time? Use \`save_agent\`.`;
+        }
+      } catch {
+        // Save-prompt is advisory — never fail the whole tool over it.
+      }
+    }
 
     return output;
   });

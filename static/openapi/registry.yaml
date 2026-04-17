@@ -4938,6 +4938,16 @@ paths:
                     type: boolean
                   unknown_specialism:
                     type: boolean
+                  declared_specialisms:
+                    type: array
+                    items:
+                      type: string
+                    description: Specialisms the agent declared, for unknown-specialism errors
+                  known_specialisms:
+                    type: array
+                    items:
+                      type: string
+                    description: Specialism ids present in this server's local compliance cache
                 required:
                   - error
         "500":
@@ -4945,7 +4955,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+                    enum:
+                      - network
+                      - tls
+                      - timeout
+                      - protocol
+                      - unknown
+                    description: Coarse error classification for UI differentiation
+                required:
+                  - error
         "504":
           description: Connection timeout
           content:
