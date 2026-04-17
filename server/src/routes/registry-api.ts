@@ -71,6 +71,7 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
+import { classifyProbeError } from "../utils/probe-error.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -92,22 +93,6 @@ const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
-}
-
-/**
- * Coarse classification of probe failures so the UI can differentiate a
- * mistyped URL from a TLS failure. Keep the mapping conservative — when in
- * doubt, return "unknown" rather than guess.
- */
-function classifyProbeError(err: unknown): "network" | "tls" | "timeout" | "protocol" | "unknown" {
-  if (!(err instanceof Error)) return "unknown";
-  const message = err.message.toLowerCase();
-  const code = (err as NodeJS.ErrnoException).code;
-  if (code === "ETIMEDOUT" || /timed?\s*out|timeout/.test(message)) return "timeout";
-  if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ECONNRESET" || code === "EAI_AGAIN") return "network";
-  if (code?.startsWith("ERR_TLS") || code === "CERT_HAS_EXPIRED" || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || /tls|ssl|certificate/.test(message)) return "tls";
-  if (/jsonrpc|mcp|protocol|invalid response|parse error/.test(message)) return "protocol";
-  return "unknown";
 }
 
 // ── Config ──────────────────────────────────────────────────────
@@ -1690,7 +1675,7 @@ registry.registerPath({
             agent_name: z.string(),
             supported_protocols: z.array(z.string()),
             specialisms: z.array(z.string()),
-            capabilities_probe_error: z.string().optional().openapi({ description: "Present when get_adcp_capabilities was advertised but failed — empty bundle list usually indicates this, not a v2 agent" }),
+            capabilities_probe_error: z.string().optional().openapi({ description: "Agent-reported probe error. Untrusted — sanitized and truncated to 500 chars. Present when get_adcp_capabilities was advertised but failed; empty bundle list usually indicates this, not a v2 agent." }),
             bundles: z.array(z.object({
               kind: z.enum(["universal", "domain", "specialism"]),
               id: z.string(),
@@ -3999,7 +3984,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
       };
       if (profile?.capabilities_probe_error) {
-        responseBody.capabilities_probe_error = profile.capabilities_probe_error;
+        // Cap length + strip control chars. The string is agent-reported and
+        // therefore untrusted — consumers should treat it as informational
+        // only (documented on the OpenAPI description).
+        responseBody.capabilities_probe_error = String(profile.capabilities_probe_error)
+          .replace(/[\r\n\u0000-\u001f\u007f]/g, ' ')
+          .slice(0, 500);
       }
 
       res.json(responseBody);

@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
+import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -290,6 +291,33 @@ function isAuthError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message;
   return msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication');
+}
+
+/**
+ * Sanitize a string that came from an untrusted remote agent before it flows
+ * into markdown that reaches the LLM. The agent is adversarial by assumption —
+ * its response fields (name, capabilities_probe_error, specialism ids) can
+ * contain prompt-injection payloads that would otherwise reach tools with
+ * side effects. Strip newlines + backticks (which break markdown structure
+ * and prompt fences), truncate hard, and collapse whitespace.
+ */
+function sanitizeAgentField(value: unknown, maxLen = 200): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\r\n`\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+/**
+ * Wrap an untrusted agent-reported value in quotes, explicitly marking it as
+ * agent-provided so the LLM is less likely to treat it as authoritative.
+ * Returns the empty string if the value is empty after sanitization.
+ */
+function fenceAgentValue(value: unknown, maxLen = 200): string {
+  const cleaned = sanitizeAgentField(value, maxLen);
+  return cleaned ? `"${cleaned}"` : '';
 }
 
 // Channel alias map — normalize buyer language to AdCP channel identifiers
@@ -3171,9 +3199,11 @@ export function createMemberToolHandlers(
       else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
       else if (resolved.source === 'public') output += '_Using public test agent credentials._\n\n';
 
-      output += `## Quality Evaluation: ${result.agent_profile.name || resolved.resolvedUrl}\n\n`;
+      const safeName = sanitizeAgentField(result.agent_profile.name, 120);
+      output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
-      output += `**Tools:** ${result.agent_profile.tools.length} (${result.agent_profile.tools.join(', ')})\n`;
+      const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
+      output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
       output += `### Capability Tracks\n\n`;
@@ -3253,8 +3283,9 @@ export function createMemberToolHandlers(
       if (isAuthError(error)) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl}: ${msg}`);
+      logger.warn({ err: error, agentUrl: resolved.resolvedUrl }, 'recommend_storyboards: capability probe failed');
+      const reason = classifyProbeError(error);
+      throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl} (${probeReasonLabel(reason)}).`);
     }
 
     const supportedProtocols = profile?.supported_protocols ?? [];
@@ -3272,15 +3303,25 @@ export function createMemberToolHandlers(
     const docsVersion = index?.adcp_version || 'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
+    // Build a dynamic domain example list from the local compliance cache so
+    // coaching output doesn't drift as the protocol adds domains.
+    const knownDomainIds = index?.domains.map(d => d.id.replace(/-/g, '_')) ?? [
+      'media_buy', 'creative', 'signals', 'governance', 'brand', 'sponsored_intelligence',
+    ];
+    const domainExamples = knownDomainIds.map(id => `\`${id}\``).join(', ');
+
+    const safeAgentName = sanitizeAgentField(profile?.name, 120);
+
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
-    output += `## Agent: ${profile?.name || resolved.resolvedUrl}\n\n`;
+    output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
     // No capabilities declared → coach the developer on how to fix it.
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
       output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
-        output += `\`get_adcp_capabilities\` returned an error, so the runner can only fall back to universal baselines (schema, error handling, capability discovery). Agent-side log: the compliance cache doesn't know what to run for this agent until it declares its domains and specialisms.\n\n`;
+        const safeProbeErr = fenceAgentValue(probeError, 300);
+        output += `\`get_adcp_capabilities\` returned an agent-reported error${safeProbeErr ? ` (${safeProbeErr})` : ''}. The runner can only fall back to universal baselines (schema, error handling, capability discovery) until the agent declares its domains and specialisms.\n\n`;
       } else {
         output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`. Without those, only the universal baselines (schema, errors, capability discovery) can run.\n\n`;
       }
@@ -3291,8 +3332,8 @@ export function createMemberToolHandlers(
       output += '  "specialisms": ["sales-guaranteed"]\n';
       output += '}\n';
       output += '```\n\n';
-      output += `- \`supported_protocols\`: AdCP domains the agent serves (\`media_buy\`, \`creative\`, \`signals\`, \`governance\`, \`brand\`, \`sponsored_intelligence\`).\n`;
-      output += `- \`specialisms\`: specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
+      output += `- \`supported_protocols\`: AdCP domains the agent serves (${domainExamples}).\n`;
+      output += `- \`specialisms\`: optional; specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
       output += `Redeploy, then re-run \`recommend_storyboards\` and we'll map them to bundles.\n`;
       return output;
     }
@@ -3310,7 +3351,10 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
       const knownIds = index?.specialisms.map(s => s.id).sort() || [];
-      output += `**Can't resolve bundles.** The agent declared one of ${specialisms.map(s => `\`${s}\``).join(', ')} as a specialism, but the local compliance cache doesn't have a matching bundle.\n\n`;
+      // specialism ids came from the untrusted agent — fence them so a hostile
+      // id string can't break out of the markdown fence.
+      const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
+      output += `**Can't resolve bundles.** The agent declared a specialism (${safeDeclared || '(empty)'}) that the local compliance cache doesn't have a matching bundle for.\n\n`;
       if (knownIds.length > 0) {
         output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
       }
@@ -3335,7 +3379,8 @@ export function createMemberToolHandlers(
     // Probe error surfaces even when some caps came back — partial failures
     // shouldn't silently degrade the result.
     if (probeError) {
-      output += `_Note: \`get_adcp_capabilities\` partially failed (${probeError}). Bundle selection below reflects what did come through._\n\n`;
+      const safeProbeErr = fenceAgentValue(probeError, 300);
+      output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
     }
 
     // Group by bundle kind.

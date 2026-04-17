@@ -4862,7 +4862,7 @@ paths:
                       type: string
                   capabilities_probe_error:
                     type: string
-                    description: Present when get_adcp_capabilities was advertised but failed — empty bundle list usually indicates this, not a v2 agent
+                    description: Agent-reported probe error. Untrusted — sanitized and truncated to 500 chars. Present when get_adcp_capabilities was advertised but failed; empty bundle list usually indicates this, not a v2 agent.
                   bundles:
                     type: array
                     items:
