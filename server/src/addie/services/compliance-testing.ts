@@ -13,14 +13,9 @@ import {
   type ComplianceTrack,
   type TrackResult,
   type AdvisoryObservation,
-  type PlatformType,
   type SampleBrief,
-  type PlatformProfile,
-  getAllPlatformTypes,
-  getPlatformProfile,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
-  filterToKnownScenarios,
 } from '@adcp/client/testing';
 
 import type {
@@ -38,16 +33,14 @@ import type { Storyboard } from '../../services/storyboards.js';
 // ── Re-exports ────────────────────────────────────────────────────
 
 export { setAgentTesterLogger };
-export { comply, getAllPlatformTypes, getPlatformProfile, SAMPLE_BRIEFS, getBriefsByVertical, filterToKnownScenarios };
+export { comply, SAMPLE_BRIEFS, getBriefsByVertical };
 export type {
   ComplyOptions,
   ComplianceResult,
   ComplianceTrack,
   TrackResult,
   AdvisoryObservation,
-  PlatformType,
   SampleBrief,
-  PlatformProfile,
 };
 
 // ── DB Adapter ────────────────────────────────────────────────────
@@ -155,7 +148,7 @@ export function complianceResultToDbInput(
 ): RecordComplianceRunInput {
   const tracksJson: TrackSummaryEntry[] = result.tracks.map((t: TrackResult) => ({
     track: t.track,
-    status: t.status === 'expected' ? 'skip' as const : t.status,
+    status: t.status,
     scenario_count: t.scenarios.length,
     passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
     duration_ms: t.duration_ms,

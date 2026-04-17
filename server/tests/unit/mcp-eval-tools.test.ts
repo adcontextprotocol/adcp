@@ -58,10 +58,9 @@ describe('EVAL_TOOL_DEFINITIONS', () => {
     expect(tool!.inputSchema.required).toContain('line_items');
   });
 
-  it('evaluate_agent_quality has tracks and platform_type params', () => {
+  it('evaluate_agent_quality has tracks param', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'evaluate_agent_quality');
     expect(tool!.inputSchema.properties).toHaveProperty('tracks');
-    expect(tool!.inputSchema.properties).toHaveProperty('platform_type');
   });
 });
 

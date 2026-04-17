@@ -483,7 +483,6 @@ export const RegistryMetadataSchema = z
   .object({
     agent_url: z.string(),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
-    platform_type: z.string().nullable(),
     compliance_opt_out: z.boolean(),
     monitoring_paused: z.boolean(),
     check_interval_hours: z.number().int(),

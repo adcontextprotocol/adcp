@@ -5,7 +5,7 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { comply, complianceResultToDbInput, type ComplyOptions, type PlatformType } from '../services/compliance-testing.js';
+import { comply, complianceResultToDbInput, type ComplyOptions } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
@@ -52,20 +52,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   for (const agent of agentsDue) {
     const startTime = Date.now();
     try {
-      // Batch DB reads before the external HTTP call to avoid holding
-      // pool connections during the up-to-60s comply() request.
-      const [auth, metadata] = await Promise.all([
-        complianceDb.resolveOwnerAuth(agent.agent_url),
-        complianceDb.getRegistryMetadata(agent.agent_url),
-      ]);
-      const platformType = metadata?.platform_type as PlatformType | undefined;
+      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
         timeout_ms: 60_000,
         auth,
         userAgent: AAO_UA_COMPLIANCE,
-        ...(platformType && { platform_type: platformType }),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);

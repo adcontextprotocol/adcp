@@ -9,13 +9,11 @@
 
 import {
   comply,
-  filterToKnownScenarios,
-  type ComplyResult,
+  type ComplianceResult,
 } from '../../src/addie/services/compliance-testing.js';
 import {
   listStoryboards,
   getStoryboard,
-  extractScenariosFromStoryboard,
 } from '../../src/services/storyboards.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || 'https://test-agent.adcontextprotocol.org/mcp';
@@ -34,8 +32,6 @@ interface TrackDetail {
 interface StoryboardResult {
   id: string;
   title: string;
-  scenarios_extracted: string[];
-  scenarios_known: string[];
   tracks_tested: string[];
   track_details: TrackDetail[];
   tracks_passed: number;
@@ -51,30 +47,16 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
   const sb = getStoryboard(storyboardId);
   if (!sb) {
     return {
-      id: storyboardId, title: '(not found)', scenarios_extracted: [],
-      scenarios_known: [], tracks_tested: [], tracks_passed: 0,
+      id: storyboardId, title: '(not found)',
+      tracks_tested: [], track_details: [], tracks_passed: 0,
       tracks_failed: 0, tracks_partial: 0, tracks_skipped: 0,
-      duration_ms: 0, error: 'Storyboard not found',
-    };
-  }
-
-  const extracted = extractScenariosFromStoryboard(sb);
-  const known = filterToKnownScenarios(extracted);
-
-  if (known.length === 0) {
-    return {
-      id: storyboardId, title: sb.title,
-      scenarios_extracted: extracted, scenarios_known: [],
-      tracks_tested: [], track_details: [], tracks_passed: 0, tracks_failed: 0,
-      tracks_partial: 0, tracks_skipped: 0, duration_ms: 0, observations: [],
-      error: 'No known scenarios — storyboard documents the flow but has no test coverage yet',
+      duration_ms: 0, observations: [], error: 'Storyboard not found',
     };
   }
 
   try {
-    const result: ComplyResult = await comply(agentUrl, {
-      scenarios: known,
-      dry_run: true,
+    const result: ComplianceResult = await comply(agentUrl, {
+      storyboards: [storyboardId],
       timeout_ms: 90_000,
       auth: { type: 'bearer', token: TEST_AGENT_TOKEN },
     });
@@ -94,8 +76,6 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
     return {
       id: storyboardId,
       title: sb.title,
-      scenarios_extracted: extracted,
-      scenarios_known: known,
       tracks_tested: result.tracks.map(t => t.track),
       track_details: trackDetails,
       tracks_passed: result.summary.tracks_passed,
@@ -108,7 +88,6 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
   } catch (err) {
     return {
       id: storyboardId, title: sb.title,
-      scenarios_extracted: extracted, scenarios_known: known,
       tracks_tested: [], track_details: [], tracks_passed: 0, tracks_failed: 0,
       tracks_partial: 0, tracks_skipped: 0, duration_ms: 0, observations: [],
       error: err instanceof Error ? err.message : String(err),
@@ -143,11 +122,11 @@ async function main() {
 
   // Summary table
   console.log('\n--- Summary ---\n');
-  console.log('Storyboard                          | Scenarios | Result           | Duration');
-  console.log('------------------------------------|-----------|------------------|----------');
+  console.log('Storyboard                          | Tracks | Result           | Duration');
+  console.log('------------------------------------|--------|------------------|----------');
   for (const r of results) {
     const name = r.id.padEnd(35);
-    const scenarios = `${r.scenarios_known.length}/${r.scenarios_extracted.length}`.padEnd(9);
+    const trackCount = `${r.tracks_tested.length}`.padEnd(6);
     let status: string;
     if (r.error) {
       status = `⚠ ${r.error.slice(0, 16)}`;
@@ -157,7 +136,7 @@ async function main() {
       status = `✗ ${r.tracks_passed}P/${r.tracks_failed}F/${r.tracks_partial}pt`;
     }
     const dur = r.error ? '-' : `${r.duration_ms}ms`;
-    console.log(`${name} | ${scenarios} | ${status.padEnd(16)} | ${dur}`);
+    console.log(`${name} | ${trackCount} | ${status.padEnd(16)} | ${dur}`);
   }
 
   // Totals

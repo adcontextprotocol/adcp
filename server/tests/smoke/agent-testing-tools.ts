@@ -40,7 +40,6 @@ const MEDIA_KITS = {
     verticals: ['news', 'business', 'lifestyle'],
     channels: ['display', 'video', 'native', 'podcast'],
     formats: ['728x90', '300x250', '970x250', 'pre-roll', 'mid-roll', 'outstream', 'native-article'],
-    platform_type: 'display_ad_server',
   },
 
   ctv_streamer: {
@@ -50,7 +49,6 @@ const MEDIA_KITS = {
     verticals: ['entertainment', 'automotive', 'cpg'],
     channels: ['ctv', 'olv'],
     formats: ['15s-video', '30s-video', 'pause-screen'],
-    platform_type: 'video_ad_server',
   },
 
   retail_media_network: {
@@ -60,7 +58,6 @@ const MEDIA_KITS = {
     verticals: ['cpg', 'food_beverage', 'healthcare'],
     channels: ['retail_media', 'display', 'dooh'],
     formats: ['sponsored-product', 'display-banner', 'endcap-screen', 'checkout-screen'],
-    platform_type: 'retail_media',
   },
 
   audio_publisher: {
@@ -70,7 +67,6 @@ const MEDIA_KITS = {
     verticals: ['technology', 'business', 'health_wellness'],
     channels: ['podcast', 'streaming_audio'],
     formats: ['host-read-60s', 'host-read-30s', 'dynamic-15s', 'dynamic-30s', 'companion-display'],
-    platform_type: 'audio_platform',
   },
 
   small_local: {
@@ -120,20 +116,6 @@ async function main() {
   });
   console.log(truncate(basic));
 
-  separator('evaluate_agent_quality — platform_type: display_ad_server');
-  const display = await handlers.get('evaluate_agent_quality')!({
-    agent_url: TEST_AGENT_URL,
-    platform_type: 'display_ad_server',
-  });
-  console.log(truncate(display));
-
-  separator('evaluate_agent_quality — platform_type: retail_media');
-  const retail = await handlers.get('evaluate_agent_quality')!({
-    agent_url: TEST_AGENT_URL,
-    platform_type: 'retail_media',
-  });
-  console.log(truncate(retail));
-
   separator('evaluate_agent_quality — specific tracks');
   const tracks = await handlers.get('evaluate_agent_quality')!({
     agent_url: TEST_AGENT_URL,
@@ -143,7 +125,7 @@ async function main() {
 
   // ─── compare_media_kit ───
 
-  for (const [key, kit] of Object.entries(MEDIA_KITS)) {
+  for (const [, kit] of Object.entries(MEDIA_KITS)) {
     separator(`compare_media_kit — ${kit.name}`);
     const result = await handlers.get('compare_media_kit')!({
       agent_url: TEST_AGENT_URL,
@@ -151,7 +133,6 @@ async function main() {
       verticals: kit.verticals,
       channels: kit.channels,
       formats: kit.formats,
-      ...('platform_type' in kit ? { platform_type: kit.platform_type } : {}),
     });
     console.log(truncate(result, 1500));
   }
