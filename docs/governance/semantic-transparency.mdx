@@ -449,6 +449,509 @@ When some buyer terms cannot be resolved, the seller SHOULD return a warning wit
 
 Semantic failures become actionable — the buyer agent can retry with corrected terms, and the interaction is fully logged for governance.
 
+## End-to-end example
+
+This walkthrough follows a complete media buy flow showing how the three extensions surface in actual AdCP request/response pairs. Pinnacle Agency is buying display placements for Acme Outdoor across California.
+
+### Step 1: Capability discovery
+
+The orchestrator calls `get_adcp_capabilities` and discovers the seller's semantic support:
+
+```json
+{
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "governance", "creative"],
+  "media_buy": {
+    "supported_pricing_models": ["cpm", "cpc"],
+    "execution": {
+      "targeting": {
+        "geo_countries": true,
+        "geo_regions": true,
+        "geo_metros": { "nielsen_dma": true }
+      }
+    },
+    "portfolio": {
+      "publisher_domains": ["news.example.com", "sports.example.com"],
+      "primary_channels": ["display", "video"],
+      "primary_countries": ["US"],
+      "description": "Premium display and video across news and sports properties"
+    }
+  },
+  "extensions_supported": [
+    "semantic_alignment",
+    "decision_trace",
+    "semantic_capabilities"
+  ],
+  "ext": {
+    "semantic_capabilities": {
+      "supported_taxonomies": [
+        {
+          "taxonomy_id": "iab_ad_product_taxonomy",
+          "version": "2.0",
+          "authority": "https://iabtechlab.com/ad-product-taxonomy/2.0/",
+          "coverage": "full"
+        },
+        {
+          "taxonomy_id": "nielsen_dma",
+          "version": "2026",
+          "authority": "https://www.nielsen.com/dma-regions/",
+          "coverage": "full"
+        },
+        {
+          "taxonomy_id": "iso_3166",
+          "version": "2020",
+          "authority": "https://www.iso.org/iso-3166-country-codes.html",
+          "coverage": "full"
+        }
+      ],
+      "alignment_methods": ["exact", "structural", "notation", "lexical"],
+      "resolution_transparency": true
+    }
+  },
+  "last_updated": "2026-04-16T00:00:00Z"
+}
+```
+
+The buyer now knows: the seller resolves IAB format IDs, Nielsen DMAs, and ISO geo codes. It supports all four alignment methods and will include attestation on responses. The orchestrator can proceed with confidence.
+
+### Step 2: Product discovery (`get_products`)
+
+The orchestrator sends a brief:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Acme Outdoor is launching the Trail Pro 3000 across California. We need display formats (300x600 and 300x250) targeting outdoor enthusiasts aged 25-54. Budget is $5,000 USD for April 2026.",
+  "budget": { "amount": 5000, "currency": "USD" },
+  "geo_targeting": {
+    "countries": ["US"],
+    "regions": ["US-CA"]
+  }
+}
+```
+
+The seller returns products with `ext.semantic_alignment` on each product and `ext.decision_trace` on the response:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "prod-42",
+      "name": "Premium Display 300x600",
+      "description": "Half-page display across news and sports properties",
+      "publisher_properties": [
+        { "domain": "news.example.com", "name": "Example News" },
+        { "domain": "sports.example.com", "name": "Example Sports" }
+      ],
+      "channels": ["display"],
+      "format_ids": [
+        { "id": "medium_rectangle_300x600" }
+      ],
+      "delivery_type": "impression",
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm-standard",
+          "pricing_model": "cpm",
+          "price": 6.50,
+          "currency": "USD",
+          "minimum_spend": 500
+        }
+      ],
+      "forecast": {
+        "points": [
+          { "budget": 2000, "impressions": 307000 },
+          { "budget": 3000, "impressions": 461000 }
+        ],
+        "method": "historical_30d",
+        "currency": "USD",
+        "generated_at": "2026-04-16T16:44:00Z"
+      },
+      "reporting_capabilities": {
+        "metrics": ["impressions", "clicks", "viewability"],
+        "dimensions": ["date", "geo", "device"]
+      },
+      "ext": {
+        "semantic_alignment": {
+          "resolutions": [
+            {
+              "buyer_term": "300x600",
+              "seller_concept": "medium_rectangle_300x600",
+              "taxonomy_id": "iab_ad_product_taxonomy",
+              "taxonomy_version": "2.0",
+              "alignment_method": "notation",
+              "confidence": 0.98,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "exact",
+                  "input": "300x600",
+                  "result": null,
+                  "note": "No exact match — buyer used size shorthand"
+                },
+                {
+                  "step": 2,
+                  "method": "notation",
+                  "input": "300x600",
+                  "result": "medium_rectangle_300x600",
+                  "note": "IAB Ad Product Taxonomy 2.0: 300x600 maps to medium_rectangle_300x600",
+                  "taxonomy_path": "Display > Fixed Size > Half Page (300x600)"
+                }
+              ]
+            },
+            {
+              "buyer_term": "US-CA",
+              "seller_concept": "US-CA",
+              "taxonomy_id": "iso_3166",
+              "taxonomy_version": "2020",
+              "alignment_method": "exact",
+              "confidence": 1.0,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "exact",
+                  "input": "US-CA",
+                  "result": "US-CA",
+                  "note": "Exact ISO 3166-2 match"
+                }
+              ]
+            }
+          ],
+          "overall_confidence": 0.99,
+          "unresolved_terms": [],
+          "alignment_timestamp": "2026-04-16T16:44:00Z"
+        }
+      }
+    },
+    {
+      "product_id": "prod-78",
+      "name": "Standard Display 300x250",
+      "description": "Medium rectangle across all properties",
+      "publisher_properties": [
+        { "domain": "news.example.com", "name": "Example News" }
+      ],
+      "channels": ["display"],
+      "format_ids": [
+        { "id": "medium_rectangle_300x250" }
+      ],
+      "delivery_type": "impression",
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm-standard",
+          "pricing_model": "cpm",
+          "price": 4.25,
+          "currency": "USD",
+          "minimum_spend": 250
+        }
+      ],
+      "forecast": {
+        "points": [
+          { "budget": 2000, "impressions": 470000 }
+        ],
+        "method": "historical_30d",
+        "currency": "USD",
+        "generated_at": "2026-04-16T16:44:00Z"
+      },
+      "reporting_capabilities": {
+        "metrics": ["impressions", "clicks", "viewability"],
+        "dimensions": ["date", "geo"]
+      },
+      "ext": {
+        "semantic_alignment": {
+          "resolutions": [
+            {
+              "buyer_term": "300x250",
+              "seller_concept": "medium_rectangle_300x250",
+              "taxonomy_id": "iab_ad_product_taxonomy",
+              "taxonomy_version": "2.0",
+              "alignment_method": "notation",
+              "confidence": 0.99,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "notation",
+                  "input": "300x250",
+                  "result": "medium_rectangle_300x250",
+                  "note": "IAB Ad Product Taxonomy 2.0: 300x250 is the standard medium rectangle"
+                }
+              ]
+            },
+            {
+              "buyer_term": "US-CA",
+              "seller_concept": "US-CA",
+              "taxonomy_id": "iso_3166",
+              "taxonomy_version": "2020",
+              "alignment_method": "exact",
+              "confidence": 1.0,
+              "alignment_chain": [
+                {
+                  "step": 1,
+                  "method": "exact",
+                  "input": "US-CA",
+                  "result": "US-CA",
+                  "note": "Exact ISO 3166-2 match"
+                }
+              ]
+            }
+          ],
+          "overall_confidence": 0.99,
+          "unresolved_terms": [],
+          "alignment_timestamp": "2026-04-16T16:44:00Z"
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "proposal_id": "prop-acme-q2",
+      "name": "Acme Outdoor Q2 Display Package",
+      "description": "Balanced 300x600 and 300x250 display across CA news and sports",
+      "allocations": [
+        { "product_id": "prod-42", "percentage": 60, "budget": 3000 },
+        { "product_id": "prod-78", "percentage": 40, "budget": 2000 }
+      ],
+      "proposal_status": "draft",
+      "total_budget_guidance": {
+        "min": 2000,
+        "recommended": 5000,
+        "max": 10000,
+        "currency": "USD"
+      },
+      "brief_alignment": "Full coverage of requested formats and geography"
+    }
+  ],
+  "ext": {
+    "decision_trace": {
+      "trace_id": "dt-acme-2026-04-16-001",
+      "trace_version": "1.0.0",
+      "decision_points": [
+        {
+          "decision_id": "dp-product-selection",
+          "decision_type": "product_selection",
+          "description": "Select display products matching 300x600 and 300x250 formats in California",
+          "candidates_evaluated": 23,
+          "candidates": [
+            {
+              "candidate_id": "prod-42",
+              "scores": {
+                "composite_score": 0.94,
+                "format_match": 1.0,
+                "geo_coverage": 1.0,
+                "cpm_efficiency": 0.82
+              },
+              "outcome": "selected",
+              "selection_rationale": "Best 300x600 match — covers all CA inventory with $6.50 CPM"
+            },
+            {
+              "candidate_id": "prod-78",
+              "scores": {
+                "composite_score": 0.91,
+                "format_match": 1.0,
+                "geo_coverage": 1.0,
+                "cpm_efficiency": 0.92
+              },
+              "outcome": "selected",
+              "selection_rationale": "Best 300x250 match — strong CA reach at efficient $4.25 CPM"
+            },
+            {
+              "candidate_id": "prod-15",
+              "scores": {
+                "composite_score": 0.62,
+                "format_match": 1.0,
+                "geo_coverage": 0.40,
+                "cpm_efficiency": 0.75
+              },
+              "outcome": "rejected",
+              "rejection_reason": "Geo coverage 0.40 — only covers Los Angeles DMA, not statewide CA"
+            }
+          ],
+          "selection_strategy": "brief_constrained_optimization",
+          "constraints_applied": [
+            {
+              "constraint": "budget_cap",
+              "value": "$5,000 USD",
+              "effect": "Limits selection to products deliverable within budget"
+            },
+            {
+              "constraint": "geo_coverage_minimum",
+              "value": 0.8,
+              "effect": "Products must cover >= 80% of requested California geography"
+            },
+            {
+              "constraint": "format_match",
+              "value": ["300x600", "300x250"],
+              "effect": "Only products with requested format sizes"
+            }
+          ]
+        },
+        {
+          "decision_id": "dp-budget-allocation",
+          "decision_type": "budget_allocation",
+          "description": "Allocate $5,000 across selected products",
+          "candidates_evaluated": 2,
+          "candidates": [
+            {
+              "candidate_id": "prod-42",
+              "scores": { "composite_score": 0.94 },
+              "outcome": "selected",
+              "selection_rationale": "60% allocation ($3,000) — primary format, broader property coverage"
+            },
+            {
+              "candidate_id": "prod-78",
+              "scores": { "composite_score": 0.91 },
+              "outcome": "selected",
+              "selection_rationale": "40% allocation ($2,000) — complementary format, higher CPM efficiency"
+            }
+          ],
+          "selection_strategy": "proportional_to_composite_score"
+        }
+      ],
+      "governance_compatibility": {
+        "plan_id": null,
+        "governance_context": null,
+        "exportable_as_governance_findings": true
+      },
+      "metadata": {
+        "protocol_version": "adcp-3.0",
+        "trace_generated_at": "2026-04-16T16:44:00Z",
+        "retention_policy": "90_days"
+      }
+    }
+  },
+  "property_list_applied": false,
+  "catalog_applied": false,
+  "sandbox": false
+}
+```
+
+Notice: `ext.semantic_alignment` lives on each **product** (documenting how that product's terms were resolved), while `ext.decision_trace` lives on the **response root** (documenting how products were selected and budget was allocated).
+
+### Step 3: Create media buy (`create_media_buy`)
+
+The orchestrator commits to the proposal. The response includes both extensions on the confirmed packages:
+
+```json
+{
+  "media_buy_id": "mb-acme-001",
+  "status": "pending_creatives",
+  "confirmed_at": "2026-04-16T17:00:00Z",
+  "creative_deadline": "2026-04-20T00:00:00Z",
+  "revision": 1,
+  "valid_actions": ["cancel", "sync_creatives", "update_budget"],
+  "packages": [
+    {
+      "package_id": "pkg-001",
+      "product_id": "prod-42",
+      "budget": 3000,
+      "pricing_option_id": "cpm-standard",
+      "impressions": 461000,
+      "format_ids": [{ "id": "medium_rectangle_300x600" }],
+      "start_time": "2026-04-01T00:00:00Z",
+      "end_time": "2026-04-30T23:59:59Z",
+      "paused": false,
+      "canceled": false,
+      "ext": {
+        "semantic_alignment": {
+          "resolutions": [
+            {
+              "buyer_term": "300x600",
+              "seller_concept": "medium_rectangle_300x600",
+              "taxonomy_id": "iab_ad_product_taxonomy",
+              "taxonomy_version": "2.0",
+              "alignment_method": "notation",
+              "confidence": 0.98
+            }
+          ],
+          "overall_confidence": 0.98,
+          "unresolved_terms": [],
+          "alignment_timestamp": "2026-04-16T17:00:00Z"
+        }
+      }
+    },
+    {
+      "package_id": "pkg-002",
+      "product_id": "prod-78",
+      "budget": 2000,
+      "pricing_option_id": "cpm-standard",
+      "impressions": 470000,
+      "format_ids": [{ "id": "medium_rectangle_300x250" }],
+      "start_time": "2026-04-01T00:00:00Z",
+      "end_time": "2026-04-30T23:59:59Z",
+      "paused": false,
+      "canceled": false,
+      "ext": {
+        "semantic_alignment": {
+          "resolutions": [
+            {
+              "buyer_term": "300x250",
+              "seller_concept": "medium_rectangle_300x250",
+              "taxonomy_id": "iab_ad_product_taxonomy",
+              "taxonomy_version": "2.0",
+              "alignment_method": "notation",
+              "confidence": 0.99
+            }
+          ],
+          "overall_confidence": 0.99,
+          "unresolved_terms": [],
+          "alignment_timestamp": "2026-04-16T17:00:00Z"
+        }
+      }
+    }
+  ],
+  "planned_delivery": {
+    "geo": {
+      "countries": ["US"],
+      "regions": ["US-CA"]
+    },
+    "channels": ["display"],
+    "start_time": "2026-04-01T00:00:00Z",
+    "end_time": "2026-04-30T23:59:59Z",
+    "total_budget": 5000,
+    "currency": "USD"
+  },
+  "ext": {
+    "decision_trace": {
+      "trace_id": "dt-acme-2026-04-16-002",
+      "trace_version": "1.0.0",
+      "decision_points": [
+        {
+          "decision_id": "dp-buy-commitment",
+          "decision_type": "product_selection",
+          "description": "Commit proposal prop-acme-q2 as media buy",
+          "candidates_evaluated": 2,
+          "candidates": [
+            {
+              "candidate_id": "prod-42",
+              "scores": { "composite_score": 0.94 },
+              "outcome": "selected",
+              "selection_rationale": "Committed from proposal — 60% budget allocation"
+            },
+            {
+              "candidate_id": "prod-78",
+              "scores": { "composite_score": 0.91 },
+              "outcome": "selected",
+              "selection_rationale": "Committed from proposal — 40% budget allocation"
+            }
+          ]
+        }
+      ],
+      "governance_compatibility": {
+        "plan_id": "acme-q2-outdoor",
+        "governance_context": "gov-ctx-acme-001",
+        "exportable_as_governance_findings": true
+      },
+      "metadata": {
+        "protocol_version": "adcp-3.0",
+        "trace_generated_at": "2026-04-16T17:00:00Z",
+        "retention_policy": "90_days"
+      }
+    }
+  },
+  "sandbox": false
+}
+```
+
+At this point, the governance agent has everything it needs: the `plan_id` links to the registered plan, the `governance_context` references the `check_governance` approval, and the decision trace documents every step from product discovery through commitment.
+
 ## Extension graduation path
 
 Following AdCP's extension model, these enhancements follow a three-phase graduation:
