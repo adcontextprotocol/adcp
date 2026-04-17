@@ -129,16 +129,22 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
       }
     }
 
-    // 2. Redirect bare version directories to their index.json.
-    if (VERSIONED_DIR.test(req.path)) {
-      return res.redirect("/schemas" + req.path + "index.json");
-    }
-
-    // 3. Only direct versioned paths (client pinned a full semver) are immutable.
-    //    Aliases and /latest/ keep the static 10m + ETag default so caches
-    //    revalidate when the alias retargets to a new version.
+    // 2. Set cache-control based on the original request path:
+    //    - Pinned semver (client asked for an immutable version): 1-year immutable.
+    //    - /latest/ and aliases (/v2, /v2.5, ...): no-cache + ETag, so shared
+    //      caches revalidate on every request and pick up retargeting immediately.
+    //      Without this, edge caches can serve different versions from different
+    //      POPs within their TTL window and cause drift for consumers generating
+    //      types from the schemas.
     if (!isAlias && IMMUTABLE_PATH.test(originalPath)) {
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "public, no-cache, must-revalidate");
+    }
+
+    // 3. Redirect bare version directories to their index.json.
+    if (VERSIONED_DIR.test(req.path)) {
+      return res.redirect("/schemas" + req.path + "index.json");
     }
 
     schemasStatic(req, res, next);

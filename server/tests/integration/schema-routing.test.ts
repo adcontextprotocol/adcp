@@ -111,27 +111,44 @@ describe("/schemas HTTP routing", () => {
   });
 
   describe("cache-control policy", () => {
-    // Aliases and /latest/ must not be immutably cached — they retarget over time.
-    // Only direct versioned paths (client pinned a full semver) get immutable.
-    it("does NOT mark alias file responses immutable", async () => {
+    // Aliases and /latest/ must force revalidation — they retarget over time,
+    // and edge caches serving stale copies cause version drift for consumers
+    // that fetch schemas to generate types.
+    it("marks alias file responses no-cache", async () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2/adagents.json");
       expect(res.status).toBe(200);
       expect(res.headers["cache-control"] ?? "").not.toContain("immutable");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
     });
 
-    it("does NOT mark minor-alias file responses immutable", async () => {
+    it("marks minor-alias file responses no-cache", async () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2.5/adagents.json");
       expect(res.status).toBe(200);
       expect(res.headers["cache-control"] ?? "").not.toContain("immutable");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
     });
 
-    it("does NOT mark /latest/ file responses immutable", async () => {
+    it("marks /latest/ file responses no-cache", async () => {
       const res = await request(app).get("/schemas/latest/adagents.json");
       // /latest/ may or may not exist depending on build; only assert when present.
       if (res.status !== 200) return;
       expect(res.headers["cache-control"] ?? "").not.toContain("immutable");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+
+    it("marks alias bare-directory redirects no-cache", async () => {
+      if (!latestStableMajor2) return;
+      const res = await request(app).get("/schemas/v2/");
+      expect(res.status).toBe(302);
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+
+    it("marks /latest/ bare-directory redirect no-cache", async () => {
+      const res = await request(app).get("/schemas/latest/");
+      if (res.status !== 302) return;
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
     });
   });
 
