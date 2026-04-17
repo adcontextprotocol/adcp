@@ -16,6 +16,7 @@ dist/schemas/registry.*
 .github
 *.md
 !README.md
+!CHANGELOG.md
 .venv
 .conductor
 .context
