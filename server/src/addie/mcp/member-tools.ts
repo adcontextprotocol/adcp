@@ -29,9 +29,12 @@ import {
 import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
+  resolveStoryboardsForCapabilities,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
+  testCapabilityDiscovery,
+  type AgentProfile,
   type Storyboard,
   type StoryboardContext,
   type StoryboardStepResult,
@@ -989,7 +992,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'recommend_storyboards',
     description:
-      'Connect to an agent, discover its tools, and return which storyboards apply. This is the first step when a developer pastes a URL. No configuration needed — storyboards self-select based on agent tools.',
+      'Probe an agent\'s `get_adcp_capabilities` and return the compliance bundles that will run. The agent\'s declared `supported_protocols` and `specialisms` drive the selection — no member configuration needed. If the agent declares nothing, explain what it needs to declare to get coverage.',
     usage_hints: 'use for "test this URL", "what can I test?", "which storyboards apply?", pasted agent URL, or any first-time agent testing. This should be the FIRST tool called when someone wants to test an agent.',
     input_schema: {
       type: 'object',
@@ -3235,72 +3238,98 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
-    // Connect and discover tools
+    // Probe get_adcp_capabilities. The agent is the source of truth for which
+    // domain baselines and specialism bundles apply — we don't guess from tool
+    // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
-    let agentTools: string[];
+    let profile: AgentProfile | undefined;
     try {
-      const client = createTestClient(resolved.resolvedUrl, 'mcp', {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
         ...(authOption && { auth: authOption }),
       });
-      const agentInfo = await client.getAgentInfo();
-      agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
+      profile = caps.profile;
     } catch (error) {
       if (isAuthError(error)) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      throw new ToolError(`Could not connect to agent at ${resolved.resolvedUrl}: ${msg}`);
+      throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl}: ${msg}`);
     }
 
-    // Match storyboards to agent tools
-    const allStoryboards = listAllComplianceStoryboards();
-    const applicable = allStoryboards.filter(sb => {
-      if (!sb.required_tools?.length) return true;
-      return sb.required_tools.some(tool => agentTools.includes(tool));
-    });
+    const supportedProtocols = profile?.supported_protocols ?? [];
+    const specialisms = profile?.specialisms ?? [];
+    const probeError = profile?.capabilities_probe_error;
 
-    // Group by track
-    const byTrack = new Map<string, typeof applicable>();
-    for (const sb of applicable) {
-      const track = sb.track || 'general';
-      if (!byTrack.has(track)) byTrack.set(track, []);
-      byTrack.get(track)!.push(sb);
-    }
+    let output = '';
+    if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+    output += `## Agent: ${profile?.name || resolved.resolvedUrl}\n\n`;
 
-    let output = `## Agent: ${resolved.resolvedUrl}\n\n`;
-    output += `**Tools discovered:** ${agentTools.length} (${agentTools.join(', ')})\n`;
-    output += `**Applicable storyboards:** ${applicable.length} of ${allStoryboards.length}\n\n`;
-
-    if (applicable.length === 0) {
-      output += `No storyboards match this agent's tools. This agent may not implement any AdCP tasks yet.\n`;
+    // No capabilities declared → coach the developer on how to fix it.
+    if (supportedProtocols.length === 0 && specialisms.length === 0) {
+      output += `**This agent doesn't declare any capabilities.**\n\n`;
+      if (probeError) {
+        output += `\`get_adcp_capabilities\` responded with an error: _${probeError}_\n\n`;
+      } else {
+        output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`.\n\n`;
+      }
+      output += `Without these, the compliance runner can only execute the universal baseline bundles (schema, error handling, capability discovery). To get domain and specialism coverage, the agent needs to declare what it implements:\n\n`;
+      output += `- \`supported_protocols\`: which AdCP domains the agent serves (e.g. \`media_buy\`, \`creative\`, \`signals\`, \`governance\`, \`brand\`, \`sponsored_intelligence\`).\n`;
+      output += `- \`specialisms\`: specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). See the full list at /compliance/{version}/index.json or the AdCP docs.\n\n`;
+      output += `Once the agent declares these, \`recommend_storyboards\` will resolve them to bundles automatically.\n`;
       return output;
     }
 
-    // Recommend a starting storyboard (prefer core, then media_buy, then first available)
-    const startOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'signals', 'si', 'audiences'];
-    let recommended: Storyboard | undefined;
-    for (const track of startOrder) {
-      const trackSbs = byTrack.get(track);
-      if (trackSbs?.length) { recommended = trackSbs[0]; break; }
+    // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
+    // closed if a declared specialism has no local bundle — surface that to the
+    // developer as a cache/version mismatch rather than letting it crash.
+    let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
+    try {
+      const res = resolveStoryboardsForCapabilities({
+        supported_protocols: supportedProtocols,
+        specialisms,
+      });
+      resolvedBundles = res.bundles;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      output += `**Couldn't resolve bundles:** ${msg}\n\n`;
+      output += `This usually means the agent declares a specialism that the local compliance cache doesn't know about. Re-sync schemas or check the specialism id against the current registry.\n`;
+      return output;
     }
-    if (!recommended) recommended = applicable[0];
 
-    output += `### Recommended starting point\n\n`;
-    output += `**${recommended.title}** (\`${recommended.id}\`)\n`;
-    output += `${recommended.summary}\n\n`;
+    const totalStoryboards = resolvedBundles.reduce((n, b) => n + b.storyboards.length, 0);
 
-    output += `### All applicable storyboards\n\n`;
-    for (const [track, storyboards] of byTrack) {
-      output += `**${track}**\n`;
-      for (const sb of storyboards) {
-        const stepCount = sb.phases.reduce((sum, p) => sum + p.steps.length, 0);
-        output += `- \`${sb.id}\` — ${sb.title} (${stepCount} steps)\n`;
+    output += `**Declared:** `;
+    output += supportedProtocols.length > 0 ? supportedProtocols.join(', ') : '(no supported_protocols)';
+    if (specialisms.length > 0) output += ` | specialisms: ${specialisms.join(', ')}`;
+    output += `\n`;
+    output += `**Will run:** ${totalStoryboards} storyboards across ${resolvedBundles.length} bundles\n\n`;
+
+    // Group by bundle kind for a clean read.
+    const byKind: Record<string, typeof resolvedBundles> = { universal: [], domain: [], specialism: [] };
+    for (const b of resolvedBundles) {
+      (byKind[b.ref.kind] ??= []).push(b);
+    }
+
+    const sections: Array<[string, string, typeof resolvedBundles]> = [
+      ['Universal', 'Mandatory for every agent (schema, errors, capability discovery).', byKind.universal],
+      ['Domain baselines', 'From `supported_protocols` — one baseline per declared domain.', byKind.domain],
+      ['Specialisms', 'From `specialisms` — specialized claims the agent made.', byKind.specialism],
+    ];
+
+    for (const [title, blurb, bundles] of sections) {
+      if (!bundles || bundles.length === 0) continue;
+      output += `### ${title}\n\n${blurb}\n\n`;
+      for (const bundle of bundles) {
+        output += `**\`${bundle.ref.id}\`** (${bundle.storyboards.length} storyboard${bundle.storyboards.length === 1 ? '' : 's'})\n`;
+        for (const sb of bundle.storyboards) {
+          const stepCount = sb.phases.reduce((sum, p) => sum + p.steps.length, 0);
+          output += `- \`${sb.id}\` — ${sb.title} (${stepCount} steps)\n`;
+        }
+        output += '\n';
       }
-      output += '\n';
     }
 
-    output += `Use \`get_storyboard_detail\` to see what a storyboard tests, or \`run_storyboard\` to execute one.`;
-    if (resolved.source === 'saved') output = '_Using saved credentials._\n\n' + output;
+    output += `Use \`get_storyboard_detail\` to inspect any storyboard, \`run_storyboard\` to execute one, or \`evaluate_agent_quality\` to run the full suite.`;
 
     return output;
   });

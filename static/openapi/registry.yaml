@@ -4827,7 +4827,7 @@ paths:
     get:
       operationId: getApplicableStoryboards
       summary: Get applicable storyboards for agent
-      description: Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.
+      description: Probe the agent's get_adcp_capabilities and resolve its declared supported_protocols and specialisms to the compliance bundles that will run. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -4842,7 +4842,7 @@ paths:
           in: path
       responses:
         "200":
-          description: Applicable storyboards grouped by track
+          description: Bundles the agent will be tested against, driven by its declared capabilities
           content:
             application/json:
               schema:
@@ -4852,41 +4852,61 @@ paths:
                     type: string
                   agent_name:
                     type: string
-                  tools:
+                  supported_protocols:
                     type: array
                     items:
                       type: string
-                  storyboards:
-                    type: object
-                    additionalProperties:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                          title:
-                            type: string
-                          summary:
-                            type: string
-                          step_count:
-                            type: integer
-                        required:
-                          - id
-                          - title
-                          - summary
-                          - step_count
-                  total_applicable:
-                    type: integer
-                  total_available:
+                  specialisms:
+                    type: array
+                    items:
+                      type: string
+                  capabilities_probe_error:
+                    type: string
+                    description: Present when get_adcp_capabilities was advertised but failed — empty bundle list usually indicates this, not a v2 agent
+                  bundles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - universal
+                            - domain
+                            - specialism
+                        id:
+                          type: string
+                        storyboards:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              title:
+                                type: string
+                              summary:
+                                type: string
+                              step_count:
+                                type: integer
+                            required:
+                              - id
+                              - title
+                              - summary
+                              - step_count
+                      required:
+                        - kind
+                        - id
+                        - storyboards
+                  total_storyboards:
                     type: integer
                 required:
                   - agent_url
                   - agent_name
-                  - tools
-                  - storyboards
-                  - total_applicable
-                  - total_available
+                  - supported_protocols
+                  - specialisms
+                  - bundles
+                  - total_storyboards
         "400":
           description: Invalid agent URL
           content:
@@ -4906,7 +4926,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Agent requires authentication
+          description: Agent requires authentication, or declares a specialism not in the local compliance cache
           content:
             application/json:
               schema:
@@ -4916,11 +4936,10 @@ paths:
                     type: string
                   needs_auth:
                     type: boolean
-                    enum:
-                      - true
+                  unknown_specialism:
+                    type: boolean
                 required:
                   - error
-                  - needs_auth
         "500":
           description: Server error
           content:
