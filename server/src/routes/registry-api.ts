@@ -3925,16 +3925,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         });
       }
 
-      const bundles = resolved.bundles.map(b => ({
-        kind: b.ref.kind,
-        id: b.ref.id,
-        storyboards: b.storyboards.map(sb => ({
-          id: sb.id,
-          title: sb.title,
-          summary: sb.summary,
-          step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
-        })),
-      }));
+      // Drop empty bundles — upstream catalog occasionally ships stubs.
+      const bundles = resolved.bundles
+        .filter(b => b.storyboards.length > 0)
+        .map(b => ({
+          kind: b.ref.kind,
+          id: b.ref.id,
+          storyboards: b.storyboards.map(sb => ({
+            id: sb.id,
+            title: sb.title,
+            summary: sb.summary,
+            step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+          })),
+        }));
 
       const responseBody: Record<string, unknown> = {
         agent_url: agentUrl,

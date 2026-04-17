@@ -3296,17 +3296,20 @@ export function createMemberToolHandlers(
       return output;
     }
 
-    const totalStoryboards = resolvedBundles.reduce((n, b) => n + b.storyboards.length, 0);
+    // Skip empty bundles — upstream catalog sometimes ships stubs with 0
+    // storyboards (e.g. fictional-entities). They're not useful to the member.
+    const nonEmpty = resolvedBundles.filter(b => b.storyboards.length > 0);
+    const totalStoryboards = nonEmpty.reduce((n, b) => n + b.storyboards.length, 0);
 
     output += `**Declared:** `;
     output += supportedProtocols.length > 0 ? supportedProtocols.join(', ') : '(no supported_protocols)';
     if (specialisms.length > 0) output += ` | specialisms: ${specialisms.join(', ')}`;
     output += `\n`;
-    output += `**Will run:** ${totalStoryboards} storyboards across ${resolvedBundles.length} bundles\n\n`;
+    output += `**Will run:** ${totalStoryboards} storyboards across ${nonEmpty.length} bundles\n\n`;
 
     // Group by bundle kind for a clean read.
-    const byKind: Record<string, typeof resolvedBundles> = { universal: [], domain: [], specialism: [] };
-    for (const b of resolvedBundles) {
+    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], specialism: [] };
+    for (const b of nonEmpty) {
       (byKind[b.ref.kind] ??= []).push(b);
     }
 
