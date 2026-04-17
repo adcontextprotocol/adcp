@@ -166,7 +166,7 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
-  runWithSessionContext, flushDirtySessions, markHandlerFailed,
+  runWithSessionContext, flushDirtySessions,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -3003,11 +3003,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Wrap handler execution + task storage in a per-request session context so
     // getSession() calls cache within the request and real mutations are flushed
     // at the end (solves cross-Fly-machine persistence). Flush only on clean
-    // return — if the dispatcher throws, discard any in-progress session state
-    // rather than persisting half-mutated data.
+    // return from the handler — if the handler threw, discard any in-progress
+    // session state rather than persisting half-mutated data.
     return runWithSessionContext(async () => {
-      const result = await dispatchCallTool(request, extra);
-      await flushDirtySessions();
+      const { result, flushable } = await dispatchCallTool(request, extra);
+      if (flushable) await flushDirtySessions();
       return result;
     });
   });
@@ -3015,7 +3015,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
     _extra: unknown,
-  ): Promise<object> {
+  ): Promise<{ result: object; flushable: boolean }> {
     const { name, arguments: args } = request.params;
 
     // Extract and strip context before passing args to handlers (AdCP requirement:
@@ -3026,7 +3026,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
+      // Pre-handler validation failures don't touch session state, so flushing
+      // is a no-op; leaving flushable=true keeps behaviour consistent for
+      // requests whose handlers DO legitimately mutate before failing.
+      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext), flushable: true };
     }
 
     const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
@@ -3034,11 +3037,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       requestedVersion !== undefined
       && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
     ) {
-      return adcpError('VERSION_UNSUPPORTED', {
-        message: `AdCP major version ${String(requestedVersion)} is not supported`,
-        details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
-        field: 'adcp_major_version',
-      }, callerContext);
+      return {
+        result: adcpError('VERSION_UNSUPPORTED', {
+          message: `AdCP major version ${String(requestedVersion)} is not supported`,
+          details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
+          field: 'adcp_major_version',
+        }, callerContext),
+        flushable: true,
+      };
     }
 
     // Check for task-augmented request (explicit `task` field in params).
@@ -3057,6 +3063,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // mark the task as failed.
     let toolResult: CallToolResult;
     let taskFailed = false;
+    let handlerThrew = false;
     try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
@@ -3093,16 +3100,19 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
       taskFailed = true;
-      markHandlerFailed();
+      handlerThrew = true;
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
       }, callerContext);
     }
 
-    // If not task-augmented, return result directly
+    // If not task-augmented, return result directly.
+    // flushable=!handlerThrew: if the handler threw, discard in-progress session
+    // state. Structured { errors: [...] } responses still flush — they are
+    // well-formed outcomes that legitimately mutate state.
     if (!isTaskRequest) {
-      return toolResult;
+      return { result: toolResult, flushable: !handlerThrew };
     }
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
@@ -3136,7 +3146,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { task } as object;
+    return { result: { task } as object, flushable: !handlerThrew };
   }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered

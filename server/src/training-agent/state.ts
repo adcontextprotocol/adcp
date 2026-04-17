@@ -77,24 +77,14 @@ interface RequestSessionCtx {
   sessions: Map<string, SessionState>;
   /** Serialized snapshot taken at load time. Compared at flush to detect real mutations. */
   snapshots: Map<string, string>;
-  /** Set by the dispatcher when a handler throws. flushDirtySessions() refuses to
-   * persist state from a request that bailed mid-way — we'd risk writing partially
-   * mutated data. */
-  handlerFailed: boolean;
 }
 
 const requestCtx = new AsyncLocalStorage<RequestSessionCtx>();
 
 /** Wrap a request so getSession()/flushDirtySessions() use a per-request cache. */
 export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
-  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map(), handlerFailed: false };
+  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map() };
   return requestCtx.run(ctx, fn);
-}
-
-/** Mark the current request as failed so subsequent flushDirtySessions() is a no-op. */
-export function markHandlerFailed(): void {
-  const ctx = requestCtx.getStore();
-  if (ctx) ctx.handlerFailed = true;
 }
 
 const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -114,39 +104,58 @@ const MAX_SESSION_JSON_BYTES = 5 * 1024 * 1024; // 5 MB
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
   if (!ctx || ctx.sessions.size === 0) return;
-  if (ctx.handlerFailed) {
-    logger.warn({ keys: [...ctx.sessions.keys()] }, 'Skipping flush: handler threw mid-request');
-    return;
-  }
   const store = getStore();
+  const errors: Array<{ key: string; err: unknown }> = [];
   for (const [key, session] of ctx.sessions) {
     const current = serializeSession(session);
     const currentJson = stableStringify(current);
     const snapshotJson = ctx.snapshots.get(key);
     if (snapshotJson === currentJson) continue;
     if (currentJson.length > MAX_SESSION_JSON_BYTES) {
-      logger.warn(
-        { key, bytes: currentJson.length },
-        'Skipping session flush: serialized state exceeds size cap',
+      // Size cap is a defense-in-depth backstop on top of per-collection
+      // mutation limits. If we hit it, something grew unexpectedly —
+      // don't silently drop the write (the caller already got 200 OK).
+      const err = new Error(
+        `Training agent session "${key}" exceeds ${MAX_SESSION_JSON_BYTES} bytes (${currentJson.length}); refusing to persist`,
       );
+      logger.error({ key, bytes: currentJson.length }, err.message);
+      errors.push({ key, err });
       continue;
     }
     try {
       await store.put(SESSIONS_COLLECTION, key, current);
       ctx.snapshots.set(key, currentJson);
     } catch (err) {
+      // The response has already been sent, so we can't surface to the
+      // caller. Collect for an aggregate throw so the MCP transport
+      // layer sees the failure and operators notice in alert pipelines.
       logger.error({ err, key }, 'Failed to flush training-agent session');
+      errors.push({ key, err });
     }
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `Failed to flush ${errors.length} session(s): ${errors.map(e => e.key).join(', ')}`,
+    );
   }
 }
 
-/** Stable stringify: sort keys so object equality is positional-independent. */
+/**
+ * Stable stringify for dirty-detection.
+ *
+ * Sort keys so object equality is positional-independent. Drop
+ * `lastAccessedAt` — we update it on every read, so including it
+ * would make every getSession() look dirty and defeat the
+ * "only flush real mutations" invariant.
+ */
 function stableStringify(value: unknown): string {
-  return JSON.stringify(value, (_k, v) => {
+  return JSON.stringify(value, (k, v) => {
+    if (k === 'lastAccessedAt') return undefined;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(v as Record<string, unknown>).sort()) {
-        sorted[k] = (v as Record<string, unknown>)[k];
+      for (const key of Object.keys(v as Record<string, unknown>).sort()) {
+        if (key === 'lastAccessedAt') continue;
+        sorted[key] = (v as Record<string, unknown>)[key];
       }
       return sorted;
     }
@@ -256,9 +265,8 @@ export async function getSession(key: string): Promise<SessionState> {
   }
 
   let session: SessionState | undefined;
-  let storedShape: Record<string, unknown> | null = null;
   try {
-    storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
     if (storedShape) session = deserializeSession(storedShape);
   } catch (err) {
     logger.warn({ err, key }, 'Failed to load session from store; creating fresh');
@@ -270,9 +278,10 @@ export async function getSession(key: string): Promise<SessionState> {
 
   if (ctx) {
     ctx.sessions.set(key, session);
-    // Snapshot the shape we loaded (or serialize the freshly-created session).
-    // flushDirtySessions() compares against this snapshot to decide whether to write.
-    ctx.snapshots.set(key, stableStringify(storedShape ?? serializeSession(session)));
+    // Snapshot the round-trip shape (serialize after deserialize) so any
+    // normalization done by (de)serialize doesn't register as a mutation.
+    // stableStringify drops lastAccessedAt so "touch-only" reads don't flush.
+    ctx.snapshots.set(key, stableStringify(serializeSession(session)));
   }
   return session;
 }
@@ -313,6 +322,9 @@ export function sessionKeyFromArgs(
   }
   const domain = account?.brand?.domain ?? args.brand?.domain;
   const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+  if (domain && !safeDomain) {
+    logger.debug({ domain }, 'Rejected brand.domain as session key; collapsing to open:default');
+  }
   // DNS is case-insensitive — normalise so Example.com and example.com share a session.
   return `open:${safeDomain ? safeDomain.toLowerCase() : 'default'}`;
 }
@@ -364,12 +376,9 @@ export async function clearSessions(): Promise<void> {
   if (!store) return;
   if (store instanceof InMemoryStateStore) {
     store.clear();
-    return;
+  } else if (store instanceof PostgresStateStore) {
+    await store.clearCollection(SESSIONS_COLLECTION);
   }
-  // PostgresStateStore exposes clearCollection (not on the interface).
-  const maybeClear = (store as { clearCollection?: (c: string) => Promise<number> }).clearCollection;
-  if (typeof maybeClear === 'function') {
-    await maybeClear.call(store, SESSIONS_COLLECTION);
-  }
+  // Other AdcpStateStore implementations: no-op. Tests should inject a known store.
 }
 
