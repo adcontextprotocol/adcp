@@ -1,0 +1,129 @@
+---
+title: Compliance Catalog
+sidebarTitle: Compliance Catalog
+description: "Full index of AdCP domains and specialisms an agent can claim — what each one means, which compliance storyboards run, and where to find the source YAML."
+"og:title": "AdCP — Compliance Catalog"
+---
+
+Every AdCP agent declares its `supported_protocols` and `specialisms` in `get_adcp_capabilities`. Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
+
+This page is the human-readable index of that taxonomy. The machine-readable equivalent is `/compliance/{version}/index.json`.
+
+## Domains
+
+Broad agent categories. An agent claims a domain by listing the matching protocol in `supported_protocols` and must pass the domain's baseline storyboard plus every [universal](/docs/building/validate-your-agent#storyboard-taxonomy) storyboard.
+
+`supported_protocols` uses snake_case on the wire; compliance paths and specialism IDs use kebab-case.
+
+<Note>
+The case split is deliberate. `supported_protocols` is a pre-existing 3.0 field with snake_case values already shipped to production agents — changing it would break every live deployment. Specialisms are new in this release and use kebab-case because they are URL-first: each specialism ID is a directory name under `/compliance/.../specialisms/{id}/`. The runner handles the mapping transparently (`media_buy` ↔ `/compliance/.../domains/media-buy/`).
+</Note>
+
+| `supported_protocols` value | Compliance path | Purpose |
+|------------------------------|-----------------|---------|
+| `media_buy` | `domains/media-buy/` | Campaign creation, package management, delivery optimization, conversion tracking |
+| `creative` | `domains/creative/` | Creative asset management, format discovery, rendering |
+| `signals` | `domains/signals/` | Audience signal discovery and activation |
+| `governance` | `domains/governance/` | Property governance, brand standards, compliance |
+| `brand` | `domains/brand/` | Brand identity, rights discovery, rights acquisition *— small domain today, growing with rights licensing work; see `brand-rights` specialism.* |
+| `sponsored_intelligence` | `domains/sponsored-intelligence/` | AI-mediated commerce and conversational sponsored experiences |
+| `compliance_testing` | *(none)* | Declares the [compliance test controller](/docs/building/implementation/comply-test-controller) RPC surface. Not a compliance claim — no baseline storyboard. |
+
+<Tip>
+An agent can claim multiple protocols — a full-stack media-buy platform might list `media_buy`, `creative`, and `signals`. The runner executes all matching baselines.
+</Tip>
+
+## Specialisms
+
+Specific capability claims. Each specialism lives under exactly one domain (parent protocol). An agent claiming a specialism must pass the specialism's storyboard in addition to the parent protocol's baseline — e.g. claiming `sales-guaranteed` requires `media_buy` in `supported_protocols`.
+
+Specialisms carry a `status`:
+
+- **`stable`** — fully specified storyboard. Compliance runner executes every phase; `AAO Verified` means the agent demonstrably passed.
+- **`preview`** — ID and scope are reserved; the storyboard is a placeholder while the underlying protocol surface stabilizes. Agents may claim these; the runner emits a result of `{ status: "preview", passed: null, reason: "storyboard not yet defined" }` instead of a verified pass/fail. AAO badges render preview specialisms with a distinct indicator.
+- **`deprecated`** — retained for backward compatibility but scheduled for removal in a future major. Runner emits `{ status: "deprecated", passed: <boolean>, reason: "..." }` — still executes the storyboard if one exists, but warns the claim should be migrated.
+
+Status is declared per-specialism in the YAML frontmatter and surfaced in `/compliance/{version}/index.json`.
+
+### media-buy
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
+| `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
+| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
+| `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
+| `sales-streaming-tv` | **preview** | Connected TV / streaming with ad-supported video inventory |
+| `sales-social` | stable | Social media advertising platform with self-service flows |
+| `sales-exchange` | **preview** | Programmatic exchange or SSP exposing auction-based inventory |
+| `sales-retail-media` | **preview** | Retail media network seller — onsite, offsite, in-store inventory |
+
+### creative
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
+| `creative-generative` | stable | Generative creative agent producing assets on demand |
+| `creative-template` | stable | Creative template and transformation agent |
+
+### signals
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `signal-owned` | stable | Owned signal agent exposing first-party segments |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+
+### governance
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation |
+| `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
+| `inventory-lists` | stable | Property and collection list governance — curated inventory groupings for targeting and authorization |
+| `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
+| `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
+| `measurement-verification` | **preview** | Third-party measurement and verification. Parked under `governance` for 3.1; a dedicated `measurement` domain is planned once the viewability, attribution, brand-safety, and SI-outcome surfaces split out. |
+
+### brand
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `brand-rights` | stable | Brand identity and rights licensing (talent, music, stock media) |
+
+## How to claim
+
+Declare your protocols and specialisms in `get_adcp_capabilities`:
+
+```json
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": ["sales-guaranteed", "creative-template"]
+}
+```
+
+The storyboard runner:
+
+1. Runs every storyboard in `/compliance/{version}/universal/`
+2. For each protocol in `supported_protocols`, runs the baseline at `/compliance/{version}/domains/{protocol}/` (snake_case → kebab-case)
+3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
+4. Skips `compliance_testing` in step 2 (RPC surface only, no baseline)
+5. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
+
+If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/validate-your-agent) for how to run the suite locally.
+
+## Source of truth
+
+The machine index is published alongside schemas:
+
+| Path | Contents |
+|------|----------|
+| `/compliance/{version}/index.json` | Enumerated domains + specialisms + universal storyboards + per-specialism `status` |
+| `/schemas/{version}/enums/specialism.json` | Specialism enum used by `get_adcp_capabilities.specialisms` |
+| `/schemas/{version}/enums/adcp-domain.json` | Task-classification enum referenced by `tasks-list-request` and webhook payloads. (Not used by `get_adcp_capabilities` — that field is `supported_protocols`.) |
+
+The build pipeline verifies the specialism filesystem ↔ enum parity and that every specialism's parent domain exists in the compliance tree. Drift fails the build.
+
+<Note>
+The catalog on this page is maintained by hand to give human context. The authoritative enumeration is always `/compliance/{version}/index.json`.
+</Note>

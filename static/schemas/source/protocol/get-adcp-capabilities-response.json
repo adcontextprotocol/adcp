@@ -25,7 +25,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "Which AdCP domain protocols this seller supports",
+      "description": "AdCP domain protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/domains/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../domains/media-buy/). compliance_testing is an RPC surface only and has no compliance baseline.",
       "items": {
         "type": "string",
         "enum": [
@@ -786,6 +786,14 @@
         }
       },
       "additionalProperties": true
+    },
+    "specialisms": {
+      "type": "array",
+      "description": "Optional — specialized compliance claims this agent supports. Omitting the field means the agent declares no specialism claims (it still passes the universal + domain-baseline storyboards implied by supported_protocols). Each specialism maps to a storyboard bundle at /compliance/{version}/specialisms/{id}/ that the AAO compliance runner executes to verify the claim. Each specialism rolls up to one of the protocols in supported_protocols — the runner rejects a specialism claim whose parent protocol is missing. Only list specialisms your agent actually implements — the AAO Verified badge enumerates which specialisms were demonstrably passed.",
+      "items": {
+        "$ref": "/schemas/enums/specialism.json"
+      },
+      "uniqueItems": true
     },
     "extensions_supported": {
       "type": "array",

@@ -1,0 +1,33 @@
+id: sales_streaming_tv
+version: "1.0.0"
+title: "Streaming TV sales"
+domain: media-buy
+status: preview
+summary: "Connected TV and streaming sellers — ad-supported video inventory, audience-based buying, and frequency management across CTV apps."
+track: media-buy
+
+narrative: |
+  You run a streaming TV seller (SSAI, ad-supported streaming service, or CTV
+  platform). Inventory is sold as video impressions against audiences rather than
+  traditional daypart schedules, and delivery is measured with log-level or
+  household-level frequency data.
+
+  3.1 placeholder: streaming-specific phases (frequency capping, audience
+  reconciliation, household reach) will be populated as the CTV-specific additions
+  to media-buy stabilize. Agents claiming this specialism today pass the
+  media-buy baseline storyboard.
+
+agent:
+  interaction_model: media_buy_agent
+  capabilities:
+    - streaming_tv_sales
+  examples:
+    - "Hulu Ad Manager"
+    - "Paramount+ Ads"
+    - "Peacock Ads"
+    - "Samsung TV Plus"
+
+caller:
+  role: buyer_agent
+
+phases: []

@@ -7,7 +7,19 @@ description: "Test your AdCP agent with storyboards — from the CLI or through 
 
 Once your agent is running, validate it before going live. Storyboards exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
 
-Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org).
+Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/docs/building/schemas-and-sdks#one-shot-protocol-bundle) for how to fetch them offline.
+
+## Storyboard taxonomy
+
+Storyboards are organized into three layers so agents declare only what they actually support:
+
+| Layer | Path | Who must pass it |
+|-------|------|------------------|
+| **Universal** | `/compliance/{version}/universal/` | Every AdCP agent (capability discovery, error handling, schema validation) |
+| **Domain** | `/compliance/{version}/domains/{domain}/` | Any agent claiming a domain (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
+| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/docs/building/compliance-catalog) |
+
+Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
 
 ## Setup
 

@@ -1,0 +1,32 @@
+id: sales_exchange
+version: "1.0.0"
+title: "Programmatic exchange sales"
+domain: media-buy
+status: preview
+summary: "Programmatic exchange or SSP — auction-based inventory access with real-time bidding semantics and multi-seller inventory pooling."
+track: media-buy
+
+narrative: |
+  You run a programmatic exchange or supply-side platform. Buyers reach inventory
+  via auction — you aggregate inventory from many publishers and expose it through
+  AdCP to buyer agents that would otherwise integrate directly via OpenRTB.
+
+  3.1 placeholder: exchange-specific phases (private deals, PMP negotiation,
+  auction transparency) will be populated as the OpenRTB ↔ AdCP bridge
+  stabilizes. Agents claiming this specialism today pass the media-buy
+  non-guaranteed baseline storyboard.
+
+agent:
+  interaction_model: media_buy_agent
+  capabilities:
+    - exchange_sales
+  examples:
+    - "Google Ad Exchange"
+    - "Magnite"
+    - "PubMatic"
+    - "Index Exchange"
+
+caller:
+  role: buyer_agent
+
+phases: []

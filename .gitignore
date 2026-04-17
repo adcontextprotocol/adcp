@@ -5,13 +5,19 @@ server/node_modules
 # Production
 /build
 
-# Ignore dist except for released schemas and docs
+# Ignore dist except for released schemas, compliance, protocol tarballs, and docs
 /dist/*
 !/dist/schemas
+!/dist/compliance
+!/dist/protocol
 !/dist/docs
 /dist/schemas/latest
 /dist/schemas/v*
 /dist/schemas/registry.*
+/dist/compliance/latest
+/dist/compliance/v*
+/dist/protocol/latest.tgz
+/dist/protocol/latest.tgz.sha256
 
 # Generated files
 .docusaurus

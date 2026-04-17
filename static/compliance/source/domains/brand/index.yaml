@@ -1,0 +1,23 @@
+id: brand_baseline
+version: "1.0.0"
+title: "Brand baseline"
+domain: brand
+summary: "Baseline domain storyboard — every brand agent must resolve brand identity, declare authorization via adagents.json, and expose rights-related metadata."
+track: brand
+
+narrative: |
+  Brand domain agents provide brand identity, rights discovery, and
+  rights acquisition. The baseline requires capability discovery and
+  brand identity resolution.
+
+  3.1 placeholder: full brand baseline phases will be populated once the
+  brand domain tasks stabilize. Until then, agents claiming this domain
+  must pass universal storyboards.
+
+agent:
+  interaction_model: brand_agent
+
+caller:
+  role: buyer_agent
+
+phases: []

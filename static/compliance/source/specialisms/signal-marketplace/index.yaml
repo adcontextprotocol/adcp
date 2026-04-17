@@ -1,0 +1,389 @@
+id: signal_marketplace
+version: "1.0.0"
+title: "Marketplace signal agent"
+domain: signals
+category: signal_marketplace
+summary: "Signal agent that resells third-party data provider signals with verifiable catalog provenance."
+track: signals
+required_tools:
+  - get_signals
+requires_scenarios:
+  - signal_marketplace/governance_denied
+
+narrative: |
+  You operate a signal marketplace — an intermediary that aggregates audience data from
+  multiple third-party providers and makes it available to buyers through a single interface.
+  Think LiveRamp Data Marketplace, Oracle Data Cloud, or Lotame.
+
+  Your agent searches across catalogs published by data providers in their adagents.json
+  files. Buyers discover signals through natural language queries, verify provenance by
+  checking the data provider's catalog directly, and activate signals on DSPs or sales
+  agents for campaign targeting.
+
+  The key property of marketplace signals: provenance is independently verifiable. Each
+  signal traces back to a data_provider_domain whose adagents.json lists your agent as
+  authorized. Buyers can (and should) verify this before spending.
+
+  This storyboard walks through discovery, verification, and both activation patterns —
+  activating directly on a DSP (buyer manages targeting) and activating on a sales agent
+  (SA handles downstream coordination).
+
+agent:
+  interaction_model: marketplace_catalog
+  capabilities:
+    - catalog_signals
+  examples:
+    - "LiveRamp Data Marketplace"
+    - "Oracle Data Cloud"
+    - "Lotame"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The buyer has a campaign brief with targeting objectives. The test kit provides
+    sample signal definitions, pricing options, and destination configurations that
+    match the training agent's signal providers.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports signals before discovering or activating audience data.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring signals in supported_protocols, confirming the agent serves audience signals.
+        sample_request:
+          context:
+            correlation_id: "signal_marketplace--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: discovery
+    title: "Signal discovery"
+    narrative: |
+      The buyer describes what they need in natural language. Your agent searches
+      across all authorized data provider catalogs and returns matching signals with
+      pricing, coverage estimates, and value types.
+
+      This is where marketplace agents earn their keep — the buyer doesn't need to
+      know which providers exist or what taxonomies they use. One query, many sources.
+
+    steps:
+      - id: search_by_spec
+        title: "Discover signals from a campaign brief"
+        narrative: |
+          The buyer's platform translates a campaign brief into a get_signals call.
+          Your agent searches catalogs from every authorized data provider and returns
+          what matches — automotive intent from one provider, geo data from another,
+          retail purchase history from a third.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
+        stateful: false
+        expected: |
+          Return matching signals from multiple data providers. Each signal must include:
+          - signal_agent_segment_id for activation
+          - signal_id with source, data_provider_domain, and id
+          - name, description, and value_type (binary, categorical, or numeric)
+          - coverage_percentage (audience reach estimate)
+          - pricing_options with at least one pricing model
+          - signal_type: "marketplace"
+
+        sample_request:
+          signal_spec: "In-market EV buyers with high purchase propensity, near auto dealerships"
+
+          context:
+            correlation_id: "signal_marketplace--search_by_spec"
+
+        context_outputs:
+          - name: first_signal_id
+            path: "signals[0].signal_id"
+          - name: first_signal_agent_segment_id
+            path: "signals[0].signal_agent_segment_id"
+          - name: first_signal_pricing_option_id
+            path: "signals[0].pricing_options[0].pricing_option_id"
+          - name: second_signal_id
+            path: "signals[1].signal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "Each signal has a signal_agent_segment_id"
+          - check: field_present
+            path: "signals[0].signal_id.data_provider_domain"
+            description: "Each signal traces to a data provider domain"
+          - check: field_present
+            path: "signals[0].pricing_options"
+            description: "Each signal has pricing options"
+          - check: field_present
+            path: "signals[0].coverage_percentage"
+            description: "Each signal has a coverage estimate"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--search_by_spec"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "signals[0].signal_id.source"
+            description: "Signal ID includes source discriminator"
+          - check: field_present
+            path: "signals[0].signal_id.data_provider_domain"
+            description: "Signal ID includes data_provider_domain for provenance"
+      - id: search_by_ids
+        title: "Look up specific signals by ID"
+        narrative: |
+          The buyer already knows which signals they want — discovered in the prior
+          step. They pass signal_ids directly instead of a natural language query.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return the exact signals requested, with full metadata and pricing.
+          If a signal_id doesn't exist, omit it from results — don't error.
+
+        sample_request:
+          signal_ids:
+            - "$context.first_signal_id"
+
+          context:
+            correlation_id: "signal_marketplace--search_by_ids"
+        validations:
+          - check: response_schema
+            description: "Response matches schema"
+          - check: field_present
+            path: "signals"
+            description: "Response contains a signals array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--search_by_ids"
+            description: "Context correlation_id returned unchanged"
+  - id: verification
+    title: "Catalog verification"
+    narrative: |
+      Before activating third-party data, the buyer verifies provenance. They fetch
+      the data provider's adagents.json directly and confirm the signal exists and
+      your agent is authorized. This independent check is outside the AdCP protocol —
+      but your agent must return the metadata that makes it possible.
+
+      This phase tests that your get_signals responses include verifiable provenance
+      data: signal_id.source is "catalog" and signal_id.data_provider_domain points
+      to a real domain whose adagents.json the buyer can fetch independently.
+
+    steps:
+      - id: verify_provenance_metadata
+        title: "Confirm signals carry verifiable provenance"
+        narrative: |
+          The buyer looks up a specific signal by ID (discovered earlier) and checks
+          that the response includes the metadata needed for independent verification —
+          source is "catalog" and data_provider_domain points to a fetchable adagents.json.
+          The actual HTTP fetch of adagents.json is the buyer's responsibility, but
+          your agent must provide the domain to fetch from.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/data-providers"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return the requested signal with verifiable provenance metadata:
+          - signal_id.source is "catalog"
+          - signal_id.data_provider_domain matches a real domain
+          The buyer will independently fetch that domain's adagents.json to confirm
+          your agent is listed in authorized_agents.
+
+        sample_request:
+          signal_ids:
+            - "$context.first_signal_id"
+
+          context:
+            correlation_id: "signal_marketplace--verify_provenance_metadata"
+        validations:
+          - check: field_value
+            path: "signals[0].signal_id.source"
+            value: "catalog"
+            description: "Signal source is 'catalog' (verifiable via adagents.json)"
+          - check: field_present
+            path: "signals[0].signal_id.data_provider_domain"
+            description: "Data provider domain is present for independent verification"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--verify_provenance_metadata"
+            description: "Context correlation_id returned unchanged"
+  - id: platform_activation
+    title: "Activate on a DSP"
+    narrative: |
+      The buyer activates a signal directly on a DSP platform. The signal agent pushes
+      segment data to the platform, and the buyer gets back a segment_id they can
+      reference when configuring campaign targeting.
+
+      Use platform destinations when the buyer is managing DSP campaigns directly —
+      not through a sales agent.
+
+    steps:
+      - id: activate_on_platform
+        title: "Activate signal on a DSP"
+        narrative: |
+          The buyer selects a signal and a DSP destination. The signal agent pushes
+          the segment to the platform. This is typically asynchronous — the initial
+          response shows is_live: false with an estimated duration, and the buyer
+          polls for completion.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return a deployment with:
+          - type: "platform" matching the requested destination
+          - is_live: false initially (async activation)
+          - estimated_activation_duration_minutes
+          After polling, the deployment should show:
+          - is_live: true
+          - activation_key with type: "segment_id" and a platform-native segment ID
+          - deployed_at timestamp
+
+        sample_request:
+          signal_agent_segment_id: "$context.first_signal_agent_segment_id"
+          pricing_option_id: "$context.first_signal_pricing_option_id"
+          destinations:
+            - type: "platform"
+              platform: "the-trade-desk"
+              account: "agency-123-ttd"
+
+          context:
+            correlation_id: "signal_marketplace--activate_on_platform"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches activate-signal-response.json schema"
+          - check: field_present
+            path: "deployments[0].type"
+            description: "Deployment includes type"
+          - check: field_value
+            path: "deployments[0].type"
+            value: "platform"
+            description: "Deployment type is 'platform'"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--activate_on_platform"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "deployments[0].activation_key"
+            description: "Deployment includes activation_key for targeting"
+  - id: agent_activation
+    title: "Activate on a sales agent"
+    narrative: |
+      The buyer activates a signal on a sales agent instead of a DSP. This is the
+      right pattern when the buyer is purchasing media through the SA — the SA handles
+      its own DSP coordination.
+
+      The buyer doesn't need to know which DSP the SA uses. The activation key confirms
+      the signal is live on the SA, and the SA applies targeting when fulfilling media
+      buys through create_media_buy.
+
+    steps:
+      - id: activate_on_agent
+        title: "Activate signal on a sales agent"
+        narrative: |
+          The buyer activates a signal with the sales agent's URL as the destination.
+          Agent activations are typically synchronous — the SA records the activation
+          immediately and returns a key_value activation key.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return a deployment with:
+          - type: "agent" matching the requested destination
+          - agent_url matching the SA's URL
+          - is_live: true (sync activation)
+          - activation_key with type: "key_value"
+          - deployed_at timestamp
+
+          The SA records the activation internally. When the buyer later calls
+          create_media_buy through this SA, signal-based targeting is already
+          in place.
+
+        sample_request:
+          signal_agent_segment_id: "$context.first_signal_agent_segment_id"
+          pricing_option_id: "$context.first_signal_pricing_option_id"
+          destinations:
+            - type: "agent"
+              agent_url: "https://wonderstruck.salesagents.example"
+
+          context:
+            correlation_id: "signal_marketplace--activate_on_agent"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches activate-signal-response.json schema"
+          - check: field_present
+            path: "deployments[0].activation_key"
+            description: "Deployment includes activation key"
+          - check: field_value
+            path: "deployments[0].type"
+            value: "agent"
+            description: "Deployment type is 'agent'"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace--activate_on_agent"
+            description: "Context correlation_id returned unchanged"

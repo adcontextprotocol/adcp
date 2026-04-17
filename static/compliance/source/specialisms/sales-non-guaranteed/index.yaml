@@ -1,0 +1,389 @@
+id: media_buy_non_guaranteed
+version: "1.0.0"
+title: "Non-guaranteed auction-based media buy"
+domain: media-buy
+category: media_buy_non_guaranteed
+summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/governance_approved
+  - media_buy_seller/governance_denied
+  - media_buy_seller/governance_conditions
+  - media_buy_seller/delivery_reporting
+
+narrative: |
+  You run a sell-side platform with auction-based inventory. Non-guaranteed buys don't
+  require IOs or human approval — the buyer sets a bid price and budget, and your platform
+  runs the auction. Delivery is best-effort based on bid competitiveness.
+
+  The buyer discovers products with floor prices and bid guidance, creates a buy with bid
+  prices per package, monitors win rates and pacing, and adjusts bids or budgets in-flight
+  to optimize performance.
+
+  This storyboard covers the non-guaranteed buying path — fast setup, no human approval,
+  real-time optimization through bid and budget adjustments.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - auction_based
+  examples:
+    - "SSP with programmatic auction inventory"
+    - "Exchange-based publisher platform"
+    - "Open marketplace seller"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. Non-guaranteed buys
+    typically have lower barriers to entry — no IO signing required. The test kit
+    provides a sample brand (Acme Outdoor) with bid parameters suitable for testing
+    the auction-based flow.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "media_buy_non_guaranteed--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: product_discovery
+    title: "Discover auction-based products"
+    narrative: |
+      The buyer sends a brief to discover your non-guaranteed inventory. Products
+      come back with delivery_type: non_guaranteed, floor prices, and bid guidance
+      that helps the buyer set competitive bids.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief for non-guaranteed inventory"
+        narrative: |
+          The buyer describes what they want. Your platform returns non-guaranteed
+          products with auction mechanics: floor prices, recommended bid ranges,
+          estimated win rates at different bid levels, and available audience segments.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return non-guaranteed products matching the brief. Each product should include:
+          - product_id: unique identifier
+          - name and description
+          - delivery_type: non_guaranteed
+          - pricing_models: auction-based pricing with floor_price and recommended bid range
+          - forecast: estimated impressions at different bid levels (best-effort)
+          - creative_format_ids: required creative formats
+          - targeting: available audiences and contexts
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
+          brand:
+            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+
+          context:
+            correlation_id: "media_buy_non_guaranteed--get_products_brief"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares delivery_type: non_guaranteed"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
+  - id: create_buy
+    title: "Create non-guaranteed buy"
+    narrative: |
+      The buyer creates a media buy with bid prices per package. Since this is
+      non-guaranteed, no IO is required and no human approval is needed. The response
+      comes back as completed — the buy is immediately active and your platform starts
+      bidding in auctions on the buyer's behalf.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy with bid prices"
+        narrative: |
+          The buyer commits to non-guaranteed products with bid prices and budgets.
+          Your platform validates the bids against floor prices, confirms the buy
+          immediately (completed status), and begins auction participation.
+
+          Each package includes a bid_price that the buyer is willing to pay per unit
+          (CPM, CPC, etc.). The platform uses this to compete in auctions.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return the media buy in completed status:
+          - media_buy_id: your platform's identifier
+          - status: active (no async approval needed)
+          - confirmed_at: timestamp
+          - packages: confirmed line items with bid prices acknowledged
+          - valid_actions: pause, update_bid, get_delivery
+
+          Bids below floor_price should be rejected with a clear error.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          brand:
+            domain: "acmeoutdoor.com"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_display_auction"
+              budget: 10000
+              bid_price: 8.50
+              pricing_option_id: "cpm_auction"
+              creative_assignments:
+                - creative_id: "display_trail_pro_300x250"
+            - product_id: "outdoor_video_auction"
+              budget: 15000
+              bid_price: 22.00
+              pricing_option_id: "cpm_auction"
+              creative_assignments:
+                - creative_id: "video_30s_trail_pro"
+
+          context:
+            correlation_id: "media_buy_non_guaranteed--create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns package_id — must be echoed in update_media_buy"
+  - id: monitor_pacing
+    title: "Monitor win rates and pacing"
+    narrative: |
+      The non-guaranteed buy is live and bidding in auctions. The buyer checks
+      pacing to understand how competitive their bids are and whether the budget
+      is spending at the desired rate.
+
+    steps:
+      - id: get_media_buys_pacing
+        title: "Check buy status and pacing"
+        narrative: |
+          The buyer polls for the media buy status. Your platform returns the active
+          buy with pacing data — how much budget has been spent, win rates, and whether
+          the buy is on pace to exhaust the budget by the end of the flight.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the media buy with pacing data:
+          - media_buy_id: matches the buy created earlier
+          - status: active
+          - packages: line items with current spend, win rate, and pacing status
+          - valid_actions: update, pause, get_delivery
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_auction"
+
+          context:
+            correlation_id: "media_buy_non_guaranteed--get_media_buys_pacing"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Media buy has a status"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--get_media_buys_pacing"
+            description: "Context correlation_id returned unchanged"
+  - id: adjust_bids
+    title: "Adjust bids and budget"
+    narrative: |
+      Based on pacing data, the buyer adjusts bids or budgets in-flight. If a package
+      is underspending (low win rate), the buyer increases the bid. If a package is
+      overspending, the buyer decreases the bid or caps the daily budget.
+
+    steps:
+      - id: update_media_buy
+        title: "Update bid prices and budget"
+        narrative: |
+          The buyer modifies the active media buy — adjusting bid prices, reallocating
+          budget between packages, or changing daily spend caps. Your platform applies
+          the updates immediately to the live auction participation.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Apply the updates and return the modified media buy:
+          - media_buy_id: matches the existing buy
+          - status: active (still running)
+          - packages: updated line items reflecting new bids and budgets
+          - Changes take effect immediately for subsequent auctions
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_id: "mb_acme_q2_2026_auction"
+          packages:
+            - product_id: "sports_display_auction"
+              bid_price: 10.00
+              budget: 12000
+            - product_id: "outdoor_video_auction"
+              bid_price: 20.00
+              budget: 13000
+
+          context:
+            correlation_id: "media_buy_non_guaranteed--update_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--update_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: delivery
+    title: "Delivery and auction metrics"
+    narrative: |
+      The buyer reviews delivery data including auction-specific metrics: win rates,
+      average clearing prices, and bid competitiveness across packages.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery with auction metrics"
+        narrative: |
+          The buyer requests delivery data for the active non-guaranteed media buy.
+          Your platform returns standard delivery metrics plus auction-specific data:
+          win rates, average clearing prices, bid-to-win ratios, and budget pacing.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics for the non-guaranteed media buy:
+          - Per-package delivery: impressions, clicks, spend
+          - Win rate: percentage of auctions won per package
+          - Average clearing price: what the buyer actually paid vs. bid price
+          - Pacing: on track, ahead, behind relative to budget and flight dates
+          - Budget utilization: spent vs. committed
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
+          media_buy_ids:
+            - "mb_acme_q2_2026_auction"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "media_buy_non_guaranteed--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_non_guaranteed--get_delivery"
+            description: "Context correlation_id returned unchanged"

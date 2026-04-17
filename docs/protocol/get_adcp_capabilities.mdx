@@ -79,13 +79,29 @@ Core AdCP protocol information:
 
 ### supported_protocols
 
-Array of domain protocols this seller supports:
+AdCP domain protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/domains/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../domains/media-buy/`).
 
 ```json
 {
-  "supported_protocols": ["media_buy"]
+  "supported_protocols": ["media_buy", "creative"]
 }
 ```
+
+Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`, `compliance_testing`. `compliance_testing` is an RPC surface only (the [compliance test controller](/docs/building/implementation/comply-test-controller)) — it has no compliance baseline.
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope.
+
+### specialisms
+
+Optional specialization claims. Each entry corresponds to a narrow storyboard at `/compliance/{version}/specialisms/{id}/`. Every specialism rolls up to one protocol in `supported_protocols` — claiming `sales-guaranteed` requires `media_buy`. The runner rejects a specialism whose parent protocol is missing.
+
+```json
+{
+  "specialisms": ["sales-guaranteed", "creative-template"]
+}
+```
+
+See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
 
 ### account
 
