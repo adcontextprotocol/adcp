@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import YAML from 'yaml';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -10,14 +12,17 @@ import {
 import { clearSessions } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
+const REPO_ROOT = join(process.cwd());
 const STORYBOARD_PATH = join(
-  process.cwd(),
+  REPO_ROOT,
   'static/compliance/source/specialisms/collection-lists/index.yaml',
 );
+const SCHEMA_BASE_DIR = join(REPO_ROOT, 'static/schemas/source');
 
 interface Step {
   id: string;
   task: string;
+  response_schema_ref?: string;
   sample_request?: Record<string, unknown>;
   context_outputs?: { path: string; key: string }[];
   validations: Validation[];
@@ -79,14 +84,43 @@ function getByPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
+async function loadExternalSchema(uri: string): Promise<object> {
+  if (!uri.startsWith('/schemas/')) {
+    throw new Error(`Cannot load external schema: ${uri}`);
+  }
+  const schemaPath = join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
+  return JSON.parse(readFileSync(schemaPath, 'utf8'));
+}
+
+async function validateAgainstSchema(
+  data: unknown,
+  schemaRef: string,
+): Promise<{ valid: boolean; errors: string }> {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    loadSchema: loadExternalSchema,
+  });
+  addFormats(ajv);
+  const schema = await loadExternalSchema('/schemas/' + schemaRef);
+  const validate = await ajv.compileAsync(schema);
+  const ok = validate(data);
+  if (ok) return { valid: true, errors: '' };
+  const errs = (validate.errors ?? [])
+    .map(e => `${e.instancePath || '(root)'}: ${e.message}`)
+    .join('; ');
+  return { valid: false, errors: errs };
+}
+
 // Two tests live here:
-//   1. An end-to-end walk of the storyboard's phases against in-process handlers.
-//      This passes `brand` into handlers directly, so it does NOT catch the
-//      "inputSchema missing brand" regression.
-//   2. A tools/list invariant that asserts every CRUD tool declares `brand` in
+//   1. An end-to-end walk of the storyboard's phases against in-process
+//      handlers. Each step's response is validated against its declared
+//      response_schema (via ajv) plus field_present/field_value/correlation_id
+//      echo assertions from the storyboard YAML.
+//   2. A tools/list invariant asserting every CRUD tool declares `account` in
 //      its inputSchema — MCP clients strip undeclared keys, collapsing the
-//      session key and breaking multi-step flows. The smoke test against live
-//      agents catches that, but this unit test catches it faster.
+//      session key. The storyboard walk in (1) passes `account` into handlers
+//      directly so it does NOT catch that regression; this second test does.
 describe('collection-lists specialism storyboard', () => {
   let server: ReturnType<typeof createTrainingAgentServer>;
   const ctx: TrainingContext = { mode: 'open' };
@@ -123,13 +157,15 @@ describe('collection-lists specialism storyboard', () => {
         ).toBeUndefined();
 
         for (const v of step.validations) {
-          if (v.check === 'field_present' && v.path && !v.path.startsWith('context')) {
+          if (v.check === 'response_schema' && step.response_schema_ref) {
+            const { valid, errors } = await validateAgainstSchema(result, step.response_schema_ref);
+            expect(valid, `step ${step.id}: ${step.response_schema_ref} validation failed: ${errors}`).toBe(true);
+          } else if (v.check === 'field_present' && v.path) {
             expect(
               getByPath(result, v.path),
               `step ${step.id}: ${v.description}`,
             ).toBeDefined();
-          }
-          if (v.check === 'field_value' && v.path && !v.path.startsWith('context')) {
+          } else if (v.check === 'field_value' && v.path) {
             expect(getByPath(result, v.path), `step ${step.id}: ${v.description}`).toEqual(
               v.value,
             );
@@ -145,15 +181,16 @@ describe('collection-lists specialism storyboard', () => {
     expect(context.collection_list_id).toBeTruthy();
   });
 
-  it('tool inputSchemas declare brand so MCP clients do not strip it', async () => {
+  it('tool inputSchemas declare account so MCP clients do not strip it', async () => {
     const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
     const handler = requestHandlers.get('tools/list');
     if (!handler) throw new Error('ListTools handler not found');
     const { tools } = await handler({ method: 'tools/list' }, {});
 
-    const collectionTools = (tools as { name: string; inputSchema: { properties?: Record<string, unknown> } }[]).filter(
-      t => /^(create|get|list|update|delete)_collection_list/.test(t.name),
-    );
+    const collectionTools = (tools as {
+      name: string;
+      inputSchema: { properties?: Record<string, any> };
+    }[]).filter(t => /^(create|get|list|update|delete)_collection_list/.test(t.name));
     expect(collectionTools.length).toBe(5);
 
     for (const tool of collectionTools) {
@@ -161,9 +198,14 @@ describe('collection-lists specialism storyboard', () => {
         tool.inputSchema.properties,
         `${tool.name} has no inputSchema.properties`,
       ).toBeDefined();
+      const account = tool.inputSchema.properties?.account;
       expect(
-        tool.inputSchema.properties?.brand,
-        `${tool.name} inputSchema does not declare 'brand' — @adcp/client will strip it, collapsing session key to open:default`,
+        account,
+        `${tool.name} inputSchema does not declare 'account' — @adcp/client will strip it, collapsing session key to open:default`,
+      ).toBeDefined();
+      expect(
+        account?.oneOf,
+        `${tool.name} declares 'account' but not the oneOf shape (account_id | {brand, operator}) — agents need the shape hint`,
       ).toBeDefined();
     }
   });

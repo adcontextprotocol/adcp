@@ -103,7 +103,7 @@ export function clearAccountStore(): void {
 
 // ── Tool definitions ─────────────────────────────────────────────
 
-const ACCOUNT_REF_SCHEMA = {
+export const ACCOUNT_REF_SCHEMA = {
   type: 'object',
   oneOf: [
     { properties: { account_id: { type: 'string' } }, required: ['account_id'] },

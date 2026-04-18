@@ -188,6 +188,7 @@ export interface CollectionListState {
   base_collections?: unknown[];
   filters?: Record<string, unknown>;
   brand?: { domain: string };
+  account?: AccountRef;
   webhook_url?: string;
   collection_count: number;
   created_at: string;
@@ -416,7 +417,7 @@ export interface PropertyListState {
   name: string;
   description?: string;
   listType?: string;
-  principal?: string;
+  account?: AccountRef;
   baseProperties: unknown[];
   filters?: unknown;
   brand?: unknown;

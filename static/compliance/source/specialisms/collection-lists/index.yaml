@@ -113,6 +113,10 @@ phases:
           - Timestamps populated
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "novamotors.example"
           brand:
             domain: "novamotors.example"
           name: "Nova Motors approved programs"
@@ -175,8 +179,10 @@ phases:
           - Includes the list created in the prior phase
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "novamotors.example"
           name_contains: "Nova Motors"
 
           context:
@@ -212,8 +218,10 @@ phases:
         sample_request:
           list_id: "$context.collection_list_id"
           resolve: true
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "novamotors.example"
 
           context:
             correlation_id: "collection_lists--get_collection_list"
@@ -260,8 +268,10 @@ phases:
 
         sample_request:
           list_id: "$context.collection_list_id"
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "novamotors.example"
           base_collections:
             - selection_type: "distribution_ids"
               identifiers:
@@ -315,8 +325,10 @@ phases:
 
         sample_request:
           list_id: "$context.collection_list_id"
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "novamotors.example"
 
           context:
             correlation_id: "collection_lists--delete_collection_list"
