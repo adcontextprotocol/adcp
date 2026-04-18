@@ -50,7 +50,7 @@
                     },
                     "policy_id": {
                       "type": "string",
-                      "description": "Registry policy ID that triggered this result. Present when the result originates from a specific registry policy (e.g., GARM category, Scope3 standard). Enables programmatic routing by looking up the policy in the registry."
+                      "description": "Registry policy ID that triggered this result. Present when the result originates from a specific registry policy (e.g., GARM category, CSBS standard). Enables programmatic routing by looking up the policy in the registry."
                     },
                     "explanation": {
                       "type": "string",

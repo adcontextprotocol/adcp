@@ -596,8 +596,8 @@
           "$ref": "/schemas/enums/creative-agent-capability.json",
           "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
         },
-        "adcp-domain": {
-          "$ref": "/schemas/enums/adcp-domain.json",
+        "adcp-protocol": {
+          "$ref": "/schemas/enums/adcp-protocol.json",
           "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
         },
         "brand-agent-type": {

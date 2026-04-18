@@ -2080,7 +2080,7 @@ async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext)
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
     adcp: { major_versions: [...SUPPORTED_MAJOR_VERSIONS] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
     protocol_version: '3.0',
     tasks,
     media_buy: {

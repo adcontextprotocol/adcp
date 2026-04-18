@@ -771,7 +771,14 @@
 
     function renderParticipationSummary() {
       const el = document.getElementById('participationSummary');
-      if (myContent.length === 0) { el.classList.add('hidden'); return; }
+      // Admins receive every perspective from /api/me/content so they can edit
+      // anything. Scope participation stats to the user's own relationships so
+      // the numbers reflect their own contributions, not the whole community.
+      const ownContent = myContent.filter(c => {
+        const rels = c.relationships || [];
+        return rels.includes('author') || rels.includes('proposer') || rels.includes('owner');
+      });
+      if (ownContent.length === 0) { el.classList.add('hidden'); return; }
 
       // Current quarter boundaries
       const now = new Date();
@@ -780,14 +787,14 @@
       const qLabel = `Q${Math.floor(qMonth / 3) + 1} ${now.getFullYear()}`;
 
       // Count items this quarter
-      const thisQ = myContent.filter(c => {
+      const thisQ = ownContent.filter(c => {
         const d = new Date(c.published_at || c.created_at);
         return d >= qStart;
       });
       const published = thisQ.filter(c => c.status === 'published').length;
       const articles = thisQ.filter(c => c.content_type === 'article').length;
       const links = thisQ.filter(c => c.content_type === 'link').length;
-      const totalViews = myContent.reduce((sum, c) => sum + (c.performance?.pageviews_last_30d || 0), 0);
+      const totalViews = ownContent.reduce((sum, c) => sum + (c.performance?.pageviews_last_30d || 0), 0);
 
       // Don't show if nothing this quarter
       if (thisQ.length === 0 && totalViews === 0) { el.classList.add('hidden'); return; }
@@ -811,7 +818,7 @@
             <div class="stat-label">published</div>
           </div>
           <div class="participation-stat">
-            <div class="stat-number">${myContent.length}</div>
+            <div class="stat-number">${ownContent.length}</div>
             <div class="stat-label">total</div>
           </div>
           <div class="participation-context">${context}</div>
@@ -924,8 +931,10 @@
       if (isPendingView) {
         actions = `<button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>`;
       } else {
-        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
+        const canEdit = isAdmin || item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
         const isRejected = item.status === 'rejected';
+        // Owners can delete drafts/pending items; admins can delete anything.
+        const canDelete = isAdmin || (canEdit && item.status !== 'published');
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
           ${isRejected && canEdit ? `<button class="btn btn-small btn-primary" onclick="resubmitContent('${safeId(item.id)}')">Resubmit</button>` : ''}
@@ -934,6 +943,7 @@
             ? `<button class="btn btn-small btn-outline" onclick="draftSocialPost('${safeId(item.id)}')">Draft a LinkedIn post</button>`
             : `<a class="btn btn-small btn-outline" href="${addieSocialPrompt}">Get feedback on this draft</a>`
           }
+          ${canDelete ? `<button class="btn btn-small btn-danger" onclick="deleteMyContent('${safeId(item.id)}')">Delete</button>` : ''}
         `;
       }
 
@@ -1297,6 +1307,23 @@
       } catch (e) { alert('Failed to resubmit'); }
     }
 
+    async function deleteMyContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/me/content/${id}`, { method: 'DELETE', credentials: 'include' });
+        if (res.ok) {
+          await loadMyContent();
+          if (canReview) await loadPendingContent();
+          if (currentTab === 'all') await loadAdminContent();
+        } else {
+          const d = await res.json().catch(() => ({}));
+          alert(d.message || d.error || 'Failed to delete');
+        }
+      } catch (e) { alert('Failed to delete'); }
+    }
+
     function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
 
     // Quick Share Link modal
@@ -1510,11 +1537,11 @@
       btn.disabled = true; const origText = btn.textContent; btn.textContent = 'Saving...';
       try {
         let res;
+        const statusValue = document.getElementById('statusSelect').value;
         if (id) {
-          const statusValue = document.getElementById('statusSelect').value;
           res = await fetch(`/api/me/content/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...data, status: statusValue }) });
         } else {
-          res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+          res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...data, status: statusValue }) });
         }
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed to save'); }
 
@@ -1742,37 +1769,19 @@
       draftsEl.innerHTML = '<div class="social-draft-generating">Generating posts...</div>';
       targetItem.querySelector('.content-info').appendChild(draftsEl);
 
-      // Generate posts via Addie API
       try {
-        const prompt = `Write two social media posts for this article. No hashtags. No emojis.
-
-Title: ${item.title}
-URL: ${publishedUrl}
-${item.excerpt ? `Summary: ${item.excerpt}` : ''}
-
-Format your response exactly like this:
-LINKEDIN:
-[LinkedIn post - 2-3 sentences, professional tone, include the URL]
-
-X:
-[X post - under 280 characters, include the URL]`;
-
-        const res = await fetch('/api/chat/completions', {
+        const res = await fetch(`/api/admin/content/${encodeURIComponent(item.id)}/social-drafts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 500 }),
         });
 
-        if (!res.ok) throw new Error('Failed to generate');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Request failed (${res.status})`);
+        }
         const data = await res.json();
-        const text = data.choices?.[0]?.message?.content || data.content || '';
-
-        // Parse LinkedIn and X posts from response
-        const linkedinMatch = text.match(/LINKEDIN:\s*\n([\s\S]*?)(?=\nX:|$)/i);
-        const xMatch = text.match(/X:\s*\n([\s\S]*?)$/i);
-        const linkedinPost = linkedinMatch ? linkedinMatch[1].trim() : text.trim();
-        const xPost = xMatch ? xMatch[1].trim() : '';
+        const linkedinPost = data.linkedin || '';
+        const xPost = data.x || '';
 
         const linkedInShareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(publishedUrl)}`;
         const xShareUrl = xPost ? `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPost)}` : '';
@@ -1785,6 +1794,7 @@ X:
             <span>Ready to share</span>
             <button class="btn btn-small btn-secondary" onclick="document.getElementById('${containerId}').remove()" style="padding: 2px 8px; font-size: 11px;">Close</button>
           </div>
+          ${linkedinPost ? `
           <div class="social-draft-item">
             <div class="social-draft-label">LinkedIn</div>
             <div class="social-draft-text">${esc(linkedinPost)}</div>
@@ -1792,7 +1802,7 @@ X:
               <button class="btn btn-small btn-outline" onclick="copySocialDraft(this, '${containerId}', 'linkedin')">Copy</button>
               <a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Open LinkedIn</a>
             </div>
-          </div>
+          </div>` : ''}
           ${xPost ? `
           <div class="social-draft-item">
             <div class="social-draft-label">X</div>
@@ -1805,11 +1815,11 @@ X:
         `;
       } catch (e) {
         console.error('Social draft error:', e);
-        // Fall back to chat link
         const chatPrompt = `/chat?prompt=${encodeURIComponent(`Help me turn my published article "${item.title}" into a strong LinkedIn post first, then suggest a shorter optional X version. Here is the article URL: ${publishedUrl}`)}`;
         draftsEl.innerHTML = `
-          <div style="padding: var(--space-4); text-align: center; font-size: var(--text-sm); color: var(--color-text-secondary);">
-            Couldn't generate posts automatically. <a href="${chatPrompt}">Draft with Addie instead.</a>
+          <div style="padding: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            <div style="margin-bottom: var(--space-2);">${esc(e.message || "Couldn't generate posts.")}</div>
+            <a href="${chatPrompt}">Draft with Addie instead →</a>
           </div>
         `;
       }

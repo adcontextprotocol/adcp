@@ -35,7 +35,7 @@ from adcp.server.responses import capabilities_response
 
 class MySeller(ADCPHandler):
     async def get_adcp_capabilities(self, params, context=None):
-        return capabilities_response(["media_buy", "compliance_testing"])
+        return capabilities_response(["media_buy"])
 
     # ... implement tools, use response builders for every return
 
@@ -75,17 +75,19 @@ Response builders (`adcp.ProductsResponse()`, `adcp.MediaBuyResponse()`, etc.) h
 
 ## Choose a skill
 
-Each skill targets a specific agent type. Pick the one that matches what you're building:
+Each SDK ships skills that walk a coding agent through building a specific agent type. Common skills across SDKs:
 
-| Skill | You are building... | Storyboard | JS/TS / Python | Go |
-|-------|---------------------|------------|----------------|-----|
-| `build-seller-agent` | Publisher, SSP, or media network selling inventory | `media_buy_seller` | [skill](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent) | [skill](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-seller-agent) |
-| `build-generative-seller-agent` | AI ad network generating ads from briefs | `media_buy_generative_seller` | [skill](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-generative-seller-agent) | — |
-| `build-retail-media-agent` | Retail media network with catalog-driven creative | `media_buy_catalog_creative` | [skill](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-retail-media-agent) | — |
-| `build-signals-agent` | CDP or data provider serving audience segments | `signal_owned`, `signal_marketplace` | [skill](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-signals-agent) | [skill](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-signals-agent) |
-| `build-creative-agent` | Ad server or CMP rendering creatives | `creative_lifecycle` | [skill](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-creative-agent) | [skill](https://github.com/adcontextprotocol/adcp-go/tree/main/skills/build-creative-agent) |
+- `build-seller-agent` — publisher, SSP, or media network selling inventory
+- `build-signals-agent` — CDP or data provider serving audience segments
+- `build-creative-agent` — ad server or CMP rendering creatives
+- `build-generative-seller-agent` — AI ad network generating ads from briefs
+- `build-retail-media-agent` — retail media network with catalog-driven creative
 
-Skill files are language-agnostic. JS/TS and Python use the same skill — specify your language in the prompt and the coding agent uses the correct SDK. Go has its own skills in the [adcp-go](https://github.com/adcontextprotocol/adcp-go) repo.
+For example, the JS/TS seller skill lives at [`adcp-client/skills/build-seller-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent). Skill coverage and naming vary per language since each SDK includes implementation guidance specific to its stack. Browse the directory for your language:
+
+- **JS/TS** — [adcp-client/skills](https://github.com/adcontextprotocol/adcp-client/tree/main/skills)
+- **Python** — [adcp-python/skills](https://github.com/adcontextprotocol/adcp-python/tree/main/skills)
+- **Go** — [adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills)
 
 ## Build the agent
 
@@ -99,10 +101,10 @@ Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skill
 </Tab>
 <Tab title="Python">
 ```
-Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent in Python for a premium sports news publisher with guaranteed CTV and OLV inventory.
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-python/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
 ```
 
-The skill URL points to the JS/TS SDK repo — this is correct. Skills are language-agnostic; specifying "in Python" in your prompt is what tells the coding agent to use the Python SDK.
+Point at the `adcp-python` skill for your agent type. If the exact skill isn't there yet, browse [adcp-python/skills](https://github.com/adcontextprotocol/adcp-python/tree/main/skills) for the closest match.
 </Tab>
 <Tab title="Go">
 ```

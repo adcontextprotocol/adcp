@@ -112,7 +112,10 @@ The response structure is identical across protocols, with only the transport wr
   - **signal_agent_segment_id**: Unique identifier for the signal
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
-  - **signal_type**: Type of signal (marketplace, custom, owned)
+  - **signal_type**: Type of signal. One of:
+    - `marketplace` — resold third-party segment (provider authorization verifiable via the provider's `adagents.json`)
+    - `owned` — first-party segment derived from data the signal agent directly owns
+    - `custom` — agent-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
   - **data_provider**: Name of the data provider
   - **coverage_percentage**: Percentage of audience coverage
   - **deployments**: Array of destination deployments
@@ -577,7 +580,7 @@ Discover all available deployments across platforms:
   - **signal_agent_segment_id** (string): Universal identifier for the signal
   - **name** (string): Human-readable signal name
   - **description** (string): Detailed signal description
-  - **signal_type** (string): Type of signal (marketplace, custom, owned)
+  - **signal_type** (string): `marketplace` (resold third-party), `owned` (agent's first-party data), or `custom` (agent-native segment built on demand)
   - **data_provider** (string): Provider of the signal data
   - **coverage_percentage** (number): Estimated reach percentage
   - **deployments** (array): Platform-specific deployment information

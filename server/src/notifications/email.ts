@@ -108,7 +108,8 @@ export type EmailType =
   | 'signup_user_nonmember'
   | 'slack_invite'
   | 'email_link_verification'
-  | 'escalation_resolution';
+  | 'escalation_resolution'
+  | 'newsletter_subscribe_confirmation';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -1532,6 +1533,96 @@ ${footerText}
     return true;
   } catch (error) {
     logger.error({ error, to: data.to }, 'Error sending escalation resolution email');
+    return false;
+  }
+}
+
+/**
+ * Send a branded confirmation email for the non-member newsletter subscribe
+ * flow. Transactional — no unsubscribe link.
+ */
+export async function sendNewsletterConfirmation(data: {
+  to: string;
+  confirmUrl: string;
+  source: string;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping newsletter confirmation');
+    return false;
+  }
+
+  const emailType: EmailType = 'newsletter_subscribe_confirmation';
+  const subject = 'Confirm your subscription to The Prompt';
+
+  try {
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      metadata: { source: data.source },
+    });
+
+    const trackingId = emailEvent.tracking_id;
+    const trackedConfirmUrl = trackedUrl(trackingId, 'cta_newsletter_confirm', data.confirmUrl);
+    const footerHtml = generateFooterHtml(trackingId, null);
+    const footerText = generateFooterText(null);
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: data.to,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Confirm your subscription</h1>
+  </div>
+
+  <p>Thanks for signing up for updates from AgenticAdvertising.org.</p>
+
+  <p>Click the button below to confirm and we'll send you <strong>The Prompt</strong> — weekly industry news on agentic advertising — plus occasional event invitations.</p>
+
+  <p style="text-align: center; margin: 30px 0;">
+    <a href="${trackedConfirmUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Confirm subscription</a>
+  </p>
+
+  <p style="font-size: 13px; color: #666;">This link expires in 24 hours. If you didn't sign up, you can safely ignore this email — you won't be subscribed and we won't email you again.</p>
+
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+Confirm your subscription to AgenticAdvertising.org
+
+Thanks for signing up for updates. Click the link below to confirm and we'll send you The Prompt — weekly industry news on agentic advertising.
+
+${data.confirmUrl}
+
+This link expires in 24 hours. If you didn't sign up, you can safely ignore this email.
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to }, 'Failed to send newsletter confirmation');
+      return false;
+    }
+
+    if (sendData?.id) {
+      await emailDb.markEmailSent(trackingId, sendData.id);
+    }
+
+    logger.info({ to: data.to, trackingId, source: data.source }, 'Newsletter confirmation sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending newsletter confirmation');
     return false;
   }
 }

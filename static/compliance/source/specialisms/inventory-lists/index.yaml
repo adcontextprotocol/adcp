@@ -1,8 +1,8 @@
 id: inventory_lists
 version: "1.0.0"
 title: "Inventory lists"
-domain: governance
-category: property_governance
+protocol: governance
+category: inventory_lists
 summary: "Curated property and collection lists for inventory grouping, targeting governance, and delivery compliance — create, query, update, delete, and validate."
 track: governance
 required_tools:
@@ -24,7 +24,7 @@ narrative: |
 agent:
   interaction_model: governance_agent
   capabilities:
-    - property_governance
+    - inventory_lists
     - brand_safety
   examples:
     - "IAS"
@@ -64,7 +64,7 @@ phases:
           Return capabilities declaring governance in supported_protocols, confirming the agent provides governance services.
         sample_request:
           context:
-            correlation_id: "property_governance--get_capabilities"
+            correlation_id: "inventory_lists--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -77,7 +77,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--get_capabilities"
+            value: "inventory_lists--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: create_list
     title: "Create property lists"
@@ -119,7 +119,7 @@ phases:
                   value: "campinggear.example"
 
           context:
-            correlation_id: "property_governance--create_inclusion_list"
+            correlation_id: "inventory_lists--create_inclusion_list"
         context_outputs:
           - path: "list.list_id"
             key: "property_list_id"
@@ -133,7 +133,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--create_inclusion_list"
+            value: "inventory_lists--create_inclusion_list"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "list.list_id"
@@ -166,7 +166,7 @@ phases:
           name_contains: "Acme Outdoor"
 
           context:
-            correlation_id: "property_governance--list_property_lists"
+            correlation_id: "inventory_lists--list_property_lists"
         validations:
           - check: response_schema
             description: "Response matches list-property-lists-response.json schema"
@@ -176,7 +176,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--list_property_lists"
+            value: "inventory_lists--list_property_lists"
             description: "Context correlation_id returned unchanged"
       - id: get_property_list
         title: "Get a specific property list"
@@ -200,7 +200,7 @@ phases:
             domain: "acmeoutdoor.example"
 
           context:
-            correlation_id: "property_governance--get_property_list"
+            correlation_id: "inventory_lists--get_property_list"
         validations:
           - check: response_schema
             description: "Response matches get-property-list-response.json schema"
@@ -210,7 +210,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--get_property_list"
+            value: "inventory_lists--get_property_list"
             description: "Context correlation_id returned unchanged"
   - id: update_list
     title: "Update property lists"
@@ -249,7 +249,7 @@ phases:
                   value: "mountaineering.example"
 
           context:
-            correlation_id: "property_governance--update_property_list"
+            correlation_id: "inventory_lists--update_property_list"
         validations:
           - check: response_schema
             description: "Response matches update-property-list-response.json schema"
@@ -259,7 +259,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--update_property_list"
+            value: "inventory_lists--update_property_list"
             description: "Context correlation_id returned unchanged"
   - id: delivery_validation
     title: "Validate delivery compliance"
@@ -304,7 +304,7 @@ phases:
               impressions: 200
 
           context:
-            correlation_id: "property_governance--validate_property_delivery"
+            correlation_id: "inventory_lists--validate_property_delivery"
         validations:
           - check: response_schema
             description: "Response matches validate-property-delivery-response.json schema"
@@ -319,7 +319,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--validate_property_delivery"
+            value: "inventory_lists--validate_property_delivery"
             description: "Context correlation_id returned unchanged"
 
   - id: enforcement
@@ -436,7 +436,7 @@ phases:
             domain: "acmeoutdoor.example"
 
           context:
-            correlation_id: "property_governance--delete_property_list"
+            correlation_id: "inventory_lists--delete_property_list"
         validations:
           - check: response_schema
             description: "Response matches delete-property-list-response.json schema"
@@ -446,5 +446,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "property_governance--delete_property_list"
+            value: "inventory_lists--delete_property_list"
             description: "Context correlation_id returned unchanged"

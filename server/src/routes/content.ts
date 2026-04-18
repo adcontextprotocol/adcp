@@ -50,6 +50,7 @@ interface ProposeContentRequest {
     slug?: string;  // New format - collection slug directly
   };
   authors?: ContentAuthor[];
+  status?: 'draft' | 'pending_review' | 'published';
 }
 
 /**
@@ -184,6 +185,7 @@ export async function proposeContentForUser(
     content_origin = 'member',
     collection,
     authors,
+    status: requestedStatus,
   } = request;
 
   // Validate required fields
@@ -255,9 +257,19 @@ export async function proposeContentForUser(
     .substring(0, 100);
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  // Determine initial status
-  const status = canPublishDirectly ? 'published' : 'pending_review';
-  const publishedAt = canPublishDirectly ? new Date().toISOString() : null;
+  // Determine initial status. Honor the caller's requested status when it's
+  // allowed for their role, so leads who choose "Submit for Review" or "Save
+  // as Draft" don't get silently auto-published.
+  //   - Leads/admins: may request draft, pending_review, or published
+  //     (default: published, preserving historical behavior)
+  //   - Everyone else: may request draft or pending_review
+  //     (default: pending_review). A request for 'published' is demoted.
+  const status: 'draft' | 'pending_review' | 'published' = canPublishDirectly
+    ? (requestedStatus === 'draft' || requestedStatus === 'pending_review'
+        ? requestedStatus
+        : 'published')
+    : (requestedStatus === 'draft' ? 'draft' : 'pending_review');
+  const publishedAt = status === 'published' ? new Date().toISOString() : null;
   const proposedAt = new Date().toISOString();
 
   // Get author info for display
@@ -352,9 +364,11 @@ export async function proposeContentForUser(
     });
   }
 
-  const message = canPublishDirectly
+  const message = status === 'published'
     ? 'Content published successfully'
-    : 'Content submitted for review. A committee lead or admin will review it soon.';
+    : status === 'draft'
+      ? 'Draft saved'
+      : 'Content submitted for review. A committee lead or admin will review it soon.';
 
   return {
     success: true,
@@ -997,10 +1011,17 @@ export function createMyContentRouter(): Router {
       );
       const ledCommitteeIds = leaderResult.rows.map(r => r.working_group_id);
 
+      // Admins can see every perspective here so they can edit anything
+      // (including content that predates them, has no proposer, or belongs to a
+      // committee they don't lead). Relationships are still computed so the UI
+      // can still distinguish their own contributions.
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+
       // Build the query
       let query = `
         SELECT DISTINCT ON (p.id)
           p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+          p.content, p.tags, p.featured_image_url,
           p.external_url, p.external_site_name, p.status, p.published_at,
           p.created_at, p.updated_at, p.working_group_id, p.proposer_user_id,
           wg.name as committee_name, wg.slug as committee_slug,
@@ -1018,12 +1039,13 @@ export function createMyContentRouter(): Router {
         FROM perspectives p
         LEFT JOIN working_groups wg ON wg.id = p.working_group_id
         WHERE (
-          p.proposer_user_id = $1
+          $3::boolean = true
+          OR p.proposer_user_id = $1
           OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1)
           OR p.working_group_id = ANY($2)
         )
       `;
-      const params: (string | string[] | number)[] = [user.id, ledCommitteeIds];
+      const params: (string | string[] | number | boolean)[] = [user.id, ledCommitteeIds, userIsAdmin];
 
       // Apply filters
       if (status && status !== 'all') {
@@ -1069,6 +1091,11 @@ export function createMyContentRouter(): Router {
           content_type: row.content_type,
           category: row.category,
           excerpt: row.excerpt,
+          content: row.content,
+          tags: row.tags,
+          featured_image_url: row.featured_image_url,
+          external_url: row.external_url,
+          external_site_name: row.external_site_name,
           status: row.status,
           collection: {
             type: row.working_group_id ? 'committee' : 'personal',
@@ -1263,6 +1290,63 @@ export function createMyContentRouter(): Router {
       res.status(500).json({
         error: 'Failed to update content',
       });
+    }
+  });
+
+  // DELETE /api/me/content/:id - Delete content the user owns
+  // Proposers, authors, and committee leads can delete their own drafts and
+  // pending-review items. Admins can delete anything (including published).
+  router.delete('/:id', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const pool = getPool();
+
+      const contentResult = await pool.query(
+        `SELECT p.id, p.status, p.title, p.proposer_user_id, p.working_group_id
+         FROM perspectives p
+         WHERE p.id = $1`,
+        [id]
+      );
+
+      if (contentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Content not found' });
+      }
+
+      const contentItem = contentResult.rows[0];
+
+      const isProposer = contentItem.proposer_user_id === user.id;
+      const isAuthor = await pool.query(
+        `SELECT 1 FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+        [id, user.id]
+      ).then(r => r.rows.length > 0);
+      const userIsLead = contentItem.working_group_id
+        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        : false;
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+
+      if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
+        return res.status(403).json({
+          error: 'Permission denied',
+          message: 'You do not have permission to delete this content',
+        });
+      }
+
+      // Published content requires admin: deleting it breaks incoming links.
+      if (contentItem.status === 'published' && !userIsAdmin) {
+        return res.status(403).json({
+          error: 'Permission denied',
+          message: 'Published content can only be deleted by an admin. Unpublish it first or ask an admin.',
+        });
+      }
+
+      await pool.query(`DELETE FROM perspectives WHERE id = $1`, [id]);
+
+      logger.info({ contentId: id, userId: user.id, title: contentItem.title }, 'Content deleted by owner');
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'DELETE /api/me/content/:id error');
+      res.status(500).json({ error: 'Failed to delete content' });
     }
   });
 

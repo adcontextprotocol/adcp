@@ -1,7 +1,7 @@
 id: brand_rights
 version: "1.0.0"
 title: "Brand identity and rights licensing"
-domain: brand
+protocol: brand
 category: brand_rights
 summary: "Brand agent that serves identity assets and licenses rights for AI-generated content."
 track: core

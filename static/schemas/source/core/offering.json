@@ -151,7 +151,7 @@
         "tagline": "Start measuring your digital carbon footprint today",
         "valid_from": "2025-01-01T00:00:00Z",
         "valid_to": "2025-03-31T23:59:59Z",
-        "checkout_url": "https://scope3.com/signup",
+        "checkout_url": "https://vendor.example.com/signup",
         "keywords": ["carbon", "sustainability", "measurement", "emissions"],
         "categories": ["measurement", "sustainability"]
       }

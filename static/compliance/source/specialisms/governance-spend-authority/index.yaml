@@ -1,8 +1,8 @@
-id: campaign_governance_conditions
+id: governance_spend_authority
 version: "1.0.0"
 title: "Campaign governance — conditional approval"
-domain: governance
-category: campaign_governance_conditions
+protocol: governance
+category: governance_spend_authority
 summary: "Governance agent approves a media buy with conditions. Buyer re-checks after meeting the conditions."
 track: campaign_governance
 required_tools:
@@ -62,7 +62,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "campaign_governance_conditions--get_capabilities"
+            correlation_id: "governance_spend_authority--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -75,7 +75,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_conditions--get_capabilities"
+            value: "governance_spend_authority--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: plan_registration
     title: "Register governance plan with policy conditions"
@@ -95,7 +95,7 @@ phases:
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
         doc_ref: "/governance/campaign/tasks/sync_plans"
-        comply_scenario: campaign_governance_conditions
+        comply_scenario: governance_spend_authority
         stateful: true
         expected: |
           Acknowledge the governance plan:
@@ -115,7 +115,7 @@ phases:
                 - "UGC placements require brand safety review before go-live"
 
           context:
-            correlation_id: "campaign_governance_conditions--sync_plans"
+            correlation_id: "governance_spend_authority--sync_plans"
         context_outputs:
           - name: plan_id
             path: 'plans[0].plan_id'
@@ -128,7 +128,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_conditions--sync_plans"
+            value: "governance_spend_authority--sync_plans"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "plans[0].plan_id"
@@ -154,7 +154,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_conditions
+        comply_scenario: governance_spend_authority
         stateful: true
         expected: |
           Return an approved governance decision with conditions:
@@ -180,7 +180,7 @@ phases:
                 budget: 15000
 
           context:
-            correlation_id: "campaign_governance_conditions--check_governance_conditions"
+            correlation_id: "governance_spend_authority--check_governance_conditions"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -199,7 +199,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_conditions--check_governance_conditions"
+            value: "governance_spend_authority--check_governance_conditions"
             description: "Context correlation_id returned unchanged"
   - id: create_buy_with_conditions
     title: "Create media buy with governance conditions"
@@ -219,7 +219,7 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
-        comply_scenario: campaign_governance_conditions
+        comply_scenario: governance_spend_authority
         stateful: true
         expected: |
           Confirm the media buy with governance approval:
@@ -247,7 +247,7 @@ phases:
               pricing_option_id: "cpm_standard"
 
           context:
-            correlation_id: "campaign_governance_conditions--create_media_buy"
+            correlation_id: "governance_spend_authority--create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -257,5 +257,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_conditions--create_media_buy"
+            value: "governance_spend_authority--create_media_buy"
             description: "Context correlation_id returned unchanged"

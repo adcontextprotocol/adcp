@@ -1,7 +1,7 @@
-id: media_buy_generative_seller
+id: creative_generative/seller
 version: "1.0.0"
 title: "Generative seller agent"
-category: media_buy_generative_seller
+category: creative_generative
 summary: "Seller agent that generates creatives from briefs at buy time — no pre-built assets required."
 track: media_buy
 required_tools:
@@ -84,7 +84,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "media_buy_generative_seller--get_capabilities"
+            correlation_id: "creative_generative--seller--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -97,7 +97,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--get_capabilities"
+            value: "creative_generative--seller--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: account_setup
     title: "Account setup"
@@ -136,7 +136,7 @@ phases:
               payment_terms: "net_30"
 
           context:
-            correlation_id: "media_buy_generative_seller--sync_accounts"
+            correlation_id: "creative_generative--seller--sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -152,7 +152,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--sync_accounts"
+            value: "creative_generative--seller--sync_accounts"
             description: "Context correlation_id returned unchanged"
   - id: format_discovery
     title: "Format discovery"
@@ -205,7 +205,7 @@ phases:
 
         sample_request:
           context:
-            correlation_id: "media_buy_generative_seller--list_formats"
+            correlation_id: "creative_generative--seller--list_formats"
 
         validations:
           - check: response_schema
@@ -222,7 +222,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--list_formats"
+            value: "creative_generative--seller--list_formats"
             description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Product discovery"
@@ -268,7 +268,7 @@ phases:
             operator: "pinnacle-agency.com"
 
           context:
-            correlation_id: "media_buy_generative_seller--get_products_brief"
+            correlation_id: "creative_generative--seller--get_products_brief"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -284,7 +284,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--get_products_brief"
+            value: "creative_generative--seller--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "products[0].format_ids"
@@ -344,7 +344,7 @@ phases:
               scheme: "HMAC-SHA256"
 
           context:
-            correlation_id: "media_buy_generative_seller--create_media_buy"
+            correlation_id: "creative_generative--seller--create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -354,7 +354,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--create_media_buy"
+            value: "creative_generative--seller--create_media_buy"
             description: "Context correlation_id returned unchanged"
   - id: creative_brief_sync
     title: "Creative brief sync"
@@ -456,7 +456,7 @@ phases:
               package_id: "outdoor_video_q2"
 
           context:
-            correlation_id: "media_buy_generative_seller--sync_creatives_brief"
+            correlation_id: "creative_generative--seller--sync_creatives_brief"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -472,7 +472,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--sync_creatives_brief"
+            value: "creative_generative--seller--sync_creatives_brief"
             description: "Context correlation_id returned unchanged"
       - id: sync_creatives_standard
         title: "Sync standard creatives alongside generative"
@@ -510,7 +510,7 @@ phases:
                   height: 250
 
           context:
-            correlation_id: "media_buy_generative_seller--sync_creatives_standard"
+            correlation_id: "creative_generative--seller--sync_creatives_standard"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -523,7 +523,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--sync_creatives_standard"
+            value: "creative_generative--seller--sync_creatives_standard"
             description: "Context correlation_id returned unchanged"
       - id: sync_creatives_invalid_brand
         title: "Reject brief with invalid brand"
@@ -564,7 +564,7 @@ phases:
                     cta: "Click"
 
           context:
-            correlation_id: "media_buy_generative_seller--sync_creatives_invalid_brand"
+            correlation_id: "creative_generative--seller--sync_creatives_invalid_brand"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -577,7 +577,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--sync_creatives_invalid_brand"
+            value: "creative_generative--seller--sync_creatives_invalid_brand"
             description: "Context correlation_id returned unchanged"
   - id: creative_generation_lifecycle
     title: "Creative generation lifecycle"
@@ -646,7 +646,7 @@ phases:
                     cta: "Shop the Sale"
 
           context:
-            correlation_id: "media_buy_generative_seller--check_creative_status"
+            correlation_id: "creative_generative--seller--check_creative_status"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -659,7 +659,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--check_creative_status"
+            value: "creative_generative--seller--check_creative_status"
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
@@ -697,7 +697,7 @@ phases:
           include_package_daily_breakdown: true
 
           context:
-            correlation_id: "media_buy_generative_seller--get_delivery"
+            correlation_id: "creative_generative--seller--get_delivery"
         validations:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
@@ -710,5 +710,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_generative_seller--get_delivery"
+            value: "creative_generative--seller--get_delivery"
             description: "Context correlation_id returned unchanged"
