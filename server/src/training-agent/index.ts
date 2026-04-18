@@ -8,10 +8,12 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
@@ -19,6 +21,8 @@ import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
+import { TRAINING_AGENT_HOSTNAME } from './config.js';
+import { createOAuthProvider, MCP_AUTH_ENABLED } from '../mcp/oauth-provider.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
@@ -32,13 +36,36 @@ const workos = process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID
   ? new WorkOS(process.env.WORKOS_API_KEY, { clientId: process.env.WORKOS_CLIENT_ID })
   : null;
 
+// OAuth resource metadata — advertised at .well-known and referenced in
+// WWW-Authenticate challenges so clients can discover the AAO auth server.
+const OAUTH_RESOURCE = `https://${TRAINING_AGENT_HOSTNAME}/mcp`;
+const OAUTH_METADATA_URL = `https://${TRAINING_AGENT_HOSTNAME}/.well-known/oauth-protected-resource/mcp`;
+const OAUTH_AUTHORIZATION_SERVER = (process.env.BASE_URL || 'https://agenticadvertising.org').replace(/\/$/, '') + '/';
+const WWW_AUTH_CHALLENGE = `Bearer realm="test-agent", resource_metadata="${OAUTH_METADATA_URL}"`;
+
+// OAuth JWT validator — lazily constructed to avoid WorkOS JWKS setup cost
+// when MCP auth is disabled (e.g. local dev with MCP_AUTH_DISABLED=true).
+let oauthMiddleware: ReturnType<typeof requireBearerAuth> | null = null;
+function getOAuthMiddleware(): ReturnType<typeof requireBearerAuth> | null {
+  if (!MCP_AUTH_ENABLED) return null;
+  if (!oauthMiddleware) {
+    oauthMiddleware = requireBearerAuth({
+      verifier: createOAuthProvider(),
+      resourceMetadataUrl: OAUTH_METADATA_URL,
+    });
+  }
+  return oauthMiddleware;
+}
+
 // Permissive CORS: this is a sandbox training agent meant to be
-// called from any origin (certification UI, notebooks, CLI tools, etc.)
+// called from any origin (certification UI, notebooks, CLI tools, etc.).
+// WWW-Authenticate is exposed so browser-based MCP clients can read the
+// OAuth challenge on 401 responses and discover the auth server.
 function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Type, WWW-Authenticate');
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -47,18 +74,25 @@ function constantTimeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
+const UNAUTHORIZED_MESSAGE = 'Invalid or missing bearer token. Use an AAO API key (from your dashboard), a static test token, or an AAO OAuth access token.';
+
+function sendUnauthorized(res: Response, message: string = UNAUTHORIZED_MESSAGE): void {
+  res.setHeader('WWW-Authenticate', WWW_AUTH_CHALLENGE);
+  res.status(401).json({
+    jsonrpc: '2.0',
+    id: null,
+    error: { code: -32000, message },
+  });
+}
+
 async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
+  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos && !MCP_AUTH_ENABLED) {
     // No tokens configured and no WorkOS = dev mode, allow all
     return next();
   }
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
-    res.status(401).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
-    });
+    sendUnauthorized(res);
     return;
   }
   const token = auth.slice(7);
@@ -77,27 +111,24 @@ async function requireToken(req: Request, res: Response, next: NextFunction): Pr
         logger.info({ orgId: result.apiKey.owner.id }, 'Training agent: authenticated via AAO API key');
         return next();
       }
-      res.status(401).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'Invalid API key. Generate a new key from your AAO dashboard.' },
-      });
+      sendUnauthorized(res, 'Invalid API key. Generate a new key from your AAO dashboard.');
     } catch (err) {
       logger.warn({ err }, 'Training agent: WorkOS API key validation failed');
-      res.status(401).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'API key validation failed. Please try again.' },
-      });
+      sendUnauthorized(res, 'API key validation failed. Please try again.');
     }
     return;
   }
 
-  res.status(401).json({
-    jsonrpc: '2.0',
-    id: null,
-    error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
-  });
+  // Accept AAO OAuth access tokens (WorkOS-issued JWTs). The MCP SDK's
+  // requireBearerAuth handles signature/expiry/scope validation, sets
+  // req.auth on success, and emits a proper RFC 6750 WWW-Authenticate on 401.
+  const oauthMw = getOAuthMiddleware();
+  if (oauthMw) {
+    await oauthMw(req, res, next);
+    return;
+  }
+
+  sendUnauthorized(res);
 }
 
 function getBaseUrl(req: Request): string {
@@ -113,9 +144,28 @@ export function createTrainingAgentRouter(): Router {
   // Start session cleanup
   startSessionCleanup();
 
+  // Apply CORS to every response on this router so 401s include the headers
+  // browser-based MCP clients need to read the WWW-Authenticate challenge.
+  router.use((_req: Request, res: Response, next: NextFunction) => {
+    setCORSHeaders(res);
+    next();
+  });
+
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'healthy', service: 'training-agent' });
+  });
+
+  // OAuth 2.0 Protected Resource Metadata (RFC 9728) — advertises this host's
+  // own resource URL and the AAO authorization server. Mounted on the training
+  // agent router so host-based routing delivers it for test-agent.adcontextprotocol.org
+  // before the main app's mcpAuthRouter (which advertises a different resource).
+  router.get('/.well-known/oauth-protected-resource/mcp', (_req: Request, res: Response) => {
+    res.json({
+      resource: OAUTH_RESOURCE,
+      authorization_servers: [OAUTH_AUTHORIZATION_SERVER],
+      scopes_supported: ['openid', 'profile', 'email'],
+    });
   });
 
   // adagents.json discovery
@@ -171,19 +221,30 @@ export function createTrainingAgentRouter(): Router {
 
   // CORS preflight
   router.options('/mcp', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
     res.status(204).end();
   });
 
-  // Rate limiting: 1500 requests/minute per IP (in-memory, no DB dependency).
+  // Rate limiting: 1500 requests/minute per caller (in-memory, no DB dependency).
   // The training agent is a sandbox — bulk storyboard evaluation runs 3-4 MCP
   // calls per step across 27 storyboards (~600+ calls within a short window).
+  //
+  // Keyed on the authenticated subject when available (OAuth user/client, API key owner)
+  // so a single authenticated caller can't dodge the cap by rotating IPs. Falls back to
+  // IP for unauthenticated requests (which would have been rejected by requireToken
+  // upstream, but the safety net matters if auth is ever disabled for local dev).
   const mcpRateLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 1500,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },
+    keyGenerator: (req: Request) => {
+      const authInfo = (req as Request & { auth?: AuthInfo }).auth;
+      const sub = authInfo?.extra?.sub;
+      if (typeof sub === 'string' && sub) return `user:${sub}`;
+      if (authInfo?.clientId) return `client:${authInfo.clientId}`;
+      return `ip:${ipKeyGenerator(req.ip || '')}`;
+    },
     handler: (_req: Request, res: Response) => {
       res.status(429).json({
         jsonrpc: '2.0',
@@ -194,8 +255,7 @@ export function createTrainingAgentRouter(): Router {
   });
 
   // MCP endpoint
-  router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
+  router.post('/mcp', requireToken, mcpRateLimiter, async (req: Request, res: Response) => {
 
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
     try {
@@ -228,7 +288,6 @@ export function createTrainingAgentRouter(): Router {
 
   // GET/DELETE not supported in stateless mode
   router.get('/mcp', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
     res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({
       jsonrpc: '2.0',
@@ -261,17 +320,14 @@ export function createTrainingAgentRouter(): Router {
   if (sseSweepTimer.unref) sseSweepTimer.unref();
 
   router.options('/sse', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
     res.status(204).end();
   });
 
   router.options('/message', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
     res.status(204).end();
   });
 
-  router.get('/sse', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
+  router.get('/sse', requireToken, mcpRateLimiter, async (req: Request, res: Response) => {
 
     if (sseSessions.size >= SSE_MAX_SESSIONS) {
       res.status(503).json({
@@ -316,8 +372,7 @@ export function createTrainingAgentRouter(): Router {
     }
   });
 
-  router.post('/message', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
+  router.post('/message', requireToken, mcpRateLimiter, async (req: Request, res: Response) => {
 
     const sessionId = req.query.sessionId as string;
     if (!sessionId) {
