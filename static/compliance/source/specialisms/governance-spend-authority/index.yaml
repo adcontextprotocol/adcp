@@ -103,14 +103,27 @@ phases:
           - custom_policies: policy conditions registered
 
         sample_request:
+          idempotency_key: "governance-spend-authority-sync-plans-v1"
           plans:
-            - plan_name: "Acme Outdoor conditional governance"
+            - plan_id: "gov_acme_conditional"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+              objectives: "Full spending authority with conditional policies on CTV reporting and UGC brand safety"
+              budget:
+                total: 100000
+                currency: "USD"
+                reallocation_unlimited: true
+              flight:
+                start: "2027-01-01T00:00:00Z"
+                end: "2027-12-31T23:59:59Z"
+              countries: ["US"]
               custom_policies:
-                - "CTV buys require weekly delivery reporting"
-                - "UGC placements require brand safety review before go-live"
+                - policy_id: "ctv_weekly_reporting"
+                  enforcement: "must"
+                  policy: "CTV buys require weekly delivery reporting."
+                - policy_id: "ugc_brand_safety"
+                  enforcement: "must"
+                  policy: "UGC placements require brand safety review before go-live."
 
           context:
             correlation_id: "governance_spend_authority--sync_plans"

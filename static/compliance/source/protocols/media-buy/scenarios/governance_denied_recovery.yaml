@@ -57,6 +57,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan.
         sample_request:
+          idempotency_key: "comply-gov-recovery-sync-plans-v1"
           plans:
             - plan_id: "comply-gov-recovery-plan"
               brand:

@@ -168,6 +168,12 @@ function createSession(): SessionState {
     creatives: new Map(),
     signalActivations: new Map(),
     usageRecords: [],
+    complyExtensions: {
+      accountStatuses: new Map(),
+      siSessions: new Map(),
+      deliverySimulations: new Map(),
+      budgetSimulations: new Map(),
+    },
     createdAt: now,
     lastAccessedAt: now,
   };
@@ -212,6 +218,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
   const fresh = createSession();
   const asMap = <V>(v: unknown, fallback: Map<string, V>): Map<string, V> =>
     v instanceof Map ? (v as Map<string, V>) : fallback;
+  const hydratedComply = (hydrated.complyExtensions ?? {}) as Partial<SessionState['complyExtensions']>;
   return {
     ...fresh,
     ...hydrated,
@@ -226,6 +233,12 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
+    complyExtensions: {
+      accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
+      siSessions: asMap(hydratedComply.siSessions, fresh.complyExtensions.siSessions),
+      deliverySimulations: asMap(hydratedComply.deliverySimulations, fresh.complyExtensions.deliverySimulations),
+      budgetSimulations: asMap(hydratedComply.budgetSimulations, fresh.complyExtensions.budgetSimulations),
+    },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
     createdAt: hydrated.createdAt instanceof Date ? hydrated.createdAt : fresh.createdAt,
     lastAccessedAt: hydrated.lastAccessedAt instanceof Date ? hydrated.lastAccessedAt : fresh.lastAccessedAt,

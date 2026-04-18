@@ -159,6 +159,26 @@ export interface RightsGrantState {
   createdAt: string;
 }
 
+export interface ComplyDeliveryAccumulator {
+  impressions: number;
+  clicks: number;
+  reportedSpend: { amount: number; currency: string };
+  conversions: number;
+}
+
+export interface ComplyBudgetSimulation {
+  spendPercentage: number;
+  computedSpend: { amount: number; currency: string };
+  budget: { amount: number; currency: string };
+}
+
+export interface ComplyExtensions {
+  accountStatuses: Map<string, string>;
+  siSessions: Map<string, { status: string; terminationReason?: string }>;
+  deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
+  budgetSimulations: Map<string, ComplyBudgetSimulation>;
+}
+
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
@@ -171,6 +191,10 @@ export interface SessionState {
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
+  /** Data set by comply_test_controller. Persisted so scenarios survive the
+   * serialize/deserialize round trip that every request does, even in the
+   * single-request case with the InMemoryStateStore. */
+  complyExtensions: ComplyExtensions;
   lastGetProductsContext?: {
     /** Products are deterministic from the catalog — not persisted across requests.
      * After a cross-machine rehydration, this is undefined and callers must re-derive. */

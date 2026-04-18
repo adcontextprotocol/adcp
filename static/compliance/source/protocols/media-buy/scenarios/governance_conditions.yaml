@@ -57,6 +57,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
+          idempotency_key: "comply-gov-conditions-sync-plans-v1"
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
@@ -71,8 +72,12 @@ phases:
                 end: "2026-06-30T23:59:59Z"
               countries: ["US", "CA"]
               custom_policies:
-                - "CTV buys require weekly delivery reporting"
-                - "UGC placements require brand safety review before activation"
+                - policy_id: "ctv_weekly_reporting"
+                  enforcement: "must"
+                  policy: "CTV buys require weekly delivery reporting."
+                - policy_id: "ugc_brand_safety"
+                  enforcement: "must"
+                  policy: "UGC placements require brand safety review before activation."
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
