@@ -696,11 +696,11 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 **As a verifier (seller):**
 
 1. Advertise `request_signing.supported: true` in `get_adcp_capabilities`. Leave `required_for: []` during the pilot; add operations incrementally per counterparty.
-2. Enable signature verification middleware on mutating routes. Implement the [verifier checklist](#verifier-checklist-requests) — all 13 steps, short-circuit on first failure.
+2. Enable signature verification middleware on mutating routes. Implement the [verifier checklist](#verifier-checklist-requests) — all 14 checks (13 numbered steps plus sub-step 9a), short-circuit on first failure.
 3. Start in shadow mode (verify and log; do not reject on failure) for a pilot counterparty before populating `required_for`. Surface verification failures in monitoring rather than operations for the first few weeks.
-4. Run the conformance negative vectors against your verifier — each rejection should produce the vector's stated `error_code` at or before its `failed_step`.
+4. Run the conformance negative vectors against your verifier — each rejection MUST produce the vector's stated `error_code`. The vector's `failed_step` is informational; an implementation that rejects with the correct error code is conformant even if its internal step numbering differs.
 
-**Minimum viable verifier (3.0 shadow mode):** steps 1–10 of the checklist, in-memory replay cache, one-minute revocation polling with a lightweight `kid`-membership check (full grace semantics deferred). This is acceptable for log-and-observe shadow mode because no request is being rejected on replay or digest failure. **Before adding any operation to `required_for`, implement steps 11–13** — digest recompute (step 11), replay insert after success (step 13), and the full revocation-stale grace window (part of step 9). Flipping to enforce with an incomplete verifier surfaces replay and body-integrity gaps on live production traffic rather than in shadow logs. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
+**Minimum viable verifier (3.0 shadow mode):** steps 1–9, 9a, and 10 of the checklist, in-memory replay cache, one-minute revocation polling with a lightweight `kid`-membership check (full grace semantics deferred). This is acceptable for log-and-observe shadow mode because no request is being rejected on replay or digest failure. **Before adding any operation to `required_for`, implement steps 11–13** — digest recompute (step 11), replay insert after success (step 13), and the full revocation-stale grace window (part of step 9). Flipping to enforce with an incomplete verifier surfaces replay and body-integrity gaps on live production traffic rather than in shadow logs. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
 
 #### AdCP RFC 9421 profile
 
@@ -812,14 +812,21 @@ Otherwise, verifiers MUST perform these checks in order, short-circuiting on the
 7. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `request_signature_key_unknown`. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
 8. Verify the JWK's `use` is `"sig"`, `key_ops` includes `"verify"`, and `adcp_use` equals `"request-signing"`. Reject (`request_signature_key_purpose_invalid`) on any mismatch — including absent `adcp_use`, which MUST be treated as non-conforming.
 9. Check the [Transport revocation](#transport-revocation) list. Reject if `keyid` ∈ `revoked_kids` (`request_signature_key_revoked`). Reject with `request_signature_revocation_stale` if the verifier has not refreshed the revocation list within grace.
+
+    **9a. Per-keyid cap check.** Check the [per-keyid replay-cache cap](#transport-replay-dedup). Reject with `request_signature_rate_abuse` if the cap has been reached for this `keyid`. Runs before cryptographic verify (step 10) — same rationale as step 9: a compromised or misconfigured signer exhausting its cap MUST NOT force amplified Ed25519/ECDSA work on the verifier. Runs *after* `keyid` resolution (step 7) so the cap-state oracle only responds for keys the verifier has already committed to recognizing — running 9a earlier would let an attacker probe verifier-internal rate-limit state across the full keyid space, including keyids not published in JWKS.
+
 10. Compute the canonical signature base per RFC 9421 §2.5 using the covered components (after applying `@target-uri` canonicalization). Verify the signature against the JWK (`request_signature_invalid` on failure).
 11. If `content-digest` is covered, recompute the digest from the received body bytes and compare (`request_signature_digest_mismatch` on mismatch).
 12. Check the nonce against the replay cache (see [Transport replay dedup](#transport-replay-dedup)). Reject if `(keyid, nonce)` has been seen within the replay-cache TTL (`request_signature_replayed`).
-13. **Only after steps 1–12 have all passed**, insert `(keyid, nonce)` into the replay cache with TTL = `(expires − now) + 60 s` (the +60 s matches the skew tolerance applied at step 5).
+13. **Only after steps 1–9, 9a, and 10–12 have all passed**, insert `(keyid, nonce)` into the replay cache with TTL = `(expires − now) + 60 s` (the +60 s matches the skew tolerance applied at step 5).
 
-Only after all 13 checks pass does the verifier treat the request as cryptographically authenticated. Verifiers SHOULD record `verified_signer: { keyid, agent_url, verified_at }` on the request context so downstream code — including the subsequent brand-operator authorization check — can log and audit by signed agent identity.
+Only after all 14 checks pass does the verifier treat the request as cryptographically authenticated. Verifiers SHOULD record `verified_signer: { keyid, agent_url, verified_at }` on the request context so downstream code — including the subsequent brand-operator authorization check — can log and audit by signed agent identity.
 
-**Revocation before crypto verify (step 9 before step 10) is deliberate.** If a verifier checks crypto first, an attacker replaying a revoked-key signature forces an Ed25519 or ECDSA verification on every rejection — cheap amplification. Moving revocation ahead closes that O(verify) → O(1) gap. It does not leak additional information: step 7's `keyid` resolution already reveals whether the key exists, and step 9's revocation check reveals whether the known key is revoked — both are strictly less than the information already available to any party that fetches the signer's JWKS and revocation list directly.
+**Cheap rejections before crypto verify (steps 9 and 9a before step 10) are deliberate.** If a verifier checks crypto first, an attacker replaying a revoked-key signature — or a signer hammering a verifier whose per-keyid cap is full — forces an Ed25519 or ECDSA verification on every rejection, cheap amplification. Moving revocation and the per-keyid cap ahead closes that O(verify) → O(1) gap. Step 9's revocation state is already published externally on the signer's origin; step 9a's cap state is verifier-internal but is observable via traffic-pattern analysis by any sustained attacker. The spec intentionally pairs the distinct `request_signature_rate_abuse` error code with the `SHOULD alert operators` requirement (see [Transport replay dedup](#transport-replay-dedup)) so cap observations surface as incident signal rather than silent oracles — a compromised-key event should be loud for the operator even if it is also legible to the attacker who caused it.
+
+**A load-bearing invariant for the cap.** External traffic without the private key cannot grow the cap: the replay-cache insert happens at step 13, *after* crypto verify (step 10), so any request that fails at step 10 never consumes a cap entry. This is why 9a is a *reader* of cap state, not a writer — only the legitimate key holder (or anyone who has compromised the key, the case the cap exists to detect) can grow the set. Future edits to the checklist MUST preserve this ordering: moving the insert earlier would let any external party flood the cap using forged structurally-valid signatures.
+
+Step 12's `(keyid, nonce)` dedup, by contrast, runs *after* crypto verify so the replay cache is not consumed by invalid signatures.
 
 #### Content-digest and proxy compatibility
 
@@ -851,7 +858,9 @@ Step 12 of the [verifier checklist](#verifier-checklist-requests) requires per-`
 
 Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)` value as the replay key — those produce false positives that reject legitimate agent traffic.
 
-**Per-keyid cap.** To prevent an abusive or compromised signer from exhausting verifier memory with unique nonces, verifiers MUST enforce a per-keyid entry cap on the replay cache. Recommended ceiling: 1,000,000 entries per `keyid`. On cap exceeded, verifiers MUST reject new signatures from that `keyid` with `request_signature_rate_abuse` — NOT silently evict — and SHOULD alert operators, because hitting the cap indicates either a compromised key or a grossly misconfigured signer. Silent eviction is the dangerous mode: it creates replay windows exactly when the verifier is under attack. The per-keyid cap is distinct from the total cache ceiling; a verifier may legitimately hit its total ceiling via many well-behaved signers, but per-keyid exhaustion is unambiguously an attack signal.
+**Per-keyid cap.** To prevent an abusive or compromised signer from exhausting verifier memory with unique nonces, verifiers MUST enforce a per-keyid entry cap on the replay cache. Recommended ceiling: 1,000,000 entries per `keyid`. On cap exceeded, verifiers MUST reject new signatures from that `keyid` with `request_signature_rate_abuse` — NOT silently evict — and SHOULD alert operators, because hitting the cap indicates either a compromised key or a grossly misconfigured signer. Silent eviction is the dangerous mode: it creates replay windows exactly when the verifier is under attack. The per-keyid cap is distinct from the total cache ceiling; a verifier may legitimately hit its total ceiling via many well-behaved signers, but per-keyid exhaustion is unambiguously an attack signal. The cap check is step 9a of the [verifier checklist](#verifier-checklist-requests) — evaluated **before** crypto verify so an abusive signer cannot force amplified Ed25519/ECDSA work on the verifier.
+
+**Single-process vs. distributed enforcement.** In a single-process verifier, step 9a (read) and step 13 (insert) are sequential in one execution and the cap is exact. In a distributed verifier sharing a Redis-backed replay cache, step 9a is a cheap fast-path amplification guard but is not authoritative: two verifiers can both observe `size == cap − 1`, both pass 9a, both pass steps 10–12, and both insert at step 13. To avoid cap drift, the step 13 insert SHOULD be atomic with a cap check (e.g., a Lua script or `SETNX` pattern that returns an over-cap sentinel) — step 9a remains the cheap amplification guard, step 13 is the authoritative enforcement point. A verifier whose atomic insert returns over-cap MUST reject the request with `request_signature_rate_abuse` rather than let it succeed; a cap that is advisory at step 13 is not a cap.
 
 #### Transport revocation
 
@@ -968,6 +977,7 @@ export async function verifyAdcpRequestSignature(req: Request, ctx: {
   resolveJwk: (keyid: string) => Promise<{ jwk: unknown; agentUrl: string }>; // throws _key_unknown after refetch
   isKeyRevoked: (keyid: string) => Promise<boolean>;
   isRevocationStale: () => Promise<boolean>;
+  isKeyidAtCapacity: (keyid: string) => Promise<boolean>;
   isReplayed: (keyid: string, nonce: string) => Promise<boolean>;
   recordNonce: (keyid: string, nonce: string, ttlSeconds: number) => Promise<void>;
   verify9421: (req: Request, jwk: unknown, covered: string[]) => Promise<void>; // throws on signature or digest failure
@@ -1025,6 +1035,10 @@ export async function verifyAdcpRequestSignature(req: Request, ctx: {
   // 9: revocation (BEFORE crypto verify)
   if (await ctx.isRevocationStale()) throw new RequestSignatureError("request_signature_revocation_stale");
   if (await ctx.isKeyRevoked(parsed.keyid!)) throw new RequestSignatureError("request_signature_key_revoked");
+  // 9a: per-keyid cap (BEFORE crypto verify) — prevents amplified crypto work by abusive/misconfigured signer.
+  if (await ctx.isKeyidAtCapacity(parsed.keyid!)) {
+    throw new RequestSignatureError("request_signature_rate_abuse");
+  }
   // 10 + 11: crypto verify, content-digest recompute — both inside verify9421.
   try { await ctx.verify9421(req, jwk, parsed.components); }
   catch (e: any) {
