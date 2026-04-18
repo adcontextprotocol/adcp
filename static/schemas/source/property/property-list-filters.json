@@ -34,7 +34,7 @@
       "type": "array",
       "description": "Feature-based requirements. Property must pass ALL requirements (AND logic).",
       "items": {
-        "$ref": "/schemas/property/feature-requirement.json"
+        "$ref": "/schemas/core/feature-requirement.json"
       },
       "minItems": 1
     },
