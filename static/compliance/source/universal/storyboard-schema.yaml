@@ -88,19 +88,27 @@
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
-#   Supported grammar (runner-internal; not a general-purpose DSL):
+#   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
-#     "prior_step.<step_id>.failed"   → true if the named prior step failed
-#     "!<expr>"                        → boolean negation
 #   Storyboard authors should prefer expressing gating through step ordering when possible.
 #
 # validations: array of Validation objects (optional)
 #
 # --- Phase (optional fields for conditional execution) ---
 #
-# optional: boolean (when true, the phase may be skipped without failing the storyboard)
+# optional: boolean (default false — see semantics below)
 # skip_if: string (expression — phase is skipped when the expression evaluates to true,
 #                  e.g., "!test_kit.auth.api_key")
+#
+# Optional phase semantics:
+#   - An `optional: true` phase always runs unless `skip_if` evaluates to true.
+#     `skip_if` (e.g., "!test_kit.auth.api_key") means "skip this phase when the
+#     expression is true"; without `skip_if`, the phase runs every time.
+#   - Failures inside an optional phase do NOT fail the overall storyboard on
+#     their own — the phase is for accumulating contributions toward a later
+#     `assert_contribution` check. The final assert is what fails the storyboard
+#     when no optional path succeeded.
+#   - A non-optional phase that fails fails the storyboard unconditionally.
 #
 # --- Validation ---
 #

@@ -197,7 +197,8 @@ phases:
         expect_error: true
         expected: |
           The agent rejects the random-invalid key with:
-          - http_status: 401 (preferred) or 403
+          - http_status: 400 (if the agent enforces a key format the random token
+            doesn't match), 401 (preferred), or 403
           - On 401, a `WWW-Authenticate: Bearer ... error="invalid_token"` header
 
         sample_request:
@@ -206,8 +207,8 @@ phases:
 
         validations:
           - check: http_status_in
-            allowed_values: [401, 403]
-            description: "Agent returned 200 on a known-bad API key — credentials are not being validated. MUST reject with 401 (preferred) or 403"
+            allowed_values: [400, 401, 403]
+            description: "Agent returned 200 on a known-bad API key — credentials are not being validated. MUST reject with 400 (key-format validation failure per RFC 6750 §3.1), 401 (preferred), or 403"
           - check: on_401_require_header
             value: "www-authenticate"
             description: "401 responses on invalid credentials MUST include WWW-Authenticate with `error=\"invalid_token\"` per RFC 6750 §3"
@@ -331,11 +332,18 @@ phases:
           exactly the same way an agent that ignores API keys is broken — this
           step closes that loophole symmetrically.
 
-          The runner sends a syntactically JWT-shaped token generated per-run
-          from random bytes (e.g.
-          `eyJhbGciOiJub25lIn0.eyJzdWIiOiJpbnZhbGlkIn0.<32-random-bytes>`)
-          as a Bearer credential on the protected probe task. Expect 401/403.
-          The token is randomized per run so no allowlist can collide with it.
+          The runner sends a JWT-shaped token generated per run: the header and
+          payload are well-formed base64url-encoded JSON objects
+          (`{"alg":"RS256","typ":"JWT"}` / `{"sub":"invalid","aud":"<agent-url>"}`)
+          so the agent's JWT parser succeeds, and the signature segment is
+          random base64url bytes so signature verification fails. Well-implemented
+          validators will return 401 `invalid_token` per RFC 6750 §3.1. Strict
+          validators that reject at parse time may return 400 `invalid_request`
+          per RFC 6750 §3.1 — both outcomes are conformant (the agent rejected
+          the bogus token). Minimal validators that don't parse at all should
+          still return 401 because the Bearer string doesn't match any issued
+          token. The token is randomized per run so no allowlist can collide
+          with it.
         task: "$test_kit.auth.probe_task"
         task_default: list_creatives
         doc_ref: "/protocol/authentication"
@@ -349,7 +357,8 @@ phases:
         expect_error: true
         expected: |
           The agent rejects the bogus Bearer with:
-          - http_status: 401 (preferred) or 403
+          - http_status: 400 (syntactic parse-time rejection), 401 (preferred —
+            signature/audience/expiry failure), or 403
           - On 401, a `WWW-Authenticate: Bearer ... error="invalid_token"` header
 
         sample_request:
@@ -358,8 +367,8 @@ phases:
 
         validations:
           - check: http_status_in
-            allowed_values: [401, 403]
-            description: "Agent returned 200 on a bogus Bearer token — OAuth validation is not running on protected operations. MUST reject with 401 (preferred) or 403"
+            allowed_values: [400, 401, 403]
+            description: "Agent returned 200 on a bogus Bearer token — OAuth validation is not running on protected operations. MUST reject with 400 (parse-time rejection per RFC 6750 §3.1), 401 (preferred — signature/audience failure), or 403"
           - check: on_401_require_header
             value: "www-authenticate"
             description: "401 responses on invalid tokens MUST include WWW-Authenticate with `error=\"invalid_token\"` per RFC 6750 §3"
