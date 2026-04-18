@@ -11,9 +11,12 @@ required_tools:
 requires_scenarios:
   - media_buy_seller/governance_approved
   - media_buy_seller/governance_denied
+  - media_buy_seller/governance_denied_recovery
   - media_buy_seller/governance_conditions
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
 
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,
