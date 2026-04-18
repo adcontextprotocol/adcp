@@ -1,8 +1,8 @@
-id: media_buy_guaranteed_approval
+id: sales_guaranteed
 version: "1.0.0"
 title: "Guaranteed media buy with human IO approval"
-domain: media-buy
-category: media_buy_guaranteed_approval
+protocol: media-buy
+category: sales_guaranteed
 summary: "Seller agent that requires human-in-the-loop IO signing before guaranteed media buys go live."
 track: media_buy
 required_tools:
@@ -72,7 +72,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "media_buy_guaranteed_approval--get_capabilities"
+            correlation_id: "sales_guaranteed--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -85,7 +85,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--get_capabilities"
+            value: "sales_guaranteed--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: account_setup
     title: "Account setup"
@@ -125,7 +125,7 @@ phases:
               payment_terms: "net_30"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--sync_accounts"
+            correlation_id: "sales_guaranteed--sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -141,7 +141,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--sync_accounts"
+            value: "sales_guaranteed--sync_accounts"
             description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Discover guaranteed products"
@@ -185,7 +185,7 @@ phases:
             operator: "pinnacle-agency.com"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--get_products_brief"
+            correlation_id: "sales_guaranteed--get_products_brief"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -204,7 +204,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--get_products_brief"
+            value: "sales_guaranteed--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "products[0].format_ids"
@@ -275,7 +275,7 @@ phases:
               scheme: "HMAC-SHA256"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--create_media_buy"
+            correlation_id: "sales_guaranteed--create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -285,7 +285,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--create_media_buy"
+            value: "sales_guaranteed--create_media_buy"
             description: "Context correlation_id returned unchanged"
   - id: poll_approval
     title: "Poll for IO approval"
@@ -326,7 +326,7 @@ phases:
             - "mb_acme_q2_2026_guaranteed"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--get_media_buys_pending"
+            correlation_id: "sales_guaranteed--get_media_buys_pending"
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json schema"
@@ -342,7 +342,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--get_media_buys_pending"
+            value: "sales_guaranteed--get_media_buys_pending"
             description: "Context correlation_id returned unchanged"
   - id: confirm_active
     title: "Confirm active after IO signing"
@@ -382,7 +382,7 @@ phases:
             - "mb_acme_q2_2026_guaranteed"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--get_media_buys_active"
+            correlation_id: "sales_guaranteed--get_media_buys_active"
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json schema"
@@ -398,7 +398,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--get_media_buys_active"
+            value: "sales_guaranteed--get_media_buys_active"
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
@@ -443,7 +443,7 @@ phases:
                   mime_type: "video/mp4"
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--sync_creatives"
+            correlation_id: "sales_guaranteed--sync_creatives"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -456,7 +456,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--sync_creatives"
+            value: "sales_guaranteed--sync_creatives"
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
@@ -494,7 +494,7 @@ phases:
           include_package_daily_breakdown: true
 
           context:
-            correlation_id: "media_buy_guaranteed_approval--get_delivery"
+            correlation_id: "sales_guaranteed--get_delivery"
         validations:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
@@ -507,5 +507,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_guaranteed_approval--get_delivery"
+            value: "sales_guaranteed--get_delivery"
             description: "Context correlation_id returned unchanged"

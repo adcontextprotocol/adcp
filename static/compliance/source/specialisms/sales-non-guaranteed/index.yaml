@@ -1,8 +1,8 @@
-id: media_buy_non_guaranteed
+id: sales_non_guaranteed
 version: "1.0.0"
 title: "Non-guaranteed auction-based media buy"
-domain: media-buy
-category: media_buy_non_guaranteed
+protocol: media-buy
+category: sales_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
 track: media_buy
 required_tools:
@@ -71,7 +71,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "media_buy_non_guaranteed--get_capabilities"
+            correlation_id: "sales_non_guaranteed--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -84,7 +84,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--get_capabilities"
+            value: "sales_non_guaranteed--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Discover auction-based products"
@@ -127,7 +127,7 @@ phases:
             operator: "pinnacle-agency.com"
 
           context:
-            correlation_id: "media_buy_non_guaranteed--get_products_brief"
+            correlation_id: "sales_non_guaranteed--get_products_brief"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -146,7 +146,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--get_products_brief"
+            value: "sales_non_guaranteed--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "products[0].format_ids"
@@ -215,7 +215,7 @@ phases:
                 - creative_id: "video_30s_trail_pro"
 
           context:
-            correlation_id: "media_buy_non_guaranteed--create_media_buy"
+            correlation_id: "sales_non_guaranteed--create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -225,7 +225,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--create_media_buy"
+            value: "sales_non_guaranteed--create_media_buy"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "packages[0].package_id"
@@ -266,7 +266,7 @@ phases:
             - "mb_acme_q2_2026_auction"
 
           context:
-            correlation_id: "media_buy_non_guaranteed--get_media_buys_pacing"
+            correlation_id: "sales_non_guaranteed--get_media_buys_pacing"
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json schema"
@@ -279,7 +279,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--get_media_buys_pacing"
+            value: "sales_non_guaranteed--get_media_buys_pacing"
             description: "Context correlation_id returned unchanged"
   - id: adjust_bids
     title: "Adjust bids and budget"
@@ -323,7 +323,7 @@ phases:
               budget: 13000
 
           context:
-            correlation_id: "media_buy_non_guaranteed--update_media_buy"
+            correlation_id: "sales_non_guaranteed--update_media_buy"
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
@@ -333,7 +333,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--update_media_buy"
+            value: "sales_non_guaranteed--update_media_buy"
             description: "Context correlation_id returned unchanged"
   - id: delivery
     title: "Delivery and auction metrics"
@@ -372,7 +372,7 @@ phases:
           include_package_daily_breakdown: true
 
           context:
-            correlation_id: "media_buy_non_guaranteed--get_delivery"
+            correlation_id: "sales_non_guaranteed--get_delivery"
         validations:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
@@ -385,5 +385,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "media_buy_non_guaranteed--get_delivery"
+            value: "sales_non_guaranteed--get_delivery"
             description: "Context correlation_id returned unchanged"

@@ -1,7 +1,7 @@
 id: signal_marketplace
 version: "1.0.0"
 title: "Marketplace signal agent"
-domain: signals
+protocol: signals
 category: signal_marketplace
 summary: "Signal agent that resells third-party data provider signals with verifiable catalog provenance."
 track: signals

@@ -1,7 +1,7 @@
 id: si_baseline
 version: "1.0.0"
 title: "Sponsored intelligence baseline"
-domain: sponsored-intelligence
+protocol: sponsored-intelligence
 category: si_baseline
 summary: "Baseline domain storyboard — every SI agent must discover offerings, initiate a session, exchange messages, and terminate cleanly."
 track: si

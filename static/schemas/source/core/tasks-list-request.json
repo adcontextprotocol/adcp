@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/tasks-list-request.json",
   "title": "Tasks List Request",
-  "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
+  "description": "Request parameters for listing and filtering async tasks across all AdCP protocols with state reconciliation capabilities",
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -15,15 +15,15 @@
       "type": "object",
       "description": "Filter criteria for querying tasks",
       "properties": {
-        "domain": {
-          "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "Filter by single AdCP domain"
+        "protocol": {
+          "$ref": "/schemas/enums/adcp-protocol.json",
+          "description": "Filter by single AdCP protocol"
         },
-        "domains": {
+        "protocols": {
           "type": "array",
-          "description": "Filter by multiple AdCP domains",
+          "description": "Filter by multiple AdCP protocols",
           "items": {
-            "$ref": "/schemas/enums/adcp-domain.json"
+            "$ref": "/schemas/enums/adcp-protocol.json"
           },
           "minItems": 1
         },
@@ -102,7 +102,7 @@
             "updated_at",
             "status",
             "task_type",
-            "domain"
+            "protocol"
           ],
           "default": "created_at",
           "description": "Field to sort by"
@@ -133,7 +133,7 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "List all pending tasks across domains",
+      "description": "List all pending tasks across protocols",
       "data": {
         "filters": {
           "statuses": [
@@ -148,7 +148,7 @@
       "description": "Find media-buy tasks requiring attention",
       "data": {
         "filters": {
-          "domain": "media-buy",
+          "protocol": "media-buy",
           "statuses": [
             "input-required",
             "failed"
@@ -164,7 +164,7 @@
       "description": "Recent signal operations",
       "data": {
         "filters": {
-          "domain": "signals",
+          "protocol": "signals",
           "created_after": "2025-01-01T00:00:00Z"
         },
         "pagination": {
