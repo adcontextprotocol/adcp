@@ -18,4 +18,6 @@ Tighten the AdCP RFC 9421 request-signing profile on interop and security-critic
 
 **New conformance file: `canonicalization.json`.** Ships 31 fixed-input/expected-output cases (25 positive, 6 malformed-reject) exercising every step of the canonicalization algorithm, version-pinned to the 3.0 profile. Independent of crypto — SDKs can run the set without keys or a full verifier harness, making it the fastest way to surface cross-implementation divergence. Published at `/compliance/{version}/test-vectors/request-signing/canonicalization.json`.
 
+**New error code: `request_target_uri_malformed`** in the transport error taxonomy. The previous profile used `request_signature_header_malformed` for both actual header malformation and URL-parse rejections — semantically confusing since URL rejections happen before any signature header is inspected. The new code covers empty authority, bare IPv6, IPv6 zone identifiers, bracket-mismatch, raw non-ASCII host, and `@authority` / `Host` mismatch. `request_signature_header_malformed` continues to cover actual `Signature` / `Signature-Input` header problems and `Signature` / `Content-Digest` mixed-alphabet rejection.
+
 Closes #2341, #2343. Original profile: #2323 (3.0 GA).

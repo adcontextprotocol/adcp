@@ -193,7 +193,7 @@
       "input_url": "https://:443/p",
       "reject": true,
       "reject_reason": "authority missing host",
-      "expected_error_code": "request_signature_header_malformed"
+      "expected_error_code": "request_target_uri_malformed"
     },
     {
       "name": "malformed-userinfo-without-host",
@@ -201,7 +201,7 @@
       "input_url": "https://user@/p",
       "reject": true,
       "reject_reason": "authority missing host",
-      "expected_error_code": "request_signature_header_malformed"
+      "expected_error_code": "request_target_uri_malformed"
     },
     {
       "name": "malformed-empty-authority",
@@ -209,7 +209,7 @@
       "input_url": "https:///p",
       "reject": true,
       "reject_reason": "empty authority",
-      "expected_error_code": "request_signature_header_malformed"
+      "expected_error_code": "request_target_uri_malformed"
     },
     {
       "name": "malformed-ipv6-missing-closing-bracket",
@@ -217,7 +217,7 @@
       "input_url": "https://[::1/p",
       "reject": true,
       "reject_reason": "IPv6 literal missing closing bracket",
-      "expected_error_code": "request_signature_header_malformed"
+      "expected_error_code": "request_target_uri_malformed"
     },
     {
       "name": "malformed-bare-ipv6",
@@ -225,7 +225,7 @@
       "input_url": "https://fe80::1/p",
       "reject": true,
       "reject_reason": "IPv6 literal not bracketed",
-      "expected_error_code": "request_signature_header_malformed",
+      "expected_error_code": "request_target_uri_malformed",
       "$comment": "Parsers variously treat '::1' as port or as host; rejecting unambiguously removes the interop divergence."
     },
     {
@@ -234,7 +234,7 @@
       "input_url": "https://[fe80::1%25eth0]/p",
       "reject": true,
       "reject_reason": "IPv6 zone identifier in signed URL",
-      "expected_error_code": "request_signature_header_malformed",
+      "expected_error_code": "request_target_uri_malformed",
       "$comment": "RFC 6874 §1 defines zone-ids as node-local; they have no meaning outside the signing host. A verifier on a different node cannot interpret them. Rejecting at the signer (MUST NOT sign) and verifier (MUST reject) closes the ambiguity."
     }
   ]
