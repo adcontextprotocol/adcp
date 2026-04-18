@@ -1,0 +1,424 @@
+id: idempotency
+version: "1.0.0"
+title: "Idempotency enforcement"
+category: core
+summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
+track: core
+
+narrative: |
+  Every mutating request in AdCP carries an idempotency_key so buyers can safely retry
+  after network errors without double-booking. This storyboard walks through the four
+  observable behaviors a seller MUST implement:
+
+  1. First call with a fresh key is processed normally and returns the canonical response.
+  2. Replay with the same key and an equivalent payload returns the cached response
+     without re-executing side effects (same media_buy_id, no new webhooks fired).
+  3. Replay with the same key but a materially different payload is rejected with
+     IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
+  4. A request with a different key is treated as a new request, even if the payload
+     is identical — the key is what makes retries safe, not payload equivalence.
+
+  Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
+  Sellers SHOULD declare their replay window in adcp.idempotency.replay_ttl_seconds
+  on get_adcp_capabilities; when omitted, buyers assume a 24-hour minimum.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No special prerequisites. The storyboard uses create_media_buy as the canonical
+    mutating request. Sellers that do not support create_media_buy SHOULD still pass
+    idempotency compliance on whichever mutating task they do implement.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent supports media buying and check whether it declares an
+      explicit replay-window TTL.
+
+    steps:
+      - id: get_capabilities
+        title: "Check idempotency capability declaration"
+        narrative: |
+          Call get_adcp_capabilities and look for adcp.idempotency.replay_ttl_seconds.
+          The field is optional — when omitted, buyers MUST assume a 24-hour minimum.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols. Optionally
+          declare adcp.idempotency.replay_ttl_seconds with a value >= 3600.
+        sample_request:
+          context:
+            correlation_id: "idempotency--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: missing_key
+    title: "Reject requests without idempotency_key"
+    narrative: |
+      A create_media_buy request without idempotency_key MUST be rejected. The schema
+      marks the field as required, so this is typically caught at validation time.
+
+    steps:
+      - id: create_media_buy_missing_key
+        title: "Missing idempotency_key returns INVALID_REQUEST"
+        narrative: |
+          Send a create_media_buy with no idempotency_key. The agent MUST reject this
+          with INVALID_REQUEST (or VALIDATION_ERROR as an accepted alternative) and
+          MUST NOT create a media buy.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_handling
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject with:
+          - code: INVALID_REQUEST or VALIDATION_ERROR
+          - recovery: correctable
+          - field: idempotency_key (recommended)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_missing_key"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Missing idempotency_key rejected with INVALID_REQUEST or VALIDATION_ERROR"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_missing_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: replay_same_payload
+    title: "Replay returns cached response"
+    narrative: |
+      The canonical retry-safety case: a buyer's first request times out but actually
+      succeeded on the server. The buyer retries with the same idempotency_key and
+      the same payload. The seller MUST return the same response — same media_buy_id,
+      no new side effects.
+
+    steps:
+      - id: create_media_buy_initial
+        title: "Initial create_media_buy with fresh key"
+        narrative: |
+          Create a media buy with a fresh UUID v4 idempotency_key. Capture the
+          returned media_buy_id for comparison against the replay.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_replay
+        stateful: true
+        context_outputs:
+          - name: initial_media_buy_id
+            path: "media_buy_id"
+          - name: idempotency_key_a
+            path: "idempotency_key"
+        expected: |
+          Create a new media buy and return a media_buy_id. This establishes the
+          canonical response that subsequent replays must match.
+
+        sample_request:
+          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_initial"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Agent returns a media_buy_id for the initial request"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_initial"
+            description: "Context correlation_id returned unchanged"
+
+      - id: create_media_buy_replay
+        title: "Replay with same key and payload returns cached response"
+        narrative: |
+          Re-send the exact same create_media_buy request — same idempotency_key,
+          same payload, same everything. The seller MUST return the same media_buy_id
+          from the prior step. It MUST NOT create a second media buy or fire a
+          second set of webhooks. This is the whole point of idempotency_key.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_replay
+        stateful: true
+        expected: |
+          Return the cached response from the initial request:
+          - media_buy_id: same as $context.initial_media_buy_id
+          - No new side effects (no duplicate webhooks, no new audit log entry)
+
+          The compliance reviewer SHOULD verify in the seller's audit log or webhook
+          delivery history that only ONE set of side effects fired across both calls.
+
+        sample_request:
+          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_replay"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Replay returns a media_buy_id (same as initial)"
+          - check: field_value
+            path: "media_buy_id"
+            value: "$context.initial_media_buy_id"
+            description: "Replay returns the SAME media_buy_id as the initial call"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_replay"
+            description: "Context correlation_id returned unchanged"
+
+  - id: key_reuse_conflict
+    title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
+    narrative: |
+      When a buyer reuses an idempotency_key with a different payload within the
+      replay window, the seller MUST reject the second request with
+      IDEMPOTENCY_CONFLICT. Silently applying the new payload would break the
+      at-most-once guarantee; silently returning the old response would hide a
+      real bug in the buyer's retry logic.
+
+    steps:
+      - id: create_media_buy_conflict
+        title: "Same key, different payload returns IDEMPOTENCY_CONFLICT"
+        narrative: |
+          Re-send create_media_buy with the same idempotency_key as the replay
+          phase but a materially different payload — a different end_time and
+          a different budget. The seller MUST reject this with IDEMPOTENCY_CONFLICT.
+          CONFLICT is accepted as a fallback for sellers that haven't adopted the
+          new error code yet.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_conflict
+        expect_error: true
+        stateful: true
+        expected: |
+          Reject with:
+          - code: IDEMPOTENCY_CONFLICT (preferred) or CONFLICT (fallback)
+          - recovery: correctable (buyer should use a fresh UUID v4)
+
+        sample_request:
+          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 25000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_conflict"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT", "CONFLICT"]
+            description: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_conflict"
+            description: "Context correlation_id returned unchanged"
+
+  - id: fresh_key_new_resource
+    title: "Different key creates a new resource"
+    narrative: |
+      A request with a DIFFERENT idempotency_key is treated as a new request, even
+      if the payload is byte-for-byte identical to a prior request. The key — not
+      payload equivalence — is what provides the dedup boundary. This confirms the
+      seller is checking the key, not fingerprinting requests.
+
+    steps:
+      - id: create_media_buy_fresh_key
+        title: "Fresh key with identical payload creates a new media buy"
+        narrative: |
+          Send the same payload as the initial create_media_buy but with a different
+          idempotency_key. The seller MUST treat this as a new request and return a
+          NEW media_buy_id distinct from $context.initial_media_buy_id.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_fresh_key
+        stateful: true
+        context_outputs:
+          - name: fresh_key_media_buy_id
+            path: "media_buy_id"
+        expected: |
+          Return a NEW media_buy_id, distinct from $context.initial_media_buy_id.
+          This confirms the seller treats the fresh key as a new request.
+
+        sample_request:
+          idempotency_key: "cd7b1c84-9d3d-5f2b-9a4d-comply-fresh-2"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_fresh_key"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Fresh key returns a media_buy_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_fresh_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: verify_media_buy_count
+    title: "Verify dedup actually happened"
+    narrative: |
+      Call get_media_buys to confirm that only TWO media buys were created across
+      all prior steps — one for the initial + replay pair (same key, deduplicated)
+      and one for the fresh-key request. If the seller ignored the idempotency_key,
+      there would be three or more.
+
+    steps:
+      - id: get_media_buys_dedup_check
+        title: "Confirm dedup via get_media_buys"
+        narrative: |
+          Query the two media_buy_ids captured from prior steps. Both should exist
+          and be distinct. This is an end-to-end verification that the replay did
+          not create a duplicate row.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: idempotency_verify
+        stateful: true
+        expected: |
+          Return exactly two media buys with the two captured IDs. Not three.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.initial_media_buy_id"
+            - "$context.fresh_key_media_buy_id"
+
+          context:
+            correlation_id: "idempotency--get_media_buys_dedup_check"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "Response contains the queried media buys"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--get_media_buys_dedup_check"
+            description: "Context correlation_id returned unchanged"
