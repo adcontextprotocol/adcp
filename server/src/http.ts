@@ -114,6 +114,7 @@ import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
+import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
@@ -5509,6 +5510,80 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'GET /api/admin/content/:id error');
         res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // POST /api/admin/content/:id/social-drafts - Generate LinkedIn + X drafts
+    // for a published perspective. Written for admins drafting promo copy
+    // inline (no chat round-trip).
+    this.app.post('/api/admin/content/:id/social-drafts', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isLLMConfigured()) {
+          return res.status(503).json({ error: 'LLM not configured' });
+        }
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT slug, title, excerpt, content, category
+           FROM perspectives WHERE id = $1`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        const p = result.rows[0];
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const publishedUrl = `${baseUrl}/perspectives/${p.slug}`;
+
+        const system = `You draft promotional social posts for articles published by AgenticAdvertising.org.
+
+Write as someone sharing the piece, not as a corporate account. Confident but not combative. Specific over abstract. React to the idea, don't summarize.
+
+Rules:
+- No emojis, no hashtags.
+- LinkedIn: 2-3 short paragraphs, 800-1200 chars. First line must work as a hook before "see more". End with the article URL on its own line.
+- X/Twitter: under 270 chars total including the URL (URLs count as 23 chars via t.co wrapping). End with the URL.
+- Do not invent facts, statistics, or quotes. Only reference what the article actually says.
+- Do not open with "Just read..." or "Interesting article...". Lead with the idea.
+- Do not end with engagement-bait questions.
+
+Return ONLY valid JSON, no markdown fences:
+{"linkedin": "...", "x": "..."}`;
+
+        const articleBody = typeof p.content === 'string' ? p.content.slice(0, 4000) : '';
+        const prompt = `<article>
+<title>${p.title}</title>
+<summary>${p.excerpt || ''}</summary>
+${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}</url>
+<body>${articleBody}</body>
+</article>`;
+
+        try {
+          const response = await complete({
+            system,
+            prompt,
+            model: 'primary',
+            maxTokens: 1500,
+            operationName: 'admin-social-drafts',
+          });
+          let text = response.text.trim();
+          if (text.startsWith('```')) {
+            text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          }
+          const parsed = JSON.parse(text);
+          res.json({
+            linkedin: typeof parsed.linkedin === 'string' ? parsed.linkedin : '',
+            x: typeof parsed.x === 'string' ? parsed.x : '',
+            article_url: publishedUrl,
+          });
+        } catch (llmError) {
+          logger.error({ err: llmError, contentId: id }, 'Social draft generation failed');
+          res.status(502).json({ error: 'Failed to generate posts. Try again in a moment.' });
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'POST /api/admin/content/:id/social-drafts error');
+        res.status(500).json({ error: 'Failed to generate social drafts' });
       }
     });
 
