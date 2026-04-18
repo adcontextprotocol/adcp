@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Require `idempotency_key` on every mutating request schema (`create_media_buy`, `update_media_buy`, `sync_creatives`, `activate_signal`, `acquire_rights`, `creative_approval`, `update_rights`, `build_creative`, `calibrate_content`, `create_content_standards`, `update_content_standards`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `log_event`, `provide_performance_feedback`, `report_usage`, `report_plan_outcome`, `si_initiate_session`). Sellers MUST reject mutating requests without it as `INVALID_REQUEST`. Add normative seller semantics — first call canonical, replay with the same key + equivalent payload returns the cached response, key reuse with a different payload returns the new `IDEMPOTENCY_CONFLICT` error code. Add optional `adcp.idempotency.replay_ttl_seconds` to `get_adcp_capabilities` response so buyers can reason about replay windows (default 24h when omitted). Closes the v3 retry-safety gap flagged in red team review: without a required key, a timeout-and-retry on `create_media_buy` silently double-books.

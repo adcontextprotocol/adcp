@@ -151,6 +151,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "plan_id",
     "outcome",
     "governance_context"

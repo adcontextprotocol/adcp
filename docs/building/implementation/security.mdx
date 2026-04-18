@@ -181,29 +181,56 @@ ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
 
 ### Idempotency
 
-All state-changing operations must support idempotency:
+`idempotency_key` is **required** on every mutating request (`create_media_buy`, `update_media_buy`, `sync_creatives`, `activate_signal`, `acquire_rights`, `creative_approval`, `update_rights`, `build_creative`, `calibrate_content`, `create_content_standards`, `update_content_standards`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `log_event`, `provide_performance_feedback`, `report_usage`, `report_plan_outcome`, `si_initiate_session`). Sellers MUST reject any mutating request that omits it with `INVALID_REQUEST`.
+
+#### Normative seller behavior
+
+1. **First call is canonical.** The seller processes the request once and stores the canonical response keyed by `(authenticated_principal, idempotency_key)`.
+2. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND a semantically equivalent payload MUST return the stored response verbatim without re-executing side effects (no duplicate buys, charges, or webhooks).
+3. **Key reuse with a different payload is a conflict.** A request with the same `idempotency_key` but a materially different payload MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
+4. **Replay window.** Sellers SHOULD declare their replay-window TTL in `capabilities.idempotency.replay_ttl_seconds` (minimum 24 hours / 86400 seconds recommended). When the capability is omitted, buyers MUST assume the 24-hour minimum. After the TTL elapses, the seller MAY discard the stored response. Keys reused after expiry are treated as new requests.
+5. **Scope.** Keys are scoped to the authenticated principal on the seller. Cross-principal replay is never permitted — a buyer's idempotency_key on seller A has no meaning on seller B, and keys from principal X are not visible to principal Y on the same seller.
+
+#### Buyer obligations
+
+Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request. On retry after a network error, buyers MUST resend the exact same payload with the same key — changing either side breaks at-most-once semantics.
 
 ```javascript
 async function createMediaBuy(request) {
   const { idempotency_key } = request;
-
-  // Check if this idempotency key was already processed
-  const existing = await db.findByIdempotencyKey(idempotency_key);
-  if (existing) {
-    // Return existing result, don't charge again
-    return existing;
+  if (!idempotency_key) {
+    throw new InvalidRequestError("idempotency_key is required");
   }
 
-  // Process new request atomically
+  // Look up by (principal, key) — key scope is per-principal
+  const existing = await db.findByIdempotencyKey({
+    principal_id: currentPrincipal.id,
+    idempotency_key,
+  });
+
+  if (existing) {
+    if (!payloadsEquivalent(existing.request, request)) {
+      throw new IdempotencyConflictError(
+        "idempotency_key reused with a different payload",
+      );
+    }
+    // Return cached response — no side effects
+    return existing.response;
+  }
+
   return db.transaction(async (tx) => {
-    const result = await processMediaBuy(tx, request);
-    await tx.idempotencyKeys.insert({ key: idempotency_key, result });
-    return result;
+    const response = await processMediaBuy(tx, request);
+    await tx.idempotencyKeys.insert({
+      principal_id: currentPrincipal.id,
+      key: idempotency_key,
+      request,
+      response,
+      expires_at: new Date(Date.now() + 86400 * 1000), // 24h TTL
+    });
+    return response;
   });
 }
 ```
-
-Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request.
 
 ### Governance Context
 

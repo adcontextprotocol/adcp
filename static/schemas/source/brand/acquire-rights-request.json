@@ -98,6 +98,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "rights_id",
     "pricing_option_id",
     "buyer",

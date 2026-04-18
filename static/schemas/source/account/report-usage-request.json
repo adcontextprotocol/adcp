@@ -95,6 +95,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "reporting_period",
     "usage"
   ],
@@ -126,6 +127,7 @@
     {
       "description": "Multi-account batch across two campaigns",
       "data": {
+        "idempotency_key": "8b7a9c2d-3456-4789-abcd-ef0123456789",
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
           "end": "2025-03-31T23:59:59Z"

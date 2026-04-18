@@ -42,6 +42,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "event_source_id",
     "events"
   ],

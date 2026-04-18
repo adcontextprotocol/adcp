@@ -57,6 +57,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "list_id"
   ],
   "additionalProperties": false

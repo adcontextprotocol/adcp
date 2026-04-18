@@ -236,6 +236,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "idempotency_key": "3f9a2d1b-7c4e-4f5a-9b2c-1a3b4c5d6e7f",
       "event_source_id": "website_pixel",
       "events": [
         {

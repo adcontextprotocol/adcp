@@ -54,6 +54,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "signal_agent_segment_id",
     "destinations"
   ],

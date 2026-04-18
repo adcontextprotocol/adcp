@@ -203,6 +203,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "account",
     "brand",
     "start_time",

@@ -17,6 +17,20 @@
             "minimum": 1
           },
           "minItems": 1
+        },
+        "idempotency": {
+          "type": "object",
+          "description": "Idempotency semantics for mutating requests. Sellers SHOULD declare their replay window so buyers can reason about safe retry behavior. When omitted, buyers MUST assume the minimum 24-hour (86400s) replay window.",
+          "properties": {
+            "replay_ttl_seconds": {
+              "type": "integer",
+              "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent payload returns the cached response; a replay with a different payload returns IDEMPOTENCY_CONFLICT. Minimum 86400 (24h) recommended.",
+              "minimum": 3600
+            }
+          },
+          "required": [
+            "replay_ttl_seconds"
+          ]
         }
       },
       "required": [

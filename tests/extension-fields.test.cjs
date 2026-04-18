@@ -406,6 +406,7 @@ async function runTests() {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
 
     const request = {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
       account: { account_id: 'acc_test_001' },
       packages: [{ product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
@@ -495,6 +496,7 @@ async function runTests() {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
 
     const request = {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
       account: { account_id: 'acc_test_001' },
       packages: [{ product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
@@ -524,6 +526,7 @@ async function runTests() {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
 
     const request = {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
       account: { account_id: 'acc_test_001' },
       packages: [{ product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
@@ -552,6 +555,7 @@ async function runTests() {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
 
     const request = {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
       account: { account_id: 'acc_test_001' },
       packages: [{ product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {

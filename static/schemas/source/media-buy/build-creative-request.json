@@ -126,5 +126,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "required": [
+    "idempotency_key"
+  ],
   "additionalProperties": true
 }

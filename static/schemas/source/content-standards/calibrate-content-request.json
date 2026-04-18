@@ -33,6 +33,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "standards_id",
     "artifact"
   ]

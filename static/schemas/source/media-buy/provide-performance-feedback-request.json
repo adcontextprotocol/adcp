@@ -59,6 +59,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "media_buy_id",
     "measurement_period",
     "performance_index"

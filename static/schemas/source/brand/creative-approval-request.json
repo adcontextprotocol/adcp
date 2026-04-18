@@ -51,6 +51,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "rights_id",
     "creative_url"
   ],

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import crypto from 'node:crypto';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -61,6 +62,7 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
   const endTime = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     start_time: now.toISOString(),
@@ -83,6 +85,7 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
 async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>): Promise<string> {
   const creativeId = `cr-test-${Date.now()}`;
   const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     creatives: [{
@@ -112,6 +115,7 @@ async function createMediaBuyWithCreatives(server: ReturnType<typeof createTrain
 
   // Assign the creative to the buy's package
   await simulateCallTool(server, 'sync_creatives', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     creatives: [{ creative_id: creativeId, name: 'Test Creative' }],

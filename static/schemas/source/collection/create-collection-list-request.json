@@ -49,6 +49,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "name"
   ],
   "additionalProperties": false
