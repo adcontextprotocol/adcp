@@ -36,7 +36,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Governance context token from a prior check_governance response. Pass this on subsequent checks for the same governed action so the governance agent can maintain continuity across the lifecycle. In 3.0 the value SHOULD be a compact JWS issued by the governance agent per the AdCP JWS profile (see Security — Signed Governance Context); in 3.1 it MUST be. Callers persist and forward the value verbatim.",
+      "description": "Governance context token from a prior check_governance response. Pass this on subsequent checks for the same governed action so the governance agent can maintain continuity across the lifecycle. In 3.0 governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context); callers persist and forward the value verbatim.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
