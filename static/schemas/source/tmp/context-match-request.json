@@ -170,7 +170,7 @@
         },
         "content_policies": {
           "type": "array",
-          "description": "Policy IDs from the AdCP policy registry that this content satisfies (e.g., 'common_sense_brand_safety' for Common Sense Brand Standards baseline). Buyers filter on policies they require. An empty array means no policies have been evaluated.",
+          "description": "Policy IDs from the AdCP policy registry that this content satisfies (e.g., 'csbs' for Common Sense Brand Standards). Buyers filter on policies they require. An empty array means no policies have been evaluated.",
           "items": {
             "type": "string"
           },

@@ -376,7 +376,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
       { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
       { "feature_id": "registry:uk_hfss", "type": "binary", "description": "UK HFSS advertising restrictions compliance" },
-      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" }
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://vendor.example.com/methodology/carbon-score" }
     ],
     "creative_features": [
       { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "description": "EU AI Act Article 50 — AI-generated content disclosure" },
@@ -418,21 +418,21 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
+| `extensions_supported` | string[] | Extension namespaces (e.g., `["iab_tcf", "iab_gpp"]`) |
 
 Extension schemas are published in the [AdCP extension registry](/docs/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json
 {
-  "extensions_supported": ["scope3", "garm", "iab_tcf"]
+  "extensions_supported": ["iab_tcf", "iab_gpp", "acmecorp"]
 }
 ```
 
 This tells buyers:
-- Product responses may include `ext.scope3` with Scope3 sustainability data
-- Creative policies may include `ext.garm` with GARM brand suitability categorizations
 - Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
 
 ## The Capability Contract
 
@@ -477,8 +477,8 @@ if (result.supported_protocols.includes('media_buy')) {
   }
 
   // Check AXE integrations (legacy — new integrations use TMP via trusted_match on products)
-  if (mediaBuy.execution?.axe_integrations?.includes('https://agentic.scope3.com')) {
-    console.log('Scope3 AXE integration available');
+  if (mediaBuy.execution?.axe_integrations?.includes('https://axe.example.com')) {
+    console.log('AXE integration available');
   }
 
   // Check geo targeting
@@ -558,7 +558,7 @@ async function findCompatibleSellers(sellers, requirements) {
 const sellers = await findCompatibleSellers(
   ['https://seller1.com/mcp', 'https://seller2.com/mcp'],
   {
-    axeIntegration: 'https://agentic.scope3.com',
+    axeIntegration: 'https://axe.example.com',
     postalCodeTargeting: true,
     contentStandards: true
   }
@@ -591,7 +591,7 @@ const products = await client.getProducts({
       { level: 'postal_area', system: 'us_zip' }
     ],
     // Only include if seller supports this AXE (legacy — new integrations use TMP)
-    required_axe_integrations: ['https://agentic.scope3.com']
+    required_axe_integrations: ['https://axe.example.com']
   }
 });
 
@@ -682,7 +682,7 @@ const buy = await client.createMediaBuy({
       "property_list_filtering": true
     },
     "execution": {
-      "axe_integrations": ["https://agentic.scope3.com"],
+      "axe_integrations": ["https://axe.example.com"],
       "creative_specs": {
         "vast_versions": ["4.0", "4.1", "4.2"],
         "mraid_versions": ["3.0"],
@@ -735,7 +735,7 @@ const buy = await client.createMediaBuy({
       "primary_countries": ["US", "CA"]
     }
   },
-  "extensions_supported": ["scope3"],
+  "extensions_supported": ["acmecorp"],
   "last_updated": "2025-01-23T10:00:00Z"
 }
 ```
@@ -751,7 +751,7 @@ This tells buyers:
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
 - **Audience targeting**: Accepts hashed email, hashed phone, UID2, and RampID; minimum matched audience size of 500; matching latency 1–24 hours
 - **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
-- **Extensions**: Scope3 sustainability data in `ext.scope3`
+- **Extensions**: Vendor-specific data in `ext.acmecorp`
 
 ### Multi-protocol agent
 
