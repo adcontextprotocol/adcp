@@ -42,6 +42,7 @@ export const COLLECTION_LIST_TOOLS = [
       properties: {
         list_id: { type: 'string' },
         resolve: { type: 'boolean' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the lookup to this brand' },
       },
       required: ['list_id'],
     },
@@ -60,6 +61,7 @@ export const COLLECTION_LIST_TOOLS = [
         base_collections: { type: 'array' },
         filters: { type: 'object' },
         webhook_url: { type: 'string' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the update to this brand' },
       },
       required: ['list_id'],
     },
@@ -73,6 +75,7 @@ export const COLLECTION_LIST_TOOLS = [
       type: 'object' as const,
       properties: {
         name_contains: { type: 'string' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the listing to this brand' },
       },
     },
   },
@@ -85,6 +88,7 @@ export const COLLECTION_LIST_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the deletion to this brand' },
       },
       required: ['list_id'],
     },

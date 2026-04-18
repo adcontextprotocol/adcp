@@ -17,7 +17,7 @@
 #   Sales: sales_guaranteed | sales_non_guaranteed | sales_proposal_mode | sales_catalog_driven | sales_broadcast_tv | sales_streaming_tv | sales_social | sales_exchange | sales_retail_media
 #   Creative: creative_ad_server | creative_generative | creative_template
 #   Signals: signal_marketplace | signal_owned
-#   Governance: content_standards | property_lists | governance_delivery_monitor | governance_spend_authority | measurement_verification
+#   Governance: content_standards | property_lists | collection_lists | governance_delivery_monitor | governance_spend_authority | measurement_verification
 #   Brand: brand_rights
 #   Audiences: audience_sync
 #   Universal / domain-level: capability_discovery | schema_validation | behavioral_analysis | error_compliance | security | media_buy_seller | media_buy_governance_escalation | si_session

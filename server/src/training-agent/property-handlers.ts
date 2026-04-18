@@ -28,7 +28,7 @@ export const PROPERTY_TOOLS = [
         list_type: { type: 'string', enum: ['inclusion', 'exclusion'], description: 'Type of property list' },
         base_properties: { type: 'array', description: 'Property sources to include' },
         filters: { type: 'object', description: 'Dynamic filters for list resolution' },
-        brand: { type: 'object', description: 'Brand reference for automatic rule application' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for automatic rule application' },
         idempotency_key: { type: 'string' },
       },
       required: ['name'],
@@ -43,6 +43,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         name_contains: { type: 'string', description: 'Filter to lists whose name contains this string' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the listing to lists created under this brand' },
       },
     },
   },
@@ -55,6 +56,8 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the lookup to this brand' },
+        resolve: { type: 'boolean', description: 'When true, return the resolved properties alongside list metadata' },
       },
       required: ['list_id'],
     },
@@ -72,7 +75,7 @@ export const PROPERTY_TOOLS = [
         description: { type: 'string', description: 'New description' },
         base_properties: { type: 'array', description: 'Complete replacement for the base properties list' },
         filters: { type: 'object', description: 'Complete replacement for the filters' },
-        brand: { type: 'object', description: 'Update brand reference' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Update brand reference' },
       },
       required: ['list_id'],
     },
@@ -86,6 +89,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference — scopes the deletion to this brand' },
       },
       required: ['list_id'],
     },
@@ -99,7 +103,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list to validate against' },
-        brand: { type: 'object', description: 'Brand reference' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference' },
         records: {
           type: 'array',
           description: 'Delivery records to validate. Each record has an identifier ({type, value}) and impressions.',
