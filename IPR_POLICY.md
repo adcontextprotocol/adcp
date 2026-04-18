@@ -2,6 +2,8 @@
 
 ---
 
+**Related governance:** This Policy is one element of the Foundation's governance stack. See [`CHARTER.md`](./CHARTER.md) for Foundation structure, voting classes, Board composition, and the specification lifecycle that gives the patent grants below their scope.
+
 ## 1. Purpose
 
 This Policy governs the ownership, licensing, and use of intellectual property contributed to or arising from the activities of AgenticAdvertising.Org (the "Foundation"). The Foundation exists, among other purposes, to develop, maintain, and promote open, interoperable, and widely adopted advertising standards such as the Ad Context Protocol (AdCP).
