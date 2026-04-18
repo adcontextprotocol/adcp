@@ -1,6 +1,6 @@
 {
   "name": "Content-Digest header does not match SHA-256 of received body",
-  "spec_reference": "#verifier-checklist-requests step 9",
+  "spec_reference": "#verifier-checklist-requests step 11",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -15,14 +15,14 @@
   },
   "verifier_capability": {
     "supported": true,
-    "covers_content_digest": true,
+    "covers_content_digest": "required",
     "required_for": ["create_media_buy"]
   },
   "jwks_ref": ["test-ed25519-2026"],
   "expected_outcome": {
     "success": false,
     "error_code": "request_signature_digest_mismatch",
-    "failed_step": 9,
-    "$comment": "Implementations may reject at step 8 (signature_invalid) first depending on whether they verify the signature before recomputing the digest. The spec lists step 8 before step 9, so an implementation that verifies the signature first will reject with request_signature_invalid. Either ordering is conformant; vector asserts the spec-preferred rejection for the digest-specific failure mode."
-  }
+    "failed_step": 11
+  },
+  "$comment": "The Content-Digest header asserts a hash that does not match the SHA-256 of the body. The signature itself also fails to verify because the base includes the Content-Digest header value, which is bound to a digest that doesn't match the body bytes. Conformance requires error_code == request_signature_digest_mismatch; implementations that reject at step 10 (request_signature_invalid) before reaching step 11 are NOT conformant against this vector. Per the spec checklist, crypto verify runs before digest recompute — so produce a vector where the crypto would verify but the digest fails. TODO: populate with a realistic signature for this scenario (requires producing a signature over a base that references a Content-Digest value that doesn't match the body). Implementations may contribute this via the reference generator when supporting forensic digest-mismatch replays."
 }

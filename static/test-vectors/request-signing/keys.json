@@ -7,9 +7,12 @@
       "crv": "Ed25519",
       "alg": "EdDSA",
       "use": "sig",
-      "key_ops": ["verify"],
-      "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-      "_private_d_for_test_only": "nWGxnt_9WmC6hEr0kuwszERJxWl7MmkZcDusAxyuf2A"
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "TYjNrS_MTjRDrj2pIIkqwjzXaMvO-hWKJGu9W3kF6Zs",
+      "_private_d_for_test_only": "rFW3K84_K7XXEwU6lzzEQwiRjNqzuMxOr465jDPzA0o"
     },
     {
       "kid": "test-es256-2026",
@@ -17,22 +20,27 @@
       "crv": "P-256",
       "alg": "ES256",
       "use": "sig",
-      "key_ops": ["verify"],
-      "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-      "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-      "_private_d_for_test_only": "jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "mNYcsJLj-LKG6vGF2lOmuxDu8nLt--yMNY0RDxYT3p8",
+      "y": "C1Lo6-4nrAPTtGD59HcZwbrzD3QKQxzxrmS_V8Do9Es",
+      "_private_d_for_test_only": "p8VI2RXvGXGegoXm8rugs9-JIi2l3ZRfGhlNQIVCj9c"
     },
     {
+      "$comment": "Governance-signing key, adcp_use='governance-signing'. Included so negative vector 009 can demonstrate cross-purpose rejection: the vector presents this key when verifying a request signature, and the verifier MUST reject at step 8 because adcp_use is not 'request-signing'.",
       "kid": "test-gov-2026",
-      "$comment": "Governance-signing key intentionally scoped away from request-signing via key_ops. Used in negative vector 009-key-ops-missing-verify to validate cross-purpose rejection.",
       "kty": "OKP",
       "crv": "Ed25519",
       "alg": "EdDSA",
       "use": "sig",
-      "key_ops": ["verify"],
-      "$comment_key_ops": "key_ops is ['verify'] here, but the vector sets it to ['encrypt'] or omits 'verify' to test the rejection path. The JWK in the vector itself carries the malformed key_ops; this entry is the well-formed form.",
-      "x": "eDJ7qnVEvPBgxYyJ-hxyZxVqH2ixjxQ8jHxCnB0VXys",
-      "_private_d_for_test_only": "qI2M-Ld4FsdR8bEKxM8G-7y5ifKKUY-t5LPlPQrGMqA"
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "governance-signing",
+      "x": "ztc8M89UJAAMfGwgz7WDgoUIg5BFzj1XwLYRP3pQ0Tc",
+      "_private_d_for_test_only": "6R80Wzcy3BBUKuSg2rMwM8CRWYgZRRRP9lD5txG_ZH0"
     }
   ]
 }

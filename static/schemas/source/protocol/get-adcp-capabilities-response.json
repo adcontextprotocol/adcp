@@ -766,20 +766,21 @@
     },
     "request_signing": {
       "type": "object",
-      "description": "RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capability-advertised so counterparties can opt into signing selectively. Required for spend-committing calls in 4.0. The full profile is defined in docs/building/implementation/security.mdx (Signed Requests (Transport Layer)).",
+      "description": "RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capability-advertised so counterparties can opt into signing selectively. Required for spend-committing operations in 4.0 (the next breaking-changes accumulation window). The full profile is defined in docs/building/implementation/security.mdx (Signed Requests (Transport Layer)).",
       "properties": {
         "supported": {
           "type": "boolean",
           "description": "Whether this agent verifies RFC 9421 signatures on incoming requests. When true, signatures present on requests are validated per the AdCP request-signing profile. When false or absent, signatures are ignored (requests are bearer-authenticated only)."
         },
         "covers_content_digest": {
-          "type": "boolean",
-          "description": "When true, signers MUST cover the content-digest header (the signature binds the request body bytes). When false (default), signers MUST NOT cover content-digest. Off by default because request-body signing breaks easily under CDN/WAF/proxy intermediaries that recompress or re-serialize bodies. Agents that control their transport path end-to-end SHOULD set this true for spend-committing operations.",
-          "default": false
+          "type": "string",
+          "enum": ["required", "forbidden", "either"],
+          "description": "Policy for content-digest coverage in request signatures. 'required': signers MUST cover content-digest (body is bound to the signature); body-unbound signatures rejected with request_signature_components_incomplete. 'forbidden': signers MUST NOT cover content-digest; body-bound signatures rejected with request_signature_components_unexpected. This is an opt-out for the narrow case of legacy infrastructure that cannot preserve body bytes. 'either' (default): signer chooses per-request; verifier accepts both covered and uncovered forms. 'required' is recommended for spend-committing operations in production; 4.0 recommends 'required' for those operations.",
+          "default": "either"
         },
         "required_for": {
           "type": "array",
-          "description": "Operation names for which this agent rejects unsigned requests. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation.",
           "items": {
             "type": "string"
           },
@@ -787,7 +788,7 @@
         },
         "supported_for": {
           "type": "array",
-          "description": "Operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for.",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for.",
           "items": {
             "type": "string"
           }

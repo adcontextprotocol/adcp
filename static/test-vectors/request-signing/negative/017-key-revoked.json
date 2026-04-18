@@ -1,0 +1,37 @@
+{
+  "name": "Signing keyid is listed in the revocation list",
+  "spec_reference": "#verifier-checklist-requests step 9",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:__POPULATE_FROM_POSITIVE_001__:"
+    },
+    "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "test_harness_state": {
+    "$comment": "Pre-populate revocation list with test-ed25519-2026 revoked. Harness sets revocation_list = { revoked_kids: ['test-ed25519-2026'], revoked_jtis: [], fresh: true, issuer: 'https://seller.example.com', updated: '2026-04-18T14:00:00Z', next_update: '2026-04-18T14:15:00Z' }.",
+    "revocation_list": {
+      "issuer": "https://seller.example.com",
+      "updated": "2026-04-18T14:00:00Z",
+      "next_update": "2026-04-18T14:15:00Z",
+      "revoked_kids": ["test-ed25519-2026"],
+      "revoked_jtis": []
+    }
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_key_revoked",
+    "failed_step": 9
+  },
+  "$comment": "Revocation check runs BEFORE cryptographic verify (step 9, before step 10) — this prevents cheap amplification where an attacker replays a revoked key's valid signature and forces the verifier to do an Ed25519/ECDSA verify for every rejection. Verifier MUST reject at step 9 without computing the signature base or running crypto verification."
+}

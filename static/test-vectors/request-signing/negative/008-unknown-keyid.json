@@ -1,6 +1,6 @@
 {
   "name": "keyid does not match any entry in the signer's JWKS",
-  "spec_reference": "#verifier-checklist-requests step 6",
+  "spec_reference": "#verifier-checklist-requests step 7",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -14,13 +14,13 @@
   },
   "verifier_capability": {
     "supported": true,
-    "covers_content_digest": false,
+    "covers_content_digest": "either",
     "required_for": ["create_media_buy"]
   },
   "jwks_ref": ["test-ed25519-2026"],
   "expected_outcome": {
     "success": false,
     "error_code": "request_signature_key_unknown",
-    "failed_step": 6
+    "failed_step": 7
   }
 }

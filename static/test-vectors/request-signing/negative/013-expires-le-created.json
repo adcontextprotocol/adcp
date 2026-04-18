@@ -1,5 +1,5 @@
 {
-  "name": "Signature expired more than 60 s ago",
+  "name": "Signature expires equals created (negative validity window)",
   "spec_reference": "#verifier-checklist-requests step 5",
   "reference_now": 1776520800,
   "request": {
@@ -7,7 +7,7 @@
     "url": "https://seller.example.com/adcp/create_media_buy",
     "headers": {
       "Content-Type": "application/json",
-      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520000;expires=1776520300;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776520800;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
       "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
     },
     "body": "{\"plan_id\":\"plan_001\"}"
@@ -22,5 +22,6 @@
     "success": false,
     "error_code": "request_signature_window_invalid",
     "failed_step": 5
-  }
+  },
+  "$comment": "expires == created yields a zero-length validity window. Spec requires expires > created (strict inequality) to prevent signatures that are simultaneously issued and expired, which would bypass replay dedup — the replay cache entry would immediately be stale."
 }
