@@ -26,6 +26,11 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp when the response was generated. Useful for debugging, logging, cache validation, and tracking async operation progress."
     },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Push notification configuration for async task updates (A2A and REST protocols). Echoed from the request to confirm webhook settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials. MCP uses progress notifications instead of webhooks."
@@ -116,6 +121,19 @@
               "severity": "warning"
             }
           ]
+        }
+      }
+    },
+    {
+      "description": "Idempotent replay — same key and payload as a prior request within the replay window",
+      "data": {
+        "context_id": "ctx_abc123",
+        "status": "completed",
+        "message": "Returning cached response for idempotency_key (already processed)",
+        "timestamp": "2025-10-14T14:35:00Z",
+        "replayed": true,
+        "payload": {
+          "media_buy_id": "mb_01HW7J8K9P0Q1R2S3T4U5V6W7X"
         }
       }
     },

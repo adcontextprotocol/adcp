@@ -185,22 +185,91 @@ ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
 
 #### Normative seller behavior
 
-1. **First call is canonical.** The seller processes the request once and stores the canonical response keyed by `(authenticated_principal, idempotency_key)`.
-2. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND a semantically equivalent payload MUST return the stored response verbatim without re-executing side effects (no duplicate buys, charges, or webhooks).
-3. **Key reuse with a different payload is a conflict.** A request with the same `idempotency_key` but a materially different payload MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
+1. **First call is canonical.** The seller processes the request once and stores the canonical response keyed by `(authenticated_principal, idempotency_key)` along with a hash of the canonical request payload.
+2. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND an equivalent payload (see "Payload equivalence" below) MUST return the stored response verbatim without re-executing side effects (no duplicate buys, charges, or webhooks). The replayed response MUST set `replayed: true` at the top level so the buyer can distinguish a cached response from a fresh execution.
+3. **Key reuse with a different payload is a conflict.** A request with the same `idempotency_key` but a payload whose canonical hash differs MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
 4. **Replay window.** Sellers SHOULD declare their replay-window TTL in `capabilities.idempotency.replay_ttl_seconds` (minimum 24 hours / 86400 seconds recommended). When the capability is omitted, buyers MUST assume the 24-hour minimum. After the TTL elapses, the seller MAY discard the stored response. Keys reused after expiry are treated as new requests.
 5. **Scope.** Keys are scoped to the authenticated principal on the seller. Cross-principal replay is never permitted — a buyer's idempotency_key on seller A has no meaning on seller B, and keys from principal X are not visible to principal Y on the same seller.
+
+#### Payload equivalence
+
+"Equivalent" payload means **identical canonical JSON form**, not field-by-field semantic comparison. Sellers MUST determine equivalence by hashing the request payload in canonical form and comparing hashes. The canonical form is [RFC 8785 JSON Canonicalization Scheme (JCS)](https://www.rfc-editor.org/rfc/rfc8785):
+
+- Object keys sorted lexicographically
+- No insignificant whitespace
+- Numbers serialized per ECMAScript 2019 (`JSON.stringify` / Python's `float.__repr__`)
+- Strings in NFC Unicode, with minimum required escaping
+- The full request object EXCEPT `idempotency_key` and `context` are included in the hash. `context` is opaque echo data and MUST NOT affect equivalence — buyers change trace IDs on retry.
+
+Sellers MUST NOT treat "missing optional field" and "field explicitly set to null" as equivalent — JCS preserves the distinction, and so do buyers.
+
+Recommended hash: `SHA-256(JCS(payload_without_idempotency_key_and_context))`. Sellers using another stable canonical form MUST document it in their agent capabilities. Pinning to JCS removes the biggest source of false `IDEMPOTENCY_CONFLICT` errors: buyers and sellers disagreeing on what "same payload" means across JSON serializer implementations.
+
+#### Response-level replay indicator
+
+Every mutating response envelope carries a top-level `replayed` boolean:
+
+```json
+{
+  "replayed": false,
+  "media_buy_id": "mb_01H...",
+  "context": { "correlation_id": "..." }
+}
+```
+
+On a fresh execution, `replayed` is `false` (or omitted — buyers MUST treat omission as `false`). On a cached replay, `replayed` is `true` and the rest of the response is byte-for-byte the original. Buyers use this for:
+
+- **Billing reconciliation** — "we processed N buys this month" counts `replayed: false` only.
+- **Logging** — distinguishing "retry succeeded by returning cache" from "retry triggered a new execution" (the latter is usually a bug in the replay window or key management).
+- **Side-effect invariants** — any downstream system that expects exactly-once should read `replayed` before treating the response as a new event.
+
+#### IDEMPOTENCY_CONFLICT response shape
+
+The conflict response uses the standard AdCP error envelope. The error body:
+
+- MUST include `code: "IDEMPOTENCY_CONFLICT"` and a human-readable `message`
+- MAY include `field: "<json-pointer>"` identifying the first path where the canonical forms diverged (best-effort diagnostic)
+- MUST NOT include the cached response, the original payload, or any fingerprint derived from them. Leaking cached state turns key-reuse into a read oracle — an attacker who can guess a victim's key could probe it for a payload match.
+
+```json
+{
+  "errors": [
+    {
+      "code": "IDEMPOTENCY_CONFLICT",
+      "message": "idempotency_key was used with a different payload within the 24h replay window",
+      "field": "/packages/0/budget",
+      "recovery": "correctable"
+    }
+  ],
+  "context": { "correlation_id": "..." }
+}
+```
 
 #### Buyer obligations
 
 Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request. On retry after a network error, buyers MUST resend the exact same payload with the same key — changing either side breaks at-most-once semantics.
 
+**TTL boundary for persisted keys.** Some buyers persist `idempotency_key` alongside their own object (e.g., `campaign.pending_idempotency_key` in the buyer's DB) so that retries after a process restart or overnight reconcile still dedup. This works **only within the seller's declared `replay_ttl_seconds`** (24h minimum). Beyond the TTL, the seller has discarded the cache entry and will treat the resent request as new — silently creating a second media buy. Buyers retrying past the TTL MUST fall back to a natural-key check (e.g., query `get_media_buys` by `context.internal_campaign_id`) before resending. The `idempotency_key` guarantees at-most-once execution within the replay window, not forever.
+
+**Keys are security-sensitive.** An `idempotency_key` is a secret capability token within its TTL — anyone who holds one and knows the original payload can replay it and read the cached response. Treat keys the way you treat session tokens: do not log them in full, do not embed them in URLs, do not share them across principals. Log prefix-only (first 8 chars of the UUID) if you need correlation.
+
 ```javascript
+import { canonicalize } from "@truestamp/canonify"; // RFC 8785 JCS
+import { createHash } from "node:crypto";
+
+function payloadHash(request) {
+  // Exclude idempotency_key and context from the equivalence hash
+  const { idempotency_key, context, ...rest } = request;
+  return createHash("sha256").update(canonicalize(rest)).digest("hex");
+}
+
 async function createMediaBuy(request) {
   const { idempotency_key } = request;
   if (!idempotency_key) {
     throw new InvalidRequestError("idempotency_key is required");
   }
+
+  const requestHash = payloadHash(request);
 
   // Look up by (principal, key) — key scope is per-principal
   const existing = await db.findByIdempotencyKey({
@@ -209,13 +278,14 @@ async function createMediaBuy(request) {
   });
 
   if (existing) {
-    if (!payloadsEquivalent(existing.request, request)) {
-      throw new IdempotencyConflictError(
-        "idempotency_key reused with a different payload",
-      );
+    if (existing.request_hash !== requestHash) {
+      throw new IdempotencyConflictError({
+        message: "idempotency_key reused with a different payload",
+        // field is optional best-effort diagnostic; never include the cached payload
+      });
     }
-    // Return cached response — no side effects
-    return existing.response;
+    // Return cached response with replayed: true
+    return { ...existing.response, replayed: true };
   }
 
   return db.transaction(async (tx) => {
@@ -223,11 +293,11 @@ async function createMediaBuy(request) {
     await tx.idempotencyKeys.insert({
       principal_id: currentPrincipal.id,
       key: idempotency_key,
-      request,
+      request_hash: requestHash,
       response,
       expires_at: new Date(Date.now() + 86400 * 1000), // 24h TTL
     });
-    return response;
+    return { ...response, replayed: false };
   });
 }
 ```
