@@ -68,14 +68,23 @@
 # sample_response: object (optional — example expected response; also surfaces in published docs)
 #
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
-#   auth: none                                          → strip any configured credentials before sending
-#   auth: { type: api_key, from_test_kit: true }        → use the API key at `auth.api_key` in the test kit
-#   auth: { type: api_key, value: "literal-bad-token" } → use a literal Bearer value (for invalid-key probes)
+#   auth: none                                            → strip any configured credentials before sending
+#   auth: { type: api_key, from_test_kit: true }          → use the API key at `auth.api_key` in the test kit
+#   auth: { type: api_key, value_strategy: random_invalid }
+#                                                         → use a per-run random bogus API key (for invalid-key probes).
+#                                                           Runner generates `invalid-<32 random bytes>` per run.
+#   auth: { type: oauth_bearer, value_strategy: random_invalid_jwt }
+#                                                         → use a per-run random JWT-shaped bogus Bearer token.
+#                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
 #
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
-# contributes_if: string (optional — expression; contribution only applied when expression is true,
-#                         e.g., "prior_step.probe_api_key.passed")
+# contributes_if: string (optional — runner-evaluated expression gating the contribution)
+#   Supported grammar (runner-internal; not a general-purpose DSL):
+#     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
+#     "prior_step.<step_id>.failed"   → true if the named prior step failed
+#     "!<expr>"                        → boolean negation
+#   Storyboard authors should prefer expressing gating through step ordering when possible.
 #
 # validations: array of Validation objects (optional)
 #

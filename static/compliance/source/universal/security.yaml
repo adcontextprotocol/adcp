@@ -173,11 +173,14 @@ phases:
       - id: probe_invalid_api_key
         title: "Reject a deliberately invalid API key"
         narrative: |
-          Send the same protected task with a deliberately invalid Bearer token
-          (`Bearer invalid-xxxxxxxxxxxxxxxx`). A conformant agent rejects this with
+          Send the same protected task with a Bearer token the runner generates
+          per-run from 32 random bytes (prefix `invalid-` for log readability,
+          e.g. `invalid-8e4a2c1f...`). A conformant agent rejects this with
           401/403. An agent that returns 200 here is ignoring credentials entirely
           and falsely appeared to pass `probe_api_key` — only the pair of (200 with
-          valid key, 401/403 with invalid key) proves the key is actually checked.
+          valid key, 401/403 with random-invalid key) proves the key is actually
+          checked. The token is randomized per run so no allowlist can collide
+          with it by accident.
 
           Contributes `auth_mechanism_verified` only when *both* this step and
           `probe_api_key` succeed.
@@ -188,12 +191,12 @@ phases:
         stateful: false
         auth:
           type: api_key
-          value: "invalid-xxxxxxxxxxxxxxxx"
+          value_strategy: random_invalid
         contributes_to: auth_mechanism_verified
         contributes_if: "prior_step.probe_api_key.passed"
         expect_error: true
         expected: |
-          The agent rejects the invalid key with:
+          The agent rejects the random-invalid key with:
           - http_status: 401 (preferred) or 403
           - On 401, a `WWW-Authenticate: Bearer ... error="invalid_token"` header
 
@@ -228,6 +231,13 @@ phases:
       diagnose from the error message alone (see adcp-client#563). Fix the metadata
       document, not the OAuth config.
 
+      Contribution to `auth_mechanism_verified` is gated on the pair of
+      `probe_protected_resource` (advertises OAuth correctly) AND
+      `probe_invalid_oauth_token` (actually validates inbound tokens), symmetric
+      with the API key path. Metadata alone is not sufficient — an agent that
+      advertises OAuth but accepts any Bearer is broken in the same way an
+      agent that ignores API keys is broken.
+
     optional: true
 
     steps:
@@ -243,7 +253,6 @@ phases:
         doc_ref: "/protocol/authentication"
         comply_scenario: security_oauth_discovery
         stateful: false
-        contributes_to: auth_mechanism_verified
         expected: |
           A 200 response with a JSON document. Example for an agent at
           `https://agent.example.com/mcp`:
@@ -288,6 +297,11 @@ phases:
           — NOT `/.well-known/openid-configuration` (that's OIDC Discovery, a
           different spec). Confirm the document is reachable and exposes the minimum
           fields clients need to request a token (`issuer` and `token_endpoint`).
+
+          The runner applies SSRF guardrails on this outbound fetch: HTTPS only,
+          no RFC 1918 / loopback / link-local hosts, bounded response size and
+          time. If you are testing locally against a localhost auth server, run
+          the compliance runner with `--allow-http` to relax these guards for dev.
         task: oauth_auth_server_metadata
         doc_ref: "/protocol/authentication"
         comply_scenario: security_oauth_discovery
@@ -308,6 +322,48 @@ phases:
             path: "token_endpoint"
             description: "Authorization server exposes a token endpoint"
 
+      - id: probe_invalid_oauth_token
+        title: "Reject a bogus Bearer token on the protected task"
+        narrative: |
+          Metadata correctness proves the agent *advertises* OAuth correctly. It
+          does NOT prove the agent actually validates inbound tokens. An agent
+          that accepts any Bearer token on protected operations is broken in
+          exactly the same way an agent that ignores API keys is broken — this
+          step closes that loophole symmetrically.
+
+          The runner sends a syntactically JWT-shaped token generated per-run
+          from random bytes (e.g.
+          `eyJhbGciOiJub25lIn0.eyJzdWIiOiJpbnZhbGlkIn0.<32-random-bytes>`)
+          as a Bearer credential on the protected probe task. Expect 401/403.
+          The token is randomized per run so no allowlist can collide with it.
+        task: "$test_kit.auth.probe_task"
+        task_default: list_creatives
+        doc_ref: "/protocol/authentication"
+        comply_scenario: security_oauth_token_rejection
+        stateful: false
+        auth:
+          type: oauth_bearer
+          value_strategy: random_invalid_jwt
+        contributes_to: auth_mechanism_verified
+        contributes_if: "prior_step.probe_protected_resource.passed"
+        expect_error: true
+        expected: |
+          The agent rejects the bogus Bearer with:
+          - http_status: 401 (preferred) or 403
+          - On 401, a `WWW-Authenticate: Bearer ... error="invalid_token"` header
+
+        sample_request:
+          context:
+            correlation_id: "security_baseline--probe_invalid_oauth_token"
+
+        validations:
+          - check: http_status_in
+            allowed_values: [401, 403]
+            description: "Agent returned 200 on a bogus Bearer token — OAuth validation is not running on protected operations. MUST reject with 401 (preferred) or 403"
+          - check: on_401_require_header
+            value: "www-authenticate"
+            description: "401 responses on invalid tokens MUST include WWW-Authenticate with `error=\"invalid_token\"` per RFC 6750 §3"
+
   - id: mechanism_required
     title: "At least one mechanism must be verified"
     narrative: |
@@ -327,11 +383,11 @@ phases:
         comply_scenario: security_mechanism_required
         stateful: false
         expected: |
-          At least one of the API key phase (both valid-key and invalid-key steps
-          must succeed) or the OAuth discovery phase contributed
-          `auth_mechanism_verified`.
+          At least one of the API key path (both valid-key and invalid-key steps
+          must succeed) or the OAuth path (correct metadata AND token validation
+          both must succeed) contributed `auth_mechanism_verified`.
 
         validations:
           - check: any_of
             allowed_values: ["auth_mechanism_verified"]
-            description: "No auth mechanism was verified. Provide `auth.api_key` in your test kit, or serve protected-resource metadata at /.well-known/oauth-protected-resource/<path> with `resource` equal to your agent URL."
+            description: "No auth mechanism was verified. Three things to check: (1) your test kit declares `auth.probe_task` pointing at a read-only authenticated task your agent supports (defaults to `list_creatives`); (2) you provide `auth.api_key` in your test kit AND the agent both accepts it and rejects a random-invalid key; OR (3) you serve protected-resource metadata at /.well-known/oauth-protected-resource/<path> with `resource` equal to your agent URL."
