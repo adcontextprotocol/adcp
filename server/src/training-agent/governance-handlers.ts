@@ -344,7 +344,7 @@ export const GOVERNANCE_TOOLS = [
   },
   {
     name: 'check_governance',
-    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, conditions, or escalated. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
+    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, or conditions. Human review is signalled via a critical human_review finding on a denied decision; the buyer resolves review off-protocol and re-calls this tool with human_approval. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -655,7 +655,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const findings: GovernanceFinding[] = [];
   const conditions: GovernanceCondition[] = [];
   const categoriesEvaluated: string[] = [];
-  let shouldEscalate = false;
+  // When a human must approve before the action can proceed, the training agent
+  // records a critical human_review finding and denies the check. Human approval
+  // is resolved off-protocol; the buyer then calls check_governance again with
+  // human_approval in the request, which clears this branch.
+  let humanReviewRequired = false;
+  let humanReviewReason: string | null = null;
 
   // Annex III / Art 22 contestation-endpoint check.
   // When human review is required, the brand MUST expose data_subject_contestation
@@ -774,15 +779,19 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         }
       }
 
-      // Escalation when the commitment exceeds the reallocation threshold
+      // Commitment exceeds the reallocation threshold — requires human approval.
       if (payloadBudget > plan.budget.reallocationThreshold) {
-        shouldEscalate = true;
+        humanReviewRequired = true;
+        humanReviewReason =
+          `Budget commitment exceeds reallocation_threshold of $${plan.budget.reallocationThreshold}.`;
       }
     }
 
-    // Plan-level human review (Annex III / Art 22) — every action escalates regardless of spend
+    // Plan-level human review (Annex III / Art 22) — every action needs human approval regardless of spend.
     if (plan.humanReviewRequired) {
-      shouldEscalate = true;
+      humanReviewRequired = true;
+      humanReviewReason =
+        'Plan has human_review_required = true; every action requires human approval.';
     }
 
     // Seller concentration
@@ -973,14 +982,26 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
 
-  // Determine status
+  // Human review required → add a critical finding so the derived status is 'denied'.
+  // AdCP v3 has three terminal statuses (approved|denied|conditions). Human review is
+  // signalled via a critical finding that the buyer resolves off-protocol, then retries
+  // the check with the human's approval.
+  if (humanReviewRequired) {
+    categoriesEvaluated.push('human_review');
+    findings.push({
+      categoryId: 'human_review',
+      severity: 'critical',
+      explanation:
+        (humanReviewReason ?? 'Action requires human approval.') +
+        ' Resolve off-protocol and re-call check_governance with human_approval.',
+    });
+  }
+
   const criticalFindings = findings.filter(f => f.severity === 'critical');
   let status: GovernanceCheckState['status'];
 
   if (criticalFindings.length > 0) {
     status = 'denied';
-  } else if (shouldEscalate) {
-    status = 'escalated';
   } else if (conditions.length > 0) {
     status = 'conditions';
   } else {
@@ -1011,7 +1032,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     ? new Date(now.getTime() + 60 * 60 * 1000).toISOString()
     : undefined;
 
-  const explanation = buildExplanation(status, findings, conditions, shouldEscalate);
+  const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
   // Generate or reuse governance_context for lifecycle correlation
@@ -1030,12 +1051,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     phase,
     findings,
     conditions: conditions.length > 0 ? conditions : undefined,
-    escalation: shouldEscalate ? {
-      reason: plan.humanReviewRequired
-        ? `Plan has human_review_required = true; every action escalates for human approval.`
-        : `Budget commitment exceeds reallocation_threshold of $${plan.budget.reallocationThreshold}.`,
-      action: 'require_human_approval',
-    } : undefined,
     explanation,
     mode,
     categoriesEvaluated: [...new Set(categoriesEvaluated)],
@@ -1243,14 +1258,25 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
       ...(data.seller_reference && { seller_reference: data.seller_reference }),
     }));
 
-    // Summary statistics
-    const statusCounts = { approved: 0, denied: 0, conditions: 0, escalated: 0 };
+    // Summary statistics. v3 governance has three terminal statuses (approved|denied|conditions);
+    // human review is tracked via a supplementary `human_reviewed` count (same checks as
+    // denied/approved but flagged as having gone through review). We identify them by the
+    // `human_review` finding category the handler attaches when a plan demands human approval.
+    const statusCounts: { approved: number; denied: number; conditions: number; human_reviewed: number } = {
+      approved: 0,
+      denied: 0,
+      conditions: 0,
+      human_reviewed: 0,
+    };
     for (const check of checks) {
       statusCounts[check.status]++;
+      if (check.findings.some(f => f.categoryId === 'human_review')) {
+        statusCounts.human_reviewed++;
+      }
     }
 
     const totalChecks = checks.length;
-    const escalationRate = totalChecks > 0 ? statusCounts.escalated / totalChecks : 0;
+    const escalationRate = totalChecks > 0 ? statusCounts.human_reviewed / totalChecks : 0;
     const autoApprovalRate = totalChecks > 0 ? statusCounts.approved / totalChecks : 0;
 
     const allFindings = [
@@ -1263,11 +1289,14 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
       : undefined;
 
     const escalations = checks
-      .filter(c => c.status === 'escalated')
-      .map(c => ({
-        check_id: c.checkId,
-        reason: c.escalation?.reason as string ?? 'Escalated per policy',
-      }));
+      .filter(c => c.findings.some(f => f.categoryId === 'human_review'))
+      .map(c => {
+        const humanReviewFinding = c.findings.find(f => f.categoryId === 'human_review');
+        return {
+          check_id: c.checkId,
+          reason: humanReviewFinding?.explanation ?? 'Escalated per policy',
+        };
+      });
 
     const summary = {
       checks_performed: totalChecks,
@@ -1418,11 +1447,8 @@ function buildExplanation(
   status: string,
   findings: GovernanceFinding[],
   conditions: GovernanceCondition[],
-  escalated: boolean,
+  humanReviewRequired: boolean,
 ): string {
-  if (escalated) {
-    return 'Action escalated for human review — plan requires human approval or commitment exceeds reallocation threshold.';
-  }
   if (status === 'approved' && findings.length === 0) {
     return 'All governance checks passed.';
   }
@@ -1434,7 +1460,8 @@ function buildExplanation(
   }
   if (status === 'denied') {
     const reasons = findings.filter(f => f.severity === 'critical').map(f => f.explanation);
-    return `Denied: ${reasons.join('; ')}`;
+    const prefix = humanReviewRequired ? 'Denied pending human review' : 'Denied';
+    return `${prefix}: ${reasons.join('; ')}`;
   }
   return `Governance check completed with status: ${status}.`;
 }
@@ -1466,7 +1493,6 @@ function buildCheckResponse(check: GovernanceCheckState) {
         reason: c.reason,
       })),
     }),
-    ...(check.escalation && { escalation: check.escalation }),
     ...(check.expiresAt && { expires_at: check.expiresAt }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

@@ -6869,12 +6869,13 @@ describe('human_review_required auto-flip and enforcement', () => {
       payload: { type: 'media_buy', account, total_budget: 5000 },
     });
     // Industries alone are advisory — plan proceeds unless a category/policy/custom triggers.
-    expect(result.status).not.toBe('escalated');
+    expect(result.status).not.toBe('denied');
     const findings = result.findings as Array<{ category_id: string; severity: string }>;
     expect(findings.some(f => f.category_id === 'annex_iii_industry_advisory' && f.severity === 'warning')).toBe(true);
+    expect(findings.every(f => f.category_id !== 'human_review')).toBe(true);
   });
 
-  it('escalates every action when human_review_required regardless of budget', async () => {
+  it('denies with human_review finding on every action when human_review_required regardless of budget', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'lender.example' }, operator: 'test.example' };
     await simulateCallTool(server, 'sync_plans', {
@@ -6892,11 +6893,14 @@ describe('human_review_required auto-flip and enforcement', () => {
       caller: 'test.example',
       payload: { type: 'media_buy', account, total_budget: 20 },
     });
-    expect(result.status).toBe('escalated');
-    expect(result.escalation?.reason).toContain('human');
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string; explanation: string }>;
+    const humanReview = findings.find(f => f.category_id === 'human_review');
+    expect(humanReview?.severity).toBe('critical');
+    expect(humanReview?.explanation).toContain('human');
   });
 
-  it('escalates when budget exceeds reallocation_threshold within plan total', async () => {
+  it('denies with human_review finding when budget exceeds reallocation_threshold within plan total', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'test.example' }, operator: 'test.example' };
     await simulateCallTool(server, 'sync_plans', {
@@ -6912,8 +6916,11 @@ describe('human_review_required auto-flip and enforcement', () => {
       caller: 'test.example',
       payload: { type: 'media_buy', account, total_budget: 50000 },
     });
-    expect(result.status).toBe('escalated');
-    expect(result.escalation?.reason).toContain('reallocation_threshold');
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string; explanation: string }>;
+    const humanReview = findings.find(f => f.category_id === 'human_review');
+    expect(humanReview?.severity).toBe('critical');
+    expect(humanReview?.explanation).toContain('reallocation_threshold');
   });
 
   it('emits critical contestation-missing finding when human review + no contestation', async () => {
@@ -6959,8 +6966,10 @@ describe('human_review_required auto-flip and enforcement', () => {
       payload: { type: 'media_buy', account, total_budget: 5000 },
     });
     // Without human_review_required, mode=audit would return approved.
-    // With it, mode override is disabled.
-    expect(result.status).toBe('escalated');
+    // With it, mode override is disabled and the critical human_review finding denies the check.
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'human_review' && f.severity === 'critical')).toBe(true);
   });
 
   it('rejects downgrade of human_review_required true→false without override', async () => {
