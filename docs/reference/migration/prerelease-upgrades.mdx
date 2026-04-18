@@ -9,20 +9,31 @@ description: "Breaking and additive changes between AdCP 3.0.0 release candidate
 
 If you adopted a prerelease version, review the relevant section below before upgrading. If you are migrating from v2, see the [main migration guide](/docs/reference/migration).
 
-## rc.3 → rc.4
+## rc.3 → 3.0
 
 ### Breaking for rc.3 adopters
 
-| Area | rc.3 | rc.4 | What to do |
+| Area | rc.3 | 3.0 | What to do |
 |---|---|---|---|
-| Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. See details below. |
-| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Storyboard runners check for it before running deterministic steps. |
+| Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. Schema: `enums/media-buy-status.json`. See details below. |
+| Capabilities model | Redundant boolean gates (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.) | Removed — object presence is the signal | Remove boolean capability checks. Test for object presence instead. Schema: `protocol/get-adcp-capabilities-response.json`. See [capabilities migration](#capabilities-model-simplification) below. |
+| `reporting_capabilities` | Optional on products | Required on every product | Ensure all products returned from `get_products` include `reporting_capabilities`. Schema: `core/product.json`. |
+| `account` on `update_media_buy` | Optional | Required | Pass `account` on all `update_media_buy` calls, matching `create_media_buy` behavior. Schema: `media-buy/update-media-buy-request.json`. |
+| `preview_creative` schema | oneOf union | Flat object with `request_type` discriminant | Update request builders to use the flat schema with `request_type` field. Schema: `creative/preview-creative-request.json`. See [preview_creative migration](#preview_creative-schema-flattening) below. |
+| `signal_id` on `get_signals` response | Optional on signal items | Required | Ensure all signal items in `get_signals` responses include `signal_id`. Schema: `signals/get-signals-response.json`. |
+| `GOVERNANCE_DENIED` error | Not in error code enum | Added as correctable error | Handle `GOVERNANCE_DENIED` in error handling logic. Schema: `enums/error-code.json`. |
+| Governance lifecycle | `media_buy_id` as lifecycle correlator | Removed — `governance_context` is sole lifecycle correlator | Replace `media_buy_id` in governance schemas with `governance_context`. Handle `purchase_type` field on `check_governance` and `report_plan_outcome`. Schema: `governance/check-governance-request.json`. See [governance migration](#governance-lifecycle-migration) below. |
+| Geo capability fields | `supported_geo_levels`, `supported_metro_systems`, `supported_postal_systems` (from #2143) | Removed — use typed objects (`geo_countries`, `geo_regions`, `geo_metros`, `geo_postal_areas`) | If you adopted the flat array shape from #2143, revert to typed geo objects with `additionalProperties: false`. Schema: `protocol/get-adcp-capabilities-response.json`. |
+| `comply_test_controller` schema | oneOf union | Flat object with `scenario` discriminant and if/then validation | Update request builders to use the flat schema with `scenario` field instead of oneOf variants. |
+| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Schema: `protocol/get-adcp-capabilities-response.json`. |
+| Specialism IDs | `broadcast-platform`, `social-platform`, `property-governance`, `collection-governance` | Renamed/merged: `sales-broadcast-tv`, `sales-social`, `inventory-lists` (merges property + collection governance) | Update specialism claims in `get_adcp_capabilities.specialisms`. See [Compliance Catalog](/docs/building/compliance-catalog). |
+| Sponsored Intelligence scope | `sponsored_intelligence` as a specialism | Promoted to full protocol in `supported_protocols` | Move from `specialisms` to `supported_protocols`. |
 
 ### Media buy status migration
 
 `pending_activation` was a single state covering two distinct conditions. It has been split:
 
-| Condition | rc.3 status | rc.4 status |
+| Condition | rc.3 status | 3.0 status |
 |---|---|---|
 | Buy approved, no creatives assigned | `pending_activation` | `pending_creatives` |
 | Buy ready to serve, waiting for flight date | `pending_activation` | `pending_start` |
@@ -37,10 +48,125 @@ If you adopted a prerelease version, review the relevant section below before up
 
 See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-states) for the full state machine.
 
-### Additive changes in rc.4
+### Capabilities model simplification
 
+PR #2143 removed redundant boolean capability fields. Object presence now signals support — if you have the object, you have the capability.
+
+**Removed fields and replacements:**
+
+| Removed field | What to do instead |
+|---|---|
+| `media_buy.reporting` | Use product-level `reporting_capabilities` (now required) |
+| `features.content_standards` | Check for `content_standards` object presence |
+| `features.audience_targeting` | Check for `audience_targeting` object presence |
+| `features.conversion_tracking` | Check for `conversion_tracking` object presence |
+| `content_standards_detail` | Renamed to `content_standards` |
+| `brand.identity` | Implied by brand protocol support |
+| `trusted_match.supported` | Check for `trusted_match` object presence |
+| `targeting.device_platform` / `targeting.device_type` | Implied by `media_buy` protocol support |
+| `targeting.audience_include` / `targeting.audience_exclude` | Implied by `audience_targeting` presence |
+
+**Before (rc.3):**
+```json
+{
+  "features": {
+    "content_standards": true,
+    "audience_targeting": true
+  },
+  "trusted_match": {
+    "supported": true,
+    "uid_types": ["email_sha256"]
+  }
+}
+```
+
+**After (3.0):**
+```json
+{
+  "content_standards": { ... },
+  "audience_targeting": { ... },
+  "trusted_match": {
+    "uid_types": ["email_sha256"]
+  }
+}
+```
+
+### preview_creative schema flattening
+
+The `preview_creative` request is flattened from a oneOf union to a single object with a `request_type` discriminant. Three modes:
+
+| `request_type` | Required field | Purpose |
+|---|---|---|
+| `single` | `creative_manifest` | Preview one creative |
+| `batch` | `requests` (array, 1-50 items) | Preview multiple creatives |
+| `variant` | `variant_id` | Replay a post-flight variant |
+
+**Before (rc.3):**
+```json
+{
+  "creative_manifest": { "format_id": { ... }, "assets": { ... } }
+}
+```
+
+**After (3.0):**
+```json
+{
+  "request_type": "single",
+  "creative_manifest": { "format_id": { ... }, "assets": { ... } }
+}
+```
+
+Schema: `schemas/creative/preview-creative-request.json`
+
+### Governance lifecycle migration
+
+`media_buy_id` is removed from governance schemas. `governance_context` is an opaque string that serves as the sole lifecycle correlator across `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`.
+
+**Before (rc.3):**
+```json
+{
+  "media_buy_id": "mb_456",
+  "planned_delivery": { ... }
+}
+```
+
+**After (3.0):**
+```json
+{
+  "governance_context": "campaign_2024_q4_nova",
+  "purchase_type": "media_buy",
+  "planned_delivery": { ... }
+}
+```
+
+Schema: `schemas/governance/check-governance-request.json`
+
+### context and ext fields
+
+All request and response schemas across governance, collection, property, sponsored-intelligence, and content-standards protocols now include optional `context` and `ext` fields for application metadata and protocol extensions.
+
+### Additive changes in 3.0
+
+- **Collection lists** — Program-level brand safety using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching. New targeting overlay fields (`collection_list`, `collection_list_exclude`). New genre taxonomy enum.
+- **Broadcast TV support** — Ad-ID identifiers, broadcast spot formats (:15, :30, :60), Agency Estimate Number, measurement windows (Live, C3, C7), delivery data completeness (`is_final`, `measurement_window`).
+- **Offline reporting delivery** — `reporting_delivery_methods` on capabilities, `reporting_bucket` on accounts, `supports_offline_delivery` on product `reporting_capabilities`. Avro and ORC added as file format options.
+- **TMPX exposure tracking** — Country-partitioned identity and macro connectivity for the Trusted Match Protocol execution layer.
+- **TMP provider registration** — `provider-registration.json` schema, `GET /health` endpoint, dual discovery models (static config and dynamic API), per-provider latency budget semantics.
+- **TMP multi-identity Identity Match** — `identity-match-request` replaces single `user_token` + `uid_type` with an `identities` array (minItems 1, maxItems 3). Router filters per provider and re-signs with RFC 8785 JCS canonicalization; cache key adds `consent_hash`. Adds `rampid_derived` to the `uid-type` enum. Breaking relative to prior pre-release TMP drafts only; TMP remains pre-release in 3.0 and stabilizes in 3.1.0.
+- **GOVERNANCE_DENIED error** — New correctable error code for governance-rejected operations.
+- **context/ext fields** — Optional `context` and `ext` on all request/response schemas across governance, collection, property, SI, and content-standards protocols.
 - **Compliance testing capability** — Agents can declare `compliance_testing` in `supported_protocols` with a `scenarios` array listing which `comply_test_controller` scenarios they support. Storyboard runners use this to determine whether deterministic testing steps can be validated.
-- **Storyboard validation fixes** — 20+ validation bugs fixed across 11 storyboard files: corrected field paths (`creatives[0].action`, `media_buy_deliveries`, `renders[0].preview_url`), added missing `value:` to `field_value` checks, added `value` property to storyboard validation schema.
+- **Specialisms + compliance catalog** — Storyboards ship in the protocol at `/compliance/{version}/` (universal + domains + specialisms + test-kits). New `specialisms` field on `get_adcp_capabilities` with 21 values across 6 domains. Four 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`) carry `status: preview`. Per-version protocol tarball at `/protocol/{version}.tgz`. See the [Compliance Catalog](/docs/building/compliance-catalog).
+- **Structured measurement terms** — `measurement_terms` on products and media buys for billing vendor, IVT threshold, and viewability floor negotiation. `cancellation_policy` on guaranteed products. `viewability-standard` enum. `TERMS_REJECTED` error code.
+- **Unified vendor pricing** — `pricing_options[]` on `list_creatives`, `build_creative`, `get_creative_features`, and `property-list`. Shared `vendor-pricing-option.json` schema.
+- **Per-request version declaration** — `adcp_major_version` on all v3 request schemas. `VERSION_UNSUPPORTED` error code. Multi-version sellers supporting v2 clients must detect v2 payloads by structural cues, not by this field (v2 schemas do not have it).
+- **Broadcast forecast schema** — `measurement_source`, `packages`, and `guaranteed_impressions` on `DeliveryForecast`. New `forecast-range-unit` and `forecastable-metric` enums.
+- **Broadcast station identifiers** — `station_id` and `facility_id` identifier types. `linear_tv` property type.
+- **Brand schema extensions** — Generic `agents` array on `brand.json`. Visual tokens (`border_radius`, `elevation`, `spacing`, extended color roles). Structured font definitions.
+- **Per-item error schema** — `sync_creatives`, `sync_catalogs`, and `sync_event_sources` response errors now use `error.json` ref.
+- **Property relationship field** — `relationship` on brand.json property definitions (`owned`, `direct`, `delegated`, `ad_network`) for bilateral verification with `adagents.json` delegation types.
+- **`sales` agent type restored** — `sales` restored to `brand-agent-type` enum. Sales agents (SSPs, publishers) are distinct from buying agents (DSPs, buyer platforms).
+- **Required tasks reference** — New reference page consolidating required, conditional, and optional tasks across all AdCP protocols by agent role.
 
 ---
 
@@ -64,3 +190,11 @@ See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-state
 - **Product discovery and planning** — `get_products` adds `exclusivity`, `preferred_delivery_types`, and `time_budget`, with `incomplete` in the response. Products may omit `delivery_measurement`, and packages can now carry per-package `start_time` / `end_time`.
 - **Compliance and governance** — Creative disclosures add persistence semantics, and campaign governance introduces `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`.
 - **Accounts and sandbox ergonomics** — `sync_accounts` adds `payment_terms`, and sandbox now participates in the natural account key for implicit account references.
+
+---
+
+## Need help?
+
+- **Community**: [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg) — best for quick questions from other implementers
+- **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/adcp/issues) — for bugs, spec questions, or migration edge cases
+- **Full v2 → v3 migration**: [Migration guide](/docs/reference/migration)

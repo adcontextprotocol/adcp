@@ -32,6 +32,17 @@
 </head>
 <body data-nav-theme="dark">
 
+<!-- 3.0 GA announcement strip (dismissible) -->
+<div id="aao-announcement" style="display:none;background:#047857;color:#fff;padding:10px 20px;text-align:center;font-size:14px;line-height:1.4;position:relative;">
+  🎉 <strong>AdCP 3.0 is now GA</strong> &mdash; <a href="https://docs.adcontextprotocol.org/docs/reference/whats-new-in-v3" style="color:#fff;text-decoration:underline;">see what's new</a>
+  <button onclick="document.getElementById('aao-announcement').style.display='none';document.cookie='aao_announce_30_dismissed=1;path=/;max-age=2592000';" aria-label="Dismiss announcement" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 6px;line-height:1;">&times;</button>
+</div>
+<script>
+  if (!document.cookie.split(';').some(c => c.trim().startsWith('aao_announce_30_dismissed='))) {
+    document.getElementById('aao-announcement').style.display = 'block';
+  }
+</script>
+
 <!-- Shared navigation -->
 <div id="adcp-nav">
   <noscript>

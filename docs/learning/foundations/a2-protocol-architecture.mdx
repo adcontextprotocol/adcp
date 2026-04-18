@@ -52,6 +52,13 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Signals agent** | Provides measurement and audience data via `get_signals` |
 | **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
+| **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
+| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. |
+| **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
+
+## Compliance claims
+
+An agent tells the network what it does via two fields on `get_adcp_capabilities`: `supported_protocols` (broad domain claims) and `specialisms` (narrow capability claims). Both are verified against storyboards the protocol ships at `/compliance/{version}/`. Universal storyboards run against every agent; domain and specialism storyboards run against matching claims. See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
 
 ## Protocol versioning
 

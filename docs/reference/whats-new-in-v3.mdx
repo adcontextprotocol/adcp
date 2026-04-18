@@ -51,6 +51,23 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 ## New capabilities
 
+### Specialisms and storyboard-driven compliance
+
+Storyboards — scripted compliance scenarios that agents must pass — now live in the protocol at `/compliance/{version}/`, alongside schemas and task definitions. Agents declare two things in `get_adcp_capabilities`:
+
+- **`supported_protocols`** — broad domain claims (`media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`). Each commits the agent to the domain's baseline storyboard.
+- **`specialisms`** — 21 narrow capability claims across the 6 domains. Examples: `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`, `inventory-lists`, `signal-marketplace`, `brand-rights`. Each rolls up to one parent protocol.
+
+Specialism `status: preview` flags four 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`) whose storyboards are scheduled but not yet authoritative — the runner warns instead of verifying.
+
+Compliance runs have three tiers: **universal** storyboards every agent runs (capability discovery, schema validation, error compliance), **domain baselines** for each declared protocol, and **specialism storyboards** for each narrow claim. A per-version protocol tarball at `/protocol/{version}.tgz` lets clients bulk-sync schemas, storyboards, and examples in one request.
+
+<Card title="Compliance Catalog" icon="arrow-right" href="/docs/building/compliance-catalog">
+  Full index of domains and specialisms with status flags and storyboard sources.
+</Card>
+
+---
+
 ### Brand Protocol
 
 Buy-side identity through `/.well-known/brand.json`. Just as publishers use `adagents.json` to declare properties and authorized agents, brands use `brand.json` to declare their identity, brand hierarchy, and authorized operators.
@@ -266,6 +283,46 @@ For the exhaustive rc.2 change list, see the [Release Notes](/docs/reference/rel
 
 ## rc.3 to 3.0 highlights
 
+<Info>
+**Upgrading from rc.3?** See [rc.3 → 3.0 prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) for the breaking changes table, before/after examples, and migration steps.
+</Info>
+
+### Specialisms and compliance catalog
+
+Storyboards move into the protocol at `/compliance/{version}/` with a new `specialisms` field on `get_adcp_capabilities`. 21 specialisms roll up to 6 domains; four 3.1 archetypes ship with `status: preview`. See the [Compliance Catalog](/docs/building/compliance-catalog). Renames: `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`. Merge: `property-governance` + `collection-governance` → `inventory-lists`. Promotion: `sponsored_intelligence` specialism → full protocol.
+
+### Capabilities model simplification
+
+The capabilities model is streamlined for 3.0: redundant boolean gates are removed. If a `content_standards` object exists in `get_adcp_capabilities`, the agent supports content standards — no separate boolean needed.
+
+`reporting_capabilities` is now required on every product. Geo capability fields keep their typed shapes: `geo_countries` and `geo_regions` as booleans, `geo_metros` and `geo_postal_areas` as structured objects.
+
+See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full list of removed fields and migration steps.
+
+### Governance across purchase types
+
+Campaign governance extends beyond media buys to cover brand rights licensing, signal activation, and creative services — any purchase where budget or policy rules apply. `governance_context` replaces `media_buy_id` as the identifier that ties governance actions together across a campaign's lifecycle. A `purchase_type` field on `check_governance` and `report_plan_outcome` distinguishes the governed activity.
+
+### GOVERNANCE_DENIED error and schema consistency
+
+`GOVERNANCE_DENIED` is added to the standard error codes with correctable recovery, enabling governance-rejected operations to return structured errors. All request/response schemas across governance, collection, property, sponsored-intelligence, and content-standards protocols gain optional `context` and `ext` fields for application metadata and protocol extensions. `signal_id` is now required on signal items in `get_signals` responses. The `comply_test_controller` schema is flattened from a oneOf union to a flat object with `scenario` discriminant.
+
+### Per-request version declaration
+
+All request schemas now include `adcp_major_version`, allowing v3 buyers to declare which major version their payloads conform to. Sellers validate against their `major_versions` and return `VERSION_UNSUPPORTED` if unsupported. When omitted, sellers default to their highest supported version.
+
+Note: `adcp_major_version` is a v3 field — v2 clients cannot set it (the field does not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by this field.
+
+### Collection lists
+
+Collection lists extend brand safety from properties to content programs. Like property lists, collection lists are curated sets — but they target shows, series, and other content programs across platforms using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching.
+
+New targeting overlay fields `collection_list` and `collection_list_exclude` enable both inclusion and exclusion targeting. A new genre taxonomy enum normalizes genre classification across buyers and sellers.
+
+<Card title="Collection lists" icon="arrow-right" href="/docs/governance/collection/tasks/collection_lists">
+  Task reference for collection list creation and management.
+</Card>
+
 ### Broadcast TV support
 
 Linear TV sellers can now fully participate in AdCP. This release adds the protocol primitives that distinguish broadcast from digital:
@@ -280,19 +337,33 @@ Linear TV sellers can now fully participate in AdCP. This release adds the proto
   Channel guide covering spot formats, Ad-ID, measurement windows, and how broadcast differs from CTV.
 </Card>
 
-### Structured video requirements
+### Structured measurement terms
 
-Format `requirements` for video assets now use schema-defined field names that match `video-asset-requirements.json`. Creative agents can mechanically validate assets against format requirements without interpreting freeform fields.
+Guaranteed buys gain a formal negotiation surface: `measurement_terms` defines billing measurement vendor, IVT threshold, and viewability floor. Sellers declare defaults on products, buyers propose overrides at `create_media_buy`, sellers accept/reject/adjust. A `cancellation_policy` schema declares notice periods and penalties for guaranteed products.
 
-New fields on `video-asset-requirements.json`: `frame_rate_type`, `scan_type`, `gop_type`, `min_gop_interval_seconds`, `max_gop_interval_seconds`, `moov_atom_position`, `audio_codecs`, `audio_sample_rates`, `audio_channels`, `loudness_lufs`, `loudness_tolerance_db`, `true_peak_dbfs`.
+### Unified vendor pricing
 
-### Third-party tracker transparency
+Pricing models extend from signals to creative, governance, and property list agents. Creative agents return `pricing_options[]` on `list_creatives` and `build_creative` responses. Property lists carry `pricing_options[]`. All vendor pricing uses a shared `vendor-pricing-option.json` schema (cpm, percent_of_media, flat_fee).
 
-Whether a format supports third-party measurement is determined by whether its assets include a tracker slot (`tracker_pixel` or `tracker_script`). Buyer agents should check format assets before proposing performance standards that require creative-level verification. Formats without tracker slots (broadcast, some DOOH) rely on measurement vendors declared in `billing_measurement`.
+### Offline reporting delivery
 
-<Card title="Format definitions" icon="arrow-right" href="/docs/creative/formats#third-party-tracker-support">
-  How to determine tracker support from format asset definitions.
-</Card>
+Sellers can declare offline reporting delivery methods (SFTP, S3, GCS, Azure Blob) in `get_adcp_capabilities` via `reporting_delivery_methods`. Accounts specify a `reporting_bucket` for file delivery. Products declare `supports_offline_delivery` in `reporting_capabilities`. File formats include CSV, JSON, Parquet, Avro, and ORC.
+
+### Trusted Match Protocol extensions
+
+TMP gains a provider registration schema (`provider-registration.json`) formalizing provider endpoints, capabilities, lifecycle status (active/inactive/draining), and per-provider timeout budgets. A `GET /health` endpoint enables router-side health monitoring. TMPX adds exposure tracking with country-partitioned identity resolution and macro connectivity.
+
+Identity Match requests now accept an `identities` array (1-3 tokens per request) instead of a single `user_token` + `uid_type` pair. Publishers send every identity token they have; buyers resolve on whichever graph matches. The router filters `identities` per provider (minimum-necessary-data) and re-signs before forwarding — the forwarded set must be a subset of what the publisher sent. RFC 8785 JCS canonicalization is used for both signature and cache-key derivation, and `consent_hash` partitions the cache by consent state. `rampid_derived` is added to the `uid-type` enum.
+
+TMP remains pre-release in 3.0. The stable surface is targeted for 3.1.0.
+
+### Brand schema extensions
+
+`brand.json` gains a generic `agents` array for declaring brand-associated agents, visual tokens (`border_radius`, `elevation`, `spacing`, extended color roles), and structured font definitions with `weight`, `style`, `stretch`, `optical_size`, and `usage` fields.
+
+### Required tasks reference
+
+A new [Required tasks by protocol](/docs/protocol/required-tasks) reference page consolidates required, conditional, and optional tasks across all AdCP protocols by agent role — a single page to verify your implementation covers the minimum surface.
 
 ---
 
@@ -620,6 +691,10 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `get_property_features` task | Property list filters + `get_adcp_capabilities` for feature discovery |
 | `tone` as string on brand.json | Object only: `{ voice, attributes, dos, donts }` |
 | `FormatCategory` enum / `type` on formats | Filter by `asset_types` or `format_ids` instead |
+| `broadcast-platform` specialism | Renamed to `sales-broadcast-tv` |
+| `social-platform` specialism | Renamed to `sales-social` |
+| `property-governance` + `collection-governance` specialisms | Merged into `inventory-lists` |
+| `sponsored_intelligence` specialism | Promoted to full protocol in `supported_protocols` |
 
 ---
 

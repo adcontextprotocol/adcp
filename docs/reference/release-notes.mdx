@@ -9,6 +9,79 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0
+
+**Status:** General Availability | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
+
+3.0 brings broadcast TV into AdCP as a first-class channel, generalizes governance to cover any purchase type, simplifies the capabilities model so object presence replaces dozens of boolean flags, and introduces **specialisms and storyboard-driven compliance** as the foundation for AdCP agent verification.
+
+<Info>
+**Upgrading from rc.3?** See [rc.3 → 3.0 prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) for the breaking changes table, before/after examples, and migration steps.
+</Info>
+
+### What's New
+
+1. **Specialisms and Storyboard-Driven Compliance** — Storyboards move into the protocol at `/compliance/{version}/` (universal + domains + specialisms + test-kits). New `specialisms` field on `get_adcp_capabilities` lets agents claim 21 narrow capability specialisms across 6 domains (media-buy, creative, signals, governance, brand, sponsored_intelligence). `sponsored_intelligence` is promoted from specialism to full protocol. `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`, and `property-governance` + `collection-governance` merge into `inventory-lists`. Four 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`) are marked `status: preview`. Per-version protocol tarball published at `/protocol/{version}.tgz`. See the [Compliance Catalog](/docs/building/compliance-catalog). (#2176)
+
+2. **Broadcast TV Support** — Linear TV sellers can now fully participate in AdCP. Ad-ID identifiers on creative assets and manifests. Broadcast spot formats for :15, :30, and :60 spots. `agency_estimate_number` on media buys and packages. Measurement windows (Live, C3, C7) on reporting capabilities. Delivery data completeness flags (`is_final`, `measurement_window`) for provisional vs. closed numbers. Broadcast forecast schema adds `measurement_source` and `guaranteed_impressions`. `station_id` and `facility_id` identifier types. (#2046, #1853, #1912)
+
+3. **Governance Generalization** — Governance extends beyond media buys to cover brand rights licensing, signal activation, and creative services. `governance_context` replaces `media_buy_id` as the identifier that ties governance actions together across a campaign's lifecycle. New `purchase_type` field on `check_governance` and `report_plan_outcome` distinguishes the governed activity. Budget allocations on plans support per-type partitioning. (#2014)
+
+4. **Capabilities Model Simplification** — Redundant boolean gates are removed throughout `get_adcp_capabilities`. If a `content_standards` object exists in the response, the agent supports content standards — no separate boolean needed. `reporting_capabilities` is now required on every product. Geo capability fields keep their typed shapes (`geo_countries`, `geo_regions`, `geo_metros`, `geo_postal_areas`). (#2143, #2157)
+
+5. **Collection Lists** — Program-level brand safety for shows, series, and podcasts. Collection lists parallel property lists but target content programs using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching. New `collection_list` and `collection_list_exclude` fields on the targeting overlay. Genre taxonomy enum normalizes classification. 16 new collection schemas. (#2005)
+
+6. **Structured Measurement Terms** — Guaranteed buys gain a formal negotiation surface. `measurement_terms` covers billing vendor, IVT threshold, and viewability floor. Sellers declare defaults; buyers propose overrides at `create_media_buy`; sellers accept, reject, or adjust. `cancellation_policy` schema declares notice periods and penalties. `TERMS_REJECTED` error code. (#1962)
+
+7. **Unified Vendor Pricing** — Pricing extends from signals to creative, governance, and property list agents. All vendor pricing now uses a shared schema covering CPM, percent-of-media, and flat-fee models. `pricing_options[]` on `list_creatives`, `build_creative`, `get_creative_features`, and property lists. (#1937)
+
+8. **Per-Request Version Declaration** — `adcp_major_version` on all 56+ request schemas lets buyers declare which major version their payloads conform to. Sellers return `VERSION_UNSUPPORTED` on mismatch. When omitted, sellers default to their highest supported version. (#1959)
+
+9. **Offline Reporting Delivery** — Sellers can push reports to buyer-provided cloud storage. `reporting_delivery_methods` on capabilities declares supported protocols (SFTP, S3, GCS, Azure Blob). `reporting_bucket` on accounts specifies the destination. Products declare `supports_offline_delivery` in `reporting_capabilities`. File formats: CSV, JSON, Parquet, Avro, and ORC. (#2198, #2205)
+
+10. **GOVERNANCE_DENIED Error and Schema Consistency** — New `GOVERNANCE_DENIED` correctable error code for governance-rejected operations. `context` and `ext` fields added to all request and response schemas across governance, collection, property, SI, and content-standards protocols. `signal_id` is now required on `get_signals` response items. `comply_test_controller` schema flattened from a oneOf union to a flat object with a `scenario` discriminant. (#2194)
+
+11. **TMP: Provider Registration, TMPX Exposure Tracking, and Multi-Identity Match** — New `provider-registration.json` schema formalizes provider endpoints, capabilities, lifecycle status (active/inactive/draining), and timeout budgets. `GET /health` endpoint enables router-side monitoring. TMPX adds exposure tracking with country-partitioned identity and macro connectivity. Identity Match requests now accept an `identities` array (1-3 tokens per request) so publishers can maximize match rate across heterogeneous buyer identity graphs. Router filters per provider and re-signs; RFC 8785 JCS canonicalization eliminates delimiter-injection risk. TMP remains pre-release in 3.0; stable surface targeted for 3.1.0. (#2210, #2079, #2251)
+
+12. **Brand Schema Extensions** — Generic `agents` array on `brand.json` for declaring brand-associated agents. Visual tokens: `border_radius`, `elevation`, `spacing`, and extended color roles. Structured font definitions with `weight`, `style`, `stretch`, and `optical_size`. (#1973, #1871, #1856)
+
+13. **Media Buy Status Lifecycle** — `pending_activation` splits into `pending_creatives` (approved, no creatives assigned) and `pending_start` (ready to serve, waiting for flight date). `compliance_testing` protocol capability supports storyboard-driven agent testing. (#2034)
+
+### Breaking Changes
+
+| Change | rc.3 | 3.0 |
+|--------|------|-----|
+| Capabilities boolean gates | `features.content_standards: true`, `brand.identity: true`, etc. | Removed — object presence is the signal |
+| `reporting_capabilities` | Optional on products | Required |
+| `pending_activation` status | Single status | Split into `pending_creatives` and `pending_start` |
+| `account` on `update_media_buy` | Optional | Required |
+| `preview_creative` schema | oneOf union | Flat object with `request_type` discriminant |
+| `signal_id` on `get_signals` response | Optional | Required |
+| `media_buy.reporting` capability | Present | Removed — use product-level `reporting_capabilities` |
+| `content_standards_detail` | Named `content_standards_detail` | Renamed to `content_standards` |
+| Geo capability arrays | `supported_geo_levels`, `supported_metro_systems`, `supported_postal_systems` | Removed — use typed objects (`geo_countries`, `geo_regions`, etc.) |
+| `comply_test_controller` schema | oneOf union | Flat object with `scenario` discriminant |
+| `media_buy_id` in governance | Lifecycle correlator | Removed — use `governance_context` |
+
+### Migration Notes For rc.3 Adopters
+
+- **Capabilities** — Remove all boolean capability checks (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.). Test for object presence instead. See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full field list.
+- **Products** — Ensure all products include `reporting_capabilities`. This field is now required.
+- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See [lifecycle states](/docs/media-buy/media-buys#lifecycle-states).
+- **update_media_buy** — Pass `account` on all calls, matching `create_media_buy` behavior.
+- **preview_creative** — Update request builders from the oneOf union to the flat schema with `request_type` discriminant.
+- **Signals** — Include `signal_id` on all signal items in `get_signals` responses.
+- **Governance** — Replace `media_buy_id` references with `governance_context`. Handle `GOVERNANCE_DENIED` as a correctable error code.
+- **Version negotiation** — Include `adcp_major_version` on requests when interacting with multi-version sellers.
+
+### Next steps
+
+- **Upgrading from v2?** Start with the [migration guide](/docs/reference/migration).
+- **Upgrading from a prerelease?** Go to the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades).
+- **New to AdCP?** Read the [3.0 overview](/docs/reference/whats-new-in-v3) and then [get started](/docs/quickstart).
+
+---
+
 ## Version 3.0.0-rc.3
 
 **Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
@@ -632,7 +705,7 @@ New structured filters in `get_products`:
 #### Schema Versioning
 
 New version paths available:
-- `/schemas/2.5.0/` - Exact version (recommended for production)
+- `/schemas/2.5.0/` - Exact version
 - `/schemas/v2.5/` - Latest 2.5.x patch (auto-updates for patch releases)
 - `/schemas/v2/` - Latest 2.x release (auto-updates for minor/patch)
 - `/schemas/latest/` - Backward compat alias (same as v2)

@@ -87,6 +87,22 @@ Each skill targets a specific agent type. Pick the one that matches what you're 
 
 Skill files are language-agnostic. JS/TS and Python use the same skill — specify your language in the prompt and the coding agent uses the correct SDK. Go has its own skills in the [adcp-go](https://github.com/adcontextprotocol/adcp-go) repo.
 
+### Which domain and specialisms do you claim?
+
+Each agent declares its `supported_protocols` (domains) and `specialisms` on `get_adcp_capabilities`. Each skill's storyboard verifies the domain baseline — to also claim a specialism, your agent must pass that specialism's storyboard. Skills-to-specialism mapping:
+
+| Skill | Typical `supported_protocols` | Typical `specialisms` (pick one or combine) |
+|---|---|---|
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed`, `sales-proposal-mode` |
+| `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` + `sales-non-guaranteed` |
+| `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
+| `build-signals-agent` | `["signals"]` | `signal-owned`, `signal-marketplace` |
+| `build-creative-agent` | `["creative"]` | `creative-ad-server`, `creative-template` |
+
+Building a **brand rights** agent (licensing talent, music, stock media)? There's no skill today — see the [Brand Protocol docs](/docs/brand-protocol) and claim `brand-rights` under the `brand` domain.
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every domain and specialism with its storyboard and status (stable, preview, deprecated).
+
 ## Build the agent
 
 Point your coding agent at the skill file for your agent type. In Claude Code:

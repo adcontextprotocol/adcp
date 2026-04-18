@@ -75,7 +75,7 @@ Core AdCP protocol information:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[1]`) |
+| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
 
 ### supported_protocols
 
@@ -369,7 +369,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [1] },
+  "adcp": { "major_versions": [3] },
   "supported_protocols": ["governance"],
   "governance": {
     "property_features": [
@@ -669,7 +669,7 @@ const buy = await client.createMediaBuy({
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [1]
+    "major_versions": [3]
   },
   "supported_protocols": ["media_buy"],
   "account": {
