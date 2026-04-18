@@ -29,7 +29,10 @@ Before routing any requests, the orchestrator needs a map of what each agent sup
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [3] },
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["creative"],
   "creative": {
     "has_creative_library": true,
