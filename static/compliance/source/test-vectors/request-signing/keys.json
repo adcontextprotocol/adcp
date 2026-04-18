@@ -41,6 +41,20 @@
       "adcp_use": "governance-signing",
       "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
       "_private_d_for_test_only": "bag_KLehHhOb-giX2u8kEfm9Djo6Fldl6_dFoRiC_eE"
+    },
+    {
+      "$comment": "Revoked request-signing key. Dedicated keypair for negative vector 017-key-revoked under the signed-requests-runner test-kit contract. adcp_use is 'request-signing' so that the verifier's purpose check (step 8) passes and the revocation check (step 9) fires. Agents pre-configure their revocation list to include this keyid before the negative phase runs; see test-kits/signed-requests-runner.yaml.",
+      "kid": "test-revoked-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "r8wqMpVCLKzLSRNBtNmI1g71pPzQcwkATJHcyHK1lXg",
+      "_private_d_for_test_only": "PHd2372_ljsWBOUrEyhipyplIkv7feOfpeoU9bb0T_U"
     }
   ]
 }

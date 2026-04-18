@@ -45,6 +45,14 @@ narrative: |
   right, and a signer that produces valid signatures is proven correct by a conformant
   verifier accepting them.
 
+  Three negative vectors — 016 (replayed nonce), 017 (key revoked), and 020 (per-keyid cap) —
+  assert verifier state the runner cannot set from the outside. Those vectors declare
+  `harness_mode_required` and are gated on the `signed-requests-runner` test-kit contract
+  at `test-kits/signed-requests-runner.yaml`, which specifies the runner's signing keyids,
+  a dedicated pre-revoked keyid (`test-revoked-2026`), and the minimum per-keyid cap the
+  runner will target. Agents claiming the specialism MUST pre-configure their verifier per
+  that contract before the negative phase runs.
+
 agent:
   interaction_model: request_verifier
   capabilities:
