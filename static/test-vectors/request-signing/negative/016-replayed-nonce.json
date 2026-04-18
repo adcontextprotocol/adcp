@@ -8,7 +8,7 @@
     "headers": {
       "Content-Type": "application/json",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
-      "Signature": "sig1=:__POPULATE_FROM_POSITIVE_001__:"
+      "Signature": "sig1=:qjngSQ0bgimxQbc6l0aFOmSthQRCdEgD10mOa7OGyUIEMuKwe2h_3l42oxs2Ga5qQCnVpaZHOuwhYu3qJp4HAA:"
     },
     "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
   },

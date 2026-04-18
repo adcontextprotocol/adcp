@@ -14,7 +14,7 @@
   },
   "verifier_capability": {
     "supported": true,
-    "covers_content_digest": false,
+    "covers_content_digest": "either",
     "required_for": [
       "create_media_buy"
     ]

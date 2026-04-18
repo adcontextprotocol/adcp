@@ -32,7 +32,8 @@ test-vectors/request-signing/
 │   ├── 015-signature-invalid.json        → request_signature_invalid (step 10; canonicalization catcher)
 │   ├── 016-replayed-nonce.json           → request_signature_replayed (step 12; requires test_harness_state preload)
 │   ├── 017-key-revoked.json              → request_signature_key_revoked (step 9; requires test_harness_state preload)
-│   └── 018-digest-covered-when-forbidden.json → request_signature_components_unexpected (step 6; policy 'forbidden')
+│   ├── 018-digest-covered-when-forbidden.json → request_signature_components_unexpected (step 6; policy 'forbidden')
+│   └── 019-signature-without-signature-input.json → request_signature_header_malformed (pre-check; downgrade loophole)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json               Ed25519, no content-digest
     ├── 002-post-with-content-digest.json Ed25519, content-digest covered
@@ -136,6 +137,16 @@ A reference harness is in progress at https://github.com/adcontextprotocol/adcp-
 6. Assert:
    - Negative: error code matches `expected_outcome.error_code` exactly.
    - Positive: verification returns successfully.
+
+### Recommended run order
+
+Run vectors in this order when validating a new implementation — it isolates failure categories so a bug surfaces cleanly instead of as a pile of unrelated red tests:
+
+1. **Positive vectors first** (`positive/001`, `/002`, `/003`). These exercise the happy path. If `001` fails, your signer or verifier's canonicalization, key loading, or crypto is wrong — fix before touching anything else. The `expected_signature_base` field in each positive vector lets you diff YOUR canonical base against the spec's, independent of whether your crypto works.
+2. **Parse-level negatives next** (`001`, `002`, `011`, `012`, `014`, `019`). These fail at the pre-check or early checklist steps without invoking crypto. Passing these means your header parsing and presence checks are correct.
+3. **Semantic negatives** (`003`, `004`, `005`, `006`, `007`, `013`, `018`). These exercise specific rules (window, alg allowlist, covered components, content-digest policy) without requiring valid signatures.
+4. **Key-path negatives** (`008`, `009`). JWKS resolution + `adcp_use` enforcement.
+5. **Crypto / stateful negatives last** (`015`, `010`, `016`, `017`). These require the verifier to have run most of the checklist before reaching the failure point. `015` specifically catches canonicalization bugs where your implementation computes a different signature base than the spec — if you pass `positive/001` but fail `015`, your canonicalization is still off somewhere and `015` is picking it up.
 
 ## Adding vectors
 

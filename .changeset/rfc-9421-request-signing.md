@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Define the AdCP RFC 9421 request-signing profile — transport-layer request authentication for mutating operations. In 3.0 the profile is **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`; in 4.0 it becomes required for spend-committing operations. The substrate ships in 3.0 so early adopters can surface canonicalization and proxy interop bugs before enforcement.
+Define the AdCP RFC 9421 request-signing profile — transport-layer request authentication for mutating operations. 3.0 ships the substrate **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`, so early adopters can surface canonicalization and proxy interop bugs before enforcement. The 4.0 breaking-changes accumulation window will make signing required for spend-committing operations; this profile is the floor of that bar, not the sole headline. Other accepted v4.0 RFCs will land alongside it as they progress through the roadmap.
 
 **Scope boundary.** A valid signature proves only that the request came from the agent whose key signed it. Whether that agent is *authorized* to act for the brand named in the request body is a separate concern, governed by the target house's `authorized_operator[]` in brand.json. This profile defines authentication only — authorization lookup is an existing protocol concern and happens whether requests are signed or not.
 
