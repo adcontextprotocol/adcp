@@ -473,6 +473,7 @@
                 ]
               },
               "docs/faq",
+              "docs/ai-disclosure",
               {
                 "group": "Reference",
                 "expanded": false,
@@ -931,7 +932,8 @@
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq"
+              "docs/faq",
+              "docs/ai-disclosure"
             ]
           },
           {
@@ -1210,8 +1212,26 @@
             "href": "https://agenticadvertising.org/api/agreement?type=terms_of_service"
           }
         ]
+      },
+      {
+        "header": "Transparency",
+        "items": [
+          {
+            "label": "AI Disclosure",
+            "href": "/docs/ai-disclosure"
+          },
+          {
+            "label": "Governance Charter",
+            "href": "https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md"
+          },
+          {
+            "label": "Working Group",
+            "href": "/docs/community/working-group"
+          }
+        ]
       }
-    ]
+    ],
+    "message": "AI-authored and AI-assisted. AgenticAdvertising.org's public content and code involve Addie, Sage, and other AI agents — see the AI Disclosure for what's written by AI, what's assisted, and how to request human review."
   },
   "socials": {
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",
