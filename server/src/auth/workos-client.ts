@@ -192,3 +192,57 @@ export async function refreshTokenRaw(refreshTokenValue: string): Promise<{
     refreshToken: response.refreshToken,
   };
 }
+
+/**
+ * Find or create a WorkOS user by email. Used by the newsletter confirm flow
+ * to provision lightweight accounts once the user has proven control of their
+ * email. New users are created with emailVerified: false — verification
+ * happens only via explicit OAuth login.
+ */
+export async function findOrCreateUserByEmail(email: string): Promise<WorkOSUser> {
+  const normalized = email.trim().toLowerCase();
+
+  const toUser = (u: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    emailVerified: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }): WorkOSUser => ({
+    id: u.id,
+    email: u.email,
+    firstName: u.firstName || undefined,
+    lastName: u.lastName || undefined,
+    emailVerified: u.emailVerified,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+  });
+
+  const lookup = async () => {
+    const existing = await workos.userManagement.listUsers({ email: normalized });
+    return existing.data.find((u) => u.email.toLowerCase() === normalized);
+  };
+
+  const existing = await lookup();
+  if (existing) return toUser(existing);
+
+  try {
+    const created = await workos.userManagement.createUser({
+      email: normalized,
+      emailVerified: false,
+    });
+    logger.info({ userId: created.id }, 'Created WorkOS user for newsletter subscribe');
+    return toUser(created);
+  } catch (error) {
+    // Concurrent request may have created the user between our lookup and
+    // create. Re-fetch before surfacing the error.
+    const retry = await lookup();
+    if (retry) {
+      logger.info({ userId: retry.id }, 'WorkOS createUser raced; returning existing user');
+      return toUser(retry);
+    }
+    throw error;
+  }
+}

@@ -44,7 +44,9 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
+import { findOrCreateUserByEmail } from "./auth/workos-client.js";
+import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -1520,6 +1522,98 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Error setting marketing opt-in');
         res.status(500).json({ error: 'Error setting marketing preference' });
+      }
+    });
+
+    // Newsletter subscribe for non-members.
+    // Provisions a WorkOS user (emailVerified: false), mints a 24h single-use
+    // confirmation token on the user's preferences row, and sends a branded
+    // transactional email via Resend. marketing_opt_in stays null until the
+    // user clicks the confirm link. Response is always a generic 200 to
+    // prevent email enumeration.
+    const SUBSCRIBE_SOURCES = new Set(['footer', 'story-inline', 'unknown']);
+    const TOKEN_HEX_LENGTH = 64;
+    const PER_EMAIL_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+
+    this.app.post('/api/newsletter/subscribe', newsletterSubscribeRateLimiter, async (req, res) => {
+      const { email: rawEmail, source: rawSource } = req.body ?? {};
+      const emailCheck = validateEmail(rawEmail);
+      if (!emailCheck.valid) {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+      const email = (rawEmail as string).trim().toLowerCase();
+      const source = typeof rawSource === 'string' && SUBSCRIBE_SOURCES.has(rawSource) ? rawSource : 'unknown';
+
+      try {
+        const user = await findOrCreateUserByEmail(email);
+
+        // Per-email cooldown: if an unexpired confirm_token was issued in the
+        // last 10 minutes, skip sending a duplicate email. Limits grief-spam
+        // against a specific inbox even from distributed IPs.
+        const existing = await emailPrefsDb.getUserPreferencesByUserId(user.id);
+        const tokenIssuedAt = existing?.confirm_token_expires_at
+          ? existing.confirm_token_expires_at.getTime() - 24 * 60 * 60 * 1000
+          : null;
+        if (tokenIssuedAt !== null && Date.now() - tokenIssuedAt < PER_EMAIL_RESEND_COOLDOWN_MS) {
+          logger.info({ userId: user.id, source }, 'Newsletter subscribe throttled (per-email cooldown)');
+          return res.json({ ok: true });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await emailPrefsDb.setConfirmToken({
+          workos_user_id: user.id,
+          email: user.email,
+          token,
+          expiresAt,
+        });
+
+        const confirmUrl = `${process.env.BASE_URL || 'https://agenticadvertising.org'}/newsletter/confirm?token=${token}`;
+        const sent = await sendNewsletterConfirmation({ to: user.email, confirmUrl, source });
+
+        if (sent) {
+          logger.info({ userId: user.id, source }, 'Newsletter subscribe initiated');
+        } else {
+          logger.warn({ userId: user.id, source }, 'Newsletter subscribe email not sent; token remains valid for retry');
+        }
+      } catch (error) {
+        logger.error({ err: error, source }, 'Newsletter subscribe failed');
+        // Still return 200 to prevent enumeration; the user just won't get an email.
+      }
+
+      res.json({ ok: true });
+    });
+
+    // Newsletter confirmation landing. Validates the single-use token, flips
+    // marketing_opt_in to true, and redirects to the welcome page. Does NOT
+    // log the user in — that happens later via normal OAuth if they return.
+    // The 256-bit unpredictable token serves as CSRF defense on this GET.
+    this.app.get('/newsletter/confirm', newsletterConfirmRateLimiter, async (req, res) => {
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      // Reject malformed tokens without touching the DB.
+      if (token.length !== TOKEN_HEX_LENGTH || !/^[0-9a-f]+$/.test(token)) {
+        return res.redirect('/welcome-subscribed.html?error=invalid');
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getPreferencesByConfirmToken(token);
+        if (!prefs) {
+          return res.redirect('/welcome-subscribed.html?error=expired');
+        }
+
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: prefs.workos_user_id,
+          email: prefs.email,
+          optIn: true,
+        });
+        await emailPrefsDb.clearConfirmToken(prefs.id);
+
+        invalidateMemberContextCache();
+        logger.info({ userId: prefs.workos_user_id }, 'Newsletter subscribe confirmed');
+        res.redirect('/welcome-subscribed.html');
+      } catch (error) {
+        logger.error({ err: error }, 'Newsletter confirm failed');
+        res.redirect('/welcome-subscribed.html?error=expired');
       }
     });
 
