@@ -5,6 +5,18 @@ category: core
 summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
 track: core
 
+# Security note for the test harness: sample_request values below use
+# $generate:uuid_v4 and $generate:uuid_v4#alias placeholders. The harness
+# MUST replace these with fresh UUID v4 values PER RUN (not per file, not
+# per deploy). Hardcoding keys across runs creates a cross-tenant replay
+# oracle — a malicious reviewer could probe the cached responses of the
+# compliance principal using the same keys. Multiple references to the
+# same alias (e.g. $generate:uuid_v4#replay_a) in the same run MUST
+# resolve to the same UUID so the replay phase can use it intentionally.
+#
+# The compliance principal SHOULD be a sandbox account whose idempotency
+# cache is isolated per test run (prefix-scoped, or purged on start).
+
 narrative: |
   Every mutating request in AdCP carries an idempotency_key so buyers can safely retry
   after network errors without double-booking. This storyboard walks through the four
@@ -170,7 +182,7 @@ phases:
           canonical response that subsequent replays must match.
 
         sample_request:
-          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          idempotency_key: "$generate:uuid_v4#replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -227,7 +239,7 @@ phases:
           delivery history that only ONE set of side effects fired across both calls.
 
         sample_request:
-          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          idempotency_key: "$generate:uuid_v4#replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -297,7 +309,7 @@ phases:
           - recovery: correctable (buyer should use a fresh UUID v4)
 
         sample_request:
-          idempotency_key: "bf6a0b73-8c2c-4e1a-8f3c-comply-replay-1"
+          idempotency_key: "$generate:uuid_v4#replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -359,7 +371,7 @@ phases:
           This confirms the seller treats the fresh key as a new request.
 
         sample_request:
-          idempotency_key: "cd7b1c84-9d3d-5f2b-9a4d-comply-fresh-2"
+          idempotency_key: "$generate:uuid_v4#fresh_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
