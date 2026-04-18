@@ -26,6 +26,7 @@ server/node_modules
 .cache-loader
 *.tsbuildinfo
 .codex/
+.claude/scheduled_tasks.lock
 
 # Misc
 .DS_Store
