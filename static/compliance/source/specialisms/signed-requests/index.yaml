@@ -134,7 +134,8 @@ phases:
     narrative: |
       The runner sends each negative vector and expects the agent to reject with the
       stable error code in `expected_outcome.error_code`. Negative vectors cover every
-      failure mode in the 13-step verifier checklist plus the pre-check:
+      failure mode in the verifier checklist (13 numbered steps plus sub-step 9a for
+      the per-keyid cap) plus the pre-check:
 
         001 unsigned + required_for           → request_signature_required
         002 wrong tag                         → request_signature_tag_invalid

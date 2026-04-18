@@ -1,6 +1,6 @@
 {
   "name": "Per-keyid replay cache entry cap exceeded (abuse or misconfigured signer)",
-  "spec_reference": "#transport-replay-dedup (per-keyid cap) and #transport-error-taxonomy",
+  "spec_reference": "#verifier-checklist-requests step 9a (per-keyid cap; before crypto verify) and #transport-replay-dedup",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -27,7 +27,7 @@
   "expected_outcome": {
     "success": false,
     "error_code": "request_signature_rate_abuse",
-    "failed_step": 12
+    "failed_step": "9a"
   },
-  "$comment": "When the per-keyid replay cache has reached its configured cap (recommended: 1M entries), new signatures from that keyid MUST be rejected with request_signature_rate_abuse — not silently evict, not accept. Silent eviction creates replay windows exactly when under attack. The nonce in this vector is fresh (never seen); the rejection is due to the cap, not replay. Verifiers SHOULD alert operators on this condition as a compromised-key or misconfigured-signer signal."
+  "$comment": "When the per-keyid replay cache has reached its configured cap (recommended: 1M entries), new signatures from that keyid MUST be rejected with request_signature_rate_abuse — not silently evict, not accept. Silent eviction creates replay windows exactly when under attack. The nonce in this vector is fresh (never seen); the rejection is due to the cap, not replay. Verifiers SHOULD alert operators on this condition as a compromised-key or misconfigured-signer signal. The cap check is step 9a of the verifier checklist and runs BEFORE crypto verify (step 10) to prevent amplified Ed25519/ECDSA work on an abusive signer — same rationale as revocation (step 9). Implementations that defer the cap check until after crypto verify will fail this vector because the committed Signature bytes are a placeholder copied from positive/001 and do not verify cryptographically against this vector's own signature base (different nonce in @signature-params, different body)."
 }
