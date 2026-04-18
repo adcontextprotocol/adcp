@@ -177,7 +177,7 @@ CREATE POLICY principal_isolation ON media_buys
 ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
 ```
 
-## Financial Transaction Safety
+## Request Safety
 
 ### Idempotency
 
@@ -237,9 +237,10 @@ The protocol envelope carries a top-level `replayed` boolean on responses to mut
 
 Buyers use `replayed` for:
 
+- **Agent side-effect suppression** — an agent that acts on response data before a human sees it (notifications, downstream tool calls, memory writes) MUST check `replayed` to avoid re-emitting on retry. "Campaign created!" notifications, LLM memory inserts, and downstream agent calls are exactly what silent replay breaks.
+- **Side-effect invariants** — downstream systems expecting exactly-once event semantics read `replayed` before treating the response as a new event.
 - **Billing reconciliation** — "we processed N buys this month" counts `replayed: false` only.
 - **Logging** — distinguishing "retry succeeded by returning cache" from "retry triggered a new execution" (the latter usually signals a bug in the replay window or key management).
-- **Side-effect invariants** — downstream systems that expect exactly-once should read `replayed` before treating the response as a new event.
 
 #### IDEMPOTENCY_CONFLICT response shape
 
@@ -253,7 +254,7 @@ Standard AdCP error envelope. The error body:
   "errors": [
     {
       "code": "IDEMPOTENCY_CONFLICT",
-      "message": "idempotency_key was used with a different payload within the replay window. Generate a fresh UUID v4 for the new request.",
+      "message": "idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.",
       "recovery": "correctable"
     }
   ],
@@ -274,6 +275,15 @@ Leaking cached state turns key-reuse into a read oracle. An attacker who guesses
 #### Buyer obligations
 
 Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request. On retry after a network error, buyers MUST resend the exact same payload with the same key — changing either side breaks at-most-once semantics. In particular, buyers MUST NOT change `push_notification_config.url` between retries with the same key; URL is part of the canonical hash and rotating it triggers `IDEMPOTENCY_CONFLICT`. Rotate the key when changing webhook configuration.
+
+**Agent retry vs. network retry.** Two cases that look similar but need opposite handling:
+
+- **Network retry** — socket timeout, 5xx, transient failure. The buyer has the *same intent* and sent the *same bytes* — and MUST resend them with the *same key*. This is what idempotency_key exists for.
+- **Agent re-plan** — the buyer is an agent whose planner re-ran (prompt re-executed, tool output changed, policy re-evaluated) and produced a *different payload*. The intent has changed. The agent MUST mint a *new key* and treat the prior request as abandoned. Reusing the prior key with a different canonical payload returns `IDEMPOTENCY_CONFLICT`, which is the seller correctly telling the agent "you're not retrying, you're doing something new."
+
+When in doubt, ask whether the serialized request bytes are the same. If yes, reuse the key. If no, the intent changed — mint a new key. Agentic clients that loop through an LLM to build the request SHOULD freeze and cache the serialized bytes alongside the key on first send, so retries send the identical payload even if the planner would produce something slightly different on re-execution.
+
+**When the seller's capability declaration is missing.** A seller that omits `adcp.idempotency.replay_ttl_seconds` from `get_adcp_capabilities` is non-compliant. Client SDKs MUST fail closed on retry-sensitive operations against that seller — raise an error, don't assume a default — so the buyer learns about the non-compliance immediately rather than after a silent double-booking. Read-only operations (`get_products`, `list_accounts`, etc.) are safe to issue against such a seller; only mutating requests require the declaration.
 
 **TTL boundary for persisted keys.** Some buyers persist `idempotency_key` alongside their own object (e.g., `campaign.pending_idempotency_key` in the buyer's DB) so that retries after a process restart or overnight reconcile still dedup. This works **only within the seller's declared `replay_ttl_seconds`**. Beyond the TTL, the seller will either reject the retry with `IDEMPOTENCY_EXPIRED` (good) or, if the cache was evicted, treat it as a new request (silent double-booking — the failure mode this field exists to prevent). Buyers retrying past the TTL MUST fall back to a natural-key check (e.g., query `get_media_buys` by `context.internal_campaign_id`) before resending. The `idempotency_key` guarantees at-most-once execution within the replay window, not forever. Queue-based retry systems and workflow engines with retry horizons longer than the seller's TTL MUST be designed around this — don't put a key into a dead-letter queue that replays days later without a natural-key re-check.
 
