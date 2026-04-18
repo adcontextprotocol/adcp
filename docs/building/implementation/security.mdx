@@ -232,6 +232,14 @@ async function createMediaBuy(request) {
 }
 ```
 
+#### Natural-key idempotency is not a substitute
+
+Upsert-style tasks (`sync_accounts`, `sync_audiences`, `sync_catalogs`, `sync_event_sources`, `sync_governance`, `sync_plans`) already dedup at the resource level — two calls with the same `account_id` or `audience_id` produce one row, not two. That's **resource idempotency**.
+
+`idempotency_key` guarantees something stricter: **envelope idempotency**. The entire request — including its side effects — executes at most once. Retrying the same sync envelope without a key can still fire onboarding webhooks twice, emit duplicate audit log entries, or double-provision pixel endpoints, even though the resource rows end up identical. The key is what makes a retry truly safe.
+
+The one exception in the spec is `si_terminate_session`: `session_id` plus the "terminate" verb is fully idempotent — a second call on an already-terminated session returns the same terminal state with no new side effects — so that schema doesn't require `idempotency_key`.
+
 ### Governance Context
 
 `governance_context` is an opaque string that crosses trust boundaries — from governance agent to buyer to seller and back. Implementers should treat it as untrusted input at each hop:

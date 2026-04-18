@@ -97,6 +97,7 @@ AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
+  "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
   "accounts": [
     {
       "brand": { "domain": "acmeoutdoor.com" },
@@ -307,6 +308,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
+  "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "audiences": [
     {
@@ -479,6 +481,7 @@ Acme Outdoor has a Shopify store with 200 products. They want their catalog avai
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "catalogs": [
     {

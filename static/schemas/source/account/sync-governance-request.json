@@ -11,6 +11,12 @@
       "minimum": 1,
       "maximum": 99
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `account` gives resource-level dedup, but governance changes emit audit events and can trigger reapproval flows — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255
+    },
     "accounts": {
       "type": "array",
       "description": "Per-account governance agent configuration. Each entry pairs an account reference with the governance agents for that account.",
@@ -95,6 +101,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "accounts"
   ],
   "additionalProperties": true,
@@ -102,6 +109,7 @@
     {
       "description": "Sync governance agents on explicit accounts (by account_id)",
       "data": {
+        "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
         "accounts": [
           {
             "account": {
@@ -128,6 +136,7 @@
     {
       "description": "Sync governance agents on implicit accounts (by brand + operator)",
       "data": {
+        "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
         "accounts": [
           {
             "account": {

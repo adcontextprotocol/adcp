@@ -11,6 +11,12 @@
       "minimum": 1,
       "maximum": 99
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255
+    },
     "plans": {
       "type": "array",
       "description": "One or more campaign plans to sync.",
@@ -339,6 +345,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "plans"
   ],
   "additionalProperties": false

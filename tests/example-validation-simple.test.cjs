@@ -176,6 +176,7 @@ async function runTests() {
   // Conversion tracking examples
   await validateExample(
     {
+      "idempotency_key": "d4a8e1b2-0123-489f-0123-45678901234d",
       "account": { "account_id": "acct_12345" },
       "event_sources": [
         {

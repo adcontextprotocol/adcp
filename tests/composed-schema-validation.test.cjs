@@ -285,6 +285,7 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/create-media-buy-request.json'),
         {
+          idempotency_key: '550e8400-e29b-41d4-a716-446655440042',
           account: { account_id: 'acc_test_001' },
           packages: [
             {
