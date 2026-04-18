@@ -16,6 +16,7 @@ These vectors exercise the [verifier checklist](https://adcontextprotocol.org/do
 test-vectors/request-signing/
 ├── README.md                             this file
 ├── keys.json                             test keypairs (Ed25519 + ES256) in JWK format with adcp_use values
+├── canonicalization.json                 pure URL-canonicalization cases (no crypto) — every rule from the @target-uri algorithm + malformed-authority rejections
 ├── negative/                             vectors that MUST fail verification
 │   ├── 001-no-signature-header.json      → request_signature_required (pre-check 0; op in required_for)
 │   ├── 002-wrong-tag.json                → request_signature_tag_invalid (step 3)
@@ -47,6 +48,42 @@ test-vectors/request-signing/
     ├── 007-query-byte-preserved.json         Query b=2&a=1&c=3 — preserved, not alphabetized
     └── 008-percent-encoded-path.json         Path has lowercase %xx; canonical uppercases
 ```
+
+## Canonicalization vectors (`canonicalization.json`)
+
+`canonicalization.json` is a flat set of URL-canonicalization cases that exercise every rule in the `@target-uri` canonicalization algorithm, plus the malformed-authority rejection cases. Independent of cryptographic signing — an SDK can run this file without keys, crypto, or a full verifier harness, which makes it the fastest way to surface cross-implementation divergence.
+
+Shape:
+
+```json
+{
+  "spec_reference": "#adcp-rfc-9421-profile",
+  "cases": [
+    {
+      "name": "ipv6-host-hex-lowercased",
+      "rule": "step 2: IPv6 brackets preserved; hex digits inside lowercased",
+      "input_url": "https://[2001:DB8::1]/p",
+      "expected_target_uri": "https://[2001:db8::1]/p",
+      "expected_authority": "[2001:db8::1]"
+    },
+    {
+      "name": "malformed-port-without-host",
+      "rule": "step 3: authority with port but no host is malformed",
+      "input_url": "https://:443/p",
+      "reject": true,
+      "reject_reason": "authority missing host",
+      "expected_error_code": "request_signature_header_malformed"
+    }
+  ]
+}
+```
+
+For each case:
+
+- **Positive case** (no `reject` field): the implementation MUST canonicalize `input_url` and produce byte-for-byte matches on `expected_target_uri` and `expected_authority`. Each case also carries a `rule` string pointing to the specific numbered step in the canonicalization algorithm it exercises — useful when a test fails and you want to know which rule the implementation got wrong.
+- **Reject case** (`reject: true`): the implementation MUST refuse to canonicalize `input_url`. Signers refuse to sign; verifiers reject with `expected_error_code`.
+
+SDKs SHOULD run `canonicalization.json` on every commit alongside a lint pass. Canonicalization divergence is the #1 silent 9421 interop bug, and catching it as a fast unit test (cheap, no network, no crypto) closes that gap.
 
 ## Vector format
 
