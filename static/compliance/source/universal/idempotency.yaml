@@ -51,8 +51,9 @@ phases:
       - id: get_capabilities
         title: "Check idempotency capability declaration"
         narrative: |
-          Call get_adcp_capabilities and look for adcp.idempotency.replay_ttl_seconds.
-          The field is optional — when omitted, buyers MUST assume a 24-hour minimum.
+          Call get_adcp_capabilities and verify adcp.idempotency.replay_ttl_seconds
+          is declared. This field is REQUIRED — clients MUST NOT fall back to an
+          assumed default, and a seller that omits it is non-compliant.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -60,8 +61,9 @@ phases:
         comply_scenario: capability_discovery
         stateful: false
         expected: |
-          Return capabilities declaring media_buy in supported_protocols. Optionally
-          declare adcp.idempotency.replay_ttl_seconds with a value >= 3600.
+          Return capabilities declaring media_buy in supported_protocols AND
+          adcp.idempotency.replay_ttl_seconds (minimum 3600s; recommended 86400s
+          or longer).
         sample_request:
           context:
             correlation_id: "idempotency--get_capabilities"
@@ -71,6 +73,9 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_present
+            path: "adcp.idempotency.replay_ttl_seconds"
+            description: "Agent declares replay window TTL (required)"
 
           - check: field_present
             path: "context"
@@ -187,6 +192,10 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Agent returns a media_buy_id for the initial request"
+          - check: field_value
+            path: "replayed"
+            allowed_values: [false]
+            description: "Initial execution sets replayed: false (or omits the field)"
 
           - check: field_present
             path: "context"
@@ -244,6 +253,10 @@ phases:
             path: "media_buy_id"
             value: "$context.initial_media_buy_id"
             description: "Replay returns the SAME media_buy_id as the initial call"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Replay sets replayed: true on the response envelope"
 
           - check: field_present
             path: "context"
@@ -312,6 +325,10 @@ phases:
             path: "context.correlation_id"
             value: "idempotency--create_media_buy_conflict"
             description: "Context correlation_id returned unchanged"
+
+        reviewer_checks:
+          - "Error body MUST NOT include the cached payload, the original request, or any fingerprint (hash, digest, field diff). Leaking cached state turns key-reuse into a read oracle for attackers who stole a key."
+          - "Error body MAY include code + message only. No `field` json-pointer — even a pointer like `/packages/0/budget` reveals schema shape."
 
   - id: fresh_key_new_resource
     title: "Different key creates a new resource"
