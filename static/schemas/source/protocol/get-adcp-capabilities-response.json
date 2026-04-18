@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/protocol/get-adcp-capabilities-response.json",
   "title": "Get AdCP Capabilities Response",
-  "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each domain protocol has its own capability section.",
+  "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
   "properties": {
     "adcp": {
@@ -766,11 +766,11 @@
     },
     "compliance_testing": {
       "type": "object",
-      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block if the agent does not support compliance testing.",
+      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block entirely if the agent does not support compliance testing.",
       "properties": {
         "scenarios": {
           "type": "array",
-          "description": "Compliance testing scenarios this agent supports. Use comply_test_controller with scenario: 'list_scenarios' to discover available scenarios at runtime.",
+          "description": "Compliance testing scenarios this agent supports. Must be non-empty — at least one scenario. Callers can also use comply_test_controller with scenario: 'list_scenarios' to discover supported scenarios at runtime.",
           "items": {
             "type": "string",
             "enum": [
@@ -781,9 +781,11 @@
               "simulate_delivery",
               "simulate_budget_spend"
             ]
-          }
+          },
+          "minItems": 1
         }
       },
+      "required": ["scenarios"],
       "additionalProperties": true
     },
     "specialisms": {
