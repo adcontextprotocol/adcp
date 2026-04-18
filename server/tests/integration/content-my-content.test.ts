@@ -143,7 +143,12 @@ describe('My Content — body, admin scope, status, delete', () => {
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
     await pool.query(`DELETE FROM working_group_leaders WHERE working_group_id = $1`, [wgId]);
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [WG_SLUG]);
-    await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [USER_ID, OTHER_USER_ID]);
+    // Side tables the propose flow writes into. Clear everything referencing
+    // the test users before deleting them so FKs don't block cleanup.
+    const testUsers = [USER_ID, OTHER_USER_ID];
+    await pool.query(`DELETE FROM community_points WHERE workos_user_id = ANY($1)`, [testUsers]);
+    await pool.query(`DELETE FROM user_badges WHERE workos_user_id = ANY($1)`, [testUsers]);
+    await pool.query(`DELETE FROM users WHERE workos_user_id = ANY($1)`, [testUsers]);
     await server?.stop();
     await closeDatabase();
   });
@@ -165,18 +170,19 @@ describe('My Content — body, admin scope, status, delete', () => {
     workingGroupId?: string | null;
   }) {
     const { slug, title } = opts;
+    const status = opts.status ?? 'published';
     const result = await pool.query(
       `INSERT INTO perspectives
          (slug, content_type, title, content, excerpt, category, status, published_at,
           working_group_id, content_origin, proposer_user_id, author_name)
-       VALUES ($1, 'article', $2, $3, 'summary', 'Perspective', $4,
-               CASE WHEN $4 = 'published' THEN NOW() ELSE NULL END,
+       VALUES ($1, 'article', $2, $3, 'summary', 'Perspective', $4::varchar,
+               CASE WHEN $4::varchar = 'published' THEN NOW() ELSE NULL END,
                $5, 'member', $6, 'Author')
        RETURNING id`,
       [
         slug, title,
         opts.content ?? `Body of ${title}`,
-        opts.status ?? 'published',
+        status,
         opts.workingGroupId ?? null,
         opts.proposerUserId ?? null,
       ]
