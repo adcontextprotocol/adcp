@@ -25,7 +25,8 @@
     "sales-social",
     "sales-streaming-tv",
     "signal-marketplace",
-    "signal-owned"
+    "signal-owned",
+    "signed-requests"
   ],
   "enumDescriptions": {
     "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
@@ -48,6 +49,7 @@
     "sales-social": "Social media advertising platform with self-service flows",
     "sales-streaming-tv": "Connected TV and streaming seller with ad-supported video inventory",
     "signal-marketplace": "Marketplace signal agent reselling third-party data",
-    "signal-owned": "Owned signal agent exposing first-party segments"
+    "signal-owned": "Owned signal agent exposing first-party segments",
+    "signed-requests": "Agent verifies RFC 9421 transport-layer request signatures per the AdCP request-signing profile. Graded by exercising 29 conformance vectors (21 negative + 8 positive) against the agent's live verifier."
   }
 }
