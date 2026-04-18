@@ -141,7 +141,7 @@ phases:
         narrative: |
           The buyer calls check_governance with a $50K media buy binding. The governance
           agent denies the buy because the total exceeds the $10K per-transaction authority.
-          The response includes a must-severity finding with the violation details.
+          The response includes a critical-severity finding with the violation details.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
@@ -151,16 +151,16 @@ phases:
         expected: |
           Return a denied governance decision:
           - decision: denied
-          - findings: array with at least one must-severity finding
-            - severity: must
-            - code: SPENDING_AUTHORITY_EXCEEDED
-            - message: explains the threshold and how much the buy exceeds it
+          - findings: array with at least one critical-severity finding
+            - severity: critical
+            - category_id: SPENDING_AUTHORITY_EXCEEDED
+            - explanation: explains the threshold and how much the buy exceeds it
           - No escalation instructions (plan has no escalation path)
 
         sample_request:
           plan_id: "$context.plan_id"
-          binding:
-            type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"

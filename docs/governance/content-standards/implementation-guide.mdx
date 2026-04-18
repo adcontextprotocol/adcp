@@ -186,7 +186,11 @@ Brands create content standards through a governance agent. You might facilitate
   "standards_id": "nike_emea_brand_safety",
   "name": "Nike EMEA Brand Suitability Policy",
   "brand_id": "nike",
-  "policy": "Sports and fitness content is ideal. Avoid violence, adult themes, drugs.",
+  "policies": [
+    { "policy_id": "no_violence", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid violence." },
+    { "policy_id": "no_adult_themes", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid adult themes." },
+    { "policy_id": "no_drug_content", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid drug content." }
+  ],
   "calibration_exemplars": {
     "pass": [
       { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" }
@@ -197,6 +201,38 @@ Brands create content standards through a governance agent. You might facilitate
   }
 }
 ```
+
+#### Migrating prose policies to addressable entries
+
+Brands with existing prose policies have two options: keep everything as one policy entry with the whole prose blob, or split into one entry per rule. Both validate.
+
+**One-entry-with-prose** (easiest, preserves existing authoring):
+
+```json
+"policies": [
+  {
+    "policy_id": "acme_creative_standards_v1",
+    "enforcement": "must",
+    "policy": "No violent imagery. Minimum 72 DPI for display assets. Brand colors must match palette within 5% tolerance."
+  }
+]
+```
+
+**Multiple addressable entries** (recommended for programmatic fix/retry loops and per-rule versioning):
+
+```json
+"policies": [
+  { "policy_id": "no_violent_imagery",   "policy_categories": ["brand_safety"],     "enforcement": "must",   "policy": "No violent imagery." },
+  { "policy_id": "min_display_dpi",      "policy_categories": ["imagery_quality"],  "enforcement": "should", "channels": ["display"], "policy": "Minimum 72 DPI for display assets." },
+  { "policy_id": "brand_color_tolerance","policy_categories": ["brand_compliance"], "enforcement": "must",   "policy": "Brand colors must match palette within 5% tolerance." }
+]
+```
+
+Splitting enables findings to reference specific rules (via `policy_id`), programmatic fix/retry, and stable ids across versions. Use whichever authoring mode fits the workflow.
+
+#### Registry policies + bespoke policies
+
+Both `registry_policy_ids` and `policies` can be provided together. The evaluator applies all of them. Bespoke `policy_id` values MUST be flat (no colons or slashes); registry policy ids are always namespaced (e.g., `garm:brand_safety:violence`), so the two namespaces never collide. When a governance finding references a specific policy, `policy_id` on the finding carries either the registry id or the bespoke id — the namespace tells you which.
 
 **2. Pass standards references when buying**
 
@@ -284,7 +320,11 @@ Store standards configurations and expose them via `get_content_standards`:
   "standards_id": "nike_emea_brand_safety",
   "version": "1.2.0",
   "name": "Nike EMEA - all digital channels",
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good...",
+  "policies": [
+    { "policy_id": "no_violence", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid violence." },
+    { "policy_id": "no_adult_themes", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid adult themes." },
+    { "policy_id": "prefer_sports_fitness", "policy_categories": ["brand_suitability"], "enforcement": "should", "policy": "Sports and fitness content is ideal." }
+  ],
   "calibration_exemplars": {
     "pass": [...],
     "fail": [...]

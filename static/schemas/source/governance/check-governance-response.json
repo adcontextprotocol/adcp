@@ -38,7 +38,11 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "Registry policy ID that triggered this finding. Present when the finding originates from a specific registry policy. Enables programmatic routing of compliance failures."
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations)."
+          },
+          "source_plan_id": {
+            "type": "string",
+            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance)."
           },
           "severity": {
             "$ref": "/schemas/enums/escalation-severity.json"

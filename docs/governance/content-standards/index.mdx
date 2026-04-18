@@ -187,11 +187,17 @@ The threshold answers the key buyer question: "If I accept your local model, how
 
 ## Policies
 
-Content Standards uses **natural language prompts** rather than rigid keyword lists:
+Content Standards uses **addressable policies** — an array of policy entries, each with a policy_id, enforcement, and natural-language policy text. Same shape as registry-published policies, so bespoke buyer rules and shared registry policies are interchangeable. Validation findings reference `policy_id` to identify which policy triggered:
 
 ```json
 {
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
+  "policies": [
+    { "policy_id": "no_violence", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid content depicting violence, weapons, or physical aggression." },
+    { "policy_id": "no_controversial_politics", "policy_categories": ["brand_suitability"], "enforcement": "must", "policy": "Avoid controversial political content." },
+    { "policy_id": "no_adult_themes", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid adult, sexual, or mature themes." },
+    { "policy_id": "no_hate_speech", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Block hate speech and illegal activities." },
+    { "policy_id": "no_sedentary_glorification", "policy_categories": ["brand_suitability"], "enforcement": "should", "policy": "Avoid content that portrays sedentary lifestyle positively." }
+  ],
   "calibration_exemplars": {
     "pass": [
       {

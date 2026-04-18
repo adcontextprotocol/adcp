@@ -36,20 +36,31 @@
               },
               "features": {
                 "type": "array",
-                "description": "Optional feature-level breakdown",
+                "description": "Per-feature breakdown. When present, SHOULD include all failed and warning features. MAY include passed features. Oracle pattern: exposes verdict + rule pointer, never the seller's threshold or the caller's submitted value (the seller authored the content standards).",
                 "items": {
                   "type": "object",
                   "properties": {
-                    "feature_id": { "type": "string" },
+                    "feature_id": {
+                      "type": "string",
+                      "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'image_dpi'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact', 'delivery:authorization'. Reserved prefixes: 'record:', 'delivery:'."
+                    },
                     "status": {
                       "type": "string",
                       "enum": ["passed", "failed", "warning", "unevaluated"]
                     },
-                    "value": {},
-                    "message": { "type": "string" },
-                    "rule_id": {
+                    "policy_id": {
                       "type": "string",
-                      "description": "Which rule triggered this result (e.g., GARM category, Scope3 standard)"
+                      "description": "Registry policy ID that triggered this result. Present when the result originates from a specific registry policy (e.g., GARM category, Scope3 standard). Enables programmatic routing by looking up the policy in the registry."
+                    },
+                    "explanation": {
+                      "type": "string",
+                      "description": "Directional human-readable explanation (e.g., 'Below minimum resolution for display placement'). Avoid quantitative thresholds — the evaluator is the oracle."
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
                     }
                   },
                   "required": ["feature_id", "status"]

@@ -162,12 +162,12 @@ phases:
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required for CTV line items"
           - governance_context: token the buyer passes to create_media_buy
-          - findings: may include should-severity findings noting the conditions
+          - findings: may include warning-severity findings noting the conditions
 
         sample_request:
           plan_id: "$context.plan_id"
-          binding:
-            type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
