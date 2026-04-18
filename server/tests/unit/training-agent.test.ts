@@ -4309,7 +4309,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -5910,7 +5910,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(outcome.status).toBe('accepted');
   });
 
-  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+  it('governance_delivery_monitor: delivery phase check with delivery_metrics', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await setupPlan(server);
 
@@ -5924,7 +5924,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
     const ctx = initial.governance_context as string;
 
-    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    // Delivery phase re-check (from governance_delivery_monitor storyboard)
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
@@ -5945,7 +5945,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(result.status).toBe('approved');
   });
 
-  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+  it('governance_spend_authority/denied: buy exceeding media_buy allocation is denied', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     // Plan with tight media_buy allocation
     await simulateCallTool(server, 'sync_plans', {

@@ -13,7 +13,15 @@
 # id: string (unique identifier, e.g., "creative_template")
 # version: string (semver, e.g., "1.0.0")
 # title: string (human-readable title)
-# category: enum (capability_discovery | schema_validation | behavioral_analysis | error_compliance | security | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_generative_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | media_buy_state_machine | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | collection_governance | content_standards | audience_sync)
+# category: enum — matches the specialism ID with hyphens replaced by underscores.
+#   Sales: sales_guaranteed | sales_non_guaranteed | sales_proposal_mode | sales_catalog_driven | sales_broadcast_tv | sales_streaming_tv | sales_social | sales_exchange | sales_retail_media
+#   Creative: creative_ad_server | creative_generative | creative_template
+#   Signals: signal_marketplace | signal_owned
+#   Governance: content_standards | inventory_lists | governance_delivery_monitor | governance_spend_authority | measurement_verification
+#   Brand: brand_rights
+#   Audiences: audience_sync
+#   Universal / domain-level: capability_discovery | schema_validation | behavioral_analysis | error_compliance | security | media_buy_seller | media_buy_governance_escalation | si_session
+#   Scenario variants use <category>/<variant> form, e.g. governance_spend_authority/denied, creative_generative/seller, brand_rights/governance_denied
 # summary: string (one-line description for listings)
 # track: enum (optional — compliance track this storyboard contributes to:
 #   core | products | media_buy | creative | reporting | governance |

@@ -85,7 +85,7 @@ export function mountSchemasRoutes(app: Application, schemasPath: string): void 
 
 /**
  * Mount /compliance routes: same alias + versioned-directory semantics as
- * /schemas. Serves the compliance manifest tree (universal, domains,
+ * /schemas. Serves the compliance manifest tree (universal, protocols,
  * specialisms, test-kits) per AdCP release.
  */
 export function mountComplianceRoutes(app: Application, compliancePath: string): void {

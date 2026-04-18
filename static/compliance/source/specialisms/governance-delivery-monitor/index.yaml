@@ -1,8 +1,8 @@
-id: campaign_governance_delivery
+id: governance_delivery_monitor
 version: "1.0.0"
 title: "Campaign governance — delivery monitoring with drift detection"
-domain: governance
-category: campaign_governance_delivery
+protocol: governance
+category: governance_delivery_monitor
 summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
 track: campaign_governance
 required_tools:
@@ -60,7 +60,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "campaign_governance_delivery--get_capabilities"
+            correlation_id: "governance_delivery_monitor--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -73,7 +73,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_delivery--get_capabilities"
+            value: "governance_delivery_monitor--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: plan_registration
     title: "Register governance plan with delivery monitoring"
@@ -93,7 +93,7 @@ phases:
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
         doc_ref: "/governance/campaign/tasks/sync_plans"
-        comply_scenario: campaign_governance_delivery
+        comply_scenario: governance_delivery_monitor
         stateful: true
         expected: |
           Acknowledge the governance plan:
@@ -113,7 +113,7 @@ phases:
                 - "Re-evaluate governance if any line item drifts >20% from plan"
 
           context:
-            correlation_id: "campaign_governance_delivery--sync_plans"
+            correlation_id: "governance_delivery_monitor--sync_plans"
         context_outputs:
           - name: plan_id
             path: 'plans[0].plan_id'
@@ -126,7 +126,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_delivery--sync_plans"
+            value: "governance_delivery_monitor--sync_plans"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "plans[0].plan_id"
@@ -148,7 +148,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_delivery
+        comply_scenario: governance_delivery_monitor
         stateful: true
         expected: |
           Return an approved governance decision:
@@ -172,7 +172,7 @@ phases:
                 budget: 20000
 
           context:
-            correlation_id: "campaign_governance_delivery--check_governance_approved"
+            correlation_id: "governance_delivery_monitor--check_governance_approved"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -185,7 +185,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_delivery--check_governance_approved"
+            value: "governance_delivery_monitor--check_governance_approved"
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery metrics show budget drift"
@@ -204,7 +204,7 @@ phases:
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
-        comply_scenario: campaign_governance_delivery
+        comply_scenario: governance_delivery_monitor
         stateful: true
         expected: |
           Return delivery metrics showing drift:
@@ -222,7 +222,7 @@ phases:
           include_package_daily_breakdown: true
 
           context:
-            correlation_id: "campaign_governance_delivery--get_delivery"
+            correlation_id: "governance_delivery_monitor--get_delivery"
         validations:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
@@ -235,7 +235,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_delivery--get_delivery"
+            value: "governance_delivery_monitor--get_delivery"
             description: "Context correlation_id returned unchanged"
   - id: drift_recheck
     title: "Governance re-check — drift detected"
@@ -257,7 +257,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_delivery
+        comply_scenario: governance_delivery_monitor
         stateful: true
         expected: |
           Return a governance decision about the delivery drift:
@@ -291,7 +291,7 @@ phases:
                   flight_progress: 0.50
 
           context:
-            correlation_id: "campaign_governance_delivery--check_governance_drift"
+            correlation_id: "governance_delivery_monitor--check_governance_drift"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -307,5 +307,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_delivery--check_governance_drift"
+            value: "governance_delivery_monitor--check_governance_drift"
             description: "Context correlation_id returned unchanged"

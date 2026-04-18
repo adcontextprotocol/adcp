@@ -313,7 +313,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_denied
+        comply_scenario: governance_spend_authority/denied
         stateful: true
         expected: |
           Return a denied governance decision:
@@ -381,7 +381,7 @@ phases:
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_conditions
+        comply_scenario: governance_spend_authority
         stateful: true
         expected: |
           Return an approved governance decision with conditions:

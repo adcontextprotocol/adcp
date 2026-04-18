@@ -1,11 +1,12 @@
 id: audience_sync
 version: "1.0.0"
 title: "Audience sync"
-domain: governance
+protocol: media-buy
 category: audience_sync
 summary: "Full audience lifecycle: account discovery, audience creation with hashed identifiers, and audience deletion."
 track: audiences
 required_tools:
+  - list_accounts
   - sync_audiences
 platform_types:
   - display_ad_server

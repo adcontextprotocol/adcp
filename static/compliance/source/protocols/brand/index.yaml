@@ -1,7 +1,7 @@
 id: brand_baseline
 version: "1.0.0"
 title: "Brand baseline"
-domain: brand
+protocol: brand
 summary: "Baseline domain storyboard — every brand agent must resolve brand identity, declare authorization via adagents.json, and expose rights-related metadata."
 track: brand
 

@@ -1,7 +1,7 @@
 id: sales_retail_media
 version: "1.0.0"
 title: "Retail media sales"
-domain: media-buy
+protocol: media-buy
 status: preview
 summary: "Retail media network seller — onsite, offsite, and in-store inventory tied to commerce signals and SKU-level reporting."
 track: media-buy

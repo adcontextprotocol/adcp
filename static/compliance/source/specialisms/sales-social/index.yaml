@@ -1,8 +1,8 @@
-id: social_platform
+id: sales_social
 version: "1.0.0"
 title: "Social platform"
-domain: media-buy
-category: social_platform
+protocol: media-buy
+category: sales_social
 summary: "Social media platform that accepts audience segments, native creatives, and conversion events from buyer agents."
 track: audiences
 required_tools:
@@ -67,7 +67,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "social_platform--get_capabilities"
+            correlation_id: "sales_social--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -80,7 +80,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--get_capabilities"
+            value: "sales_social--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: account_setup
     title: "Account setup"
@@ -114,7 +114,7 @@ phases:
               billing: "operator"
 
           context:
-            correlation_id: "social_platform--sync_accounts"
+            correlation_id: "sales_social--sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -127,7 +127,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--sync_accounts"
+            value: "sales_social--sync_accounts"
             description: "Context correlation_id returned unchanged"
       - id: list_accounts
         title: "Verify account status"
@@ -150,7 +150,7 @@ phases:
             domain: "acmeoutdoor.example"
 
           context:
-            correlation_id: "social_platform--list_accounts"
+            correlation_id: "sales_social--list_accounts"
         validations:
           - check: response_schema
             description: "Response matches list-accounts-response.json schema"
@@ -163,7 +163,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--list_accounts"
+            value: "sales_social--list_accounts"
             description: "Context correlation_id returned unchanged"
   - id: audience_sync
     title: "Audience activation"
@@ -202,7 +202,7 @@ phases:
               description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
 
           context:
-            correlation_id: "social_platform--sync_audiences"
+            correlation_id: "sales_social--sync_audiences"
         validations:
           - check: response_schema
             description: "Response matches sync-audiences-response.json schema"
@@ -212,7 +212,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--sync_audiences"
+            value: "sales_social--sync_audiences"
             description: "Context correlation_id returned unchanged"
   - id: creative_push
     title: "Native creative sync"
@@ -260,7 +260,7 @@ phases:
                   content: "Trail Pro 3000 — Built for the Summit"
 
           context:
-            correlation_id: "social_platform--sync_creatives"
+            correlation_id: "sales_social--sync_creatives"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -270,7 +270,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--sync_creatives"
+            value: "sales_social--sync_creatives"
             description: "Context correlation_id returned unchanged"
   - id: event_logging
     title: "Conversion event tracking"
@@ -309,7 +309,7 @@ phases:
               currency: "USD"
 
           context:
-            correlation_id: "social_platform--log_event"
+            correlation_id: "sales_social--log_event"
         validations:
           - check: response_schema
             description: "Response matches log-event-response.json schema"
@@ -319,7 +319,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--log_event"
+            value: "sales_social--log_event"
             description: "Context correlation_id returned unchanged"
   - id: financials
     title: "Account financials"
@@ -352,7 +352,7 @@ phases:
             operator: "pinnacle-agency.example"
 
           context:
-            correlation_id: "social_platform--get_account_financials"
+            correlation_id: "sales_social--get_account_financials"
         validations:
           - check: response_schema
             description: "Response matches get-account-financials-response.json schema"
@@ -362,5 +362,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "social_platform--get_account_financials"
+            value: "sales_social--get_account_financials"
             description: "Context correlation_id returned unchanged"

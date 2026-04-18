@@ -3270,7 +3270,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     // Probe get_adcp_capabilities. The agent is the source of truth for which
-    // domain baselines and specialism bundles apply — we don't guess from tool
+    // protocol baselines and specialism bundles apply — we don't guess from tool
     // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
     let profile: AgentProfile | undefined;
@@ -3303,12 +3303,14 @@ export function createMemberToolHandlers(
     const docsVersion = index?.adcp_version || 'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
-    // Build a dynamic domain example list from the local compliance cache so
-    // coaching output doesn't drift as the protocol adds domains.
-    const knownDomainIds = index?.domains.map(d => d.id.replace(/-/g, '_')) ?? [
+    // Index emits both `protocols` (new) and `domains` (transitional alias) during the
+    // @adcp/client 5.x → 6.x coordinated release. Read whichever key is present.
+    const protocolEntries: Array<{ id: string }> | undefined =
+      (index as { protocols?: Array<{ id: string }> } | undefined)?.protocols ?? index?.domains;
+    const knownProtocolIds = protocolEntries?.map(d => d.id.replace(/-/g, '_')) ?? [
       'media_buy', 'creative', 'signals', 'governance', 'brand', 'sponsored_intelligence',
     ];
-    const domainExamples = knownDomainIds.map(id => `\`${id}\``).join(', ');
+    const protocolExamples = knownProtocolIds.map(id => `\`${id}\``).join(', ');
 
     const safeAgentName = sanitizeAgentField(profile?.name, 120);
 
@@ -3321,7 +3323,7 @@ export function createMemberToolHandlers(
       output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
         const safeProbeErr = fenceAgentValue(probeError, 300);
-        output += `\`get_adcp_capabilities\` returned an agent-reported error${safeProbeErr ? ` (${safeProbeErr})` : ''}. The runner can only fall back to universal baselines (schema, error handling, capability discovery) until the agent declares its domains and specialisms.\n\n`;
+        output += `\`get_adcp_capabilities\` returned an agent-reported error${safeProbeErr ? ` (${safeProbeErr})` : ''}. The runner can only fall back to universal baselines (schema, error handling, capability discovery) until the agent declares its protocols and specialisms.\n\n`;
       } else {
         output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`. Without those, only the universal baselines (schema, errors, capability discovery) can run.\n\n`;
       }
@@ -3332,8 +3334,8 @@ export function createMemberToolHandlers(
       output += '  "specialisms": ["sales-guaranteed"]\n';
       output += '}\n';
       output += '```\n\n';
-      output += `- \`supported_protocols\`: AdCP domains the agent serves (${domainExamples}).\n`;
-      output += `- \`specialisms\`: optional; specialized claims beyond the domain baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
+      output += `- \`supported_protocols\`: AdCP protocols the agent serves (${protocolExamples}).\n`;
+      output += `- \`specialisms\`: optional; specialized claims beyond the protocol baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
       output += `Redeploy, then re-run \`recommend_storyboards\` and we'll map them to bundles.\n`;
       return output;
     }
@@ -3367,12 +3369,12 @@ export function createMemberToolHandlers(
     const nonEmpty = resolvedBundles.filter(b => b.storyboards.length > 0);
     const totalStoryboards = nonEmpty.reduce((n, b) => n + b.storyboards.length, 0);
 
-    // Verdict first. "6 domains declared, 23 checks ready. Nothing's failing
+    // Verdict first. "6 protocols declared, 23 checks ready. Nothing's failing
     // because nothing's run yet" tells the member where they stand.
     const protocolCount = supportedProtocols.length;
     const specialismCount = specialisms.length;
     const declaredPieces: string[] = [];
-    if (protocolCount > 0) declaredPieces.push(`${protocolCount} domain${protocolCount === 1 ? '' : 's'}`);
+    if (protocolCount > 0) declaredPieces.push(`${protocolCount} protocol${protocolCount === 1 ? '' : 's'}`);
     if (specialismCount > 0) declaredPieces.push(`${specialismCount} specialism${specialismCount === 1 ? '' : 's'}`);
     output += `**${declaredPieces.join(' + ')} declared. ${totalStoryboards} compliance check${totalStoryboards === 1 ? '' : 's'} ready to run** — nothing is failing yet because nothing has been run.\n\n`;
 
@@ -3383,13 +3385,15 @@ export function createMemberToolHandlers(
       output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
     }
 
-    // Group by bundle kind.
-    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], specialism: [] };
+    // Group by bundle kind. `@adcp/client@5.x` returns kind: 'domain' for protocol baselines;
+    // v6 will return 'protocol'. Accept either during transition.
+    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], protocol: [], specialism: [] };
     for (const b of nonEmpty) {
-      byKind[b.ref.kind]!.push(b);
+      (byKind[b.ref.kind] ??= []).push(b);
     }
+    const protocolBundles = [...(byKind.protocol ?? []), ...(byKind.domain ?? [])];
 
-    // Universal is the same for every agent. Collapse to one line so domain +
+    // Universal is the same for every agent. Collapse to one line so protocol +
     // specialism results are above the fold.
     if (byKind.universal.length > 0) {
       const universalStoryboards = byKind.universal.reduce((n, b) => n + b.storyboards.length, 0);
@@ -3397,8 +3401,8 @@ export function createMemberToolHandlers(
     }
 
     const sections: Array<[string, string, typeof nonEmpty]> = [
-      ['Domain baselines', 'One baseline per declared `supported_protocols` entry.', byKind.domain],
-      ['Specialisms', 'One bundle per declared specialism.', byKind.specialism],
+      ['Protocol baselines', 'One baseline per declared `supported_protocols` entry.', protocolBundles],
+      ['Specialisms', 'One bundle per declared specialism.', byKind.specialism!],
     ];
 
     for (const [title, blurb, bundles] of sections) {

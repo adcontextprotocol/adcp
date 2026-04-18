@@ -8,5 +8,10 @@
     "marketplace",
     "custom",
     "owned"
-  ]
+  ],
+  "enumDescriptions": {
+    "marketplace": "Resold third-party segments (provider authorization verifiable via the provider's adagents.json)",
+    "custom": "Agent-native segment built on demand from models, composites, or buyer inputs — not attributable to a standing upstream provider",
+    "owned": "First-party segments derived from data the signal agent directly owns (retailer purchase data, publisher behavioral data, telco data)"
+  }
 }
