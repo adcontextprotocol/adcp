@@ -1,0 +1,26 @@
+{
+  "name": "POST with ES256 algorithm (edge-runtime profile)",
+  "spec_reference": "#adcp-rfc-9421-profile (alg allowlist)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-es256-2026\";alg=\"ecdsa-p256-sha256\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:__TBD_REFERENCE_IMPL_SIGNATURE__:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": false,
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-es256-2026"],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-es256-2026\";alg=\"ecdsa-p256-sha256\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "ES256 verifies deterministically; signing produces different values depending on random-k vs RFC 6979 deterministic-k. Verify-only conformance is what the protocol requires. Signature value is a placeholder — see positive/001 comment."
+}

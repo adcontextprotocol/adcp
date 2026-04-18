@@ -1,0 +1,39 @@
+{
+  "name": "JWK for keyid has key_ops that excludes verify (cross-purpose key reuse)",
+  "spec_reference": "#verifier-checklist-requests step 7",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-gov-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": false,
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_override": {
+    "$comment": "Override the jwks_ref lookup to supply a key with key_ops that excludes 'verify' — specifically, a key marked for governance JWS signing. Verifier MUST reject because key is not scoped to request signing.",
+    "keys": [
+      {
+        "kid": "test-gov-2026",
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "use": "sig",
+        "key_ops": ["encrypt"],
+        "x": "eDJ7qnVEvPBgxYyJ-hxyZxVqH2ixjxQ8jHxCnB0VXys"
+      }
+    ]
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_key_purpose_invalid",
+    "failed_step": 7
+  }
+}

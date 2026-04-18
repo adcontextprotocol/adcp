@@ -491,6 +491,264 @@ function handleGovernanceContext(value: string, ctx) {
 
 The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue forwarding; sellers that want the accountability properties opt in by implementing the verification checklist.
 
+### Signed Requests (Transport Layer)
+
+[Signed Governance Context](#signed-governance-context) signs an authorization artifact. Request signing signs the request itself — method, target URI, headers, and optionally body bytes — establishing cryptographically that a specific agent issued the request, with replay and tampering protection. A valid signature proves only one thing: **the request came from the agent whose key signed it.** Whether that agent is *authorized* to act for the brand named in the request body is a separate concern, governed by the target house's `authorized_operator[]` in brand.json. This section defines authentication only; authorization lookup is specified by the brand.json schema and happens whether requests are signed or not.
+
+AdCP 3.0 defines this profile as **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`. AdCP 4.0 will require it for spend-committing operations. The substrate ships in 3.0 so early adopters can surface canonicalization and proxy interop bugs before enforcement. See [Transport migration timeline](#transport-migration-timeline).
+
+**Roles:**
+- **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
+- **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
+- **Sellers calling agent-side webhooks** sign their callbacks symmetrically; receiving agents verify against the seller's keys published under the seller's `adagents.json` agent entries.
+
+**Dependencies:**
+- Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden — a key used for governance signing (`typ: adcp-gov+jws`) MUST NOT also be presented as a request-signing key on the same JWKS. Per-purpose `kid` separation is the mechanism; verifiers enforce it.
+- Resolves the identity-bootstrapping dependency in [Buyer identity resolution](#buyer-identity-resolution) for governance: a seller that verifies a request signature has a cryptographically established signing agent identity and MAY use the signing agent's operator domain as the brand.json resolution input for the governance verification step.
+
+#### Transport scope
+
+| Class | 3.0 | 4.0 |
+|---|---|---|
+| Spend-committing (`create_media_buy`, `update_media_buy`, `acquire_*`, `activate_signal`) | Optional, capability-advertised | Required |
+| Reversible state changes (`sync_creatives`, `update_creative_status`) | Optional | Recommended |
+| Read / discovery (`get_products`, `get_media_buy_delivery`, `list_*`) | Not in scope | Not in scope |
+| TMP `provider_endpoint_url` requests | Out of scope (TMP has its own envelope) | Out of scope |
+
+Read calls remain bearer-authenticated. Signing read traffic adds verification cost without proportionate benefit; signing's purpose is integrity of state-changing operations.
+
+#### AdCP RFC 9421 profile
+
+This profile constrains RFC 9421 to a single canonical shape so cross-implementation interop is tractable.
+
+**Covered components (REQUIRED on every signed request):**
+
+| Component | Notes |
+|---|---|
+| `@method` | Uppercase. |
+| `@target-uri` | Canonicalized: scheme lowercased, host lowercased, default ports stripped, path RFC 3986 normalized (no `..`/`.`, no double slashes), query parameters in original order. |
+| `@authority` | Lowercased host[:port], default ports stripped. |
+| `content-type` | Required on requests with bodies. |
+| `content-digest` | Required on requests with bodies if the verifier's capability advertisement sets `covers_content_digest: true`; prohibited otherwise. See [Content-digest and proxy compatibility](#content-digest-and-proxy-compatibility). |
+
+Verifiers MUST reject signatures whose covered-component list omits any required component for the request type. Signers MUST NOT cover additional headers without coordination — extra components silently invalidate signatures across implementations that don't include them.
+
+**Signature parameters (`Signature-Input` parameters):**
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `created` | Yes | Unix seconds. Reject if more than 60 s in the future. |
+| `expires` | Yes | Unix seconds. MUST satisfy `expires − created ≤ 300` (5-minute max validity). Reject if past, with ±60 s skew tolerance. |
+| `nonce` | Yes | ≥ 128 bits of entropy, base64url-encoded. Used for replay dedup. |
+| `keyid` | Yes | Matches a `kid` in the signer's published JWKS. |
+| `alg` | Yes | MUST be `ed25519` or `ecdsa-p256-sha256`. Verifiers MUST enforce the allowlist independently of library defaults. |
+| `tag` | Yes | MUST be exactly `adcp/request-signing/v1` (byte-for-byte). The tag namespace is how the protocol versions; future versions bump the tag rather than mutating parameter semantics. |
+
+Algorithm allowlist aligns with the JWS profile (`EdDSA` / `ES256`) using RFC 9421 parameter naming. Edge-runtime rationale from the governance profile applies.
+
+#### Agent key publication
+
+Request-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry (or the `adagents.json` equivalent for seller-side agents publishing keys for webhook callbacks). Every agent that signs — of any `type` — uses the same publication pattern.
+
+Each request-signing JWK entry MUST declare:
+- `use`: `"sig"`
+- `key_ops`: `["verify"]` in the verifier-visible JWKS; publishers hold the corresponding private key locally with `["sign"]` per JWK spec.
+- `kid`: distinct from any key on the same JWKS that serves a different signing purpose.
+
+Verifiers MUST reject signatures whose `keyid` resolves to a key without `key_ops` containing `verify`, and MUST reject a request-signing `keyid` that resolves to a key also registered as a governance-signing key (`typ: adcp-gov+jws`) on the same JWKS. Cross-purpose key reuse is forbidden.
+
+**JWKS discovery for a signed request** — given a `keyid` on an incoming signature:
+
+1. The verifier has, at onboarding or via prior discovery, a mapping from the signing agent's URL to its brand.json `agents[]` entry.
+2. Fetch the agent's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of the agent's `url`) with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). Cache TTL bounded above by the revocation-list polling interval.
+3. Refetch once on `kid` miss with a 30-second cooldown before rejecting, matching the governance profile's key rotation behavior.
+
+Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a specific `agents[]` entry — anonymous signatures provide no accountability.
+
+#### Agent identity
+
+A valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent.
+
+Authorization — whether this operator is permitted to act for the brand named in the request body — is a separate protocol-level check governed by the target house's brand.json `authorized_operator[]` entries. It happens whether the request is signed or not, and is outside the scope of this profile. Verifiers MUST perform both checks; this section specifies only the first.
+
+Verifiers MUST NOT derive signer identity from request body fields (e.g., a `principal_id` in the payload). The signature → JWKS → agent entry chain is the only authoritative identity path.
+
+brand.json discovery follows one redirect (`authoritative_location`) and stops.
+
+#### Verifier checklist (requests)
+
+Before treating a request as authenticated for any operation listed in the verifier's `required_for` capability, verifiers MUST perform these checks in order, short-circuiting on the first failure. This checklist establishes agent identity only — brand-operator authorization is a separate, subsequent check governed by the target house's brand.json.
+
+1. Parse `Signature-Input` and `Signature` headers per RFC 9421 §4. Reject if malformed or missing.
+2. Reject if `tag` is not exactly `adcp/request-signing/v1`.
+3. Reject if `alg` is not in the allowlist (`ed25519`, `ecdsa-p256-sha256`). Library defaults MUST NOT be relied upon.
+4. Reject if `created` > now + 60 s, `expires` < now − 60 s, or `expires − created > 300`.
+5. Reject if covered components do not include all of: `@method`, `@target-uri`, `@authority`. If a body is present, reject if `content-type` is not covered, and if the verifier's capability sets `covers_content_digest: true`, reject if `content-digest` is not covered.
+6. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). On cache miss, refetch the JWKS once with a 30 s cooldown before rejecting. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
+7. Verify the JWK's `use` is `"sig"` and `key_ops` includes `"verify"`. Reject keys marked for any other purpose (including governance-signing keys).
+8. Compute the canonical signature base per RFC 9421 §2.5 using the covered components. Verify the signature against the JWK.
+9. If `content-digest` is covered, recompute the digest from the received body bytes and compare. Reject on mismatch.
+10. Check the nonce against the replay cache (see [Transport replay dedup](#transport-replay-dedup)). Reject if `(keyid, nonce)` has been seen within the (created, expires) window.
+11. Check the [Transport revocation](#transport-revocation) list. Reject if `keyid` ∈ `revoked_kids`.
+12. Insert `(keyid, nonce)` into the replay cache with TTL = `expires − now`.
+
+Only after all 12 checks pass does the verifier treat the request as cryptographically authenticated. Verifiers SHOULD record `verified_signer: { keyid, agent_url, verified_at }` on the request context so downstream code — including the subsequent brand-operator authorization check — can log and audit by signed agent identity.
+
+#### Content-digest and proxy compatibility
+
+Covering `content-digest` binds the request body to the signature. This protects against body tampering by intermediaries. It also breaks easily.
+
+**What invalidates a `content-digest`-covered signature in transit:**
+- CDNs that recompress request bodies (some configurations of Cloudflare, Fastly, CloudFront on POST).
+- WAFs that "sanitize" JSON (whitespace normalization, unknown field stripping, key reordering).
+- Reverse proxies that re-serialize JSON for logging or transformation.
+- HTTP/2 → HTTP/1.1 bridges that change framing in ways some implementations canonicalize differently.
+
+**3.0 default:** `covers_content_digest: false` in capability advertisement. Verifiers who require body-binding signatures opt in by setting it `true` and accepting the deployment cost (CDN/proxy configuration, end-to-end interop testing).
+
+**Recommended for 4.0:** `covers_content_digest: true` for spend-committing operations — body integrity matters most where the body specifies money.
+
+**Signer guidance:** if signing for a verifier that advertises `covers_content_digest: true`, validate with a `POST` echo against a test endpoint before sending real traffic. Mismatches between sent and received body bytes are the single biggest source of 9421 interop bugs in production.
+
+#### Transport replay dedup
+
+Step 10 of the [verifier checklist](#verifier-checklist-requests) requires per-`(keyid, nonce)` deduplication. Unbounded sets are a memory and DoS risk.
+
+- TTL on each entry = `expires − now` (typically ≤ 300 s).
+- In-memory LRU keyed on `(keyid, nonce)` with TTL eviction, sized to expected request rate × max signature validity.
+- Above ~10K req/s per signer: Redis `SETNX` with `EX = remaining_validity_seconds`.
+- Distributed verifiers (multi-region): per-region replay cache is acceptable. The only attack this enables is a single replay within (expires − now) across regions, bounded by 5 min and only effective if the attacker controls intermediate routing.
+
+Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)` value as the replay key — those produce false positives that reject legitimate agent traffic.
+
+#### Transport revocation
+
+Operators SHOULD serve a single combined revocation list at the brand.json origin covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
+
+- `revoked_kids` invalidates every request ever signed under that `kid` (before or after the revocation timestamp).
+- `revoked_jtis` is not used (request signatures don't have a `jti`; nonce uniqueness is per-key).
+
+Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 15 min). The fetch-failure safe-default applies: verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations until the list is refreshed.
+
+#### Transport capability advertisement
+
+Verifiers advertise signing support and per-call requirements via the `request_signing` block on `get_adcp_capabilities`:
+
+```json
+{
+  "request_signing": {
+    "supported": true,
+    "covers_content_digest": false,
+    "required_for": [],
+    "supported_for": [
+      "create_media_buy",
+      "update_media_buy",
+      "sync_creatives",
+      "activate_signal"
+    ]
+  }
+}
+```
+
+- `supported`: when true, the verifier validates signatures when present. When false or absent, signatures are ignored.
+- `covers_content_digest`: when true, signers MUST cover `content-digest`; when false, they MUST NOT cover it.
+- `required_for`: operations for which unsigned requests are rejected. Empty in 3.0 by default. Signers MUST sign any listed operation.
+- `supported_for`: operations for which signatures are verified when present but not required. Signers SHOULD sign these.
+
+In 3.0, verifiers ship with `required_for: []` and populate it selectively (per-counterparty pilot, per-operation rollout). In 4.0 the protocol normatively requires `required_for` to include all spend-committing operations the verifier supports.
+
+#### Transport error taxonomy
+
+Stable codes returned in `WWW-Authenticate: Signature error="<code>"` on 401, and surfaced by SDK verifiers as typed errors. Naming pattern matches the [governance taxonomy](#verification-error-taxonomy) so SDK error handling is symmetric.
+
+| Failure | Retry? | Code |
+|---|---|---|
+| `Signature` or `Signature-Input` header malformed or missing | No | `request_signature_header_malformed` |
+| `tag` not `adcp/request-signing/v1` | No | `request_signature_tag_invalid` |
+| `alg` not in allowlist | No | `request_signature_alg_not_allowed` |
+| Signature window invalid (skew, expired, > 5 min validity) | No | `request_signature_window_invalid` |
+| Required covered components missing | No | `request_signature_components_incomplete` |
+| `keyid` not in signer JWKS after one refetch | No | `request_signature_key_unknown` |
+| JWK `key_ops` lacks `verify`, or `kid` is scoped to another signing purpose | No | `request_signature_key_purpose_invalid` |
+| Cryptographic verification failed | No | `request_signature_invalid` |
+| `content-digest` mismatch | No | `request_signature_digest_mismatch` |
+| Nonce already seen within window | No | `request_signature_replayed` |
+| `keyid` ∈ `revoked_kids` | No | `request_signature_key_revoked` |
+| Revocation list not refreshed within grace | No (block new) | `request_signature_revocation_stale` |
+| JWKS fetch transient failure | Yes (with backoff) | `request_signature_jwks_unavailable` |
+| JWKS fetch fails SSRF validation | No | `request_signature_jwks_untrusted` |
+
+Servers MUST NOT echo internal verification details beyond the stable code; log the detail server-side.
+
+#### TMP cross-reference
+
+Trusted Match Protocol signs match-time requests with its own Ed25519 envelope. TMP's per-request budget (sample-verify at ~5%) is too tight for full RFC 9421 verification on every call. **TMP signing is out of scope for this section.**
+
+TMP signing keys SHOULD be published at the TMP provider's `agents[]` entry `jwks_uri` with distinct `kid` and `key_ops: ["verify"]`. One publication pattern, three signing systems (governance JWS, request-signing 9421, TMP envelope), each with its own `kid`-scoped key entry. This keeps operator key management uniform without forcing cross-purpose key reuse.
+
+#### Transport migration timeline
+
+| Phase | Status | Behavior |
+|---|---|---|
+| 3.0 GA | Optional, capability-advertised | Verifiers MAY validate; `required_for: []` by default. Signers MAY sign. |
+| 3.x | Reference SDKs ship | Conformance test vectors at `static/test-vectors/request-signing/`. Early adopters opt in via per-counterparty `required_for` pilots. |
+| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and any spend-committing operation the verifier supports. Signers MUST sign. |
+
+Implementations that ship signing in 3.x SHOULD enable verifier-side `required_for` selectively (per-counterparty pilot, then broader rollout) before 4.0 to validate end-to-end paths against real traffic — this is what makes the 4.0 transition feasible without ecosystem-wide breakage.
+
+#### Request verifier reference (TypeScript, ~40 lines)
+
+```ts
+import { createRemoteJWKSet } from "jose";
+
+class RequestSignatureError extends Error {
+  constructor(public code: string) { super(code); }
+}
+
+const ALLOWED_ALGS = new Set(["ed25519", "ecdsa-p256-sha256"]);
+const REQUIRED_TAG = "adcp/request-signing/v1";
+const REQUIRED_COMPONENTS = new Set(["@method", "@target-uri", "@authority"]);
+
+export async function verifyAdcpRequestSignature(req: Request, ctx: {
+  resolveJwks: (keyid: string) => Promise<{ jwks: ReturnType<typeof createRemoteJWKSet>, agentUrl: string }>;
+  isReplayed: (keyid: string, nonce: string, ttlSeconds: number) => Promise<boolean>;
+  isKeyRevoked: (keyid: string) => Promise<boolean>;
+  coversContentDigest: boolean;
+  verify9421: (req: Request, jwk: unknown, covered: string[]) => Promise<void>;
+}) {
+  const sigInput = req.headers.get("signature-input");
+  if (!sigInput) throw new RequestSignatureError("request_signature_header_malformed");
+
+  const parsed = parseSignatureInput(sigInput); // { keyid, alg, created, expires, nonce, tag, components }
+  if (parsed.tag !== REQUIRED_TAG) throw new RequestSignatureError("request_signature_tag_invalid");
+  if (!ALLOWED_ALGS.has(parsed.alg)) throw new RequestSignatureError("request_signature_alg_not_allowed");
+
+  const now = Math.floor(Date.now() / 1000);
+  if (parsed.created > now + 60 || parsed.expires < now - 60 || parsed.expires - parsed.created > 300) {
+    throw new RequestSignatureError("request_signature_window_invalid");
+  }
+
+  for (const c of REQUIRED_COMPONENTS) {
+    if (!parsed.components.includes(c)) throw new RequestSignatureError("request_signature_components_incomplete");
+  }
+  if (req.body && ctx.coversContentDigest && !parsed.components.includes("content-digest")) {
+    throw new RequestSignatureError("request_signature_components_incomplete");
+  }
+
+  const { jwks } = await ctx.resolveJwks(parsed.keyid); // throws _key_unknown on miss after refetch
+
+  if (await ctx.isKeyRevoked(parsed.keyid)) throw new RequestSignatureError("request_signature_key_revoked");
+
+  await ctx.verify9421(req, await jwks(parsed), parsed.components); // throws on signature or digest failure
+
+  if (await ctx.isReplayed(parsed.keyid, parsed.nonce, parsed.expires - now)) {
+    throw new RequestSignatureError("request_signature_replayed");
+  }
+}
+```
+
+The 9421 library call and `parseSignatureInput` implementation are illustrative; implementations should pin a specific RFC 9421 library version that has been validated against the AdCP conformance test vectors at `static/test-vectors/request-signing/`.
+
 ### Budget Validation
 
 Validate budgets before committing:

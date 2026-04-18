@@ -592,7 +592,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs — for governance agents, the signed governance_context token. When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header; JWKS MAY contain multiple keys to support rotation."
+          "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs or requests it sends. Verified artifacts include signed governance_context tokens (for governance agents) and RFC 9421 HTTP Signatures on outgoing requests (for any agent). When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header or RFC 9421 `keyid` parameter; JWKS MAY contain multiple keys to support rotation and per-purpose separation via `key_ops` and `use`."
         },
         "scope": {
           "type": "array",

@@ -1,0 +1,26 @@
+{
+  "name": "Basic POST, Ed25519, no content-digest coverage",
+  "spec_reference": "#verifier-checklist-requests (all steps pass)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:__TBD_REFERENCE_IMPL_SIGNATURE__:"
+    },
+    "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": false,
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "Signature value is a placeholder. The reference implementation in @adcp/client produces the canonical signature over expected_signature_base using the Ed25519 private key in keys.json and replaces the __TBD_REFERENCE_IMPL_SIGNATURE__ token. Verifiers that implement RFC 9421 canonicalization correctly will reject the current placeholder but accept the generated signature."
+}
