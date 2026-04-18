@@ -15,6 +15,10 @@
       "type": "string",
       "description": "ID of the property list to retrieve"
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts and the list_id is not globally unique within that scope; optional otherwise."
+    },
     "resolve": {
       "type": "boolean",
       "description": "Whether to apply filters and return resolved identifiers (default: true)",

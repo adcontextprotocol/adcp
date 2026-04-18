@@ -7,6 +7,7 @@
   "enum": [
     "audience-sync",
     "brand-rights",
+    "collection-lists",
     "content-standards",
     "creative-ad-server",
     "creative-generative",
@@ -31,6 +32,7 @@
   "enumDescriptions": {
     "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
     "brand-rights": "Brand identity and rights licensing (talent, music, stock media)",
+    "collection-lists": "Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety",
     "content-standards": "Content standards enforcement (brand safety, policy compliance)",
     "creative-ad-server": "Creative ad server with tag-based delivery",
     "creative-generative": "Generative creative agent producing assets on demand",

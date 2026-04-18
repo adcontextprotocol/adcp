@@ -105,6 +105,10 @@ phases:
           - Status: active
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           brand:
             domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
@@ -162,7 +166,10 @@ phases:
           - Includes both inclusion and exclusion lists
 
         sample_request:
-          principal: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           name_contains: "Acme Outdoor"
 
           context:
@@ -196,8 +203,10 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
 
           context:
             correlation_id: "property_lists--get_property_list"
@@ -236,8 +245,10 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           base_properties:
             - selection_type: "identifiers"
               identifiers:
@@ -288,8 +299,10 @@ phases:
           - Violations with details (property, list, severity)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -347,8 +360,10 @@ phases:
           - No failed or warning features
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -389,8 +404,10 @@ phases:
           - feature entry references the inclusion list that was breached (via policy_id or code)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
@@ -432,8 +449,10 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
 
           context:
             correlation_id: "property_lists--delete_property_list"

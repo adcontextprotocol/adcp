@@ -17,9 +17,9 @@
       "type": "string",
       "description": "Description of the list's purpose"
     },
-    "principal": {
-      "type": "string",
-      "description": "Principal identity that owns this list"
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns this list. Returned as account_id form (seller-assigned identifier)."
     },
     "base_collections": {
       "type": "array",

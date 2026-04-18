@@ -11,6 +11,10 @@
       "minimum": 1,
       "maximum": 99
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that will own the list. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. When omitted, the seller assigns the list to the agent's default account if exactly one is accessible; otherwise returns an error."
+    },
     "name": {
       "type": "string",
       "description": "Human-readable name for the list"

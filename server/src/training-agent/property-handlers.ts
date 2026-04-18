@@ -7,8 +7,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { TrainingContext, ToolArgs, PropertyListState } from './types.js';
+import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from './types.js';
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
+import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -23,12 +24,13 @@ export const PROPERTY_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: ACCOUNT_REF_SCHEMA,
         name: { type: 'string', description: 'Human-readable name for the list' },
         description: { type: 'string', description: 'Description of the list purpose' },
         list_type: { type: 'string', enum: ['inclusion', 'exclusion'], description: 'Type of property list' },
         base_properties: { type: 'array', description: 'Property sources to include' },
         filters: { type: 'object', description: 'Dynamic filters for list resolution' },
-        brand: { type: 'object', description: 'Brand reference for automatic rule application' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for automatic rule application (campaign metadata, not identity)' },
         idempotency_key: { type: 'string' },
       },
       required: ['name'],
@@ -36,12 +38,13 @@ export const PROPERTY_TOOLS = [
   },
   {
     name: 'list_property_lists',
-    description: 'List all property lists for the current account. Returns list metadata without resolved properties.',
+    description: 'List property lists owned by the given account (or all accessible accounts when account is omitted).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: ACCOUNT_REF_SCHEMA,
         name_contains: { type: 'string', description: 'Filter to lists whose name contains this string' },
       },
     },
@@ -55,6 +58,8 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        account: ACCOUNT_REF_SCHEMA,
+        resolve: { type: 'boolean', description: 'When true, return the resolved properties alongside list metadata' },
       },
       required: ['list_id'],
     },
@@ -68,11 +73,12 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        account: ACCOUNT_REF_SCHEMA,
         name: { type: 'string', description: 'New name for the list' },
         description: { type: 'string', description: 'New description' },
         base_properties: { type: 'array', description: 'Complete replacement for the base properties list' },
         filters: { type: 'object', description: 'Complete replacement for the filters' },
-        brand: { type: 'object', description: 'Update brand reference' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Update brand reference (campaign metadata)' },
       },
       required: ['list_id'],
     },
@@ -86,6 +92,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list identifier' },
+        account: ACCOUNT_REF_SCHEMA,
       },
       required: ['list_id'],
     },
@@ -99,7 +106,7 @@ export const PROPERTY_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string', description: 'Property list to validate against' },
-        brand: { type: 'object', description: 'Brand reference' },
+        account: ACCOUNT_REF_SCHEMA,
         records: {
           type: 'array',
           description: 'Delivery records to validate. Each record has an identifier ({type, value}) and impressions.',
@@ -127,7 +134,7 @@ function toListResponse(state: PropertyListState) {
     name: state.name,
     ...(state.description ? { description: state.description } : {}),
     ...(state.listType ? { list_type: state.listType } : {}),
-    ...(state.principal ? { principal: state.principal } : {}),
+    ...(state.account ? { account: state.account } : {}),
     ...(state.baseProperties.length > 0 ? { base_properties: state.baseProperties } : {}),
     ...(state.filters ? { filters: state.filters } : {}),
     ...(state.brand ? { brand: state.brand } : {}),
@@ -185,6 +192,7 @@ export async function handleCreatePropertyList(
     name: req.name,
     description: req.description,
     listType: req.list_type,
+    account: args.account,
     baseProperties,
     filters: req.filters,
     brand: req.brand,

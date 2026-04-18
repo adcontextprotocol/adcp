@@ -32,7 +32,7 @@ Collection lists are **setup-time resources**. They are resolved once by the gov
 | `create_collection_list` | Create a new collection list | Seconds |
 | `get_collection_list` | Fetch list with resolved collections | Seconds (cached) |
 | `update_collection_list` | Modify base collections or filters | Seconds |
-| `list_collection_lists` | List collection lists for a principal | Seconds |
+| `list_collection_lists` | List collection lists for an account | Seconds |
 | `delete_collection_list` | Remove a collection list | Seconds |
 
 ## Base collection sources
@@ -247,12 +247,12 @@ Modify an existing collection list. `base_collections` and `filters` are complet
 
 ## list_collection_lists
 
-List collection lists for a principal. Returns metadata only, not resolved collections.
+List collection lists for an account. Returns metadata only, not resolved collections.
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/collection/list-collection-lists-request.json",
-  "principal": "ops@pinnacleagency.com",
+  "account": { "brand": { "domain": "novamotors.com" }, "operator": "pinnacleagency.com" },
   "pagination": { "max_results": 50 }
 }
 ```
@@ -335,7 +335,7 @@ Collection lists gate delivery decisions, so the `auth_token` and webhook callba
 
 **Webhook signature algorithm.** The webhook signature MUST follow the [standard webhook signing rules](/docs/building/implementation/security#webhook-security): HMAC-SHA256 over `{unix_timestamp}.{raw_http_body_bytes}` where `{unix_timestamp}` is the exact ASCII integer in the `X-ADCP-Timestamp` header (never derived from body fields), transmitted as `X-ADCP-Signature: sha256=<hex digest>`, verified with timing-safe comparison, and rejected when outside the 5-minute replay window. The body `signature` field is a convenience copy — recipients MUST verify against the headers and MUST NOT trust the body value.
 
-**Distribution-ID inputs.** Governance agents SHOULD validate identifier format before persisting (IMDb: `^tt\d+$`, EIDR: `10.5240/...`, Gracenote: vendor-prefixed) and SHOULD enforce per-principal rate limits on list mutations to prevent list-bloat DoS. Surface unresolved identifiers in `coverage_gaps` rather than silently dropping them.
+**Distribution-ID inputs.** Governance agents SHOULD validate identifier format before persisting (IMDb: `^tt\d+$`, EIDR: `10.5240/...`, Gracenote: vendor-prefixed) and SHOULD enforce per-account rate limits on list mutations to prevent list-bloat DoS. Surface unresolved identifiers in `coverage_gaps` rather than silently dropping them.
 
 ## Sharing collection lists with sellers
 

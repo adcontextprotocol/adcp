@@ -75,7 +75,7 @@ A property list contains:
   "list_id": "uk_premium_news_q1",
   "name": "UK Premium News Sites Q1 2026",
   "description": "High-quality UK news sites for Q1 campaign",
-  "principal": "did:principal:brand-x",
+  "account": { "account_id": "acc_brand_x_direct_01" },
   "base_properties": [
     {
       "selection_type": "publisher_tags",
@@ -321,7 +321,7 @@ Create a new property list.
     "list_id": "pl_abc123",
     "name": "UK Premium News Q1",
     "description": "High-quality UK news sites for Q1 campaign",
-    "principal": "did:principal:brand-x",
+    "account": { "account_id": "acc_brand_x_direct_01" },
     "base_properties": [
       {
         "selection_type": "publisher_tags",
@@ -535,7 +535,7 @@ The `auth_token` is only returned when the list is created via `create_property_
 
 ## list_property_lists
 
-List all property lists accessible to the authenticated principal.
+List property lists owned by a given account, or all property lists accessible to the authenticated agent when `account` is omitted.
 
 ### Request
 
@@ -658,7 +658,7 @@ Pass property lists to media buy creation:
 | Code | Description |
 |------|-------------|
 | `LIST_NOT_FOUND` | Property list ID doesn't exist |
-| `LIST_ACCESS_DENIED` | Principal doesn't have access to this list |
+| `LIST_ACCESS_DENIED` | The authenticated agent or account doesn't have access to this list |
 | `INVALID_FILTER` | Filter configuration is invalid |
 | `LIST_NAME_EXISTS` | A list with this name already exists |
 
