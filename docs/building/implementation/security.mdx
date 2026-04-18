@@ -500,7 +500,7 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 **Roles:**
 - **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
 - **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
-- **Sellers calling agent-side webhooks** sign their callbacks symmetrically; receiving agents verify against the seller's keys published under the seller's `adagents.json` agent entries.
+- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller's `adagents.json` agent entries. This applies only to seller→agent AdCP protocol calls. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) continue to use the HMAC-SHA256 scheme in [Webhook Security](#webhook-security) above and are out of scope for this profile.
 
 **Dependencies:**
 - Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
@@ -574,12 +574,21 @@ Verifiers MUST reject signatures whose covered-component list omits any required
 |---|---|
 | `created` | Unix seconds. Reject if more than 60 s in the future. |
 | `expires` | Unix seconds. MUST satisfy `expires > created` and `expires − created ≤ 300` (5-minute max validity). Reject if past, with ±60 s skew tolerance. |
-| `nonce` | ≥ 128 bits of entropy, base64url-encoded. Used for replay dedup. |
+| `nonce` | Base64url-encoded, unpadded (no trailing `=`). Verifiers MUST reject if the decoded byte length is less than 16 bytes, or if the value includes padding. This is how the "≥ 128 bits of entropy" requirement is enforced in practice. |
 | `keyid` | Matches a `kid` in the signer's published JWKS. |
 | `alg` | MUST be `ed25519` or `ecdsa-p256-sha256`. Verifiers MUST enforce the allowlist independently of library defaults. |
-| `tag` | MUST be exactly `adcp/request-signing/v1` (byte-for-byte). The tag namespace is how the profile versions; future versions bump the tag rather than mutating parameter semantics. |
+| `tag` | MUST be exactly `adcp/request-signing/v1` — byte-for-byte match, no prefix matching, no case-folding. The `tag` sig-param MUST appear exactly once in `Signature-Input`; verifiers MUST reject duplicates. The tag namespace is how the profile versions; future versions bump the tag rather than mutating parameter semantics, and `adcp/request-signing/v2` verifiers will reject `v1` signatures and vice versa. |
 
-All six parameters are REQUIRED. Verifiers MUST reject (`request_signature_params_incomplete`) if any is absent. Algorithm allowlist aligns with the JWS profile (`EdDSA` / `ES256`) using RFC 9421 parameter naming. Edge-runtime rationale from the governance profile applies.
+All six parameters are REQUIRED. Verifiers MUST reject (`request_signature_params_incomplete`) if any is absent.
+
+**Algorithm naming — JWK vs RFC 9421.** The two names for each algorithm differ by source spec. Implementations mix these up often enough to warrant a table:
+
+| Algorithm | JWK `alg` (in JWKS) | RFC 9421 `alg` (in `Signature-Input`) |
+|---|---|---|
+| Ed25519 | `EdDSA` | `ed25519` |
+| ECDSA P-256 with SHA-256 | `ES256` | `ecdsa-p256-sha256` |
+
+When the verifier resolves a `keyid` and finds `"alg": "EdDSA"` on the JWK, the matching sig-param value is `ed25519`. Implementations should validate that the two match (JWK alg matches the sig-param alg by mapping table) in addition to verifying the allowlist on each independently. Edge-runtime rationale from the governance profile applies — `ES256` is the edge-friendly alternative where `EdDSA` requires runtime configuration.
 
 **One signature per request.** Verifiers MUST process exactly one `Signature-Input` label (conventionally `sig1`) and MUST ignore any additional labels present in the request. Intermediaries that need to re-sign a relayed request MUST replace the upstream labels rather than append to them. Full relay-chaining semantics (when a relay wants to preserve the originator's signature) are tracked in [#2324](https://github.com/adcontextprotocol/adcp/issues/2324) and out of scope for 3.0.
 
@@ -666,6 +675,8 @@ Covering `content-digest` binds the request body bytes to the signature. For spe
 
 Verifiers that genuinely cannot preserve body bytes due to legacy infrastructure MAY advertise `covers_content_digest: "forbidden"`; this is an opt-out for the narrow case where the infrastructure cannot be fixed. `"required"` is recommended for all spend-committing operations. `"either"` is the default — signers choose per-request, and the verifier accepts both covered and uncovered forms.
 
+**`"required"` is strict.** When a verifier advertises `covers_content_digest: "required"`, a signed request with a body that does not cover `content-digest` is a hard reject with `request_signature_components_incomplete`. Verifiers MUST NOT accept it as a "soft" signed-but-body-unbound request; there is no soft mode. Signers that don't want to cover `content-digest` for a given call MUST route to a verifier whose policy is `"either"` or `"forbidden"`, or not sign the call at all.
+
 #### Transport replay dedup
 
 Step 12 of the [verifier checklist](#verifier-checklist-requests) requires per-`(keyid, nonce)` deduplication. Unbounded sets are a memory and DoS risk.
@@ -742,6 +753,8 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 **`WWW-Authenticate` format.** AdCP does NOT define a realm value for request-signing challenges. Verifiers MUST emit `WWW-Authenticate: Signature error="<code>"` with no `realm` parameter and no other parameters. Clients parsing the header MUST tolerate other parameters (RFC 7235 permits implementations to include extras) but SHOULD NOT depend on them.
 
 #### TMP cross-reference
+
+**Webhooks are out of scope for this profile.** Server→client webhook callbacks (push-notification POSTs to the `push_notification_config.url` a buyer registers, and similar seller-initiated callbacks) continue to use the HMAC-SHA256 scheme defined in [Webhook Security](#webhook-security) above. That profile's 32-byte shared secret, timestamp-bound signing, and replay-window enforcement are adequate for the one-way asynchronous notification case. Do not apply this RFC 9421 profile to webhook callbacks; it would add complexity (JWKS discovery, revocation, replay dedup on signer-chosen nonces) without addressing a threat the HMAC scheme doesn't already cover.
 
 **TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing keys is permitted and encouraged — one publication pattern, three signing systems (governance JWS `adcp_use: "governance-signing"`, request-signing 9421 `adcp_use: "request-signing"`, TMP envelope with its own future `adcp_use` value), each `kid`-scoped. Cross-purpose reuse is prevented automatically because step 8 rejects any `adcp_use` that isn't `"request-signing"`.
 
