@@ -786,9 +786,17 @@
           },
           "default": []
         },
+        "warn_for": {
+          "type": "array",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
         "supported_for": {
           "type": "array",
-          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for.",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for and warn_for.",
           "items": {
             "type": "string"
           }

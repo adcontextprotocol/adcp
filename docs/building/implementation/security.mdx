@@ -528,7 +528,7 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 2. Export the public key as a JWK. Add `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"`.
 3. Publish the JWK at your agent's `jwks_uri` (the URL declared on your `agents[]` entry in brand.json; defaults to `/.well-known/jwks.json` at your agent URL's origin).
 4. Configure your AdCP client with the private key and agent URL. Your SDK signs requests automatically for any operation listed in the seller's `supported_for` or `required_for` capability, honoring the seller's `covers_content_digest` policy.
-5. Validate end-to-end with the conformance vectors at `static/test-vectors/request-signing/` — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
+5. Validate end-to-end with the conformance vectors at [`/test-vectors/request-signing/`](https://adcontextprotocol.org/test-vectors/request-signing/) (also in the repo at `static/test-vectors/request-signing/`) — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
 
 **As a verifier (seller):**
 
@@ -688,6 +688,8 @@ Step 12 of the [verifier checklist](#verifier-checklist-requests) requires per-`
 
 Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)` value as the replay key — those produce false positives that reject legitimate agent traffic.
 
+**Per-keyid cap.** To prevent an abusive or compromised signer from exhausting verifier memory with unique nonces, verifiers MUST enforce a per-keyid entry cap on the replay cache. Recommended ceiling: 1,000,000 entries per `keyid`. On cap exceeded, verifiers MUST reject new signatures from that `keyid` with `request_signature_rate_abuse` — NOT silently evict — and SHOULD alert operators, because hitting the cap indicates either a compromised key or a grossly misconfigured signer. Silent eviction is the dangerous mode: it creates replay windows exactly when the verifier is under attack. The per-keyid cap is distinct from the total cache ceiling; a verifier may legitimately hit its total ceiling via many well-behaved signers, but per-keyid exhaustion is unambiguously an attack signal.
+
 #### Transport revocation
 
 Operators SHOULD serve a single combined revocation list at the brand.json origin covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
@@ -707,6 +709,7 @@ Verifiers advertise signing support and per-call requirements via the `request_s
     "supported": true,
     "covers_content_digest": "either",
     "required_for": [],
+    "warn_for": ["create_media_buy"],
     "supported_for": [
       "create_media_buy",
       "update_media_buy",
@@ -720,9 +723,15 @@ Verifiers advertise signing support and per-call requirements via the `request_s
 - `supported`: when true, the verifier validates signatures when present. When false or absent, signatures are ignored.
 - `covers_content_digest`: one of `"required"`, `"forbidden"`, or `"either"` (default). `"required"`: signers MUST cover `content-digest`; unsigned-body signatures are rejected. `"forbidden"`: signers MUST NOT cover `content-digest`; body-bound signatures are rejected. `"either"`: signer chooses; verifier accepts both.
 - `required_for`: AdCP protocol operation names (not transport-specific) for which unsigned requests are rejected with `request_signature_required`. Empty in 3.0 by default. Signers MUST sign any listed operation.
-- `supported_for`: operations for which signatures are verified when present but not required. Signers SHOULD sign these. Typically a superset of `required_for`.
+- `warn_for`: operations for which the verifier verifies signatures when present, logs failures in monitoring, but **does NOT reject**. Used as a shadow-mode bridge from `supported_for` to `required_for`. Enables per-counterparty pilots where the seller watches real-traffic failure rates before enforcing. Precedence: `required_for > warn_for > supported_for`. Signers SHOULD sign operations in `warn_for`; verifiers MUST NOT reject unsigned or failed-verify requests to these operations.
+- `supported_for`: operations for which signatures are verified when present but not required. Signers SHOULD sign these. Typically a superset of `required_for` and `warn_for`.
 
-In 3.0, verifiers ship with `required_for: []` and populate it selectively (per-counterparty pilot, per-operation rollout). In 4.0 the protocol normatively requires `required_for` to include all spend-committing operations the verifier supports, and `covers_content_digest: "required"` is recommended for those operations.
+**Rollout pattern:**
+1. Announce signing readiness: add the operation to `supported_for`. Counterparties can begin signing but nothing changes if they don't.
+2. Promote to shadow mode: move the operation to `warn_for`. The verifier logs verification failures; traffic is unaffected. Operators monitor the failure rate and debug.
+3. Enforce: when the failure rate drops below the operator's threshold, move to `required_for`. Unsigned or invalid-signature requests to that operation are now rejected.
+
+In 3.0, verifiers ship with `required_for: []` and populate it selectively. `warn_for` is the recommended pre-production stop before flipping to enforce. In 4.0 the protocol normatively requires `required_for` to include all spend-committing operations the verifier supports, and `covers_content_digest: "required"` is recommended for those operations.
 
 #### Transport error taxonomy
 
@@ -745,6 +754,7 @@ Stable codes returned in `WWW-Authenticate: Signature error="<code>"` on 401, an
 | Cryptographic verification failed | No | `request_signature_invalid` |
 | `content-digest` mismatch with recomputed digest | No | `request_signature_digest_mismatch` |
 | Nonce already seen within window | No | `request_signature_replayed` |
+| Per-keyid replay cache exceeded its entry cap | No (block new) | `request_signature_rate_abuse` |
 | JWKS fetch transient failure | Yes (with backoff) | `request_signature_jwks_unavailable` |
 | JWKS fetch fails SSRF validation | No | `request_signature_jwks_untrusted` |
 
@@ -774,7 +784,7 @@ Implementations that ship signing in 3.x SHOULD enable verifier-side `required_f
 
 #### Request verifier reference (TypeScript)
 
-Illustrative only. The `verify9421` and `parseSignatureInput` callbacks encapsulate protocol-specific canonicalization and signature verification; implementations should pin a specific RFC 9421 library that has been validated against the AdCP conformance test vectors at `static/test-vectors/request-signing/`.
+Illustrative only. The `verify9421` and `parseSignatureInput` callbacks encapsulate protocol-specific canonicalization and signature verification; implementations should pin a specific RFC 9421 library that has been validated against the AdCP conformance test vectors at [`/test-vectors/request-signing/`](https://adcontextprotocol.org/test-vectors/request-signing/).
 
 ```ts
 import { createRemoteJWKSet } from "jose";

@@ -8,7 +8,7 @@
     "headers": {
       "Content-Type": "application/json",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-es256-2026\";alg=\"ecdsa-p256-sha256\";tag=\"adcp/request-signing/v1\"",
-      "Signature": "sig1=:p4OPCDAyLBtJVEa3oPr4A9TiXEaE9WEPUwZAyqOpcL5bKC7wnS3eb-md7_rfjUUO5x4ACGxU_xmlJW3lRAiCoQ:"
+      "Signature": "sig1=:iROVe9SPqEARfTlnbJsJYdg6Mv7WPr7fWD05rZ31H3o1Nprm-n181yGQpixU9EvgDnAUO3f-9FVpttLxDoRGxA:"
     },
     "body": "{\"plan_id\":\"plan_001\"}"
   },

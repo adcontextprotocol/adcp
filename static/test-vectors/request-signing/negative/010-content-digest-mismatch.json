@@ -9,7 +9,7 @@
       "Content-Type": "application/json",
       "Content-Digest": "sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
-      "Signature": "sig1=:6yRcrIrgGSCBmzyyzuIEACzZNDXqGhmPnN89x94ezUjoICjPsqX8mbLn9LrNGyWinCkZgEeZhruDyigMvFC4Bw:"
+      "Signature": "sig1=:2p3oUaH5wK2ORtjDicHj69JEe6MDkrDUha0gIp8lw9qG2W1dQHSDvU4NkAwSeIIf8ieLaPGlE7X_yGu9enllAQ:"
     },
     "body": "{\"plan_id\":\"plan_001\"}"
   },

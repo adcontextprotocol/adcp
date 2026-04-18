@@ -4,6 +4,8 @@ Test vectors for the AdCP RFC 9421 request-signing profile. These fixtures drive
 
 Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer) in `docs/building/implementation/security.mdx`.
 
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/test-vectors/request-signing/` (tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable). SDKs SHOULD fetch from the CDN path rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/test-vectors/request-signing/positive/001-basic-post.json`.
+
 ## Scope
 
 These vectors exercise the [verifier checklist](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-requests) and the RFC 9421 profile constraints: covered components, signature parameters, tag namespace, alg allowlist, `adcp_use` key-purpose discriminator, replay dedup, revocation, and content-digest semantics. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
@@ -33,11 +35,17 @@ test-vectors/request-signing/
 │   ├── 016-replayed-nonce.json           → request_signature_replayed (step 12; requires test_harness_state preload)
 │   ├── 017-key-revoked.json              → request_signature_key_revoked (step 9; requires test_harness_state preload)
 │   ├── 018-digest-covered-when-forbidden.json → request_signature_components_unexpected (step 6; policy 'forbidden')
-│   └── 019-signature-without-signature-input.json → request_signature_header_malformed (pre-check; downgrade loophole)
+│   ├── 019-signature-without-signature-input.json → request_signature_header_malformed (pre-check; downgrade loophole)
+│   └── 020-rate-abuse.json               → request_signature_rate_abuse (step 12 cap; abuse signal)
 └── positive/                             vectors that MUST verify successfully
-    ├── 001-basic-post.json               Ed25519, no content-digest
-    ├── 002-post-with-content-digest.json Ed25519, content-digest covered
-    └── 003-es256-post.json               ES256, no content-digest
+    ├── 001-basic-post.json                   Ed25519, no content-digest
+    ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
+    ├── 003-es256-post.json                   ES256, no content-digest
+    ├── 004-multiple-signature-labels.json    Two Signature-Input labels; verifier processes sig1 only
+    ├── 005-default-port-stripped.json        URL has :443; canonical strips it
+    ├── 006-dot-segment-path.json             Path has /./; canonical collapses it
+    ├── 007-query-byte-preserved.json         Query b=2&a=1&c=3 — preserved, not alphabetized
+    └── 008-percent-encoded-path.json         Path has lowercase %xx; canonical uppercases
 ```
 
 ## Vector format
