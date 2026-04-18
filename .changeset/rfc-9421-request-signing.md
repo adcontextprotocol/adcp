@@ -19,7 +19,7 @@ Define the AdCP RFC 9421 request-signing profile — transport-layer request aut
 - **TMP out of scope** for per-request 9421 verification (budget is too tight); TMP keys publish on the same `jwks_uri` path with distinct `kid` and `key_ops: ["verify"]`.
 - **Reference verifier**: ~40-line TypeScript implementation in `security.mdx` using `jose` for JWKS handling and a pluggable 9421 library.
 
-**Conformance**: `static/test-vectors/request-signing/` ships 10 negative vectors (each failure mode of the verifier checklist) and 3 positive vectors (basic Ed25519 POST, Ed25519 POST with content-digest covered, ES256 POST for edge-runtime profile). The README documents the fixture format and the generation process for positive-vector signatures.
+**Conformance**: `static/compliance/source/test-vectors/request-signing/` (published per AdCP version at `/compliance/{version}/test-vectors/request-signing/`) ships 21 negative + 8 positive vectors spanning every checklist step, every canonicalization-edge rule in the profile, replay/revocation state, the multiple-signature-label relay boundary, and a per-keyid rate-abuse case. The README documents the fixture format and the generation process for positive-vector signatures.
 
 **Schema changes**:
 

@@ -528,7 +528,7 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 2. Export the public key as a JWK. Add `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"`.
 3. Publish the JWK at your agent's `jwks_uri` (the URL declared on your `agents[]` entry in brand.json; defaults to `/.well-known/jwks.json` at your agent URL's origin).
 4. Configure your AdCP client with the private key and agent URL. Your SDK signs requests automatically for any operation listed in the seller's `supported_for` or `required_for` capability, honoring the seller's `covers_content_digest` policy.
-5. Validate end-to-end with the conformance vectors at [`/test-vectors/request-signing/`](https://adcontextprotocol.org/test-vectors/request-signing/) (also in the repo at `static/test-vectors/request-signing/`) — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
+5. Validate end-to-end with the conformance vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/) (published per AdCP version; source lives at `static/compliance/source/test-vectors/request-signing/`) — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
 
 **As a verifier (seller):**
 
@@ -784,7 +784,7 @@ Implementations that ship signing in 3.x SHOULD enable verifier-side `required_f
 
 #### Request verifier reference (TypeScript)
 
-Illustrative only. The `verify9421` and `parseSignatureInput` callbacks encapsulate protocol-specific canonicalization and signature verification; implementations should pin a specific RFC 9421 library that has been validated against the AdCP conformance test vectors at [`/test-vectors/request-signing/`](https://adcontextprotocol.org/test-vectors/request-signing/).
+Illustrative only. The `verify9421` and `parseSignatureInput` callbacks encapsulate protocol-specific canonicalization and signature verification; implementations should pin a specific RFC 9421 library that has been validated against the AdCP conformance test vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/).
 
 ```ts
 import { createRemoteJWKSet } from "jose";
