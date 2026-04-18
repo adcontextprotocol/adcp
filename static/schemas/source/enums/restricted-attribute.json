@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/restricted-attribute.json",
   "title": "Restricted Attribute",
-  "description": "Personal data categories that may be restricted from use in audience targeting. Based on GDPR Article 9 special categories of personal data, which are also referenced by EU DSA Article 26 for advertising restrictions. Used in two places: (1) on campaign plans via restricted_attributes to declare which categories are prohibited, and (2) on signal-definition.json via restricted_attributes to declare which categories a signal touches. Governance agents match plan restrictions against signal declarations for structural validation.",
+  "description": "Personal data categories that may be restricted from use in audience targeting. Combines GDPR Article 9 special categories with US civil-rights protected classes (FHA familial_status, ADEA age). Used in two places: (1) on campaign plans via restricted_attributes to declare which categories are prohibited, and (2) on signal-definition.json via restricted_attributes to declare which categories a signal touches. Governance agents match plan restrictions against signal declarations for structural validation.",
   "type": "string",
   "enum": [
     "racial_ethnic_origin",
@@ -12,7 +12,9 @@
     "health_data",
     "sex_life_sexual_orientation",
     "genetic_data",
-    "biometric_data"
+    "biometric_data",
+    "age",
+    "familial_status"
   ],
   "enumDescriptions": {
     "racial_ethnic_origin": "Race or ethnic origin. GDPR Article 9(1), US FHA/ECOA/EEOC protected class.",
@@ -22,6 +24,8 @@
     "health_data": "Health status, medical conditions, disability. GDPR Article 9(1), US ADA protected class. Includes inferred health data from behavioral signals.",
     "sex_life_sexual_orientation": "Sex life or sexual orientation. GDPR Article 9(1).",
     "genetic_data": "Genetic data. GDPR Article 9(1), US GINA.",
-    "biometric_data": "Biometric data used for identification. GDPR Article 9(1)."
+    "biometric_data": "Biometric data used for identification. GDPR Article 9(1).",
+    "age": "A person's age or age range. US ADEA (40+) for employment, US FHA for housing, EU AVMSD for content-directed targeting. Restricted for regulated verticals.",
+    "familial_status": "Whether a household includes children under 18, a pregnant person, or a person seeking custody of a minor. US FHA protected class."
   }
 }

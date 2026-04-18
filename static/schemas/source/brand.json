@@ -276,6 +276,35 @@
       "required": ["feed_url"],
       "additionalProperties": true
     },
+    "data_subject_contestation": {
+      "type": "object",
+      "description": "Contact point where a data subject can request human intervention, express their view, or contest an automated decision — satisfying GDPR Article 22(3) and EU AI Act Article 26(11) transparency obligations. This is a contact reference (URL, email, or both), not a machine-callable API. AdCP surfaces the pointer; the deployer runs the contestation workflow.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL to a human-accessible contestation form or information page."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address for contestation requests. Deployer MUST monitor and respond within the timelines set by applicable law (e.g., 1 month under GDPR Art. 12(3))."
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "BCP 47 language tags the contestation channel supports (e.g., ['en', 'de', 'fr']). At minimum SHOULD include a language spoken in every jurisdiction where the brand runs regulated-vertical campaigns."
+        }
+      },
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["email"] }
+      ],
+      "additionalProperties": false
+    },
     "brand": {
       "type": "object",
       "description": "A brand within a house portfolio. Combines identity (who) with creative assets (how to represent). Referenced as domain + brand_id.",
@@ -382,6 +411,9 @@
           "type": "string",
           "format": "uri",
           "description": "URL to the brand's privacy policy"
+        },
+        "data_subject_contestation": {
+          "$ref": "#/definitions/data_subject_contestation"
         },
         "disclaimers": {
           "type": "array",
@@ -500,6 +532,10 @@
         "agents": {
           "$ref": "#/definitions/agents",
           "description": "House-level agents that apply to all brands unless overridden at the brand level"
+        },
+        "data_subject_contestation": {
+          "$ref": "#/definitions/data_subject_contestation",
+          "description": "House-level fallback contestation contact. Governance agents resolve in order: brand.data_subject_contestation → house.data_subject_contestation → missing (critical finding when human review required)."
         }
       },
       "required": ["domain", "name"],
@@ -1314,6 +1350,9 @@
           "deprecated": true
         },
         "contact": { "$ref": "#/definitions/contact" },
+        "data_subject_contestation": {
+          "$ref": "#/definitions/data_subject_contestation"
+        },
         "last_updated": { "type": "string", "format": "date-time" }
       },
       "anyOf": [

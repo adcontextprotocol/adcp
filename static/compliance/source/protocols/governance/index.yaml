@@ -185,8 +185,8 @@ phases:
         title: "Register a governance plan with agent-limited authority"
         narrative: |
           The buyer's governance agent registers a plan with spending authority limits.
-          The authority_level is agent_limited with a per-transaction threshold of $20K.
-          Any media buy above this amount requires human approval.
+          The plan sets a per-transaction threshold of $20K via reallocation_threshold
+          on the budget. Any media buy above this amount requires human approval.
         task: sync_plans
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
@@ -196,7 +196,6 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_limited
           - per_transaction_threshold: the spending limit before escalation
           - escalation_path: how over-limit transactions are handled
 
@@ -206,7 +205,6 @@ phases:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
               per_transaction_threshold: 20000
               escalation_path: "human_review"
               conditions:
@@ -584,7 +582,7 @@ phases:
           Return the complete audit trail for the governance plan:
           - plan_id: the governance plan
           - entries: ordered list of governance events, including:
-            1. Plan registered with agent_limited authority and $20K threshold
+            1. Plan registered with $20K per-transaction threshold
             2. Governance check denied — spending authority exceeded ($50K > $20K)
             3. Human escalation initiated
             4. Human approved with conditions (weekly reporting, budget increase review)

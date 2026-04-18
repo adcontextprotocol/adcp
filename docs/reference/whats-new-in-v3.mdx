@@ -206,6 +206,8 @@ Brand suitability and inventory curation. Governance agents manage **property li
 
 Campaign governance extends this with plan-level policy and budget enforcement via `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`. Governance agents can operate in `audit`, `advisory`, or `enforce` mode, validate seller-side actions against delegated authority, and resolve standardized policies through the shared [policy registry](/docs/governance/policy-registry).
 
+**Art 22 / Annex III as schema invariants.** For regulated verticals (credit, insurance pricing, recruitment, housing), AdCP 3.0 enforces mandatory human oversight at the protocol layer, not in deployer policy PDFs. `policy_categories` intersecting `fair_housing | fair_lending | fair_employment | pharmaceutical_advertising` makes `plan.human_review_required: true` a schema requirement — buyers cannot opt out. Governance agents MUST escalate every action on such plans regardless of budget. See [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations).
+
 <Card title="Governance Protocol" icon="arrow-right" href="/docs/governance/overview">
   Full specification including property lists, content standards, and calibration.
 </Card>

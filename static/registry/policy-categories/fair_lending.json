@@ -15,6 +15,7 @@
     }
   ],
   "restricted_attributes": ["racial_ethnic_origin", "religious_beliefs", "sex_life_sexual_orientation"],
+  "requires_human_review": true,
   "industries": ["financial_services", "banking", "insurance"],
   "guidance": "Fair lending rules overlap significantly with fair housing when the credit product is a mortgage. Both FHA and ECOA apply. The key governance concern is audience targeting that excludes or skews away from protected classes — even via proxy signals like zip code or language.",
   "related_categories": ["fair_housing"]

@@ -100,7 +100,6 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_full
           - custom_policies: policy conditions registered
 
         sample_request:
@@ -109,7 +108,6 @@ phases:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
               custom_policies:
                 - "CTV buys require weekly delivery reporting"
                 - "UGC placements require brand safety review before go-live"

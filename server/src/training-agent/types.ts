@@ -337,11 +337,27 @@ export interface GovernancePlanState {
   budget: {
     total: number;
     currency: string;
-    authorityLevel: string;
+    reallocationThreshold: number;
+    reallocationUnlimited: boolean;
     perSellerMaxPct?: number;
-    reallocationThreshold?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
+  humanReviewRequired: boolean;
+  humanReviewAutoFlippedBy: string[];
+  humanOverride?: { reason: string; approver: string; approvedAt: string };
+  policyCategories?: string[];
+  revisionHistory: Array<{
+    version: number;
+    syncedAt: string;
+    humanReviewRequired: boolean;
+    humanReviewAutoFlippedBy: string[];
+    humanOverride?: { reason: string; approver: string; approvedAt: string };
+    mode: GovernancePlanState['mode'];
+    reallocationThreshold: number;
+    reallocationUnlimited: boolean;
+    policyCategories?: string[];
+    policyIds?: string[];
+  }>;
   channels?: {
     required?: string[];
     allowed?: string[];
@@ -353,7 +369,13 @@ export interface GovernancePlanState {
   delegations?: GovernanceDelegation[];
   approvedSellers?: string[] | null;
   policyIds?: string[];
-  customPolicies?: string[];
+  customPolicies?: Array<{
+    policy_id?: string;
+    policy: string;
+    description?: string;
+    enforcement?: 'must' | 'should' | 'may';
+    requires_human_review?: boolean;
+  }>;
   mode: 'enforce' | 'advisory' | 'audit';
   committedBudget: number;
   committedByType?: Record<string, number>;

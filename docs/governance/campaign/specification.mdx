@@ -29,9 +29,8 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
   "budget": {
     "total": 500000,
     "currency": "USD",
-    "authority_level": "agent_limited",
-    "per_seller_max_pct": 40,
-    "reallocation_threshold": 25000
+    "reallocation_threshold": 25000,
+    "per_seller_max_pct": 40
   },
   "channels": {
     "required": ["olv"],
@@ -74,13 +73,15 @@ When `purchase_type` is omitted, the governance agent assumes `media_buy`.
 **Future purchase types**: Content standards, property list curation, and measurement/verification services (brand lift studies, viewability, fraud detection) all carry `pricing_options` in their schemas and bill through `report_usage`. These services currently lack an explicit activation tool where the buyer commits to the service — the billing relationship is implicit. When the protocol adds activation surfaces for these services, corresponding purchase types will be added to enable governance checks at the point of commitment.
 </Note>
 
-### Budget authority levels
+### Budget reallocation
 
-| Level | Meaning |
+`budget.reallocation_threshold` (required number) governs budget reallocation autonomy. It does not cover mandatory human review of decisions that affect data subjects — for that, see the plan-level `human_review_required` field.
+
+| Value | Meaning |
 |-------|---------|
-| `agent_full` | Agent can execute any spend within the total budget without human approval |
-| `agent_limited` | Agent can execute within thresholds but MUST escalate large changes (defined by `reallocation_threshold`) |
-| `human_required` | Every spend commitment requires human approval |
+| `0` | Every reallocation requires human approval |
+| positive number below `budget.total` | Agent may reallocate up to this amount without escalation; larger moves escalate for human review |
+| equal to `budget.total` (or greater) | Agent may reallocate freely within the plan's total budget |
 
 ### Budget allocations
 
@@ -91,7 +92,7 @@ Plans can optionally partition the total budget across purchase types using `all
   "budget": {
     "total": 500000,
     "currency": "USD",
-    "authority_level": "agent_limited",
+    "reallocation_threshold": 25000,
     "allocations": {
       "media_buy": { "amount": 400000 },
       "rights_license": { "amount": 75000 },
@@ -104,6 +105,23 @@ Plans can optionally partition the total budget across purchase types using `all
 When `allocations` is present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions — the sum of allocations MAY differ from the total.
 
 When `allocations` is present but a purchase type is not listed (e.g., `signal_activation` is attempted against a plan that only allocates for `media_buy` and `rights_license`), the governance agent validates the action against the plan's total budget only. Unlisted types are not denied — they draw from the shared pool. To restrict spending to listed types only, set `custom_policies` with explicit constraints.
+
+### Human review required
+
+`human_review_required` is a plan-level boolean (default `false`) that mandates human oversight of every action on the plan, independent of budget reallocation autonomy.
+
+The governance agent sets `human_review_required: true` automatically when any resolved policy or policy_category on the plan carries `requires_human_review: true`. This includes regulated verticals such as `fair_housing`, `fair_lending`, `fair_employment`, and `pharmaceutical_advertising`, and the `eu_ai_act_annex_iii` policy covering decisions in Annex III use cases.
+
+When `human_review_required` is true, the governance agent MUST escalate any action on the plan for human review before execution — regardless of the plan's `reallocation_threshold`. A permissive reallocation threshold does not bypass human review when the plan carries `human_review_required: true`; the two dimensions compose.
+
+This field is distinct from `budget.reallocation_threshold`:
+
+| Field | Scope | Purpose |
+|-------|-------|---------|
+| `budget.reallocation_threshold` | Operational | Controls agent autonomy for budget reallocation within the plan |
+| `human_review_required` | Regulatory | Mandates human review of decisions affecting individuals (e.g., GDPR Art 22, EU AI Act Annex III) |
+
+Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
 
 ### Channel mix targets
 
@@ -147,6 +165,11 @@ When delegations are present, the governance agent validates that the `caller` U
 
 When delegations are absent, the governance agent does not restrict which agents can act on the plan.
 
+<Note>
+`delegations.authority` governs what a delegated executor-agent can do on behalf of the plan. It is unrelated to the plan's budget autonomy (`budget.reallocation_threshold` / `budget.reallocation_unlimited`) and unrelated to `plan.human_review_required`. Three separate concerns: per-agent scope, budget ops, and per-decision review.
+</Note>
+
+
 ### Portfolio governance
 
 For holding companies and multi-brand organizations, a plan can include a `portfolio` object that defines cross-brand constraints. Portfolio plans govern member plans -- any action validated against a member plan is also validated against the portfolio plan's constraints.
@@ -156,7 +179,7 @@ For holding companies and multi-brand organizations, a plan can include a `portf
   "plan_id": "portfolio_q1_2026_global",
   "brand": { "domain": "acmecorp.com" },
   "objectives": "Global Q1 media governance across all Acme brands",
-  "budget": { "total": 50000000, "currency": "USD", "authority_level": "agent_limited" },
+  "budget": { "total": 50000000, "currency": "USD", "reallocation_threshold": 2000000 },
   "flight": { "start": "2026-01-01T00:00:00Z", "end": "2026-06-30T00:00:00Z" },
   "countries": ["US", "GB", "FR", "DE", "JP"],
   "portfolio": {

@@ -65,7 +65,7 @@ phases:
               budget:
                 total: 100000
                 currency: "USD"
-                authority_level: "agent_full"
+                reallocation_threshold: 100000
               flight:
                 start: "2026-04-01T00:00:00Z"
                 end: "2026-06-30T23:59:59Z"
