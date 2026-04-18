@@ -17,7 +17,6 @@ export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
 export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
-  platform_type: string | null;
   compliance_opt_out: boolean;
   monitoring_paused: boolean;
   check_interval_hours: number;
@@ -107,22 +106,20 @@ export class ComplianceDatabase {
 
   async upsertRegistryMetadata(
     agentUrl: string,
-    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean; platform_type?: string },
+    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean },
   ): Promise<AgentRegistryMetadata> {
     const result = await query(
-      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, platform_type, compliance_opt_out)
-       VALUES ($1, COALESCE($2, 'production'), $4, COALESCE($3, FALSE))
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, compliance_opt_out)
+       VALUES ($1, COALESCE($2, 'production'), COALESCE($3, FALSE))
        ON CONFLICT (agent_url) DO UPDATE SET
          lifecycle_stage = COALESCE($2, agent_registry_metadata.lifecycle_stage),
          compliance_opt_out = COALESCE($3, agent_registry_metadata.compliance_opt_out),
-         platform_type = COALESCE($4, agent_registry_metadata.platform_type),
          updated_at = NOW()
        RETURNING *`,
       [
         agentUrl,
         updates.lifecycle_stage ?? null,
         updates.compliance_opt_out ?? null,
-        updates.platform_type ?? null,
       ],
     );
     return result.rows[0];

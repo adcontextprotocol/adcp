@@ -42,6 +42,10 @@
           "$ref": "/schemas/core/duration.json",
           "description": "A time duration with value and unit (hours or days)"
         },
+        "feature-requirement": {
+          "$ref": "/schemas/core/feature-requirement.json",
+          "description": "A feature-based requirement — reusable predicate over a feature value. Used by property list filters, designed for reuse across governance surfaces."
+        },
         "frequency-cap": {
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"
@@ -592,8 +596,8 @@
           "$ref": "/schemas/enums/creative-agent-capability.json",
           "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
         },
-        "adcp-domain": {
-          "$ref": "/schemas/enums/adcp-domain.json",
+        "adcp-protocol": {
+          "$ref": "/schemas/enums/adcp-protocol.json",
           "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
         },
         "brand-agent-type": {
@@ -1131,10 +1135,6 @@
         "property-feature": {
           "$ref": "/schemas/property/property-feature.json",
           "description": "A discrete feature assessment for a property"
-        },
-        "feature-requirement": {
-          "$ref": "/schemas/property/feature-requirement.json",
-          "description": "A feature-based requirement for property filtering"
         },
         "property-error": {
           "$ref": "/schemas/property/property-error.json",

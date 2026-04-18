@@ -148,6 +148,25 @@ function hashSessionCookie(cookie: string): string {
   return createHash('sha256').update(cookie).digest('hex');
 }
 
+// Errors like JWKSTimeout (WorkOS key-fetch stall) or fetch/DNS failures are transient —
+// the session cookie is still valid, the upstream is just slow. Returning 401 here would
+// log the user out for an infra blip, so callers should return 503 instead.
+function isTransientAuthError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const name = err.name;
+  const code = (err as { code?: unknown }).code;
+  if (name === 'JWKSTimeout' || name === 'TimeoutError' || name === 'AbortError') return true;
+  if (typeof code === 'string') {
+    if (code === 'ERR_JWKS_TIMEOUT') return true;
+    if (code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ECONNREFUSED') return true;
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return true;
+    if (code.startsWith('UND_ERR_')) return true; // undici fetch errors
+  }
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause && cause !== err) return isTransientAuthError(cause);
+  return false;
+}
+
 /**
  * Invalidate session cache for a specific cookie (e.g., on logout)
  */
@@ -834,6 +853,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
+    if (isTransientAuthError(error)) {
+      logger.warn({ err: error, path: req.path }, 'Transient auth upstream failure — returning 503 without clearing session');
+      if (isHtmlRequest) {
+        return res.status(503).send('Authentication service temporarily unavailable. Please refresh in a moment.');
+      }
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Unable to verify your session right now. Please try again shortly.',
+      });
+    }
     logger.error({ err: error, path: req.path }, 'Authentication middleware threw unexpectedly — user will be logged out');
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);

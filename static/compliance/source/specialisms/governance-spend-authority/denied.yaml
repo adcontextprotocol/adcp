@@ -1,7 +1,7 @@
-id: campaign_governance_denied
+id: governance_spend_authority/denied
 version: "1.0.0"
 title: "Campaign governance — denied"
-category: campaign_governance_denied
+category: governance_spend_authority
 summary: "Governance agent denies a media buy that exceeds the agent's spending authority. No human escalation — the buy is blocked."
 track: campaign_governance
 required_tools:
@@ -58,7 +58,7 @@ phases:
           Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
         sample_request:
           context:
-            correlation_id: "campaign_governance_denied--get_capabilities"
+            correlation_id: "governance_spend_authority--denied--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -71,7 +71,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_denied--get_capabilities"
+            value: "governance_spend_authority--denied--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: plan_registration
     title: "Register governance plan"
@@ -90,7 +90,7 @@ phases:
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
         doc_ref: "/governance/campaign/tasks/sync_plans"
-        comply_scenario: campaign_governance_denied
+        comply_scenario: governance_spend_authority/denied
         stateful: true
         expected: |
           Acknowledge the governance plan:
@@ -109,7 +109,7 @@ phases:
               escalation_path: "none"
 
           context:
-            correlation_id: "campaign_governance_denied--sync_plans"
+            correlation_id: "governance_spend_authority--denied--sync_plans"
         context_outputs:
           - name: plan_id
             path: 'plans[0].plan_id'
@@ -122,7 +122,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_denied--sync_plans"
+            value: "governance_spend_authority--denied--sync_plans"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "plans[0].plan_id"
@@ -141,26 +141,26 @@ phases:
         narrative: |
           The buyer calls check_governance with a $50K media buy binding. The governance
           agent denies the buy because the total exceeds the $10K per-transaction authority.
-          The response includes a must-severity finding with the violation details.
+          The response includes a critical-severity finding with the violation details.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
         doc_ref: "/governance/campaign/tasks/check_governance"
-        comply_scenario: campaign_governance_denied
+        comply_scenario: governance_spend_authority/denied
         stateful: true
         expected: |
           Return a denied governance decision:
           - decision: denied
-          - findings: array with at least one must-severity finding
-            - severity: must
-            - code: SPENDING_AUTHORITY_EXCEEDED
-            - message: explains the threshold and how much the buy exceeds it
+          - findings: array with at least one critical-severity finding
+            - severity: critical
+            - category_id: SPENDING_AUTHORITY_EXCEEDED
+            - explanation: explains the threshold and how much the buy exceeds it
           - No escalation instructions (plan has no escalation path)
 
         sample_request:
           plan_id: "$context.plan_id"
-          binding:
-            type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
@@ -173,7 +173,7 @@ phases:
                 budget: 20000
 
           context:
-            correlation_id: "campaign_governance_denied--check_governance_denied"
+            correlation_id: "governance_spend_authority--denied--check_governance_denied"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -193,5 +193,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "campaign_governance_denied--check_governance_denied"
+            value: "governance_spend_authority--denied--check_governance_denied"
             description: "Context correlation_id returned unchanged"

@@ -1,7 +1,7 @@
 id: creative_template
 version: "1.0.0"
 title: "Creative template and transformation agent"
-domain: creative
+protocol: creative
 category: creative_template
 summary: "Stateless creative agent that takes assets in, applies templates, and produces tags or rendered output."
 track: creative

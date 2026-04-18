@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
+import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -23,18 +24,19 @@ import {
   comply,
   getBriefsByVertical,
   SAMPLE_BRIEFS,
-  getAllPlatformTypes,
-  getPlatformProfile,
   type ComplyOptions,
   type ComplianceTrack,
-  type PlatformType,
 } from '../services/compliance-testing.js';
 import {
-  loadBundledStoryboards,
-  getStoryboardById,
+  listAllComplianceStoryboards,
+  getComplianceStoryboardById,
+  resolveStoryboardsForCapabilities,
+  loadComplianceIndex,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
+  testCapabilityDiscovery,
+  type AgentProfile,
   type Storyboard,
   type StoryboardContext,
   type StoryboardStepResult,
@@ -289,6 +291,33 @@ function isAuthError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message;
   return msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication');
+}
+
+/**
+ * Sanitize a string that came from an untrusted remote agent before it flows
+ * into markdown that reaches the LLM. The agent is adversarial by assumption —
+ * its response fields (name, capabilities_probe_error, specialism ids) can
+ * contain prompt-injection payloads that would otherwise reach tools with
+ * side effects. Strip newlines + backticks (which break markdown structure
+ * and prompt fences), truncate hard, and collapse whitespace.
+ */
+function sanitizeAgentField(value: unknown, maxLen = 200): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\r\n`\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+/**
+ * Wrap an untrusted agent-reported value in quotes, explicitly marking it as
+ * agent-provided so the LLM is less likely to treat it as authoritative.
+ * Returns the empty string if the value is empty after sanitization.
+ */
+function fenceAgentValue(value: unknown, maxLen = 200): string {
+  const cleaned = sanitizeAgentField(value, maxLen);
+  return cleaned ? `"${cleaned}"` : '';
 }
 
 // Channel alias map — normalize buyer language to AdCP channel identifiers
@@ -891,8 +920,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
-        tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable)' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Declare the platform type for coherence checking — verifies the agent supports the tracks and tools expected for its platform category' },
+        tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
       },
       required: ['agent_url'],
     },
@@ -910,7 +938,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         verticals: { type: 'array', items: { type: 'string' }, description: 'Verticals the publisher serves (e.g., automotive, healthcare, tech)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels from the media kit (e.g., display, video, podcast, audio, newsletter, dooh, ctv)' },
         formats: { type: 'array', items: { type: 'string' }, description: 'Specific format types offered' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type for expected channel/tool context' },
         sample_io: { type: 'string', description: 'Text of a sample IO or RFP response for additional comparison' },
       },
       required: ['agent_url', 'media_kit_summary'],
@@ -994,7 +1021,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'recommend_storyboards',
     description:
-      'Connect to an agent, discover its tools, and return which storyboards apply. This is the first step when a developer pastes a URL. No configuration needed — storyboards self-select based on agent tools.',
+      'Probe an agent\'s `get_adcp_capabilities` and return the compliance bundles that will run. The agent\'s declared `supported_protocols` and `specialisms` drive the selection — no member configuration needed. If the agent declares nothing, explain what it needs to declare to get coverage.',
     usage_hints: 'use for "test this URL", "what can I test?", "which storyboards apply?", pasted agent URL, or any first-time agent testing. This should be the FIRST tool called when someone wants to test an agent.',
     input_schema: {
       type: 'object',
@@ -1065,7 +1092,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
-        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type — determines which compliance tracks and tools are expected. Ask the user what type of agent this is.' },
       },
       required: ['agent_url'],
     },
@@ -3127,7 +3153,6 @@ export function createMemberToolHandlers(
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
-    const platformType = input.platform_type as PlatformType | undefined;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3140,27 +3165,6 @@ export function createMemberToolHandlers(
       auth: buildAuthOption(resolved),
     };
     if (tracks) complyOptions.tracks = tracks;
-
-    // platform_type is optional — storyboards self-select based on agent tools.
-    // If provided, it adds advisory coherence checking but doesn't gate execution.
-    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-    let effectivePlatformType = platformType;
-    if (!effectivePlatformType) {
-      try {
-        const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
-        if (metadata?.platform_type && validPlatformTypes.has(metadata.platform_type)) {
-          effectivePlatformType = metadata.platform_type as PlatformType;
-        }
-      } catch { /* ignore lookup failures */ }
-    }
-    if (platformType && validPlatformTypes.has(platformType as string)) {
-      try {
-        await complianceDb.upsertRegistryMetadata(resolved.resolvedUrl, { platform_type: platformType });
-      } catch { /* ignore save failures */ }
-    }
-    if (effectivePlatformType) {
-      complyOptions.platform_type = effectivePlatformType;
-    }
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
@@ -3195,9 +3199,11 @@ export function createMemberToolHandlers(
       else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
       else if (resolved.source === 'public') output += '_Using public test agent credentials._\n\n';
 
-      output += `## Quality Evaluation: ${result.agent_profile.name || resolved.resolvedUrl}\n\n`;
+      const safeName = sanitizeAgentField(result.agent_profile.name, 120);
+      output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
-      output += `**Tools:** ${result.agent_profile.tools.length} (${result.agent_profile.tools.join(', ')})\n`;
+      const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
+      output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
       output += `### Capability Tracks\n\n`;
@@ -3228,26 +3234,6 @@ export function createMemberToolHandlers(
         }
       }
 
-      // Platform coherence section (only when platform_type was provided)
-      if (result.platform_coherence) {
-        const pc = result.platform_coherence;
-        output += `\n### Platform Coherence: ${pc.label}\n\n`;
-        output += `**Coherent:** ${pc.coherent ? 'yes' : 'no'}\n`;
-        output += `**Expected tracks:** ${pc.expected_tracks.join(', ')}\n`;
-        if (pc.missing_tracks.length > 0) {
-          output += `**Missing tracks:** ${pc.missing_tracks.join(', ')}\n`;
-        }
-        if (pc.findings.length > 0) {
-          output += `\n**Findings:**\n`;
-          for (const finding of pc.findings) {
-            const sev = finding.severity.toUpperCase();
-            output += `- [${sev}] Expected: ${finding.expected} | Actual: ${finding.actual}\n`;
-            output += `  → ${finding.guidance}\n`;
-          }
-        }
-        output += '\n';
-      }
-
       if (result.observations.length > 0) {
         output += `\n### Advisory Observations\n\n`;
         for (const obs of result.observations) {
@@ -3259,7 +3245,7 @@ export function createMemberToolHandlers(
         }
       }
 
-      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.${platformType ? ` Consider the platform coherence findings — missing tracks or capabilities that are expected for a ${platformType} are high-priority gaps.` : ''}`;
+      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
       return output;
     } catch (error) {
@@ -3283,72 +3269,176 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
-    // Connect and discover tools
+    // Probe get_adcp_capabilities. The agent is the source of truth for which
+    // protocol baselines and specialism bundles apply — we don't guess from tool
+    // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
-    let agentTools: string[];
+    let profile: AgentProfile | undefined;
     try {
-      const client = createTestClient(resolved.resolvedUrl, 'mcp', {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
         ...(authOption && { auth: authOption }),
       });
-      const agentInfo = await client.getAgentInfo();
-      agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
+      profile = caps.profile;
     } catch (error) {
       if (isAuthError(error)) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      throw new ToolError(`Could not connect to agent at ${resolved.resolvedUrl}: ${msg}`);
+      logger.warn({ err: error, agentUrl: resolved.resolvedUrl }, 'recommend_storyboards: capability probe failed');
+      const reason = classifyProbeError(error);
+      throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl} (${probeReasonLabel(reason)}).`);
     }
 
-    // Match storyboards to agent tools
-    const allStoryboards = loadBundledStoryboards();
-    const applicable = allStoryboards.filter(sb => {
-      if (!sb.required_tools?.length) return true;
-      return sb.required_tools.some(tool => agentTools.includes(tool));
-    });
+    const supportedProtocols = profile?.supported_protocols ?? [];
+    const specialisms = profile?.specialisms ?? [];
+    const probeError = profile?.capabilities_probe_error;
 
-    // Group by track
-    const byTrack = new Map<string, typeof applicable>();
-    for (const sb of applicable) {
-      const track = sb.track || 'general';
-      if (!byTrack.has(track)) byTrack.set(track, []);
-      byTrack.get(track)!.push(sb);
+    // Load the compliance index once so coaching paths can interpolate the
+    // real cache version instead of emitting a literal `{version}` placeholder.
+    let index;
+    try {
+      index = loadComplianceIndex();
+    } catch (err) {
+      logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
+    const docsVersion = index?.adcp_version || 'latest';
+    const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
-    let output = `## Agent: ${resolved.resolvedUrl}\n\n`;
-    output += `**Tools discovered:** ${agentTools.length} (${agentTools.join(', ')})\n`;
-    output += `**Applicable storyboards:** ${applicable.length} of ${allStoryboards.length}\n\n`;
+    // Index emits both `protocols` (new) and `domains` (transitional alias) during the
+    // @adcp/client 5.x → 6.x coordinated release. Read whichever key is present.
+    const protocolEntries: Array<{ id: string }> | undefined =
+      (index as { protocols?: Array<{ id: string }> } | undefined)?.protocols ?? index?.domains;
+    const knownProtocolIds = protocolEntries?.map(d => d.id.replace(/-/g, '_')) ?? [
+      'media_buy', 'creative', 'signals', 'governance', 'brand', 'sponsored_intelligence',
+    ];
+    const protocolExamples = knownProtocolIds.map(id => `\`${id}\``).join(', ');
 
-    if (applicable.length === 0) {
-      output += `No storyboards match this agent's tools. This agent may not implement any AdCP tasks yet.\n`;
+    const safeAgentName = sanitizeAgentField(profile?.name, 120);
+
+    let output = '';
+    if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+    output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
+
+    // No capabilities declared → coach the developer on how to fix it.
+    if (supportedProtocols.length === 0 && specialisms.length === 0) {
+      output += `Your agent didn't tell us what it does yet.\n\n`;
+      if (probeError) {
+        const safeProbeErr = fenceAgentValue(probeError, 300);
+        output += `\`get_adcp_capabilities\` returned an agent-reported error${safeProbeErr ? ` (${safeProbeErr})` : ''}. The runner can only fall back to universal baselines (schema, error handling, capability discovery) until the agent declares its protocols and specialisms.\n\n`;
+      } else {
+        output += `Its \`get_adcp_capabilities\` response is missing \`supported_protocols\` and \`specialisms\`. Without those, only the universal baselines (schema, errors, capability discovery) can run.\n\n`;
+      }
+      output += `Add those two fields to the response. Here's the minimum shape:\n\n`;
+      output += '```json\n';
+      output += '{\n';
+      output += '  "supported_protocols": ["media_buy"],\n';
+      output += '  "specialisms": ["sales-guaranteed"]\n';
+      output += '}\n';
+      output += '```\n\n';
+      output += `- \`supported_protocols\`: AdCP protocols the agent serves (${protocolExamples}).\n`;
+      output += `- \`specialisms\`: optional; specialized claims beyond the protocol baselines (e.g. \`sales-guaranteed\`, \`sales-exchange\`, \`creative-template\`). Full registry: ${indexUrl}\n\n`;
+      output += `Redeploy, then re-run \`recommend_storyboards\` and we'll map them to bundles.\n`;
       return output;
     }
 
-    // Recommend a starting storyboard (prefer core, then media_buy, then first available)
-    const startOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'signals', 'si', 'audiences'];
-    let recommended: Storyboard | undefined;
-    for (const track of startOrder) {
-      const trackSbs = byTrack.get(track);
-      if (trackSbs?.length) { recommended = trackSbs[0]; break; }
-    }
-    if (!recommended) recommended = applicable[0];
-
-    output += `### Recommended starting point\n\n`;
-    output += `**${recommended.title}** (\`${recommended.id}\`)\n`;
-    output += `${recommended.summary}\n\n`;
-
-    output += `### All applicable storyboards\n\n`;
-    for (const [track, storyboards] of byTrack) {
-      output += `**${track}**\n`;
-      for (const sb of storyboards) {
-        const stepCount = sb.phases.reduce((sum, p) => sum + p.steps.length, 0);
-        output += `- \`${sb.id}\` — ${sb.title} (${stepCount} steps)\n`;
+    // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
+    // closed if a declared specialism has no local bundle — log the raw error
+    // server-side (it includes cache paths) but show the member a clean message.
+    let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
+    try {
+      const res = resolveStoryboardsForCapabilities({
+        supported_protocols: supportedProtocols,
+        specialisms,
+      });
+      resolvedBundles = res.bundles;
+    } catch (error) {
+      logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
+      const knownIds = index?.specialisms.map(s => s.id).sort() || [];
+      // specialism ids came from the untrusted agent — fence them so a hostile
+      // id string can't break out of the markdown fence.
+      const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
+      output += `**Can't resolve bundles.** The agent declared a specialism (${safeDeclared || '(empty)'}) that the local compliance cache doesn't have a matching bundle for.\n\n`;
+      if (knownIds.length > 0) {
+        output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
       }
-      output += '\n';
+      output += `Either the cache is stale (re-sync the \`@adcp/client\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
+      return output;
     }
 
-    output += `Use \`get_storyboard_detail\` to see what a storyboard tests, or \`run_storyboard\` to execute one.`;
-    if (resolved.source === 'saved') output = '_Using saved credentials._\n\n' + output;
+    // Skip empty bundles — upstream catalog sometimes ships stubs with 0
+    // storyboards (e.g. fictional-entities). They're not useful to the member.
+    const nonEmpty = resolvedBundles.filter(b => b.storyboards.length > 0);
+    const totalStoryboards = nonEmpty.reduce((n, b) => n + b.storyboards.length, 0);
+
+    // Verdict first. "6 protocols declared, 23 checks ready. Nothing's failing
+    // because nothing's run yet" tells the member where they stand.
+    const protocolCount = supportedProtocols.length;
+    const specialismCount = specialisms.length;
+    const declaredPieces: string[] = [];
+    if (protocolCount > 0) declaredPieces.push(`${protocolCount} protocol${protocolCount === 1 ? '' : 's'}`);
+    if (specialismCount > 0) declaredPieces.push(`${specialismCount} specialism${specialismCount === 1 ? '' : 's'}`);
+    output += `**${declaredPieces.join(' + ')} declared. ${totalStoryboards} compliance check${totalStoryboards === 1 ? '' : 's'} ready to run** — nothing is failing yet because nothing has been run.\n\n`;
+
+    // Probe error surfaces even when some caps came back — partial failures
+    // shouldn't silently degrade the result.
+    if (probeError) {
+      const safeProbeErr = fenceAgentValue(probeError, 300);
+      output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
+    }
+
+    // Group by bundle kind. `@adcp/client@5.x` returns kind: 'domain' for protocol baselines;
+    // v6 will return 'protocol'. Accept either during transition.
+    const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], protocol: [], specialism: [] };
+    for (const b of nonEmpty) {
+      (byKind[b.ref.kind] ??= []).push(b);
+    }
+    const protocolBundles = [...(byKind.protocol ?? []), ...(byKind.domain ?? [])];
+
+    // Universal is the same for every agent. Collapse to one line so protocol +
+    // specialism results are above the fold.
+    if (byKind.universal.length > 0) {
+      const universalStoryboards = byKind.universal.reduce((n, b) => n + b.storyboards.length, 0);
+      output += `**Universal baseline**: ${byKind.universal.length} bundle${byKind.universal.length === 1 ? '' : 's'}, ${universalStoryboards} storyboard${universalStoryboards === 1 ? '' : 's'}. Always runs — schema, errors, capability discovery.\n\n`;
+    }
+
+    const sections: Array<[string, string, typeof nonEmpty]> = [
+      ['Protocol baselines', 'One baseline per declared `supported_protocols` entry.', protocolBundles],
+      ['Specialisms', 'One bundle per declared specialism.', byKind.specialism!],
+    ];
+
+    for (const [title, blurb, bundles] of sections) {
+      if (!bundles || bundles.length === 0) continue;
+      output += `### ${title}\n\n${blurb}\n\n`;
+      for (const bundle of bundles) {
+        output += `**\`${bundle.ref.id}\`** (${bundle.storyboards.length} storyboard${bundle.storyboards.length === 1 ? '' : 's'})\n`;
+        for (const sb of bundle.storyboards) {
+          const stepCount = sb.phases.reduce((sum, p) => sum + p.steps.length, 0);
+          output += `- \`${sb.id}\` — ${sb.title} (${stepCount} steps)\n`;
+        }
+        output += '\n';
+      }
+    }
+
+    // Action-first CTAs. Name the action, keep the tool name in parens so the
+    // LLM still knows what to call.
+    output += `**What next?**\n`;
+    output += `1. Run the full suite — \`evaluate_agent_quality\`\n`;
+    output += `2. Walk one storyboard step-by-step for debugging — \`run_storyboard_step\`\n`;
+    output += `3. Inspect a storyboard before running it — \`get_storyboard_detail\`\n`;
+
+    // Activation hinge: if this is a member with an org and the agent isn't
+    // saved yet, offer to save. Converts drive-by testing into an ongoing
+    // compliance-monitored relationship.
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (orgId && resolved.source !== 'saved') {
+      try {
+        const existing = await agentContextDb.getByOrgAndUrl(orgId, resolved.resolvedUrl);
+        if (!existing) {
+          output += `\nWant me to save this agent so compliance is tracked over time? Use \`save_agent\`.`;
+        }
+      } catch {
+        // Save-prompt is advisory — never fail the whole tool over it.
+      }
+    }
 
     return output;
   });
@@ -3356,9 +3446,9 @@ export function createMemberToolHandlers(
   handlers.set('get_storyboard_detail', async (input) => {
     const storyboardId = input.storyboard_id as string;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) {
-      const all = loadBundledStoryboards();
+      const all = listAllComplianceStoryboards();
       const ids = all.map(s => `\`${s.id}\``).join(', ');
       return `Storyboard "${storyboardId}" not found. Available: ${ids}`;
     }
@@ -3409,7 +3499,7 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -3472,7 +3562,7 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -3550,7 +3640,6 @@ export function createMemberToolHandlers(
     const verticals = input.verticals as string[] | undefined;
     const channels = (input.channels as string[] | undefined)?.slice(0, 20);
     const formats = (input.formats as string[] | undefined)?.slice(0, 20);
-    const platformType = input.platform_type as PlatformType | undefined;
     const sampleIo = input.sample_io as string | undefined;
 
     const urlError = validateAgentUrl(agentUrl);
@@ -3596,9 +3685,6 @@ export function createMemberToolHandlers(
     if (briefsToRun.length === 0) {
       return 'No briefs could be constructed from the media kit summary. Provide at least one vertical or channel.';
     }
-
-    // Get platform profile for expected channels/tools context
-    const platformProfile = platformType ? getPlatformProfile(platformType) : undefined;
 
     try {
       const { AdCPClient } = await import('@adcp/client');
@@ -3741,25 +3827,6 @@ export function createMemberToolHandlers(
         output += `**Coverage:** ${foundChannels.length}/${effectiveChannels.length} stated channels\n\n`;
       }
 
-      // Platform profile context (when platform_type provided)
-      if (platformProfile) {
-        const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
-        const foundChannelSet = Array.from(allChannelsFound);
-        output += `### Platform expectations: ${platformProfile.label}\n\n`;
-        if (platformProfile.expected_channels?.length) {
-          const missingPlatformChannels = platformProfile.expected_channels.filter(ch =>
-            !foundChannelSet.some(found => normalize(found) === normalize(ch))
-          );
-          if (missingPlatformChannels.length > 0) {
-            output += `**Expected channels not found:** ${missingPlatformChannels.join(', ')}\n`;
-          } else {
-            output += `**All expected channels present**\n`;
-          }
-        }
-        output += `**Expected tracks:** ${platformProfile.expected_tracks.join(', ')}\n`;
-        output += `**Expected tools:** ${platformProfile.expected_tools.join(', ')}\n\n`;
-      }
-
       // Per-brief results
       output += `### Per-brief results\n\n`;
       for (const br of briefResults) {
@@ -3776,11 +3843,8 @@ export function createMemberToolHandlers(
       // Available sample briefs for context
       const availableVerticals = [...new Set(SAMPLE_BRIEFS.map(b => b.vertical))];
       output += `\n_Curated sample briefs available for: ${availableVerticals.join(', ')}_\n`;
-      if (platformType) {
-        output += `_Platform type: ${platformProfile?.label ?? platformType}_\n`;
-      }
 
-      output += `\nInterpret these results for the publisher. Highlight specific gaps between their media kit and what the agent returns. For missing channels or formats, explain what buyers would expect and suggest how to add them.${platformProfile ? ` Factor in the platform expectations — a ${platformProfile.label} should support ${platformProfile.expected_tracks.join(', ')} tracks.` : ''}`;
+      output += `\nInterpret these results for the publisher. Highlight specific gaps between their media kit and what the agent returns. For missing channels or formats, explain what buyers would expect and suggest how to add them.`;
 
       return output;
     } catch (error) {
@@ -4712,13 +4776,6 @@ export function createMemberToolHandlers(
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
-    const platformType = input.platform_type as string | undefined;
-
-    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-
-    if (platformType && !validPlatformTypes.has(platformType)) {
-      return `Invalid platform_type "${platformType}". Valid types: ${[...validPlatformTypes].join(', ')}`;
-    }
 
     async function ensureAgentInProfile(displayName: string): Promise<void> {
       if (!saveOrgId) return;
@@ -4750,9 +4807,6 @@ export function createMemberToolHandlers(
         }
         context = await agentContextDb.getById(context.id);
 
-        if (platformType) {
-          await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
-        }
         await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
@@ -4778,9 +4832,6 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
       }
 
-      if (platformType) {
-        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
-      }
       await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;

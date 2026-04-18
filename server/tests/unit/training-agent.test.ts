@@ -812,6 +812,47 @@ describe('session state', () => {
       }
     });
 
+    it('disk format uses structuredSerialize envelopes (Maps round-trip losslessly)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'format-test';
+      try {
+        const createdAt = new Date('2026-04-17T10:00:00Z');
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          s.mediaBuys.set('mb_abc', { mediaBuyId: 'mb_abc', status: 'active' } as any);
+          s.mediaBuys.set('mb_def', { mediaBuyId: 'mb_def', status: 'paused' } as any);
+          s.createdAt = createdAt;
+          await flushDirtySessions();
+        });
+
+        // Inspect the raw stored doc — must use SDK's tagged-envelope format.
+        const raw = await store.get('training_sessions', key) as Record<string, unknown>;
+        expect(raw).toBeDefined();
+        const mediaBuys = raw.mediaBuys as { __adcpType?: string; entries?: unknown[] };
+        expect(mediaBuys.__adcpType).toBe('Map');
+        expect(Array.isArray(mediaBuys.entries)).toBe(true);
+        expect(mediaBuys.entries!.length).toBe(2);
+        const created = raw.createdAt as { __adcpType?: string; value?: string };
+        expect(created.__adcpType).toBe('Date');
+        expect(created.value).toBe(createdAt.toISOString());
+
+        // Hydrate via getSession and verify both entries come back as real Maps/Dates.
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          expect(s.mediaBuys).toBeInstanceOf(Map);
+          expect(s.mediaBuys.get('mb_abc')).toEqual({ mediaBuyId: 'mb_abc', status: 'active' });
+          expect(s.mediaBuys.get('mb_def')).toEqual({ mediaBuyId: 'mb_def', status: 'paused' });
+          expect(s.createdAt).toBeInstanceOf(Date);
+          expect(s.createdAt.toISOString()).toBe(createdAt.toISOString());
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
     it('dispatcher skips flush when handler throws (real MCP path)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
       const { InMemoryStateStore } = await import('@adcp/client/server');
@@ -4268,7 +4309,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -5869,7 +5910,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(outcome.status).toBe('accepted');
   });
 
-  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+  it('governance_delivery_monitor: delivery phase check with delivery_metrics', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await setupPlan(server);
 
@@ -5883,7 +5924,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
     const ctx = initial.governance_context as string;
 
-    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    // Delivery phase re-check (from governance_delivery_monitor storyboard)
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
@@ -5904,7 +5945,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(result.status).toBe('approved');
   });
 
-  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+  it('governance_spend_authority/denied: buy exceeding media_buy allocation is denied', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     // Plan with tight media_buy allocation
     await simulateCallTool(server, 'sync_plans', {

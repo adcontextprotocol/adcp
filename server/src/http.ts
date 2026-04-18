@@ -44,7 +44,9 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
+import { findOrCreateUserByEmail } from "./auth/workos-client.js";
+import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -112,8 +114,10 @@ import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
+import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
@@ -1519,6 +1523,89 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Error setting marketing opt-in');
         res.status(500).json({ error: 'Error setting marketing preference' });
+      }
+    });
+
+    // Newsletter subscribe for non-members.
+    // Writes a pending confirmation keyed by email (no WorkOS user yet) and
+    // sends a branded transactional email via Resend. The WorkOS user is
+    // provisioned only when the recipient clicks the confirm link, which
+    // proves they control the inbox. Response is always a generic 200 to
+    // prevent email enumeration.
+    const SUBSCRIBE_SOURCES = new Set(['footer', 'story-inline', 'unknown']);
+    const TOKEN_HEX_LENGTH = 64;
+    const PER_EMAIL_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+
+    this.app.post('/api/newsletter/subscribe', newsletterSubscribeRateLimiter, async (req, res) => {
+      const { email: rawEmail, source: rawSource } = req.body ?? {};
+      const emailCheck = validateEmail(rawEmail);
+      if (!emailCheck.valid) {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+      const email = (rawEmail as string).trim().toLowerCase();
+      const source = typeof rawSource === 'string' && SUBSCRIBE_SOURCES.has(rawSource) ? rawSource : 'unknown';
+
+      try {
+        // Per-email cooldown: if a pending confirmation was issued in the
+        // last 10 minutes, skip sending a duplicate email. Limits grief-spam
+        // against a specific inbox even from distributed IPs.
+        const existing = await pendingConfirmationsDb.getByEmail(email);
+        if (existing && Date.now() - existing.created_at.getTime() < PER_EMAIL_RESEND_COOLDOWN_MS) {
+          logger.info({ source }, 'Newsletter subscribe throttled (per-email cooldown)');
+          return res.json({ ok: true });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await pendingConfirmationsDb.upsert({ email, token, source, expiresAt });
+
+        const confirmUrl = `${process.env.BASE_URL || 'https://agenticadvertising.org'}/newsletter/confirm?token=${token}`;
+        const sent = await sendNewsletterConfirmation({ to: email, confirmUrl, source });
+
+        if (sent) {
+          logger.info({ source }, 'Newsletter subscribe initiated');
+        } else {
+          logger.warn({ source }, 'Newsletter subscribe email not sent; token remains valid for retry');
+        }
+      } catch (error) {
+        logger.error({ err: error, source }, 'Newsletter subscribe failed');
+        // Still return 200 to prevent enumeration; the user just won't get an email.
+      }
+
+      res.json({ ok: true });
+    });
+
+    // Newsletter confirmation landing. Validates the single-use token, then
+    // provisions the WorkOS user and flips marketing_opt_in to true. Does NOT
+    // log the user in — that happens later via normal OAuth if they return.
+    // The 256-bit unpredictable token serves as CSRF defense on this GET.
+    this.app.get('/newsletter/confirm', newsletterConfirmRateLimiter, async (req, res) => {
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      // Reject malformed tokens without touching the DB.
+      if (token.length !== TOKEN_HEX_LENGTH || !/^[0-9a-f]+$/.test(token)) {
+        return res.redirect('/welcome-subscribed.html?error=invalid');
+      }
+
+      try {
+        const pending = await pendingConfirmationsDb.getByToken(token);
+        if (!pending) {
+          return res.redirect('/welcome-subscribed.html?error=expired');
+        }
+
+        const user = await findOrCreateUserByEmail(pending.email);
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: user.id,
+          email: user.email,
+          optIn: true,
+        });
+        await pendingConfirmationsDb.deleteByEmail(pending.email);
+
+        invalidateMemberContextCache();
+        logger.info({ userId: user.id }, 'Newsletter subscribe confirmed');
+        res.redirect('/welcome-subscribed.html');
+      } catch (error) {
+        logger.error({ err: error }, 'Newsletter confirm failed');
+        res.redirect('/welcome-subscribed.html?error=expired');
       }
     });
 
@@ -5387,9 +5474,12 @@ Disallow: /api/admin/
     // Serve admin pages
     // Note: /admin/prospects route is now in routes/admin.ts
 
-    this.app.get('/admin/members', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-members.html');
-    });
+    // /admin/members was folded into /admin/accounts (members filter tab).
+    // Billing actions live on the account detail page.
+    this.app.get('/admin/members', requireAuth, requireAdmin, (_req, res) =>
+      res.redirect(301, '/admin/accounts?view=members'));
+    this.app.get('/admin/members/:orgId', requireAuth, requireAdmin, (req, res) =>
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`));
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
@@ -5414,7 +5504,11 @@ Disallow: /api/admin/
           `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
                   p.tags,
                   p.external_url, p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
@@ -5483,7 +5577,11 @@ Disallow: /api/admin/
                   p.excerpt, p.content, p.tags,
                   p.external_url, p.external_site_name,
                   p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type, p.updated_at,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
@@ -5498,6 +5596,80 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'GET /api/admin/content/:id error');
         res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // POST /api/admin/content/:id/social-drafts - Generate LinkedIn + X drafts
+    // for a published perspective. Written for admins drafting promo copy
+    // inline (no chat round-trip).
+    this.app.post('/api/admin/content/:id/social-drafts', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isLLMConfigured()) {
+          return res.status(503).json({ error: 'LLM not configured' });
+        }
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT slug, title, excerpt, content, category
+           FROM perspectives WHERE id = $1`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        const p = result.rows[0];
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const publishedUrl = `${baseUrl}/perspectives/${p.slug}`;
+
+        const system = `You draft promotional social posts for articles published by AgenticAdvertising.org.
+
+Write as someone sharing the piece, not as a corporate account. Confident but not combative. Specific over abstract. React to the idea, don't summarize.
+
+Rules:
+- No emojis, no hashtags.
+- LinkedIn: 2-3 short paragraphs, 800-1200 chars. First line must work as a hook before "see more". End with the article URL on its own line.
+- X/Twitter: under 270 chars total including the URL (URLs count as 23 chars via t.co wrapping). End with the URL.
+- Do not invent facts, statistics, or quotes. Only reference what the article actually says.
+- Do not open with "Just read..." or "Interesting article...". Lead with the idea.
+- Do not end with engagement-bait questions.
+
+Return ONLY valid JSON, no markdown fences:
+{"linkedin": "...", "x": "..."}`;
+
+        const articleBody = typeof p.content === 'string' ? p.content.slice(0, 4000) : '';
+        const prompt = `<article>
+<title>${p.title}</title>
+<summary>${p.excerpt || ''}</summary>
+${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}</url>
+<body>${articleBody}</body>
+</article>`;
+
+        try {
+          const response = await complete({
+            system,
+            prompt,
+            model: 'primary',
+            maxTokens: 1500,
+            operationName: 'admin-social-drafts',
+          });
+          let text = response.text.trim();
+          if (text.startsWith('```')) {
+            text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          }
+          const parsed = JSON.parse(text);
+          res.json({
+            linkedin: typeof parsed.linkedin === 'string' ? parsed.linkedin : '',
+            x: typeof parsed.x === 'string' ? parsed.x : '',
+            article_url: publishedUrl,
+          });
+        } catch (llmError) {
+          logger.error({ err: llmError, contentId: id }, 'Social draft generation failed');
+          res.status(502).json({ error: 'Failed to generate posts. Try again in a moment.' });
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'POST /api/admin/content/:id/social-drafts error');
+        res.status(500).json({ error: 'Failed to generate social drafts' });
       }
     });
 

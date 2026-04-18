@@ -1,7 +1,7 @@
 id: signal_owned
 version: "1.0.0"
 title: "Owned signal agent"
-domain: signals
+protocol: signals
 category: signal_owned
 summary: "Signal agent serving first-party or proprietary audience data without external catalog verification."
 track: signals

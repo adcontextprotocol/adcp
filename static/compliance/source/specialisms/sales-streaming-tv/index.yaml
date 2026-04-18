@@ -1,7 +1,7 @@
 id: sales_streaming_tv
 version: "1.0.0"
 title: "Streaming TV sales"
-domain: media-buy
+protocol: media-buy
 status: preview
 summary: "Connected TV and streaming sellers — ad-supported video inventory, audience-based buying, and frequency management across CTV apps."
 track: media-buy

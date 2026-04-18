@@ -1,7 +1,7 @@
 id: content_standards
 version: "1.0.0"
 title: "Content standards"
-domain: governance
+protocol: governance
 category: content_standards
 summary: "Define creative quality rules, calibrate content against them, and validate that delivered ads met the standards."
 track: governance
@@ -108,7 +108,20 @@ phases:
           scope:
             languages_any: ["en"]
             description: "Acme Outdoor creative quality standards"
-          policy: "No violent or controversial imagery (must). Minimum 72 DPI for display assets (should). Brand colors must match palette within 5% tolerance (must)."
+          policies:
+            - policy_id: no_violent_imagery
+              policy_categories: [brand_safety]
+              enforcement: must
+              policy: "No violent or controversial imagery"
+            - policy_id: min_display_dpi
+              policy_categories: [imagery_quality]
+              enforcement: should
+              channels: [display]
+              policy: "Minimum 72 DPI for display assets"
+            - policy_id: brand_color_tolerance
+              policy_categories: [brand_compliance]
+              enforcement: must
+              policy: "Brand colors must match palette within 5% tolerance"
 
           context:
             correlation_id: "content_standards--create_content_standards"
@@ -219,7 +232,24 @@ phases:
 
         sample_request:
           standards_id: "$context.content_standards_id"
-          policy: "No violent or controversial imagery (must). Minimum 72 DPI (should). Brand colors within 5% tolerance (must). All images must have alt text (should)."
+          policies:
+            - policy_id: no_violent_imagery
+              policy_categories: [brand_safety]
+              enforcement: must
+              policy: "No violent or controversial imagery"
+            - policy_id: min_display_dpi
+              policy_categories: [imagery_quality]
+              enforcement: should
+              channels: [display]
+              policy: "Minimum 72 DPI for display assets"
+            - policy_id: brand_color_tolerance
+              policy_categories: [brand_compliance]
+              enforcement: must
+              policy: "Brand colors must match palette within 5% tolerance"
+            - policy_id: image_alt_text
+              policy_categories: [accessibility]
+              enforcement: should
+              policy: "All images must have alt text"
 
           context:
             correlation_id: "content_standards--update_content_standards"
@@ -353,7 +383,28 @@ phases:
 
         sample_request:
           standards_id: "$context.content_standards_id"
-          policy: "No violent or controversial imagery (must). Minimum 72 DPI (should). Brand colors within 5% tolerance (must). All images must have alt text (must). No stock photography (must)."
+          policies:
+            - policy_id: no_violent_imagery
+              policy_categories: [brand_safety]
+              enforcement: must
+              policy: "No violent or controversial imagery"
+            - policy_id: min_display_dpi
+              policy_categories: [imagery_quality]
+              enforcement: should
+              channels: [display]
+              policy: "Minimum 72 DPI for display assets"
+            - policy_id: brand_color_tolerance
+              policy_categories: [brand_compliance]
+              enforcement: must
+              policy: "Brand colors must match palette within 5% tolerance"
+            - policy_id: image_alt_text
+              policy_categories: [accessibility]
+              enforcement: must
+              policy: "All images must have alt text"
+            - policy_id: no_stock_photography
+              policy_categories: [brand_compliance]
+              enforcement: must
+              policy: "No stock photography"
 
         validations:
           - check: response_schema

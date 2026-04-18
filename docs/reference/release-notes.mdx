@@ -45,7 +45,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 12. **Brand Schema Extensions** — Generic `agents` array on `brand.json` for declaring brand-associated agents. Visual tokens: `border_radius`, `elevation`, `spacing`, and extended color roles. Structured font definitions with `weight`, `style`, `stretch`, and `optical_size`. (#1973, #1871, #1856)
 
-13. **Media Buy Status Lifecycle** — `pending_activation` splits into `pending_creatives` (approved, no creatives assigned) and `pending_start` (ready to serve, waiting for flight date). `compliance_testing` protocol capability supports storyboard-driven agent testing. (#2034)
+13. **Media Buy Status Lifecycle** — `pending_activation` splits into `pending_creatives` (approved, no creatives assigned) and `pending_start` (ready to serve, waiting for flight date). Top-level `compliance_testing: { scenarios: [...] }` capability block (not a `supported_protocols` value) declares `comply_test_controller` support for storyboard-driven agent testing. (#2034)
 
 ### Breaking Changes
 

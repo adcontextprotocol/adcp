@@ -202,9 +202,9 @@
           "custom_policies": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "/schemas/governance/policy-entry.json"
             },
-            "description": "Natural language policy statements specific to this campaign (e.g., 'No advertising adjacent to competitor content'). Applied regardless of geography."
+            "description": "Bespoke policies specific to this campaign, using the same shape as registry entries. Each policy has a policy_id, enforcement (must|should), and natural-language policy text. Governance findings reference policy_id to identify which policy triggered. For quick authoring, omit version/name/category — servers default them."
           },
           "approved_sellers": {
             "type": [
@@ -307,9 +307,9 @@
               "shared_exclusions": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "$ref": "/schemas/governance/policy-entry.json"
                 },
-                "description": "Natural language exclusion rules applied across all member plans (e.g., 'No advertising on properties owned by competitor holding companies')."
+                "description": "Bespoke exclusion policies applied across all member plans, using the same shape as registry entries. Authored typically as enforcement: must policies with exclusion language in the policy text (e.g., 'No advertising on properties owned by competitor holding companies')."
               }
             },
             "required": [

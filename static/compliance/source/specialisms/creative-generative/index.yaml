@@ -1,7 +1,7 @@
 id: creative_generative
 version: "1.0.0"
 title: "Generative creative agent"
-domain: creative
+protocol: creative
 category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
 required_tools:

@@ -1,7 +1,7 @@
 id: creative_ad_server
 version: "1.1.0"
 title: "Creative ad server"
-domain: creative
+protocol: creative
 category: creative_ad_server
 summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy with pricing and billing."
 track: creative

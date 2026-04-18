@@ -820,6 +820,9 @@ export function setupAccountRoutes(
             ? {
                 status: org.subscription_status,
                 product_name: org.subscription_product_name,
+                amount: org.subscription_amount,
+                interval: org.subscription_interval,
+                currency: org.subscription_currency,
                 current_period_end: org.subscription_current_period_end,
                 canceled_at: org.subscription_canceled_at,
               }
@@ -1706,7 +1709,7 @@ export function setupAccountRoutes(
               'email' as source,
               eca.email_date as timestamp,
               'email_received' as action,
-              COALESCE(ec.name, ec.email) as actor_name,
+              COALESCE(ec.display_name, ec.email) as actor_name,
               o.name as org_name,
               o.workos_organization_id as org_id,
               eca.subject as description,
@@ -1727,7 +1730,7 @@ export function setupAccountRoutes(
                 WHEN er.attended THEN 'attended'
                 ELSE er.registration_status
               END as action,
-              COALESCE(ec.name, u.first_name || ' ' || u.last_name, ec.email, 'Unknown') as actor_name,
+              COALESCE(ec.display_name, u.first_name || ' ' || u.last_name, ec.email, 'Unknown') as actor_name,
               e.title as org_name,
               NULL as org_id,
               e.title as description,
@@ -2148,9 +2151,6 @@ export function setupAccountRoutes(
   /**
    * Update a member's role in an organization
    * PUT /api/admin/accounts/:orgId/members/:userId/role
-   *
-   * Note: This endpoint uses userId for lookup (available in the account detail UI),
-   * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
    */
   apiRouter.put(
     "/accounts/:orgId/members/:userId/role",

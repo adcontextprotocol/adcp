@@ -85,6 +85,14 @@ Schemas are available at `/schemas/latest/`:
 
 See [static/schemas/README.md](./static/schemas/README.md) for validation examples.
 
+## Governance
+
+AdCP is a project of [AgenticAdvertising.Org](https://agenticadvertising.org), a pending 501(c)(6) nonprofit trade association incorporated in Delaware. The Foundation operates with four equally-weighted voting classes (brands, agencies, publishers, technology providers) and an open Working Group that develops AdCP.
+
+- [CHARTER.md](./CHARTER.md) — Foundation structure, voting classes, Board, specification lifecycle, and conduct rules
+- [IPR_POLICY.md](./IPR_POLICY.md) — Copyright, patent grants, trademark, and contribution terms
+- [Working Groups](https://docs.adcontextprotocol.org/docs/community/working-group) — Each WG sets its own cadence; see the page for current meetings
+
 ## Contributing
 
 We welcome contributions from platform providers, agencies, developers, and industry experts. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines. All contributors must agree to the [IPR Policy](./IPR_POLICY.md).
@@ -92,7 +100,7 @@ We welcome contributions from platform providers, agencies, developers, and indu
 ## Community
 
 - [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
-- [Working Group](https://docs.adcontextprotocol.org/docs/community/working-group) — Monthly meetings, first Wednesday of each month
+- [Working Groups](https://docs.adcontextprotocol.org/docs/community/working-group) — Each WG sets its own cadence; see the page for current meetings
 
 ## Links
 

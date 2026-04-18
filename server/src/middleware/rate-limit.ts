@@ -250,6 +250,57 @@ export const emailPrefsRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for the public newsletter subscribe endpoint.
+ * Unauthenticated, so keyed strictly by IP (with IPv6 /64 masking).
+ * Tighter than emailPrefsRateLimiter because each accepted request sends an
+ * email via Resend and may provision a WorkOS user.
+ */
+export const newsletterSubscribeRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('newsub:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for newsletter subscribe');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again in a minute.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for the public newsletter confirm GET endpoint.
+ * Guards the DB lookup against high-volume token guessing/scraping. Tokens
+ * are 256 bits so guessing is infeasible, but we still cap DB traffic.
+ */
+export const newsletterConfirmRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('newsconfirm:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for newsletter confirm');
+
+    res.redirect('/welcome-subscribed.html?error=expired');
+  },
+});
+
+/**
  * Rate limiter for admin content write operations (delete, status change)
  * Limits: 30 writes per 15 minutes per user
  */

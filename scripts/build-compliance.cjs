@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build script for AdCP compliance artifacts (specialisms, domain baselines,
+ * Build script for AdCP compliance artifacts (specialisms, protocol baselines,
  * universal compliance, test-kits).
  *
  * Mirrors scripts/build-schemas.cjs pattern:
@@ -14,19 +14,19 @@
  *    - Creates a new versioned directory (e.g., dist/compliance/3.1.0/)
  *    - Also updates latest/ to match the release
  *
- * Source of truth for specialism → domain mapping is the `domain:` field in
+ * Source of truth for specialism → protocol mapping is the `protocol:` field in
  * each specialisms/{id}/index.yaml. This build fails loudly if any specialism
- * is missing `domain:` or if the filesystem layout drifts from
+ * is missing `protocol:` or if the filesystem layout drifts from
  * static/schemas/source/enums/specialism.json.
  *
  * Published paths:
- * - /compliance/latest/                       - Current development snapshot
- * - /compliance/{version}/                    - Released version (pin for production)
- * - /compliance/{version}/universal/          - Mandatory for every agent
- * - /compliance/{version}/domains/{domain}/   - Required to claim domains
- * - /compliance/{version}/specialisms/{id}/   - Optional specialization claims
- * - /compliance/{version}/test-kits/          - Brand fixtures for runs
- * - /compliance/{version}/index.json          - Enumerates domains + specialism IDs
+ * - /compliance/latest/                           - Current development snapshot
+ * - /compliance/{version}/                        - Released version (pin for production)
+ * - /compliance/{version}/universal/              - Mandatory for every agent
+ * - /compliance/{version}/protocols/{protocol}/   - Required to claim protocols
+ * - /compliance/{version}/specialisms/{id}/       - Optional specialization claims
+ * - /compliance/{version}/test-kits/              - Brand fixtures for runs
+ * - /compliance/{version}/index.json              - Enumerates protocols + specialism IDs
  */
 
 const fs = require('fs');
@@ -38,7 +38,7 @@ const SOURCE_DIR = path.join(__dirname, '../static/compliance/source');
 const DIST_DIR = path.join(__dirname, '../dist/compliance');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SPECIALISM_ENUM = path.join(__dirname, '../static/schemas/source/enums/specialism.json');
-const DOMAIN_ENUM = path.join(__dirname, '../static/schemas/source/enums/adcp-domain.json');
+const PROTOCOL_ENUM = path.join(__dirname, '../static/schemas/source/enums/adcp-protocol.json');
 
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
@@ -71,8 +71,16 @@ function readYamlFrontmatter(filePath) {
   const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
   if (doc == null || typeof doc !== 'object') return {};
   const out = {};
-  for (const key of ['id', 'domain', 'title', 'role', 'track', 'status']) {
+  for (const key of ['id', 'protocol', 'title', 'role', 'track', 'status']) {
     if (doc[key] != null) out[key] = String(doc[key]).trim();
+  }
+  if (doc.required_tools != null) {
+    if (!Array.isArray(doc.required_tools)) {
+      throw new Error(
+        `required_tools in ${filePath} must be a YAML list, got ${typeof doc.required_tools}`
+      );
+    }
+    out.required_tools = doc.required_tools.map(t => String(t).trim()).filter(Boolean);
   }
   return out;
 }
@@ -91,10 +99,10 @@ function discoverSpecialisms(sourceDir) {
       throw new Error(`Specialism "${entry.name}" is missing index.yaml at ${indexPath}`);
     }
     const fm = readYamlFrontmatter(indexPath);
-    if (!fm.domain) {
+    if (!fm.protocol) {
       throw new Error(
-        `Specialism "${entry.name}" has no 'domain:' field in index.yaml. ` +
-        `Every specialism must declare its parent domain (media-buy, creative, signals, governance, brand, sponsored-intelligence).`
+        `Specialism "${entry.name}" has no 'protocol:' field in index.yaml. ` +
+        `Every specialism must declare its parent protocol (media-buy, creative, signals, governance, brand, sponsored-intelligence).`
       );
     }
     const status = fm.status || 'stable';
@@ -103,53 +111,62 @@ function discoverSpecialisms(sourceDir) {
         `Specialism "${entry.name}" has invalid status "${status}". Valid values: ${[...VALID_STATUSES].join(', ')}.`
       );
     }
+    const required_tools = fm.required_tools || [];
+    if (status === 'stable' && required_tools.length === 0) {
+      throw new Error(
+        `Specialism "${entry.name}" has status: stable but no required_tools declared. ` +
+        `Stable specialisms must list the tool families they exercise so /compliance/{version}/index.json ` +
+        `surfaces discoverability. Add a required_tools list to ${indexPath} or mark the specialism as preview.`
+      );
+    }
     items.push({
       id: entry.name,
-      domain: fm.domain,
+      protocol: fm.protocol,
       title: fm.title || null,
       status,
+      required_tools,
       path: `specialisms/${entry.name}/`
     });
   }
   return items.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function discoverDomains(sourceDir, specialisms) {
-  const domainsDir = path.join(sourceDir, 'domains');
+function discoverProtocols(sourceDir, specialisms) {
+  const protocolsDir = path.join(sourceDir, 'protocols');
   const ids = new Set();
 
-  if (fs.existsSync(domainsDir)) {
-    for (const entry of fs.readdirSync(domainsDir, { withFileTypes: true })) {
+  if (fs.existsSync(protocolsDir)) {
+    for (const entry of fs.readdirSync(protocolsDir, { withFileTypes: true })) {
       if (entry.isDirectory()) ids.add(entry.name);
     }
   }
   for (const s of specialisms) {
-    if (s.domain) ids.add(s.domain);
+    if (s.protocol) ids.add(s.protocol);
   }
 
   const items = [];
   for (const id of ids) {
-    const indexPath = path.join(domainsDir, id, 'index.yaml');
+    const indexPath = path.join(protocolsDir, id, 'index.yaml');
     const fm = fs.existsSync(indexPath) ? readYamlFrontmatter(indexPath) : {};
     items.push({
       id,
       title: fm.title || null,
       has_baseline: fs.existsSync(indexPath),
-      path: `domains/${id}/`
+      path: `protocols/${id}/`
     });
   }
   return items.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function verifyEnumParity(specialisms, domains) {
+function verifyEnumParity(specialisms, protocols) {
   const fsSpecialisms = new Set(specialisms.map(s => s.id));
-  const fsDomains = new Set(domains.map(d => d.id));
+  const fsProtocols = new Set(protocols.map(d => d.id));
 
   const specialismEnum = JSON.parse(fs.readFileSync(SPECIALISM_ENUM, 'utf8'));
-  const domainEnum = JSON.parse(fs.readFileSync(DOMAIN_ENUM, 'utf8'));
+  const protocolEnum = JSON.parse(fs.readFileSync(PROTOCOL_ENUM, 'utf8'));
 
   const enumSpecialisms = new Set(specialismEnum.enum);
-  const enumDomains = new Set(domainEnum.enum);
+  const enumProtocols = new Set(protocolEnum.enum);
 
   const missingFromEnum = [...fsSpecialisms].filter(x => !enumSpecialisms.has(x));
   const missingFromFs = [...enumSpecialisms].filter(x => !fsSpecialisms.has(x));
@@ -162,27 +179,27 @@ function verifyEnumParity(specialisms, domains) {
     throw new Error(msg);
   }
 
-  const domainDrift = [...fsDomains].filter(x => !enumDomains.has(x));
-  if (domainDrift.length) {
+  const protocolDrift = [...fsProtocols].filter(x => !enumProtocols.has(x));
+  if (protocolDrift.length) {
     throw new Error(
-      `Domain drift: compliance filesystem declares domains not listed in adcp-domain.json: ${domainDrift.join(', ')}`
+      `Protocol drift: compliance filesystem declares protocols not listed in adcp-protocol.json: ${protocolDrift.join(', ')}`
     );
   }
 
-  const unknownDomainRefs = specialisms
-    .filter(s => !enumDomains.has(s.domain))
-    .map(s => `${s.id} → ${s.domain}`);
-  if (unknownDomainRefs.length) {
+  const unknownProtocolRefs = specialisms
+    .filter(s => !enumProtocols.has(s.protocol))
+    .map(s => `${s.id} → ${s.protocol}`);
+  if (unknownProtocolRefs.length) {
     throw new Error(
-      `Specialisms reference domains not in adcp-domain.json enum: ${unknownDomainRefs.join(', ')}`
+      `Specialisms reference protocols not in adcp-protocol.json enum: ${unknownProtocolRefs.join(', ')}`
     );
   }
 }
 
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
-  const domains = discoverDomains(sourceDir, specialisms);
-  verifyEnumParity(specialisms, domains);
+  const protocols = discoverProtocols(sourceDir, specialisms);
+  verifyEnumParity(specialisms, protocols);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
     ? fs.readdirSync(universalDir)
@@ -191,19 +208,44 @@ function generateIndex(version, sourceDir) {
         .sort()
     : [];
 
+  const protocolEntries = protocols.map(d => ({
+    id: d.id,
+    title: d.title,
+    has_baseline: d.has_baseline,
+    path: d.path,
+  }));
+  // Transitional alias for @adcp/client@5.x consumers that read `domains` and expect
+  // `domains/{id}/` on-disk paths. Drop after v6 ships and all consumers upgrade.
+  const domainAliasEntries = protocols.map(d => ({
+    id: d.id,
+    title: d.title,
+    has_baseline: d.has_baseline,
+    path: d.path.replace(/^protocols\//, 'domains/'),
+  }));
+
   return {
     adcp_version: version,
     generated_at: new Date().toISOString(),
     universal,
-    domains: domains.map(d => ({ id: d.id, title: d.title, has_baseline: d.has_baseline, path: d.path })),
+    protocols: protocolEntries,
+    domains: domainAliasEntries,
     specialisms: specialisms.map(s => ({
       id: s.id,
-      domain: s.domain,
+      protocol: s.protocol,
+      domain: s.protocol,
       title: s.title,
       status: s.status,
+      required_tools: s.required_tools,
       path: s.path
     }))
   };
+}
+
+function mirrorProtocolsToDomains(targetDir) {
+  const protocolsDir = path.join(targetDir, 'protocols');
+  const domainsDir = path.join(targetDir, 'domains');
+  if (!fs.existsSync(protocolsDir)) return;
+  copyTree(protocolsDir, domainsDir);
 }
 
 function buildTo(targetDir, version, sourceDir) {
@@ -212,6 +254,7 @@ function buildTo(targetDir, version, sourceDir) {
   }
   ensureDir(targetDir);
   copyTree(sourceDir, targetDir);
+  mirrorProtocolsToDomains(targetDir);
   const index = generateIndex(version, sourceDir);
   fs.writeFileSync(
     path.join(targetDir, 'index.json'),
@@ -241,7 +284,7 @@ function main() {
     const versionDir = path.join(DIST_DIR, version);
     console.log(`📋 Creating release: dist/compliance/${version}/`);
     const index = buildTo(versionDir, version, SOURCE_DIR);
-    console.log(`   ✓ ${index.universal.length} universal, ${index.domains.length} domains, ${index.specialisms.length} specialisms`);
+    console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log(`📋 Updating latest/ to match release`);
     buildTo(path.join(DIST_DIR, 'latest'), 'latest', SOURCE_DIR);
@@ -262,7 +305,7 @@ function main() {
     const latestDir = path.join(DIST_DIR, 'latest');
     console.log(`📋 Building compliance to dist/compliance/latest/`);
     const index = buildTo(latestDir, 'latest', SOURCE_DIR);
-    console.log(`   ✓ ${index.universal.length} universal, ${index.domains.length} domains, ${index.specialisms.length} specialisms`);
+    console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log('');
     console.log('✅ Development build complete!');

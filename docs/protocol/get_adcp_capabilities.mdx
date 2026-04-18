@@ -11,7 +11,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
-- **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative, compliance_testing)?
+- **Protocol support** - Which protocols (media_buy, signals, governance, sponsored_intelligence, creative, brand)?
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
@@ -65,7 +65,7 @@ Version Negotiation Flow:
 | Field | Type | Description |
 |-------|------|-------------|
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns `VERSION_UNSUPPORTED` if not in range. When omitted, the seller assumes the highest major version it supports. |
-| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `compliance_testing`). If omitted, returns all supported protocols. |
+| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
 
 ## Response Structure
 
@@ -79,7 +79,7 @@ Core AdCP protocol information:
 
 ### supported_protocols
 
-AdCP domain protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/domains/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../domains/media-buy/`).
+AdCP protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/protocols/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../protocols/media-buy/`).
 
 ```json
 {
@@ -87,9 +87,9 @@ AdCP domain protocols this agent supports. This is the single capability axis �
 }
 ```
 
-Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`, `compliance_testing`. `compliance_testing` is an RPC surface only (the [compliance test controller](/docs/building/implementation/comply-test-controller)) — it has no compliance baseline.
+Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
 
-See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope.
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
 
 ### specialisms
 
@@ -376,7 +376,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
       { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
       { "feature_id": "registry:uk_hfss", "type": "binary", "description": "UK HFSS advertising restrictions compliance" },
-      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" }
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://vendor.example.com/methodology/carbon-score" }
     ],
     "creative_features": [
       { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "description": "EU AI Act Article 50 — AI-generated content disclosure" },
@@ -398,15 +398,15 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### compliance_testing
 
-Compliance testing capabilities. Only present if `compliance_testing` is in `supported_protocols`. Indicates this agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller).
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`. |
 
-Storyboard runners check for `compliance_testing` in `supported_protocols` before running deterministic testing steps. If the agent does not declare compliance testing support, controller-dependent storyboard steps cannot be validated.
+Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
-Agents that implement `comply_test_controller` SHOULD declare `compliance_testing` in `supported_protocols` and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
 
 :::note
 Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
@@ -418,21 +418,21 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
+| `extensions_supported` | string[] | Extension namespaces (e.g., `["iab_tcf", "iab_gpp"]`) |
 
 Extension schemas are published in the [AdCP extension registry](/docs/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json
 {
-  "extensions_supported": ["scope3", "garm", "iab_tcf"]
+  "extensions_supported": ["iab_tcf", "iab_gpp", "acmecorp"]
 }
 ```
 
 This tells buyers:
-- Product responses may include `ext.scope3` with Scope3 sustainability data
-- Creative policies may include `ext.garm` with GARM brand suitability categorizations
 - Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
 
 ## The Capability Contract
 
@@ -477,8 +477,8 @@ if (result.supported_protocols.includes('media_buy')) {
   }
 
   // Check AXE integrations (legacy — new integrations use TMP via trusted_match on products)
-  if (mediaBuy.execution?.axe_integrations?.includes('https://agentic.scope3.com')) {
-    console.log('Scope3 AXE integration available');
+  if (mediaBuy.execution?.axe_integrations?.includes('https://axe.example.com')) {
+    console.log('AXE integration available');
   }
 
   // Check geo targeting
@@ -558,7 +558,7 @@ async function findCompatibleSellers(sellers, requirements) {
 const sellers = await findCompatibleSellers(
   ['https://seller1.com/mcp', 'https://seller2.com/mcp'],
   {
-    axeIntegration: 'https://agentic.scope3.com',
+    axeIntegration: 'https://axe.example.com',
     postalCodeTargeting: true,
     contentStandards: true
   }
@@ -591,7 +591,7 @@ const products = await client.getProducts({
       { level: 'postal_area', system: 'us_zip' }
     ],
     // Only include if seller supports this AXE (legacy — new integrations use TMP)
-    required_axe_integrations: ['https://agentic.scope3.com']
+    required_axe_integrations: ['https://axe.example.com']
   }
 });
 
@@ -682,7 +682,7 @@ const buy = await client.createMediaBuy({
       "property_list_filtering": true
     },
     "execution": {
-      "axe_integrations": ["https://agentic.scope3.com"],
+      "axe_integrations": ["https://axe.example.com"],
       "creative_specs": {
         "vast_versions": ["4.0", "4.1", "4.2"],
         "mraid_versions": ["3.0"],
@@ -735,7 +735,7 @@ const buy = await client.createMediaBuy({
       "primary_countries": ["US", "CA"]
     }
   },
-  "extensions_supported": ["scope3"],
+  "extensions_supported": ["acmecorp"],
   "last_updated": "2025-01-23T10:00:00Z"
 }
 ```
@@ -751,7 +751,7 @@ This tells buyers:
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
 - **Audience targeting**: Accepts hashed email, hashed phone, UID2, and RampID; minimum matched audience size of 500; matching latency 1–24 hours
 - **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
-- **Extensions**: Scope3 sustainability data in `ext.scope3`
+- **Extensions**: Vendor-specific data in `ext.acmecorp`
 
 ### Multi-protocol agent
 

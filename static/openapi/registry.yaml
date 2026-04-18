@@ -1264,10 +1264,6 @@ components:
             - testing
             - production
             - deprecated
-        platform_type:
-          type:
-            - string
-            - "null"
         compliance_opt_out:
           type: boolean
         monitoring_paused:
@@ -1285,7 +1281,6 @@ components:
       required:
         - agent_url
         - lifecycle_stage
-        - platform_type
         - compliance_opt_out
         - monitoring_paused
         - check_interval_hours
@@ -4755,7 +4750,7 @@ paths:
     put:
       operationId: connectAgent
       summary: Connect agent credentials
-      description: Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.
+      description: Store authentication credentials for an agent. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -4784,9 +4779,6 @@ paths:
                     - bearer
                     - basic
                   description: "Auth type (default: bearer)"
-                platform_type:
-                  type: string
-                  description: Agent platform type
       responses:
         "200":
           description: Connection result
@@ -4802,8 +4794,6 @@ paths:
                   has_auth:
                     type: boolean
                   agent_context_id:
-                    type: string
-                  platform_type:
                     type: string
                 required:
                   - connected
@@ -4837,7 +4827,7 @@ paths:
     get:
       operationId: getApplicableStoryboards
       summary: Get applicable storyboards for agent
-      description: Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.
+      description: Probe the agent's get_adcp_capabilities and resolve its declared supported_protocols and specialisms to the compliance bundles that will run. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -4852,7 +4842,7 @@ paths:
           in: path
       responses:
         "200":
-          description: Applicable storyboards grouped by track
+          description: Bundles the agent will be tested against, driven by its declared capabilities
           content:
             application/json:
               schema:
@@ -4862,41 +4852,61 @@ paths:
                     type: string
                   agent_name:
                     type: string
-                  tools:
+                  supported_protocols:
                     type: array
                     items:
                       type: string
-                  storyboards:
-                    type: object
-                    additionalProperties:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                          title:
-                            type: string
-                          summary:
-                            type: string
-                          step_count:
-                            type: integer
-                        required:
-                          - id
-                          - title
-                          - summary
-                          - step_count
-                  total_applicable:
-                    type: integer
-                  total_available:
+                  specialisms:
+                    type: array
+                    items:
+                      type: string
+                  capabilities_probe_error:
+                    type: string
+                    description: Agent-reported probe error. Untrusted — sanitized and truncated to 500 chars. Present when get_adcp_capabilities was advertised but failed; empty bundle list usually indicates this, not a v2 agent.
+                  bundles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - universal
+                            - domain
+                            - specialism
+                        id:
+                          type: string
+                        storyboards:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              title:
+                                type: string
+                              summary:
+                                type: string
+                              step_count:
+                                type: integer
+                            required:
+                              - id
+                              - title
+                              - summary
+                              - step_count
+                      required:
+                        - kind
+                        - id
+                        - storyboards
+                  total_storyboards:
                     type: integer
                 required:
                   - agent_url
                   - agent_name
-                  - tools
-                  - storyboards
-                  - total_applicable
-                  - total_available
+                  - supported_protocols
+                  - specialisms
+                  - bundles
+                  - total_storyboards
         "400":
           description: Invalid agent URL
           content:
@@ -4916,7 +4926,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Agent requires authentication
+          description: Agent requires authentication, or declares a specialism not in the local compliance cache
           content:
             application/json:
               schema:
@@ -4926,17 +4936,40 @@ paths:
                     type: string
                   needs_auth:
                     type: boolean
-                    enum:
-                      - true
+                  unknown_specialism:
+                    type: boolean
+                  declared_specialisms:
+                    type: array
+                    items:
+                      type: string
+                    description: Specialisms the agent declared, for unknown-specialism errors
+                  known_specialisms:
+                    type: array
+                    items:
+                      type: string
+                    description: Specialism ids present in this server's local compliance cache
                 required:
                   - error
-                  - needs_auth
         "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+                    enum:
+                      - network
+                      - tls
+                      - timeout
+                      - protocol
+                      - unknown
+                    description: Coarse error classification for UI differentiation
+                required:
+                  - error
         "504":
           description: Connection timeout
           content:

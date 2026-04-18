@@ -9,7 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { createTestClient, loadBundledStoryboards, runStoryboardStep, getStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -69,9 +69,9 @@ import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
-import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
+import { classifyProbeError } from "../utils/probe-error.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -1613,7 +1613,7 @@ registry.registerPath({
   operationId: "connectAgent",
   summary: "Connect agent credentials",
   description:
-    "Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.",
+    "Store authentication credentials for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -1626,7 +1626,6 @@ registry.registerPath({
           schema: z.object({
             auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
             auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
-            platform_type: z.string().optional().openapi({ description: "Agent platform type" }),
           }),
         },
       },
@@ -1641,7 +1640,6 @@ registry.registerPath({
             connected: z.literal(true),
             has_auth: z.boolean(),
             agent_context_id: z.string(),
-            platform_type: z.string().optional(),
           }),
         },
       },
@@ -1659,7 +1657,7 @@ registry.registerPath({
   operationId: "getApplicableStoryboards",
   summary: "Get applicable storyboards for agent",
   description:
-    "Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.",
+    "Probe the agent's get_adcp_capabilities and resolve its declared supported_protocols and specialisms to the compliance bundles that will run. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -1669,21 +1667,26 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: "Applicable storyboards grouped by track",
+      description: "Bundles the agent will be tested against, driven by its declared capabilities",
       content: {
         "application/json": {
           schema: z.object({
             agent_url: z.string(),
             agent_name: z.string(),
-            tools: z.array(z.string()),
-            storyboards: z.record(z.string(), z.array(z.object({
+            supported_protocols: z.array(z.string()),
+            specialisms: z.array(z.string()),
+            capabilities_probe_error: z.string().optional().openapi({ description: "Agent-reported probe error. Untrusted — sanitized and truncated to 500 chars. Present when get_adcp_capabilities was advertised but failed; empty bundle list usually indicates this, not a v2 agent." }),
+            bundles: z.array(z.object({
+              kind: z.enum(["universal", "domain", "specialism"]),
               id: z.string(),
-              title: z.string(),
-              summary: z.string(),
-              step_count: z.number().int(),
-            }))),
-            total_applicable: z.number().int(),
-            total_available: z.number().int(),
+              storyboards: z.array(z.object({
+                id: z.string(),
+                title: z.string(),
+                summary: z.string(),
+                step_count: z.number().int(),
+              })),
+            })),
+            total_storyboards: z.number().int(),
           }),
         },
       },
@@ -1691,8 +1694,31 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
-    422: { description: "Agent requires authentication", content: { "application/json": { schema: z.object({ error: z.string(), needs_auth: z.literal(true) }) } } },
-    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description: "Agent requires authentication, or declares a specialism not in the local compliance cache",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            needs_auth: z.boolean().optional(),
+            unknown_specialism: z.boolean().optional(),
+            declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared, for unknown-specialism errors" }),
+            known_specialisms: z.array(z.string()).optional().openapi({ description: "Specialism ids present in this server's local compliance cache" }),
+          }),
+        },
+      },
+    },
+    500: {
+      description: "Server error",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            reason: z.enum(["network", "tls", "timeout", "protocol", "unknown"]).optional().openapi({ description: "Coarse error classification for UI differentiation" }),
+          }),
+        },
+      },
+    },
     504: { description: "Connection timeout", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3781,7 +3807,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const { auth_token, auth_type, platform_type } = req.body;
+      const { auth_token, auth_type } = req.body;
 
       if (auth_token && typeof auth_token !== "string") {
         return res.status(400).json({ error: "auth_token must be a string" });
@@ -3795,16 +3821,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
       }
       const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
-
-      if (platform_type && typeof platform_type !== "string") {
-        return res.status(400).json({ error: "platform_type must be a string" });
-      }
-      const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-      if (platform_type && !validPlatformTypes.has(platform_type)) {
-        return res.status(400).json({
-          error: `Invalid platform_type. Valid types: ${[...validPlatformTypes].join(", ")}`,
-        });
-      }
 
       // Verify ownership and get org ID in a single query
       const orgResult = await query(
@@ -3839,16 +3855,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
       }
 
-      // Set platform type if provided
-      if (platform_type) {
-        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type });
-      }
-
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
         agent_context_id: context.id,
-        platform_type: platform_type || undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to connect agent");
@@ -3907,12 +3917,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
       }
 
-      let agentInfo;
+      let profile;
       try {
-        const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
-        agentInfo = await client.getAgentInfo();
+        const caps = await testCapabilityDiscovery(agentUrl, { ...(auth && { auth }) });
+        profile = caps.profile;
       } catch (connectErr) {
-        // If auth failed and connection failed, give a specific error
         if (!auth) {
           return res.status(422).json({
             error: "Agent requires authentication. Save an auth token first using the connect form.",
@@ -3921,35 +3930,69 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
         throw connectErr;
       }
-      const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
-      const allStoryboards = loadBundledStoryboards();
-      const applicable = allStoryboards.filter(sb => {
-        if (!sb.required_tools?.length) return true;
-        return sb.required_tools.some(tool => agentTools.includes(tool));
-      });
+      const supportedProtocols = profile?.supported_protocols ?? [];
+      const specialisms = profile?.specialisms ?? [];
 
-      // Group by track
-      const byTrack: Record<string, Array<{ id: string; title: string; summary: string; step_count: number }>> = {};
-      for (const sb of applicable) {
-        const track = sb.track || "general";
-        if (!byTrack[track]) byTrack[track] = [];
-        byTrack[track].push({
-          id: sb.id,
-          title: sb.title,
-          summary: sb.summary,
-          step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+      let resolved;
+      try {
+        resolved = resolveStoryboardsForCapabilities({
+          supported_protocols: supportedProtocols,
+          specialisms,
+        });
+      } catch (resolveErr) {
+        // Fail-closed: agent declared a specialism whose bundle isn't in the
+        // local compliance cache. The resolver's message includes server-side
+        // paths — log it but don't leak it to the client. Return the
+        // declared vs known lists so a UI can name the offender without
+        // asking the developer to re-read their own config.
+        logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Agent declared an unknown specialism");
+        let knownSpecialisms: string[] = [];
+        try {
+          knownSpecialisms = loadComplianceIndex().specialisms.map(s => s.id).sort();
+        } catch (indexErr) {
+          logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
+        }
+        return res.status(422).json({
+          error: "Agent declared a specialism that isn't in the compliance cache. The cache may be stale, or the specialism id is unrecognized.",
+          unknown_specialism: true,
+          declared_specialisms: specialisms,
+          known_specialisms: knownSpecialisms,
         });
       }
 
-      res.json({
+      // Drop empty bundles — upstream catalog occasionally ships stubs.
+      const bundles = resolved.bundles
+        .filter(b => b.storyboards.length > 0)
+        .map(b => ({
+          kind: b.ref.kind,
+          id: b.ref.id,
+          storyboards: b.storyboards.map(sb => ({
+            id: sb.id,
+            title: sb.title,
+            summary: sb.summary,
+            step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+          })),
+        }));
+
+      const responseBody: Record<string, unknown> = {
         agent_url: agentUrl,
-        agent_name: agentInfo.name || "Unknown",
-        tools: agentTools,
-        storyboards: byTrack,
-        total_applicable: applicable.length,
-        total_available: allStoryboards.length,
-      });
+        agent_name: profile?.name || "Unknown",
+        supported_protocols: supportedProtocols,
+        specialisms,
+        bundles,
+        total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
+      };
+      if (profile?.capabilities_probe_error) {
+        // Cap length + strip control chars. The string is agent-reported and
+        // therefore untrusted — consumers should treat it as informational
+        // only (documented on the OpenAPI description).
+        responseBody.capabilities_probe_error = String(profile.capabilities_probe_error)
+          .replace(/[\r\n\u0000-\u001f\u007f]/g, ' ')
+          .slice(0, 500);
+      }
+
+      res.json(responseBody);
     } catch (error) {
       logger.warn({ err: error, agentUrl }, "Failed to resolve applicable storyboards");
 
@@ -3957,7 +4000,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout" });
       }
 
-      return res.status(500).json({ error: "Failed to discover agent tools" });
+      return res.status(500).json({
+        error: "Failed to probe agent capabilities",
+        reason: classifyProbeError(error),
+      });
     }
   });
 
@@ -3982,7 +4028,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -4020,7 +4066,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
