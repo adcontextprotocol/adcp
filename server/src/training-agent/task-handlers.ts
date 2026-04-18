@@ -2079,7 +2079,10 @@ async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext)
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   return {
-    adcp: { major_versions: [...SUPPORTED_MAJOR_VERSIONS] },
+    adcp: {
+      major_versions: [...SUPPORTED_MAJOR_VERSIONS],
+      idempotency: { replay_ttl_seconds: 86400 },
+    },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
     protocol_version: '3.0',
     tasks,

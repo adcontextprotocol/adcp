@@ -17,10 +17,26 @@
             "minimum": 1
           },
           "minItems": 1
+        },
+        "idempotency": {
+          "type": "object",
+          "description": "Idempotency semantics for mutating requests. Sellers MUST declare their replay window so buyers can reason about safe retry behavior. Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
+          "properties": {
+            "replay_ttl_seconds": {
+              "type": "integer",
+              "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
+              "minimum": 3600,
+              "maximum": 604800
+            }
+          },
+          "required": [
+            "replay_ttl_seconds"
+          ]
         }
       },
       "required": [
-        "major_versions"
+        "major_versions",
+        "idempotency"
       ]
     },
     "supported_protocols": {

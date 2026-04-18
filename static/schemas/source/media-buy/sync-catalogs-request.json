@@ -11,6 +11,13 @@
       "minimum": 1,
       "maximum": 99
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `catalog_id` gives resource-level dedup per catalog, but the sync envelope emits audit events and triggers platform review for large feeds — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `catalogs` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account that owns these catalogs."
@@ -60,6 +67,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "account"
   ],
   "if": {
@@ -83,6 +91,7 @@
     {
       "description": "Sync product and inventory feeds for a retail media campaign",
       "data": {
+        "idempotency_key": "a1d5c8e9-7890-489c-def0-12345678901a",
         "account": {
           "account_id": "acct_acmecorp"
         },
@@ -109,6 +118,7 @@
     {
       "description": "Sync inline offerings for a recruitment campaign",
       "data": {
+        "idempotency_key": "b2e6d9f0-8901-489d-ef01-23456789012b",
         "account": {
           "account_id": "acct_restaurants"
         },
@@ -140,6 +150,7 @@
     {
       "description": "Discovery-only: list all catalogs on the account",
       "data": {
+        "idempotency_key": "c3f7e0a1-9012-489e-f012-34567890123c",
         "account": {
           "account_id": "acct_acmecorp"
         }

@@ -44,7 +44,10 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [2] },
+  "adcp": {
+    "major_versions": [2],
+    "idempotency": { "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["creative"],
   "creative": {
     "has_creative_library": true,

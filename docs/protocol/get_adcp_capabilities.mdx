@@ -369,7 +369,10 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [1] },
+  "adcp": {
+    "major_versions": [1],
+    "idempotency": { "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["governance"],
   "governance": {
     "property_features": [
@@ -669,7 +672,8 @@ const buy = await client.createMediaBuy({
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [1]
+    "major_versions": [1],
+    "idempotency": { "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
   "account": {
@@ -761,7 +765,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [3]
+    "major_versions": [3],
+    "idempotency": { "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy", "creative"],
   "account": {

@@ -11,6 +11,13 @@
       "minimum": 1,
       "maximum": 99
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "accounts": {
       "type": "array",
       "description": "Advertiser accounts to sync",
@@ -92,6 +99,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "accounts"
   ],
   "additionalProperties": true,
@@ -99,6 +107,7 @@
     {
       "description": "Agency syncing multiple advertisers with different billing",
       "data": {
+        "idempotency_key": "a7f9c2e4-1234-4567-89ab-cdef01234567",
         "accounts": [
           {
             "brand": {
@@ -122,6 +131,7 @@
     {
       "description": "Brand buying direct with payment terms",
       "data": {
+        "idempotency_key": "b8e0d3f5-2345-4678-9abc-def012345678",
         "accounts": [
           {
             "brand": {
@@ -137,6 +147,7 @@
     {
       "description": "Agent consolidating billing with net-60 terms",
       "data": {
+        "idempotency_key": "c9f1e4a6-3456-4789-abcd-ef0123456789",
         "accounts": [
           {
             "brand": {
@@ -162,6 +173,7 @@
     {
       "description": "Advertiser billed directly with structured billing entity (DACH B2B)",
       "data": {
+        "idempotency_key": "d0a2f5b7-4567-489a-bcde-f01234567890",
         "accounts": [
           {
             "brand": {

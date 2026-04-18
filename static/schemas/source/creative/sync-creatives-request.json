@@ -74,7 +74,8 @@
       "type": "string",
       "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "delete_missing": {
       "type": "boolean",
@@ -103,6 +104,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "account",
     "creatives"
   ],
@@ -111,6 +113,7 @@
     {
       "description": "Full sync with hosted video creative",
       "data": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "account": {
           "account_id": "acct_acmecorp"
         },
@@ -151,6 +154,7 @@
     {
       "description": "Generative creative with approval",
       "data": {
+        "idempotency_key": "5f8b1f3a-1234-4a5b-9cde-1234567890ab",
         "account": {
           "account_id": "acct_acmecorp"
         },
@@ -182,6 +186,7 @@
     {
       "description": "Scoped update using creative_ids filter",
       "data": {
+        "idempotency_key": "6a9c2f4b-5678-49ab-8def-fedcba987654",
         "account": {
           "account_id": "acct_acmecorp"
         },

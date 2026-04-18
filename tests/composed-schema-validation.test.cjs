@@ -161,6 +161,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
       account: { account_id: 'acc_test_001' },
       packages: [
         {
@@ -190,6 +191,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
+      idempotency_key: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
       account: { account_id: 'acc_test_001' },
       packages: [
         {
@@ -210,6 +212,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
+      idempotency_key: '6ba7b811-9dad-41d1-80b4-00c04fd430c9',
       account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
       packages: [
         {
@@ -282,6 +285,7 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/create-media-buy-request.json'),
         {
+          idempotency_key: '550e8400-e29b-41d4-a716-446655440042',
           account: { account_id: 'acc_test_001' },
           packages: [
             {
