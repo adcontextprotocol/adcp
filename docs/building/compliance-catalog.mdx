@@ -9,6 +9,18 @@ Every AdCP agent declares its `supported_protocols` and `specialisms` in `get_ad
 
 This page is the human-readable index of that taxonomy. The machine-readable equivalent is `/compliance/{version}/index.json`.
 
+## Universal storyboards
+
+Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which domains or specialisms it claims. Failing a universal storyboard fails overall compliance.
+
+| Storyboard | Purpose |
+|-----------|---------|
+| `capability-discovery` | `get_adcp_capabilities` shape and version declaration |
+| `schema-validation` | Response schema conformance and temporal constraints |
+| `error-compliance` | Structured errors with correct codes and transport binding |
+| `deterministic-testing` | `comply_test_controller` state-machine verification (skipped if unsupported) |
+| `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/integration/authentication). |
+
 ## Domains
 
 Broad agent categories. An agent claims a domain by listing the matching protocol in `supported_protocols` and must pass the domain's baseline storyboard plus every [universal](/docs/building/validate-your-agent#storyboard-taxonomy) storyboard.

@@ -13,8 +13,12 @@
 # id: string (unique identifier, e.g., "creative_template")
 # version: string (semver, e.g., "1.0.0")
 # title: string (human-readable title)
-# category: enum (capability_discovery | schema_validation | behavioral_analysis | error_compliance | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_generative_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | media_buy_state_machine | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | collection_governance | content_standards | audience_sync)
+# category: enum (capability_discovery | schema_validation | behavioral_analysis | error_compliance | security | creative_template | creative_ad_server | creative_sales_agent | creative_generative | creative_lifecycle | media_buy_seller | media_buy_generative_seller | media_buy_guaranteed_approval | media_buy_non_guaranteed | media_buy_proposal_mode | media_buy_governance_escalation | media_buy_catalog_creative | media_buy_state_machine | campaign_governance_denied | campaign_governance_conditions | campaign_governance_delivery | signal_marketplace | signal_owned | social_platform | si_session | brand_rights | property_governance | collection_governance | content_standards | audience_sync)
 # summary: string (one-line description for listings)
+# track: enum (optional — compliance track this storyboard contributes to:
+#   core | products | media_buy | creative | reporting | governance |
+#   campaign_governance | signals | si | audiences | error_handling | brand | security)
+# required_tools: string[] (optional — tool names the storyboard uses; empty for protocol-level tests)
 # narrative: string (paragraph explaining the overall flow)
 #
 # requires_scenarios: string[] (optional — scenario IDs from storyboards/scenarios/ that must pass alongside this storyboard.
@@ -49,7 +53,10 @@
 # id: string (unique within phase)
 # title: string (human-readable step title)
 # narrative: string (what's happening and why)
-# task: string (AdCP task name: list_creative_formats, preview_creative, build_creative, get_products, create_media_buy, sync_accounts, etc.)
+# task: string (AdCP task name: list_creative_formats, preview_creative, build_creative, get_products,
+#               create_media_buy, sync_accounts, etc. May reference a test-kit field, e.g.
+#               "$test_kit.auth.probe_task", in which case `task_default` provides the fallback.)
+# task_default: string (optional — default task name when `task` is a test-kit reference that resolves to null)
 # schema_ref: string (path to request schema, e.g., "creative/list-creative-formats-request.json" or "media-buy/get-products-request.json")
 # response_schema_ref: string (path to response schema)
 # doc_ref: string (path to documentation page)
@@ -58,13 +65,32 @@
 # stateful: boolean (does this step depend on state from a previous step?)
 #
 # sample_request: object (optional — example request payload for this step)
-# sample_response: object (optional — example expected response)
+# sample_response: object (optional — example expected response; also surfaces in published docs)
+#
+# auth: "none" | object (optional — overrides the transport's default credentials for this step)
+#   auth: none                                          → strip any configured credentials before sending
+#   auth: { type: api_key, from_test_kit: true }        → use the API key at `auth.api_key` in the test kit
+#   auth: { type: api_key, value: "literal-bad-token" } → use a literal Bearer value (for invalid-key probes)
+#
+# contributes_to: string (optional — marks this step as contributing a named flag
+#                         that a later assert_contribution step can require)
+# contributes_if: string (optional — expression; contribution only applied when expression is true,
+#                         e.g., "prior_step.probe_api_key.passed")
 #
 # validations: array of Validation objects (optional)
 #
+# --- Phase (optional fields for conditional execution) ---
+#
+# optional: boolean (when true, the phase may be skipped without failing the storyboard)
+# skip_if: string (expression — phase is skipped when the expression evaluates to true,
+#                  e.g., "!test_kit.auth.api_key")
+#
 # --- Validation ---
 #
-# check: string (what to validate: "response_schema", "field_present", "field_value", "status_code")
+# check: string (what to validate: "response_schema", "field_present", "field_value",
+#                "status_code", "http_status", "http_status_in", "error_code",
+#                "on_401_require_header", "resource_equals_agent_url", "any_of")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value")
+# allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
 # description: string (human-readable description of validation)
