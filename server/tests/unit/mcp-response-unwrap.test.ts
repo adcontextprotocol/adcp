@@ -185,12 +185,10 @@ describe('MCP response unwrapping for evaluator', () => {
         },
       };
 
-      const unwrapped = unwrapProtocolResponse(mcpResponse);
+      const unwrapped = unwrapProtocolResponse(mcpResponse) as { adcp_error?: { code: string; message: string } };
       expect(isAdcpError(unwrapped)).toBe(true);
-      if (isAdcpError(unwrapped)) {
-        expect(unwrapped.errors[0].code).toBe('RATE_LIMITED');
-        expect(unwrapped.errors[0].message).toBe('Too many requests');
-      }
+      expect(unwrapped.adcp_error?.code).toBe('RATE_LIMITED');
+      expect(unwrapped.adcp_error?.message).toBe('Too many requests');
     });
   });
 });

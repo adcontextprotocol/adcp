@@ -24,3 +24,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Server unit tests
+        run: npm run test:server-unit

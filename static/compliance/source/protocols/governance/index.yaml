@@ -196,20 +196,31 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - per_transaction_threshold: the spending limit before escalation
-          - escalation_path: how over-limit transactions are handled
+          - budget.reallocation_threshold: spending limit before re-evaluation
+          - human_review_required: set when the plan mandates escalation
 
         sample_request:
+          idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
           plans:
-            - plan_name: "Acme Outdoor Q2 Governance"
+            - plan_id: "gov_acme_q2_2027"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              per_transaction_threshold: 20000
-              escalation_path: "human_review"
-              conditions:
-                - "Weekly reporting required for buys over $10K"
-                - "No single-seller concentration above 60% of total budget"
+              objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+              budget:
+                total: 50000
+                currency: "USD"
+                reallocation_threshold: 20000
+              flight:
+                start: "2027-04-01T00:00:00Z"
+                end: "2027-06-30T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "weekly_reporting_over_10k"
+                  enforcement: "must"
+                  policy: "Weekly reporting required for buys over $10K."
+                - policy_id: "seller_concentration_cap"
+                  enforcement: "must"
+                  policy: "No single-seller concentration above 60% of total budget."
 
           context:
             correlation_id: "media_buy_governance_escalation--sync_plans"

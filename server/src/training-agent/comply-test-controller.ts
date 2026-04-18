@@ -9,7 +9,14 @@
 
 import { TestControllerError } from '@adcp/client';
 import type { TestControllerStore } from '@adcp/client';
-import type { TrainingContext, ToolArgs, SessionState, MediaBuyState } from './types.js';
+import type {
+  TrainingContext,
+  ToolArgs,
+  SessionState,
+  MediaBuyState,
+  ComplyDeliveryAccumulator,
+  ComplyBudgetSimulation,
+} from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { deriveStatus } from './task-handlers.js';
 
@@ -55,57 +62,40 @@ const SI_SESSION_TRANSITIONS: Record<string, string[]> = {
 
 const SI_SESSION_TERMINAL = new Set(['complete', 'terminated']);
 
+/**
+ * Per-Map cap on `complyExtensions`. These Maps are keyed by caller-supplied
+ * IDs (account_id, session_id, media_buy_id) and, since they are persisted
+ * with the session, a sandbox caller could otherwise loop with fresh IDs
+ * until the SDK's 5 MB session cap throws `PAYLOAD_TOO_LARGE` at flush —
+ * which aborts the request after the response was sent. Cap here so the
+ * rejection happens at the mutation site with a clear error code.
+ */
+const MAX_COMPLY_ENTRIES_PER_MAP = 1000;
+
+function enforceComplyCap<V>(map: Map<string, V>, key: string, kind: string): void {
+  if (!map.has(key) && map.size >= MAX_COMPLY_ENTRIES_PER_MAP) {
+    throw new TestControllerError(
+      'INVALID_STATE',
+      `Too many ${kind} entries in this sandbox session (limit ${MAX_COMPLY_ENTRIES_PER_MAP}). Clear the session or reuse an existing id.`,
+    );
+  }
+}
+
 // ── Session extensions ────────────────────────────────────────────
 
-interface ComplyExtensions {
-  accountStatuses: Map<string, string>;
-  siSessions: Map<string, { status: string; terminationReason?: string }>;
-  deliverySimulations: Map<string, DeliveryAccumulator>;
-  budgetSimulations: Map<string, BudgetSimulation>;
-}
-
-interface DeliveryAccumulator {
-  impressions: number;
-  clicks: number;
-  reportedSpend: { amount: number; currency: string };
-  conversions: number;
-}
-
-interface BudgetSimulation {
-  spendPercentage: number;
-  computedSpend: { amount: number; currency: string };
-  budget: { amount: number; currency: string };
-}
-
-const complyExtensions = new WeakMap<SessionState, ComplyExtensions>();
-
-function getExtensions(session: SessionState): ComplyExtensions {
-  let ext = complyExtensions.get(session);
-  if (!ext) {
-    ext = {
-      accountStatuses: new Map(),
-      siSessions: new Map(),
-      deliverySimulations: new Map(),
-      budgetSimulations: new Map(),
-    };
-    complyExtensions.set(session, ext);
-  }
-  return ext;
-}
-
 /** Get delivery simulation data for a media buy (used by get_media_buy_delivery). */
-export function getDeliverySimulation(session: SessionState, mediaBuyId: string): DeliveryAccumulator | undefined {
-  return complyExtensions.get(session)?.deliverySimulations.get(mediaBuyId);
+export function getDeliverySimulation(session: SessionState, mediaBuyId: string): ComplyDeliveryAccumulator | undefined {
+  return session.complyExtensions.deliverySimulations.get(mediaBuyId);
 }
 
 /** Get budget simulation data for an entity (used by get_account_financials). */
-export function getBudgetSimulation(session: SessionState, entityId: string): BudgetSimulation | undefined {
-  return complyExtensions.get(session)?.budgetSimulations.get(entityId);
+export function getBudgetSimulation(session: SessionState, entityId: string): ComplyBudgetSimulation | undefined {
+  return session.complyExtensions.budgetSimulations.get(entityId);
 }
 
 /** Get account status set by comply test controller. */
 export function getAccountStatus(session: SessionState, accountId: string): string | undefined {
-  return complyExtensions.get(session)?.accountStatuses.get(accountId);
+  return session.complyExtensions.accountStatuses.get(accountId);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -156,7 +146,7 @@ function createStore(session: SessionState): TestControllerStore {
     },
 
     async forceAccountStatus(accountId, status) {
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       const prev = ext.accountStatuses.get(accountId) ?? 'active';
 
       if (prev === status) {
@@ -164,6 +154,7 @@ function createStore(session: SessionState): TestControllerStore {
       }
 
       validateTransition(ACCOUNT_TRANSITIONS, ACCOUNT_TERMINAL, prev, status, 'account');
+      enforceComplyCap(ext.accountStatuses, accountId, 'account status');
       ext.accountStatuses.set(accountId, status);
       return { success: true, previous_state: prev, current_state: status, message: `Account ${accountId} transitioned from ${prev} to ${status}` };
     },
@@ -207,7 +198,7 @@ function createStore(session: SessionState): TestControllerStore {
     },
 
     async forceSessionStatus(sessionId, status, terminationReason) {
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       const siSession = ext.siSessions.get(sessionId);
 
       if (!siSession) {
@@ -215,6 +206,7 @@ function createStore(session: SessionState): TestControllerStore {
         if (status === 'terminated' && !terminationReason) {
           throw new TestControllerError('INVALID_PARAMS', 'termination_reason is required when status = terminated');
         }
+        enforceComplyCap(ext.siSessions, sessionId, 'si session');
         ext.siSessions.set(sessionId, { status, terminationReason });
         return { success: true, previous_state: 'active', current_state: status, message: `Session ${sessionId} transitioned from active to ${status}` };
       }
@@ -250,9 +242,10 @@ function createStore(session: SessionState): TestControllerStore {
       const conversions = params.conversions || 0;
       const reportedSpend = params.reported_spend;
 
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       let cumulative = ext.deliverySimulations.get(mediaBuyId);
       if (!cumulative) {
+        enforceComplyCap(ext.deliverySimulations, mediaBuyId, 'delivery simulation');
         cumulative = {
           impressions: 0,
           clicks: 0,
@@ -322,7 +315,8 @@ function createStore(session: SessionState): TestControllerStore {
 
       const computedSpend = Math.round(budgetAmount * (spendPercentage / 100) * 100) / 100;
 
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
+      enforceComplyCap(ext.budgetSimulations, entityId, 'budget simulation');
       ext.budgetSimulations.set(entityId, {
         spendPercentage,
         computedSpend: { amount: computedSpend, currency },

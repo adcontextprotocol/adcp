@@ -57,6 +57,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
+          idempotency_key: "comply-gov-denied-sync-plans-v1"
           plans:
             - plan_id: "comply-gov-denied-plan"
               brand:
