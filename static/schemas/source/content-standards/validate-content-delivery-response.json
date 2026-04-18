@@ -49,7 +49,7 @@
                     "message": { "type": "string" },
                     "rule_id": {
                       "type": "string",
-                      "description": "Which rule triggered this result (e.g., GARM category, Scope3 standard)"
+                      "description": "Which rule triggered this result (e.g., CSBS category, vendor-defined standard)"
                     }
                   },
                   "required": ["feature_id", "status"]

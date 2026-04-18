@@ -268,7 +268,7 @@ AXE and TMP can run in parallel during migration. For full details, use search_d
 ## AXE (Deprecated)
 AXE (Agentic eXecution Engine) is the legacy impression-time execution layer. It is deprecated and being replaced by TMP. Existing AXE integrations continue to work.
 
-Scope3 is the reference AXE implementation via their scope3RtdProvider Prebid RTD module. The AXE segment model uses three key-values:
+Orchestrators implement AXE via Prebid RTD modules (e.g., `exampleRtdProvider`). The AXE segment model uses three key-values:
 - `axei` — include segment (audience targeting)
 - `axex` — exclude segment (brand suitability/suppression)
 - `axem` — macro data (creative personalization, base64-encoded)
@@ -314,7 +314,7 @@ pbjs.setConfig({
   realTimeData: {
     auctionDelay: 200,  // Max ms to wait
     dataProviders: [{
-      name: 'scope3',
+      name: 'example',
       waitForIt: true    // This module can delay the auction
     }]
   }
@@ -332,21 +332,21 @@ How it works:
 All hooks receive userConsent with: gdpr (TCF), usp (CCPA), gpp (Global Privacy Platform), coppa (boolean).
 Modules must use getStorageManager() for cookie/localStorage access, not direct browser APIs.
 
-## Scope3 RTD Module Specifics
+## Orchestrator RTD Module Specifics
 
-Scope3's scope3RtdProvider implements AXE for Prebid. Key details:
+An orchestrator's RTD module (e.g., `exampleRtdProvider`) implements AXE for Prebid. Key details:
 
 **Publisher params:**
-- orgId (required) - Scope3 organization identifier
-- endpoint (default: https://prebid.scope3.com/prebid) - AXE API endpoint
+- orgId (required) - Orchestrator organization identifier
+- endpoint - AXE API endpoint (orchestrator-specific)
 - timeout (default: 1000ms) - Request timeout
 - includeKey (default: 'axei') - GAM targeting key for include segments
 - excludeKey (default: 'axex') - GAM targeting key for exclude segments
 - macroKey (default: 'axem') - GAM targeting key for macro data
 
 **How it works:**
-1. getBidRequestData: Extracts OpenRTB data from ortb2Fragments.global, builds imp array from adUnits, POSTs to Scope3 endpoint
-2. Scope3 evaluates segments and returns: include[] (opaque targeting codes), exclude[] (suppression codes), macro (base64 contextual payload), bidders.{name}.segments/deals
+1. getBidRequestData: Extracts OpenRTB data from ortb2Fragments.global, builds imp array from adUnits, POSTs to the orchestrator's endpoint
+2. Orchestrator evaluates segments and returns: include[] (opaque targeting codes), exclude[] (suppression codes), macro (base64 contextual payload), bidders.{name}.segments/deals
 3. Module distributes signals to: ortb2Fragments.global (all bidders), ortb2Fragments.bidder (per-bidder segments/deals), adUnit.ortb2Imp (per-slot)
 4. getTargetingData: Returns cached signals as axei/axex/axem key-values per ad unit for GAM
 
@@ -355,9 +355,9 @@ Scope3's scope3RtdProvider implements AXE for Prebid. Key details:
 ## Common Debugging
 
 **Module not loading:**
-- Check pbjs.installedModules includes 'scope3RtdProvider' (or the module name)
-- Verify rtdModule is also in the build: gulp build --modules=rtdModule,scope3RtdProvider
-- Check browser console for "RTD provider 'scope3': error in 'init'" messages
+- Check pbjs.installedModules includes the orchestrator's RTD module name (e.g., 'exampleRtdProvider')
+- Verify rtdModule is also in the build: gulp build --modules=rtdModule,exampleRtdProvider
+- Check browser console for "RTD provider '{name}': error in 'init'" messages
 
 **Data not reaching bidders:**
 - Verify getBidRequestData callback is being called (auction won't proceed for waitForIt modules otherwise)
@@ -379,10 +379,10 @@ Scope3's scope3RtdProvider implements AXE for Prebid. Key details:
 - pbjs.installedModules — list all loaded modules
 - pbjs.getConfig('realTimeData') — see RTD configuration
 - pbjs.getConfig('ortb2') — see first-party data config
-- Network tab: filter for the orchestrator's endpoint (e.g., prebid.scope3.com)
+- Network tab: filter for the orchestrator's endpoint
 - GAM request: look for axei/axex/axem in key-value params
 
-Note: Prebid and Scope3 are external projects. For their latest API details, use search_repos with repo_ids "prebid-docs", "prebid-js", or "prebid-server". The above is operational knowledge to help users debug — always verify against current Prebid documentation for the definitive API.
+Note: Prebid is an external project. For the latest API details, use search_repos with repo_ids "prebid-docs", "prebid-js", or "prebid-server". The above is operational knowledge to help users debug — always verify against current Prebid documentation for the definitive API.
 
 ## Ads.txt and Sellers.json Accuracy
 When discussing ads.txt and sellers.json, be precise about how they work:
