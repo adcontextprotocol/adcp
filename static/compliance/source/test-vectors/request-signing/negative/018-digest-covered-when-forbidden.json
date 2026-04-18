@@ -7,9 +7,9 @@
     "url": "https://seller.example.com/adcp/create_media_buy",
     "headers": {
       "Content-Type": "application/json",
-      "Content-Digest": "sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:",
+      "Content-Digest": "sha-256=:SNIVma8dgUBx/U1CBaYFQnsJep9S0/tXaNXlQQOdoxQ=:",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
-      "Signature": "sig1=:c70cPF7y-cC7a2QEfdmFzgsP9JJ1B17BgG_bzQgX6t9uMkMjVI19DU5fDMd8BchTblf129X2GA3TztTbYn_zAQ:"
+      "Signature": "sig1=:RiD5mPhxpBWhmaqUL5-vceyPX5jpjzYZhSnteuYCIYhIqdIl0Yxdh5qstCPXwkKL4AZOsPBL7-8ctbPkHunSAw:"
     },
     "body": "{\"plan_id\":\"plan_001\"}"
   },
