@@ -77,6 +77,12 @@ Governance findings include confidence scores (0 to 1) and explanations that dis
 
 Every finding includes a human-readable `explanation` and structured `details` for programmatic consumption. When human review is triggered internally, the governance agent records the reason, severity, and resolution in its audit logs. Nothing is a black box.
 
+## Cryptographic accountability
+
+Governance approvals are signed. The `governance_context` token the governance agent returns on every approval is a compact JWS bound to a specific plan, seller, phase, and nonce. Sellers verify the signature before acting; auditors and regulators can verify independently using the governance agent's published keys, without cooperation from any other party at audit time. A design where the only way to reconstruct the approval trail is to subpoena the vendor that issued the token is the opposite of accountability — this property exists so the audit trail survives that scenario.
+
+See [Signed Governance Context](/docs/building/implementation/security#signed-governance-context) for the claim set, key discovery, revocation, and verification rules.
+
 ## Drift detection
 
 The audit log surfaces aggregate metrics that detect oversight erosion over time:

@@ -109,7 +109,7 @@ The presence of `next_check` in a response is the signal that the governance age
 }
 ```
 
-On the first `check_governance` call, the governance agent extracts what it needs from `payload`. The response includes an opaque `governance_context` string that the caller attaches to the protocol envelope and includes on all subsequent governance calls for this governed action.
+On the first `check_governance` call, the governance agent extracts what it needs from `payload`. The response includes a `governance_context` string that the caller attaches to the protocol envelope and includes on all subsequent governance calls for this governed action. In 3.0 this value SHOULD be a compact JWS signed by the governance agent so sellers and auditors can verify authenticity and binding — see [Signed Governance Context](/docs/building/implementation/security#signed-governance-context).
 
 ### Intent check (rights license)
 
@@ -391,7 +391,7 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
 | `purchase_type` | enum | No | The kind of financial commitment being validated: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `tool` | string | Intent | The AdCP tool being checked. Present on intent checks (orchestrator). The governance agent uses the presence of `tool` + `payload` to identify an intent check. |
 | `payload` | object | Intent | Full tool arguments as they would be sent to the seller. Present on intent checks. |
-| `governance_context` | string | No | Opaque governance context from a prior `check_governance` response. Include on subsequent lifecycle checks so the governance agent can maintain continuity. On execution checks, the governance agent uses `governance_context` + `planned_delivery` to identify the check. This is the sole lifecycle correlator across all purchase types. |
+| `governance_context` | string | No | Governance context token from a prior `check_governance` response. Include on subsequent lifecycle checks so the governance agent can maintain continuity. On execution checks, the governance agent uses `governance_context` + `planned_delivery` to identify the check. This is the sole lifecycle correlator across all purchase types. In 3.0 the value SHOULD be a compact JWS per the [AdCP JWS profile](/docs/building/implementation/security#signed-governance-context); 3.1 will require it. |
 | `phase` | enum | Execution | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Present on execution checks. |
 | `planned_delivery` | object | Execution | What will actually be delivered. Present on execution checks. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
 | `delivery_metrics` | object | Delivery | Actual delivery performance data. Required when `phase` is `delivery`. |
@@ -430,7 +430,7 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
 | `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
-| `governance_context` | string | Opaque governance context for this governed action. Present when status is `approved` or `conditions`. Attach to the protocol envelope and include on all subsequent governance calls. This is the sole lifecycle correlator for all purchase types. Only the issuing governance agent interprets this value. |
+| `governance_context` | string | Governance context token for this governed action. Present when status is `approved` or `conditions`. Attach to the protocol envelope and include on all subsequent governance calls. This is the sole lifecycle correlator for all purchase types. In 3.0 SHOULD be a compact JWS per the [AdCP JWS profile](/docs/building/implementation/security#signed-governance-context) (3.1: MUST). Sellers that implement verification MUST verify before acting on the token; sellers that do not MUST still persist and forward it verbatim. |
 | `authority_remaining` | object | Buyer-side plan budget authority remaining after this check — not the seller's allocated budget. Present when status is `approved` or `conditions` for execution checks. Contains `budget_remaining` (number), `currency` (string), and `budget_used_pct` (number, 0-100). Orchestrators use this to track plan-level spend against the media plan's total authority. |
 
 ## Error codes

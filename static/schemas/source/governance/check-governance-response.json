@@ -122,7 +122,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Opaque governance context for this governed action. The buyer MUST attach this to the protocol envelope when sending the purchase request (media buy, rights acquisition, signal activation) to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this action's lifecycle. Only the issuing governance agent interprets this value. This is the primary correlation key for audit and reporting across the governance lifecycle.",
+      "description": "Governance context token for this governed action. The buyer MUST attach this to the protocol envelope when sending the purchase request (media buy, rights acquisition, signal activation) to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this action's lifecycle.\n\nValue format: in 3.0 this SHOULD be a compact JWS signed by the governance agent per the AdCP JWS profile (see Security — Signed Governance Context). In 3.1 it MUST be a compact JWS. Sellers that do not implement signature verification treat the value as an opaque correlation key and forward it verbatim. Sellers that implement verification MUST verify signature, `aud`, `exp`, and `jti` replay per the profile before treating the request as governance-approved.\n\nThis is the primary correlation key for audit and reporting across the governance lifecycle — the governance agent decodes its own signed token to look up internal plan state (buyer correlation IDs, policy decision log, etc.).",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"

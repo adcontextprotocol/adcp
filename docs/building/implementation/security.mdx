@@ -205,14 +205,110 @@ async function createMediaBuy(request) {
 
 Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request.
 
-### Governance Context
+### Signed Governance Context
 
-`governance_context` is an opaque string that crosses trust boundaries — from governance agent to buyer to seller and back. Implementers should treat it as untrusted input at each hop:
+`governance_context` crosses trust boundaries — from governance agent to buyer to seller and back, and ultimately to auditors and regulators who may need to verify an approval long after the original transaction closed. AdCP 3.0 tightens the value format to a compact JWS signed by the governance agent so any party can verify authenticity, binding, and replay without subpoenaing the issuer.
 
-- **Governance agents** MUST treat `governance_context` as a lookup key into server-side state or a signed token (e.g., HMAC-SHA256). Encoding plain-text state in the value allows tampering by intermediaries. If state is encoded directly, it MUST be signed so modification is detectable.
-- **Governance agents** SHOULD bind each `governance_context` to a specific `(plan_id, media_buy_id)` tuple and reject contexts that don't match the request's identifiers. This prevents replay of a context from one media buy onto another.
-- **Sellers** MUST NOT interpret or modify `governance_context`. Store it as received and include it verbatim on all subsequent governance calls.
-- **Buyers** receive `governance_context` from the governance agent and attach it to the protocol envelope. They MUST NOT construct or modify the value.
+**Roles:**
+- **Governance agents** sign the token. They are the only party that signs.
+- **Buyers** attach the token they received from their governance agent to the protocol envelope and forward to the seller. Buyers MUST NOT construct, modify, or re-sign the token.
+- **Sellers** persist the token as received and include it verbatim on all subsequent governance calls. Sellers SHOULD verify the token per the checklist below; sellers that do not yet implement verification MUST still treat the value as opaque and forward it unchanged.
+- **Auditors and regulators** verify independently using the governance agent's published keys — this is the accountability property the signed format exists to deliver.
+
+The same string is also the primary correlation key for the governance lifecycle. The governance agent decodes its own token to look up internal state (buyer correlation IDs, policy decision log, etc.) — sellers and buyers never need to parse the payload.
+
+#### AdCP JWS profile
+
+This profile applies to `governance_context` (#2306) and to any future AdCP artifact that is signed as a standalone token. Transport-layer request signing (#2307) uses RFC 9421 HTTP Signatures but shares the JWKS discovery described here.
+
+**Header**
+- `alg`: `EdDSA` (Ed25519) RECOMMENDED. `ES256` (ECDSA P-256) acceptable. Verifiers MUST reject `none`, `HS*`, and any `RS*` variant below 2048-bit.
+- `kid`: REQUIRED. Identifies the signing key in the issuer's JWKS.
+- `typ`: REQUIRED. MUST be `adcp-gov+jws` for governance context tokens. The typed header prevents a governance signing key from being tricked into validating a generic JWT for another purpose.
+
+**Claims**
+
+| Claim | Required | Description |
+|-------|----------|-------------|
+| `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that matches the `url` of a governance-typed entry in the buyer's brand.json. |
+| `sub` | Yes | `plan_id` the token authorizes. |
+| `aud` | Yes | Target seller's URL. Verified by the seller on receipt (see verification checklist). For intent tokens where the buyer has not yet selected a single seller, the buyer MUST request one token per target seller. |
+| `iat` | Yes | Issued-at timestamp (seconds since epoch). |
+| `exp` | Yes | Expiration timestamp. Intent tokens SHOULD expire within minutes to hours. Execution-phase tokens SHOULD expire within the media buy's delivery window plus a buffer for reporting; revocation is the primary control for long-lived execution tokens. |
+| `jti` | Yes | Unique token identifier. Used by sellers for replay detection and by auditors for correlation. |
+| `phase` | Yes | `intent` (pre-seller), `purchase`, `modification`, or `delivery`. Matches the governance check phase this token authorizes. |
+| `caller` | Yes | URL of the party that requested the governance check that produced this token. |
+| `check_id` | Yes | Governance agent's `check_id` for this decision; correlates to `report_plan_outcome` and `get_plan_audit_logs`. |
+| `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `purchase`, `modification`, and `delivery` phase tokens. MUST be null or absent on `intent` phase tokens. |
+| `policy_decisions` | Yes | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). The decision log. Heavier evidence stays behind `audit_log_pointer`. |
+| `audit_log_pointer` | No | URL or opaque pointer consumable by `get_plan_audit_logs` for the full decision evidence. |
+
+Governance agents MAY include additional claims (e.g., internal correlation IDs). Verifiers MUST ignore claims they do not recognize.
+
+**Size**: a typical token with 3–5 policy decisions fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+#### Key discovery (JWKS)
+
+Sellers and auditors resolve the governance agent's public keys via JWKS (RFC 7517):
+
+1. Read `iss` from the token. It is an HTTPS URL.
+2. Look up the governance agent in the buyer's `brand.json` `agents[]` entry whose `url` matches `iss` and whose `type` is `governance`. The entry MAY declare an explicit `jwks_uri`.
+3. If `jwks_uri` is absent, default to `{origin of iss}/.well-known/jwks.json`.
+4. Fetch the JWKS over HTTPS. Cache per standard HTTP cache headers; minimum 5 minutes, maximum 24 hours recommended.
+5. Locate the key in the JWKS whose `kid` matches the token header. On cache miss, refetch the JWKS once before rejecting.
+
+The brand.json cross-check is the anti-spoofing control: a signature-valid token whose `iss` is not declared as a governance agent in the buyer's brand.json MUST be rejected. Without this check, any domain operator could stand up a JWKS endpoint and mint tokens claiming to authorize spend on behalf of arbitrary buyers.
+
+#### Seller verification checklist
+
+Before treating a request as governance-approved, sellers MUST perform these checks in order, short-circuiting on the first failure:
+
+1. Parse the compact JWS. Reject if malformed.
+2. Reject if header `alg` is `none` or not in the allowed list (EdDSA, ES256).
+3. Reject if header `typ` is not `adcp-gov+jws`.
+4. Resolve `iss` to a JWKS via the discovery rules above. Reject if the JWKS cannot be fetched or the `kid` is not present after one refetch.
+5. Cryptographically verify the signature.
+6. Reject if `aud` does not equal the seller's own identifier (prevents cross-seller replay).
+7. Reject if `exp` is in the past or `iat` is more than 60 seconds in the future (bounded clock skew).
+8. Reject if `sub` does not equal the `plan_id` in the governance call this token is attached to (prevents plan swap).
+9. Reject if `phase` does not match the operation (e.g., an `intent` token attached to a delivery report is invalid).
+10. Reject if `jti` has been seen before for this `(iss, aud)` tuple. Replay dedupe window MUST be at least the maximum `exp` span the seller accepts for execution tokens.
+11. For non-intent tokens, reject if `media_buy_id` does not equal the media buy ID in the request.
+12. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current `brand.json`. Sellers SHOULD cache brand.json with reasonable TTLs and refresh on verification failure.
+
+Sellers that fail to implement verification in 3.0 MUST still persist and forward the token unchanged so that verification-capable parties downstream (auditors, regulators) can act on it later.
+
+#### Revocation
+
+Exp-based expiry alone does not cover execution-phase tokens that live for a media buy's full lifecycle. Governance agents MUST publish a revocation list at `{origin of iss}/.well-known/governance-revocations.json`:
+
+```json
+{
+  "version": 1,
+  "updated": "2026-04-18T14:00:00Z",
+  "next_update": "2026-04-18T15:00:00Z",
+  "revoked_jtis": ["01HWZX..."],
+  "revoked_kids": ["gov-2026-03"]
+}
+```
+
+- `revoked_jtis` invalidates individual decisions (e.g., a plan was rescinded).
+- `revoked_kids` invalidates every token signed under a compromised key.
+- Sellers MUST poll the revocation list on the cadence declared in `next_update` (floor 5 minutes, ceiling 1 hour) and MUST check it before acting on any `purchase`, `modification`, or `delivery` phase token. Polling is optional for `intent` phase tokens with short exp.
+- Governance agents MUST retain revoked keys as discoverable for the audit retention period (recommend 7 years) so auditors can verify historical tokens after the current rotation. Keeping revoked keys available at `/.well-known/jwks-archive.json` (separate from the active JWKS) is a recommended pattern.
+
+#### Key rotation
+
+- Governance agents rotate by adding a new key to JWKS with a new `kid`, signing fresh tokens with the new `kid`, and leaving the old key published until the longest-lived outstanding token expires.
+- Seller JWKS caches MUST invalidate and refetch on a missing-`kid` failure before rejecting.
+- Emergency rotation (key compromise) proceeds by adding the old `kid` to `revoked_kids` and rotating to a new key immediately. Short exp on intent tokens and revocation-list polling on execution tokens together bound the window of fraud exposure.
+
+#### Migration (3.0 → 3.1)
+
+- **3.0**: `governance_context` value SHOULD be a compact JWS per this profile. Values that are not JWS remain acceptable for backward compatibility but are deprecated; governance agents SHOULD emit JWS by default. Sellers that do not implement verification MUST still persist and forward the value unchanged.
+- **3.1**: `governance_context` MUST be a compact JWS per this profile. Non-JWS values will be rejected.
+
+The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue working; sellers that want the accountability properties opt in by implementing the verification checklist.
 
 ### Budget Validation
 
