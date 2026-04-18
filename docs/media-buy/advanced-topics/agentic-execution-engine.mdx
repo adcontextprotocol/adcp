@@ -297,7 +297,7 @@ AXE is a protocol-level concept. **Orchestrators implement AXE** and integrate i
 
 | Integration Path | How It Works | Example |
 |------------------|-------------|---------|
-| **Prebid RTD module** | Orchestrator distributes a Prebid module that calls the AXE endpoint during auction | Scope3's `scope3RtdProvider` |
+| **Prebid RTD module** | Orchestrator distributes a Prebid module that calls the AXE endpoint during auction | `exampleRtdProvider` |
 | **Proprietary ad platform** | AXE runs as a container or secure enclave within the platform's infrastructure | Platform-native integration |
 | **Server-side** | AXE endpoint called server-to-server by the ad platform before decisioning | Custom ad server integration |
 
@@ -318,7 +318,7 @@ The `axe_integrations` URL in a seller's [`get_adcp_capabilities`](/docs/protoco
 {
   "media_buy": {
     "execution": {
-      "axe_integrations": ["https://agentic.scope3.com"]
+      "axe_integrations": ["https://axe.example.com"]
     }
   }
 }
@@ -329,13 +329,13 @@ The `axe_integrations` URL in a seller's [`get_adcp_capabilities`](/docs/protoco
 For web publishers using Prebid, AXE integrates via the orchestrator's RTD module. The module name in Prebid matches the orchestrator, not "AXE":
 
 ```javascript test=false
-// Prebid build includes: rtdModule, scope3RtdProvider, ...other modules
+// Prebid build includes: rtdModule, exampleRtdProvider, ...other modules
 
 pbjs.setConfig({
   realTimeData: {
     auctionDelay: 100,
     dataProviders: [{
-      name: 'scope3',        // Orchestrator's module name
+      name: 'example',       // Orchestrator's module name
       waitForIt: true,
       params: {
         // Orchestrator-specific configuration
@@ -365,14 +365,14 @@ This is particularly relevant for platforms that don't use Prebid or where laten
 
 ### Identifying AXE Support
 
-The definitive check is the seller's `get_adcp_capabilities` response. For Prebid-based integrations, you can also inspect the page directly. Using Scope3 as an example:
+The definitive check is the seller's `get_adcp_capabilities` response. For Prebid-based integrations, you can also inspect the page directly:
 
 | What to look for | Where | Meaning |
 |-------------------|-------|---------|
 | `axe_integrations` in capabilities | `get_adcp_capabilities` response | Seller supports AXE |
 | `axei`/`axex`/`axem` key-values | Ad server request (network tab) | AXE segments flowing to ad server |
-| `scope3RtdProvider` in Prebid build | Page source or `pbjs.installedModules` | Scope3 AXE via Prebid |
-| `name: 'scope3'` in `realTimeData.dataProviders` | `pbjs.getConfig('realTimeData')` | Scope3 AXE is active |
+| Orchestrator RTD module (e.g., `exampleRtdProvider`) in Prebid build | Page source or `pbjs.installedModules` | AXE via Prebid |
+| Orchestrator entry in `realTimeData.dataProviders` | `pbjs.getConfig('realTimeData')` | AXE is active |
 
 Different orchestrators may implement AXE through different integration paths — the segment protocol (axei/axex/axem) is the same regardless of how AXE is deployed.
 

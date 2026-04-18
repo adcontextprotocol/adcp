@@ -334,7 +334,7 @@ phases:
         title: "Validate fully compliant delivery"
         narrative: |
           The buyer submits delivery data where all properties are on the inclusion list.
-          The governance agent must return compliant: true with no violations.
+          The governance agent must return records with status: compliant and no failed features.
         task: validate_property_delivery
         schema_ref: "property/validate-property-delivery-request.json"
         response_schema_ref: "property/validate-property-delivery-response.json"
@@ -343,8 +343,8 @@ phases:
         stateful: true
         expected: |
           Return validation results:
-          - compliant: true
-          - No violations
+          - record status: compliant
+          - No failed or warning features
 
         sample_request:
           brand:
@@ -384,9 +384,9 @@ phases:
         stateful: true
         expected: |
           Return validation results:
-          - compliant: false
-          - violations array with at least one entry for randomsite.example
-          - Violation references the inclusion list that was breached
+          - record status: non_compliant
+          - features array with at least one failed feature entry for randomsite.example
+          - feature entry references the inclusion list that was breached (via policy_id or code)
 
         sample_request:
           brand:

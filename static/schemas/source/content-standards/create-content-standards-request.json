@@ -55,9 +55,13 @@
       },
       "description": "Registry policy IDs to use as the evaluation basis for this content standard. When provided, the agent resolves policies from the registry and uses their policy text and exemplars as the evaluation criteria. The 'policy' field becomes optional when registry_policy_ids is provided."
     },
-    "policy": {
-      "type": "string",
-      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments. Optional when registry_policy_ids is provided."
+    "policies": {
+      "type": "array",
+      "description": "Bespoke policies for this content-standards configuration, using the same shape as registry entries. Each policy is addressable by policy_id and carries its own enforcement (must|should); governance findings reference the policy_id that triggered them. Inline bespoke policies can omit version/name/category (defaulted by the server). Combines with registry_policy_ids — registry policies and bespoke policies are both evaluated. Bespoke policy_ids MUST be flat (no colons/slashes) to avoid collision with namespaced registry ids.",
+      "items": {
+        "$ref": "/schemas/governance/policy-entry.json"
+      },
+      "minItems": 1
     },
     "calibration_exemplars": {
       "type": "object",
@@ -152,8 +156,11 @@
   },
   "required": [
     "idempotency_key",
-    "scope",
-    "policy"
+    "scope"
+  ],
+  "anyOf": [
+    { "required": ["policies"] },
+    { "required": ["registry_policy_ids"] }
   ],
   "additionalProperties": true
 }

@@ -817,7 +817,7 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*$",
-        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'scope3', 'garm', 'iab_tcf')"
+        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')"
       },
       "uniqueItems": true
     },

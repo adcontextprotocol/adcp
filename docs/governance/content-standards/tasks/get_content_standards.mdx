@@ -29,7 +29,14 @@ Retrieve content safety policies for a specific standards configuration.
   "countries_all": ["GB", "DE", "FR"],
   "channels_any": ["display", "olv", "ctv"],
   "languages_any": ["en", "de", "fr"],
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
+  "policies": [
+    { "policy_id": "no_violence", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid content depicting violence, weapons, or physical aggression." },
+    { "policy_id": "no_controversial_politics", "policy_categories": ["brand_suitability"], "enforcement": "must", "policy": "Avoid controversial political content." },
+    { "policy_id": "no_adult_themes", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid adult, sexual, or mature themes." },
+    { "policy_id": "no_hate_speech", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Block hate speech and illegal activities." },
+    { "policy_id": "no_athlete_disparagement", "policy_categories": ["brand_suitability"], "enforcement": "must", "policy": "Block content disparaging athletes." },
+    { "policy_id": "no_sedentary_glorification", "policy_categories": ["brand_suitability"], "enforcement": "should", "policy": "Avoid content that portrays sedentary lifestyle positively." }
+  ],
   "calibration_exemplars": {
     "pass": [
       { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-championship", "language": "en" },

@@ -17,7 +17,8 @@ Create a new content standards configuration.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scope` | object | Yes | Where this standards configuration applies (must include `languages_any`) |
-| `policy` | string | Yes | Natural language policy prompt |
+| `policies` | PolicyEntry[] | One-of | Bespoke policies, same shape as registry entries. Each has `{policy_id, enforcement, policy, ...optional: version/name/category/policy_categories/channels/jurisdictions/exemplars}`. At least one of `policies` or `registry_policy_ids` is required. |
+| `registry_policy_ids` | string[] | One-of | References to shared policies in the registry. Combines with `policies` when both are provided. At least one of `policies` or `registry_policy_ids` is required. |
 | `calibration_exemplars` | object | No | Training set of pass/fail artifacts for calibration |
 
 <Note>
@@ -38,7 +39,32 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
     "languages_any": ["en", "de", "fr"],
     "description": "EMEA - all digital channels"
   },
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively.",
+  "policies": [
+    {
+      "policy_id": "no_violence",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid content depicting violence, weapons, or physical aggression."
+    },
+    {
+      "policy_id": "no_controversial_politics",
+      "policy_categories": ["brand_suitability"],
+      "enforcement": "must",
+      "policy": "Avoid controversial political content and ongoing partisan disputes."
+    },
+    {
+      "policy_id": "no_adult_themes",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid adult, sexual, or mature themes."
+    },
+    {
+      "policy_id": "no_sedentary_glorification",
+      "policy_categories": ["brand_suitability"],
+      "enforcement": "should",
+      "policy": "Avoid content that portrays sedentary lifestyle positively; conflicts with brand positioning."
+    }
+  ],
   "calibration_exemplars": {
     "pass": [
       { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-championship", "language": "en" },

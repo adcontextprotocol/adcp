@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You're subscribed — AgenticAdvertising.org</title>
+  <meta name="description" content="Thanks for subscribing to AgenticAdvertising.org updates.">
+  <meta name="robots" content="noindex">
+  <!-- Don't leak the confirm token to third-party assets via Referer. -->
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    .welcome-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: var(--space-10) var(--space-5);
+      text-align: center;
+    }
+    .welcome-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--color-brand);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-5);
+    }
+    .welcome-wrap h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-3);
+    }
+    .welcome-wrap p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+      margin: 0 0 var(--space-6);
+    }
+    .welcome-ctas {
+      display: flex;
+      gap: var(--space-3);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .welcome-ctas .btn {
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      border: 1px solid var(--color-border);
+      color: var(--color-text);
+      background: #fff;
+    }
+    .welcome-ctas .btn-primary {
+      background: var(--color-brand);
+      color: #fff;
+      border-color: var(--color-brand);
+    }
+    .welcome-error {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-5);
+      color: var(--color-gray-700);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <main class="welcome-wrap" id="welcomeMain">
+    <div class="welcome-icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <h1 id="welcomeTitle">You're in.</h1>
+    <p id="welcomeBody">We'll keep you posted on agentic advertising. The next edition of The Prompt lands in your inbox soon.</p>
+    <div class="welcome-ctas">
+      <a class="btn btn-primary" href="/chat">Chat with Addie</a>
+      <a class="btn" href="/stories">Read member stories</a>
+      <a class="btn" href="/membership">Join as a member</a>
+    </div>
+  </main>
+
+  <div id="adcp-footer"></div>
+  <script src="/nav.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get('error');
+      // Strict allowlist so any future HTML sink can't be coerced with an
+      // attacker-supplied value in ?error=.
+      if (err !== 'expired' && err !== 'invalid') return;
+      const main = document.getElementById('welcomeMain');
+      const title = document.getElementById('welcomeTitle');
+      const body = document.getElementById('welcomeBody');
+      const notice = document.createElement('div');
+      notice.className = 'welcome-error';
+      if (err === 'expired') {
+        title.textContent = 'This link has expired.';
+        body.textContent = 'Sign up again and we\'ll send a fresh confirmation link.';
+      } else {
+        title.textContent = 'Something went wrong.';
+        body.textContent = 'Please request a new confirmation link.';
+      }
+      notice.textContent = 'Head back to the homepage or footer to re-enter your email.';
+      main.insertBefore(notice, title);
+    })();
+  </script>
+</body>
+</html>

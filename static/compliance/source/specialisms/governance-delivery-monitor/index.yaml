@@ -158,8 +158,8 @@ phases:
 
         sample_request:
           plan_id: "$context.plan_id"
-          binding:
-            type: "media_buy"
+          tool: "create_media_buy"
+          payload:
             account:
               brand:
                 domain: "acmeoutdoor.com"
@@ -250,7 +250,7 @@ phases:
       - id: check_governance_drift
         title: "Delivery-phase governance re-check (drift exceeded)"
         narrative: |
-          The buyer calls check_governance with governance_phase: delivery and attaches
+          The buyer calls check_governance with phase: delivery and attaches
           the current delivery metrics as evidence. The governance agent evaluates the
           drift against the reallocation threshold and returns a decision.
         task: check_governance
@@ -262,33 +262,27 @@ phases:
         expected: |
           Return a governance decision about the delivery drift:
           - decision: approved (with rebalancing conditions) or denied (pause recommended)
-          - findings: should-severity findings noting the drift amounts
-            - severity: should
-            - code: BUDGET_DRIFT_EXCEEDED
-            - message: explains which line items drifted and by how much
+          - findings: warning-severity findings noting the drift amounts
+            - severity: warning
+            - category_id: BUDGET_DRIFT_EXCEEDED
+            - explanation: explains which line items drifted and by how much
           - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
 
         sample_request:
           plan_id: "$context.plan_id"
-          governance_phase: "delivery"
+          phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"
-          binding:
-            type: "media_buy"
-            account:
-              brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-            media_buy_id: "mb_acme_q2_2026"
-            delivery_evidence:
-              packages:
-                - product_id: "sports_ctv_q2"
-                  budget: 20000
-                  spend_to_date: 14000
-                  flight_progress: 0.50
-                - product_id: "outdoor_video_q2"
-                  budget: 20000
-                  spend_to_date: 6000
-                  flight_progress: 0.50
+          media_buy_id: "mb_acme_q2_2026"
+          delivery_metrics:
+            reporting_period:
+              start: "2026-05-01T00:00:00Z"
+              end: "2026-05-15T00:00:00Z"
+            spend: 20000
+            cumulative_spend: 20000
+            channel_distribution:
+              ctv: 70
+              video: 30
+            pacing: "ahead"
 
           context:
             correlation_id: "governance_delivery_monitor--check_governance_drift"

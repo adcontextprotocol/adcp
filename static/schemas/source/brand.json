@@ -588,6 +588,26 @@
           "description": "Human-readable description of this agent's capabilities or scope",
           "maxLength": 500
         },
+        "jwks_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs — for governance agents, the signed governance_context token. When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header; JWKS MAY contain multiple keys to support rotation."
+        },
+        "scope": {
+          "type": "array",
+          "description": "For governance agents: which governance responsibilities this agent handles. Values correspond to compliance specialisms. When a house declares multiple governance agents, scope distinguishes them. When absent on a governance agent, the agent is assumed to handle all governance categories.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spend_authority",
+              "delivery_monitor",
+              "brand_safety",
+              "regulatory_compliance"
+            ]
+          },
+          "uniqueItems": true
+        },
         "available_uses": {
           "type": "array",
           "description": "For rights agents: rights uses available for licensing",
@@ -1374,7 +1394,9 @@
             "type": "governance",
             "url": "https://agents.pg.com/governance",
             "id": "pg_governance",
-            "description": "Brand safety and compliance for all P&G brands"
+            "description": "Brand safety and compliance for all P&G brands",
+            "jwks_uri": "https://agents.pg.com/.well-known/jwks.json",
+            "scope": ["spend_authority", "delivery_monitor", "brand_safety"]
           }
         ]
       },

@@ -2,20 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/policy-entry.json",
   "title": "Policy Entry",
-  "description": "A complete policy in the policy registry. Policies use natural language text evaluated by governance agents (LLMs), following the same pattern as Content Standards. The registry's value is in structured metadata (jurisdiction, policy category, source, enforcement level) and calibration exemplars.",
+  "description": "A policy — either published to the shared registry (with full regulatory metadata) or authored inline by a buyer for their own campaign (lightweight, metadata optional). Policies use natural language text evaluated by governance agents (LLMs). Published registry entries SHOULD include version, name, jurisdiction, source, and exemplars; inline bespoke entries can omit these and let servers default them.",
   "type": "object",
   "properties": {
     "policy_id": {
       "type": "string",
-      "description": "Unique identifier for this policy (e.g., \"uk_hfss\", \"us_coppa\", \"alcohol_advertising\")."
+      "description": "Unique identifier for this policy. Registry-published ids are canonical (e.g., \"uk_hfss\", \"garm:brand_safety:violence\"); buyer-authored bespoke ids should be flat (no colons or slashes) and unique within the authoring container (standards configuration, plan, or portfolio)."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["registry", "inline"],
+      "default": "inline",
+      "description": "Origin of this policy. 'registry' = published to the shared AdCP policy registry with full regulatory metadata. 'inline' = authored bespoke for a specific standards configuration, plan, or portfolio. Defaults to 'inline'. Governance agents MUST set 'registry' when publishing to the registry."
     },
     "version": {
       "type": "string",
-      "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes."
+      "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes. Optional for inline bespoke policies — defaults to \"1.0.0\". SHOULD be provided for registry-published policies."
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name (e.g., \"UK HFSS Restrictions\")."
+      "description": "Human-readable name (e.g., \"UK HFSS Restrictions\"). Optional for inline bespoke policies — servers MAY default to policy_id."
     },
     "description": {
       "type": "string",
@@ -23,7 +29,7 @@
     },
     "category": {
       "$ref": "/schemas/enums/policy-category.json",
-      "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice)."
+      "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice). Optional for inline bespoke policies — defaults to \"standard\"."
     },
     "enforcement": {
       "$ref": "/schemas/enums/policy-enforcement.json",
@@ -105,7 +111,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["policy_id", "version", "name", "category", "enforcement", "policy"],
+  "required": ["policy_id", "enforcement", "policy"],
   "additionalProperties": false,
   "$defs": {
     "exemplar": {
