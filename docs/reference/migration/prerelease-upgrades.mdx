@@ -16,7 +16,7 @@ If you adopted a prerelease version, review the relevant section below before up
 | Area | rc.3 | rc.4 | What to do |
 |---|---|---|---|
 | Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. See details below. |
-| Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Storyboard runners check for it before running deterministic steps. |
+| Capabilities | No `compliance_testing` protocol | Agents declare compliance testing via a `compliance_testing` capability block; `supported_protocols` never gained `compliance_testing` as a value. | Agents implementing `comply_test_controller` include a `compliance_testing: { scenarios: [...] }` block in `get_adcp_capabilities`. Storyboard runners check for the block before running deterministic steps. |
 
 ### Media buy status migration
 
@@ -39,7 +39,7 @@ See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-state
 
 ### Additive changes in rc.4
 
-- **Compliance testing capability** — Agents can declare `compliance_testing` in `supported_protocols` with a `scenarios` array listing which `comply_test_controller` scenarios they support. Storyboard runners use this to determine whether deterministic testing steps can be validated.
+- **Compliance testing capability** — Agents include a `compliance_testing: { scenarios: [...] }` block in `get_adcp_capabilities` declaring which `comply_test_controller` scenarios they support. The block's presence is the signal; it is not a `supported_protocols` value. Storyboard runners use the block to determine whether deterministic testing steps can be validated.
 - **Storyboard validation fixes** — 20+ validation bugs fixed across 11 storyboard files: corrected field paths (`creatives[0].action`, `media_buy_deliveries`, `renders[0].preview_url`), added missing `value:` to `field_value` checks, added `value` property to storyboard validation schema.
 
 ---

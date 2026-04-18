@@ -35,7 +35,7 @@ from adcp.server.responses import capabilities_response
 
 class MySeller(ADCPHandler):
     async def get_adcp_capabilities(self, params, context=None):
-        return capabilities_response(["media_buy", "compliance_testing"])
+        return capabilities_response(["media_buy"])
 
     # ... implement tools, use response builders for every return
 

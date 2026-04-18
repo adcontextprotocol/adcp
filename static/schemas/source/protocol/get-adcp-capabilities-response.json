@@ -25,7 +25,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). compliance_testing is an RPC surface only and has no compliance baseline.",
+      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
       "items": {
         "type": "string",
         "enum": [
@@ -34,8 +34,7 @@
           "governance",
           "sponsored_intelligence",
           "creative",
-          "brand",
-          "compliance_testing"
+          "brand"
         ]
       },
       "minItems": 1
@@ -767,7 +766,7 @@
     },
     "compliance_testing": {
       "type": "object",
-      "description": "Compliance testing capabilities. Only present if compliance_testing is in supported_protocols. Indicates this agent supports deterministic testing via comply_test_controller for lifecycle state machine validation.",
+      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block if the agent does not support compliance testing.",
       "properties": {
         "scenarios": {
           "type": "array",

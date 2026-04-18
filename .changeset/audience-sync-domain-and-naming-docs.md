@@ -22,9 +22,11 @@ Pre-3.0 vocabulary alignment across the compliance catalog.
 
 **Catalog docs.** Added a "Naming conventions" section covering the four casings (wire `snake_case`, specialism IDs `kebab-case`, storyboard `id:`/`category:` snake_case, prose titles). Added `enumDescriptions` to `signal-catalog-type.json` defining `marketplace`, `owned`, and `custom`. Rewrote the "Choose a skill" section in `build-an-agent.mdx` to link each SDK's skills directory instead of pretending skills are aligned across languages.
 
+**Wire-field rename in this PR.** `filters.domain`/`filters.domains` on `tasks-list-request` renamed to `filters.protocol`/`filters.protocols`; `sort.field` enum value `"domain"` → `"protocol"`. The `domain` property on `mcp-webhook-payload.json` renamed to `protocol`. No active consumers found.
+
+**`compliance_testing` removed from `supported_protocols` enum.** It was a feature flag masquerading as a protocol (forcing special-case carve-outs in the runner, docs, and schema). Agents now declare support by including the existing `compliance_testing: { scenarios: [...] }` capability block on `get_adcp_capabilities` — the block's presence is the signal. Training agent and docs updated.
+
 **Follow-ups flagged for a separate PR.**
-- Rename wire fields `filters.domain`/`filters.domains` → `filters.protocol`/`filters.protocols` on `tasks-list-request` to match the enum.
-- Auto-imply protocols from declared specialisms (claiming `sales-guaranteed` implies `media_buy`), making `supported_protocols` additive-only — on-ramp to eventually deprecating the field.
-- Clean up `compliance_testing` as a member of `supported_protocols`; it is an RPC surface, not a protocol claim, and could move to a sibling `capabilities.supports_compliance_testing` flag.
+- Auto-imply protocols from declared specialisms (claiming `sales-guaranteed` implies `media_buy`), making `supported_protocols` additive-only. 3.0 would deprecate + warn; removal would land in 4.0 per AdCP's major-version removal policy (consistent with the v2 sunset pattern).
 
 Closes #2285, #2287.

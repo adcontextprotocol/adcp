@@ -27,7 +27,10 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `governance` | `protocols/governance/` | Property governance, brand standards, compliance |
 | `brand` | `protocols/brand/` | Brand identity, rights discovery, rights acquisition *— small protocol today, growing with rights licensing work; see `brand-rights` specialism.* |
 | `sponsored_intelligence` | `protocols/sponsored-intelligence/` | AI-mediated commerce and conversational sponsored experiences |
-| `compliance_testing` | *(none)* | Declares the [compliance test controller](/docs/building/implementation/comply-test-controller) RPC surface. Not a compliance claim — no baseline storyboard. |
+
+<Note>
+Support for the [compliance test controller](/docs/building/implementation/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
+</Note>
 
 <Tip>
 An agent can claim multiple protocols — a full-stack media-buy platform might list `media_buy`, `creative`, and `signals`. The runner executes all matching baselines.
@@ -113,8 +116,7 @@ The storyboard runner:
 1. Runs every storyboard in `/compliance/{version}/universal/`
 2. For each protocol in `supported_protocols`, runs the baseline at `/compliance/{version}/protocols/{protocol}/` (snake_case → kebab-case)
 3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
-4. Skips `compliance_testing` in step 2 (RPC surface only, no baseline)
-5. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
+4. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
 
 If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/validate-your-agent) for how to run the suite locally.
 

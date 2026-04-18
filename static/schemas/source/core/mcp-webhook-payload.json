@@ -17,9 +17,9 @@
       "$ref": "/schemas/enums/task-type.json",
       "description": "Type of AdCP operation that triggered this webhook. Enables webhook handlers to route to appropriate processing logic."
     },
-    "domain": {
+    "protocol": {
       "$ref": "/schemas/enums/adcp-protocol.json",
-      "description": "AdCP domain this task belongs to. Helps classify the operation type at a high level."
+      "description": "AdCP protocol this task belongs to. Helps classify the operation type at a high level."
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",
@@ -57,7 +57,7 @@
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
-        "domain": "media-buy",
+        "protocol": "media-buy",
         "status": "input-required",
         "timestamp": "2025-01-22T10:15:00Z",
         "context_id": "ctx_abc123",
@@ -80,7 +80,7 @@
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
-        "domain": "media-buy",
+        "protocol": "media-buy",
         "status": "completed",
         "timestamp": "2025-01-22T10:30:00Z",
         "message": "Media buy created successfully with 2 packages ready for creative assignment",
@@ -113,7 +113,7 @@
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
-        "domain": "media-buy",
+        "protocol": "media-buy",
         "status": "working",
         "timestamp": "2025-01-22T10:20:00Z",
         "message": "Validating inventory availability...",
@@ -131,7 +131,7 @@
         "operation_id": "op_789",
         "task_id": "task_789",
         "task_type": "sync_creatives",
-        "domain": "media-buy",
+        "protocol": "media-buy",
         "status": "failed",
         "timestamp": "2025-01-22T10:46:00Z",
         "message": "Creative sync failed due to invalid asset URLs",
