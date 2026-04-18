@@ -85,7 +85,7 @@ Governance agents SHOULD return `denied` (not `conditions`) after 3 unsuccessful
 
 ### Human review
 
-When the governance agent determines that human review is required (e.g., the action exceeds `authority_level` thresholds), it handles the escalation internally. The `check_governance` task goes async — the caller receives standard async task lifecycle statuses (`submitted`, `working`) and eventually gets `approved` or `denied` once the human acts. The caller does not need special handling for this case beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
+When the governance agent determines that human review is required (e.g., the action exceeds the plan's `reallocation_threshold`, or the plan carries `human_review_required: true`), it handles the escalation internally. The `check_governance` task goes async — the caller receives standard async task lifecycle statuses (`submitted`, `working`) and eventually gets `approved` or `denied` once the human acts. The caller does not need special handling for this case beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
 
 For `committed` checks (seller-side), the seller sets a timeout. If the governance agent does not respond within the timeout, the seller treats it as `denied` and returns an error to the orchestrator. The orchestrator can re-initiate the media buy after the governance agent resolves.
 

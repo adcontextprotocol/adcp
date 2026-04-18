@@ -15,6 +15,7 @@
     }
   ],
   "restricted_attributes": ["health_data"],
+  "requires_human_review": true,
   "industries": ["pharmaceutical", "biotech", "medical_devices"],
   "guidance": "The US and EU have fundamentally different approaches. The US permits DTC pharma ads with strict content rules (fair balance). The EU bans DTC prescription ads entirely. A global pharma campaign must use different creative and targeting by jurisdiction. OTC products have lighter restrictions in both markets but still require health claim substantiation.",
   "related_categories": ["health_wellness"]

@@ -54,6 +54,11 @@
         "$ref": "/schemas/enums/restricted-attribute.json"
       }
     },
+    "requires_human_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, any plan declaring this category MUST set plan.human_review_required = true. Use for regulatory regimes that mandate human oversight under GDPR Art 22 or EU AI Act Annex III — fair_housing, fair_lending, fair_employment, pharmaceutical_advertising, and similar high-risk categories. Category-level setting applies to all policies and plans referencing it; policies can override on policy-entry.requires_human_review. Effective immediately regardless of individual policy `effective_date` fields."
+    },
     "industries": {
       "type": "array",
       "items": { "type": "string" },

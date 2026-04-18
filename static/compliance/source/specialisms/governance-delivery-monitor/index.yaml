@@ -98,7 +98,6 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_full
           - reallocation_threshold: 0.20 (20% drift triggers re-evaluation)
 
         sample_request:
@@ -107,7 +106,6 @@ phases:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
               reallocation_threshold: 0.20
               conditions:
                 - "Re-evaluate governance if any line item drifts >20% from plan"

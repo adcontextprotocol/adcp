@@ -1,0 +1,10 @@
+{
+  "attribute_id": "familial_status",
+  "name": "Familial Status",
+  "description": "Whether a household includes children under 18, a pregnant person, or a person seeking custody of a minor. Protected class under US FHA.",
+  "regulatory_basis": "US Fair Housing Act (42 U.S.C. § 3604)",
+  "includes": ["Presence of children under 18", "Pregnancy", "Adoption or custody of minors", "Single-parent household"],
+  "excludes": ["Marital status — separately regulated under ECOA for credit"],
+  "signal_patterns": ["children_*", "parents_*", "*_families", "pregnancy_*", "new_parent_*", "expecting_*", "school_age_*"],
+  "guidance": "Familial status targeting in housing ads is per se illegal under FHA unless the property qualifies for the senior-housing exemption. Exclusion of families with children is a specifically named violation in HUD v. Facebook."
+}

@@ -1,0 +1,115 @@
+---
+title: Annex III & Article 22 obligations
+sidebarTitle: Annex III & Art 22
+description: "How AdCP's policy framework supports deployer obligations under GDPR Article 22 and EU AI Act Annex III for regulated verticals — credit, insurance, employment, housing."
+"og:title": "AdCP — Annex III & Art 22 obligations"
+---
+
+AdCP is used to run advertising campaigns. Some of those campaigns make automated decisions about who sees an ad for a credit card, a life insurance quote, a job listing, or an apartment. Under EU law, those are not ordinary marketing decisions — they are **solely automated decisions producing legal or similarly significant effects** (GDPR Article 22) and, when made by AI systems, they fall within **Annex III high-risk categories** of the EU AI Act (Regulation (EU) 2024/1689).
+
+This page explains what AdCP provides, what it does not, and what the deployer is responsible for.
+
+## What the law requires
+
+**GDPR Art. 22(1)** prohibits decisions based solely on automated processing — including profiling — that produce legal effects or similarly significantly affect a natural person, unless a narrow exception applies (explicit consent, contract, or EU/Member State law). Ad-targeting decisions in regulated verticals routinely engage Art. 22: the *SCHUFA* case (CJEU C-634/21, 2023) extended "similarly significant effects" broadly.
+
+**EU AI Act Annex III** lists high-risk use cases that intersect AdCP:
+
+| Annex III reference | Vertical |
+|---|---|
+| §1(b) | Recruitment / selection (targeting job ads) |
+| §5(b) | Evaluation of creditworthiness (credit / lending ads) |
+| §5(c) | Risk assessment and pricing of life and health insurance |
+
+US parallels are the **Fair Housing Act** (HUD v. Facebook, 2019 settlement), **ECOA** for credit, and **EEOC / ADEA** for employment. AdCP treats housing allocation as equivalent-risk under the `fair_housing` category even though Annex III does not name it directly.
+
+For any of the above, the deployer MUST:
+
+1. **Ensure human oversight** (AI Act Art. 14) — a qualified person reviews the decision.
+2. **Maintain automatic logs** (AI Act Art. 12) — timestamped records of each decision.
+3. **Provide transparency** (AI Act Art. 13, GDPR Art. 13–14) — the data subject can understand what's happening.
+4. **Govern input data** (AI Act Art. 10) — signals used for targeting are documented and restricted-attribute-aware.
+5. **Honor contestation rights** (GDPR Art. 22(3)) — the data subject can request human intervention, express their view, and contest the outcome.
+
+The monetary value of the decision is irrelevant. A €20 autonomous targeting decision in a regulated vertical engages Art. 22 identically to a €2M one.
+
+## What AdCP provides
+
+AdCP's role is **Article 25 data-governance provider**: the protocol exposes structured fields that let the deployer discharge its Annex III obligations. AdCP does not itself perform conformity assessment, DPIA, or human-oversight workflow — those are the deployer's.
+
+| Obligation | AdCP mechanism |
+|---|---|
+| Human oversight (Art. 14, Art. 22(1)) | `plan.human_review_required` — governance agent escalates every action for human approval |
+| Input-data governance (Art. 10) | `policy_categories`, `restricted_attributes`, `min_audience_size`, signal `restricted_attributes` declarations |
+| Automatic logging (Art. 12) | `get_plan_audit_logs` — immutable record of `sync_plans`, `check_governance`, `report_plan_outcome` |
+| Transparency (Art. 13) | Policy registry entries exposing policy text and exemplars used in decisions |
+| Contestation discovery (Art. 22(3)) | `brand.data_subject_contestation` — a **discoverable contact point** pointing to the deployer's contestation process. AdCP does not operate the process. |
+| Policy vocabulary | `eu_ai_act_annex_iii` registry policy + `fair_housing`, `fair_lending`, `fair_employment`, `pharmaceutical_advertising` categories |
+
+### Automatic triggering
+
+When a campaign plan declares any of the following, the governance agent MUST set `plan.human_review_required = true`:
+
+- `policy_categories` includes `fair_housing`, `fair_lending`, `fair_employment`, or `pharmaceutical_advertising`
+- Any resolved policy (registry or custom) has `requires_human_review: true`
+- The resolved registry policy `eu_ai_act_annex_iii` applies via jurisdiction matching
+- `brand.industries` intersects a regulated sector (consumer_finance, banking, mortgage, life_insurance, health_insurance, recruitment, staffing, real_estate, property_management, housing)
+
+If any Annex III category resolves but `brand.data_subject_contestation` is missing, the governance agent MUST emit a critical finding — Art 22(3) cannot be discharged without a contact point.
+
+This is enforced by the policy framework, not by the buyer. A buyer cannot opt out of human review by omitting the flag — if the resolved policies require it, the governance agent sets it. A buyer who previously declared `human_review_required: true` cannot downgrade it on re-sync without an explicit `human_override` artifact (reason + approver).
+
+### `reallocation_threshold` vs. `human_review_required`
+
+These are **different axes** and often confused:
+
+| Field | Scope | Covers |
+|---|---|---|
+| `budget.reallocation_threshold` | Operational | Budget reallocation across sellers, channels, purchase types |
+| `plan.human_review_required` | Regulatory | Decisions affecting individuals — targeting, creative selection, delivery |
+
+A plan can set `reallocation_threshold` equal to `budget.total` (agent reallocates budget freely) **and** `human_review_required: true` (every targeting decision gets human review). These govern different things.
+
+Annex III / Art. 22 obligations flow through `human_review_required`, not through `reallocation_threshold`. Restricting budget autonomy does not address Art. 22; it just adds friction to reallocation.
+
+## Contestation endpoint
+
+AdCP provides a **discovery mechanism** for the contestation process, not the process itself. Art. 22(3) gives the data subject three substantive rights — human intervention, expression of view, and contestation of the outcome — which are workflow rights the deployer must operate. `brand.data_subject_contestation` tells downstream agents and data subjects where to find that process; it does not substitute for it.
+
+`brand.data_subject_contestation` surfaces a **contact reference** — a URL, an email, or both. It is intentionally not a machine-callable API. Art. 22(3) rights are workflow rights exercised by humans; the deployer runs the workflow behind the contact point.
+
+```json
+{
+  "data_subject_contestation": {
+    "url": "https://acmecorp.com/privacy/contest",
+    "email": "privacy@acmecorp.com",
+    "languages": ["en", "de", "fr"]
+  }
+}
+```
+
+Any AdCP agent exposing an automated decision under Annex III SHOULD make this pointer available to downstream consumers (e.g., in disclosure text or creative metadata). Deployers MUST monitor and respond within applicable legal timelines — one month under GDPR Art. 12(3).
+
+## What AdCP does not do
+
+- **AdCP does not perform conformity assessment.** The AI Act Art. 43 conformity assessment is the provider's obligation.
+- **AdCP does not run the human-oversight workflow.** Setting `human_review_required: true` means the governance agent escalates — the human reviewer and review tooling are outside the protocol.
+- **AdCP does not define the contestation process.** `data_subject_contestation` points to the deployer's process.
+- **AdCP does not determine which vertical a campaign belongs to.** The buyer declares `policy_categories`; governance agents may flag mismatches but cannot guess intent.
+
+### Jurisdictional scoping is mechanical
+
+AdCP resolves policy applicability by matching `plan.countries` against policy `jurisdictions`. This is a useful first pass but incomplete at the edges:
+
+- A US-based deployer targeting only US audiences may still reach EU residents via cross-border signals, which engages GDPR / AI Act obligations that `plan.countries: ["US"]` would miss.
+- An EU-established entity running a non-EU campaign remains subject to the AI Act under establishment-based jurisdiction (Art. 2 of Regulation (EU) 2024/1689).
+- Housing / lending / employment regulations have their own extraterritorial doctrines distinct from privacy law.
+
+Deployers MUST evaluate applicable law based on establishment, target audience location, and processing location — not solely on the plan's country list. Governance agents SHOULD apply regulated-vertical policies conservatively: if the deployer's `brand.industries` or campaign `objectives` suggest an Annex III vertical, the policy fires regardless of whether `plan.countries` matches the policy's declared jurisdictions.
+
+## See also
+
+- [`eu_ai_act_annex_iii`](/docs/governance/policy-registry#seeded-policies) — the seeded registry policy
+- [Policy registry](/docs/governance/policy-registry) — `requires_human_review` on policies and categories
+- [Campaign governance specification](/docs/governance/campaign/specification) — `human_review_required` plan field
+- [Embedded human judgment](/docs/governance/embedded-human-judgment) — the architectural principle behind mandatory oversight

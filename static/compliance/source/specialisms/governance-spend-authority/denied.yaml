@@ -95,7 +95,6 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_limited
           - per_transaction_threshold: $10K spending limit
 
         sample_request:
@@ -104,7 +103,6 @@ phases:
               brand:
                 domain: "acmeoutdoor.com"
               operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
               per_transaction_threshold: 10000
               escalation_path: "none"
 

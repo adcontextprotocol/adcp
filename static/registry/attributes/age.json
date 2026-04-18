@@ -1,0 +1,10 @@
+{
+  "attribute_id": "age",
+  "name": "Age",
+  "description": "A person's age or age range. Protected under US ADEA (40+) for employment advertising, under FHA for housing (except in statutory senior-housing exemption), and under EU AVMSD for certain content-directed targeting. Not a GDPR Art 9 special category but treated as restricted for the regulated verticals.",
+  "regulatory_basis": "US ADEA (29 U.S.C. § 621), US FHA (42 U.S.C. § 3604), UK Equality Act 2010",
+  "includes": ["Exact age", "Age range segments", "Birth year", "Life-stage proxies (empty-nesters, pre-retiree, etc.)"],
+  "excludes": ["COPPA children-under-13 detection for compliance purposes — that's a regulatory carve-out, not prohibited targeting"],
+  "signal_patterns": ["age_*", "*_age_range", "birth_year", "life_stage_*", "senior_*", "millennial_*", "gen_z_*"],
+  "guidance": "Age targeting is heavily scrutinized in employment (ADEA covers workers 40+), housing (FHA prohibits excluding families with children; senior housing exemption under 42 U.S.C. 3607(b) requires documentation), and credit. Age targeting remains legal for age-gated verticals (alcohol, tobacco, gambling)."
+}

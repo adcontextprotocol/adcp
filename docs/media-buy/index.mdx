@@ -166,7 +166,7 @@ const plan = await governance.syncPlans({
     plan_id: "acme-q2-trail-pro",
     brand: { domain: "acmeoutdoor.com" },
     objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
-    budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
+    budget: { total: 50000, currency: "USD", reallocation_threshold: 5000 },
     flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
     countries: ["US", "CA"]
   }]

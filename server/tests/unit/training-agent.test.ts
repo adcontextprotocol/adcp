@@ -21,6 +21,10 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import {
+  HUMAN_REVIEW_CATEGORIES,
+  HUMAN_REVIEW_POLICY_IDS,
+} from '../../src/training-agent/governance-handlers.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -4356,7 +4360,7 @@ describe('check_governance seller compliance', () => {
     plan_id: 'plan-seller',
     brand: { name: 'Test' },
     objectives: 'test seller compliance',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
   };
 
@@ -4461,7 +4465,7 @@ describe('sync_plans input validation', () => {
         plan_id: 'plan-no-flight',
         brand: { name: 'Test' },
         objectives: 'test',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       }],
     });
 
@@ -4491,7 +4495,7 @@ describe('sync_plans input validation', () => {
         plan_id: 'plan-empty-flight',
         brand: { name: 'Test' },
         objectives: 'test',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
         flight: {},
       }],
     });
@@ -4515,7 +4519,7 @@ describe('sync_plans input validation', () => {
 
     expect(isError).toBe(true);
     expect(result.code).toBe('validation_error');
-    expect(result.message).toContain('budget requires total, currency, and authority_level');
+    expect(result.message).toContain('budget requires total (number) and currency (string)');
   });
 
   it('does not persist any plans when a later plan in the batch is invalid', async () => {
@@ -4524,7 +4528,7 @@ describe('sync_plans input validation', () => {
       plan_id: 'plan-valid',
       brand: { name: 'Test' },
       objectives: 'test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     const invalidPlan = {
@@ -4565,7 +4569,7 @@ describe('check_governance delegation enforcement', () => {
     plan_id: 'plan-deleg',
     brand: { name: 'Test' },
     objectives: 'test delegation limits',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB', 'DE'],
     delegations: [{
@@ -5326,7 +5330,7 @@ describe('governance purchase_type and allocations', () => {
     budget: {
       total: 200000,
       currency: 'USD',
-      authority_level: 'agent_full',
+      reallocation_threshold: 1000000,
       allocations: {
         media_buy: { amount: 150000 },
         rights_license: { amount: 30000 },
@@ -5470,7 +5474,7 @@ describe('governance rights payload extraction', () => {
     plan_id: 'plan-rights',
     brand: { name: 'Acme' },
     objectives: 'rights test',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB'],
   };
@@ -5550,7 +5554,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-audit',
       brand: { name: 'Acme' },
       objectives: 'audit test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5609,7 +5613,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-ctx-filter',
       brand: { name: 'Acme' },
       objectives: 'filter test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5640,7 +5644,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-infer',
       brand: { name: 'Acme' },
       objectives: 'inference test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5677,7 +5681,7 @@ describe('governance creative_services purchase type', () => {
       budget: {
         total: 50000,
         currency: 'USD',
-        authority_level: 'agent_full',
+        reallocation_threshold: 1000000,
         allocations: { creative_services: { amount: 10000 } },
       },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
@@ -5747,7 +5751,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     budget: {
       total: 500000,
       currency: 'USD',
-      authority_level: 'agent_full',
+      reallocation_threshold: 1000000,
       allocations: {
         media_buy: { amount: 300000 },
         creative_services: { amount: 50000 },
@@ -5959,7 +5963,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         budget: {
           total: 100000,
           currency: 'USD',
-          authority_level: 'agent_full',
+          reallocation_threshold: 1000000,
           allocations: { media_buy: { amount: 10000 } },
         },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
@@ -6000,7 +6004,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_deny_buy',
         brand: { domain: 'gov-denied.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -6036,7 +6040,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_ctx_deny',
         brand: { domain: 'gov-ctx-denied.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -6086,7 +6090,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_approve_buy',
         brand: { domain: 'gov-ok.example' },
         objectives: 'large budget',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -6132,7 +6136,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_fake_ctx',
         brand: { domain: 'gov-fake.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -6604,7 +6608,7 @@ describe('AdCP protocol compliance', () => {
         plan_id: 'gov_test_strict',
         brand: { domain: 'acmeoutdoor.example' },
         objectives: 'strict',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: new Date().toISOString(), end: new Date(Date.now() + 90 * 86_400_000).toISOString() },
       }],
     });
@@ -6798,5 +6802,485 @@ describe('cross-machine session persistence', () => {
     const buys = fetched.result.media_buys as Array<{ media_buy_id: string }>;
     expect(buys.length).toBe(1);
     expect(buys[0]!.media_buy_id).toBe(mediaBuyId);
+  });
+});
+
+// ── Governance: Annex III / Art 22 human-review enforcement ──────────
+
+describe('human_review_required auto-flip and enforcement', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_BASE = {
+    plan_id: 'plan-hr',
+    brand: {
+      name: 'Test',
+      domain: 'test.example',
+      data_subject_contestation: { url: 'https://test.example/privacy/contest' },
+    },
+    objectives: 'test',
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+  };
+
+  it('auto-flips human_review_required when policy_categories contains fair_lending', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, policy_categories: ['fair_lending'], human_review_required: true }],
+    });
+    expect(isError).toBeFalsy();
+    expect((result.plans as Array<{ status: string }>)[0].status).toBe('active');
+  });
+
+  it('rejects plan that sets human_review_required=false with fair_housing category', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, policy_categories: ['fair_housing'], human_review_required: false }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('fair_housing');
+  });
+
+  it('brand industries surface an advisory finding, not a hard flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'bank.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: {
+          ...PLAN_BASE.brand,
+          domain: 'bank.example',
+          industries: ['consumer_finance'],
+        },
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 5000 },
+    });
+    // Industries alone are advisory — plan proceeds unless a category/policy/custom triggers.
+    expect(result.status).not.toBe('escalated');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'annex_iii_industry_advisory' && f.severity === 'warning')).toBe(true);
+  });
+
+  it('escalates every action when human_review_required regardless of budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'lender.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'lender.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 20 },
+    });
+    expect(result.status).toBe('escalated');
+    expect(result.escalation?.reason).toContain('human');
+  });
+
+  it('escalates when budget exceeds reallocation_threshold within plan total', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'test.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 10000 },
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 50000 },
+    });
+    expect(result.status).toBe('escalated');
+    expect(result.escalation?.reason).toContain('reallocation_threshold');
+  });
+
+  it('emits critical contestation-missing finding when human review + no contestation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'missing.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { name: 'NoContest', domain: 'missing.example' }, // no data_subject_contestation
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 100 },
+    });
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'data_subject_contestation' && f.severity === 'critical')).toBe(true);
+  });
+
+  it('mode=audit does NOT neuter human_review_required', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'audit.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'audit.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        mode: 'audit',
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 5000 },
+    });
+    // Without human_review_required, mode=audit would return approved.
+    // With it, mode override is disabled.
+    expect(result.status).toBe('escalated');
+  });
+
+  it('rejects downgrade of human_review_required true→false without override', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'downgrade.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'downgrade.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    // Attempt to re-sync with human_review_required=false (and no category, no override)
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'downgrade.example' },
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('human_override');
+  });
+
+  it('budget supports reallocation_unlimited sentinel', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_unlimited: true },
+      }],
+    });
+    expect(isError).toBeFalsy();
+  });
+
+  it('budget rejects both threshold and unlimited set together', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 5000, reallocation_unlimited: true },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.message).toContain('exactly one');
+  });
+
+  it('budget rejects neither threshold nor unlimited set', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD' },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.message).toContain('exactly one');
+  });
+});
+
+// ── Governance: registry parity + round-2 follow-ups ─────────────────
+
+describe('human_review registry parity and edge cases', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_BASE = {
+    plan_id: 'plan-parity',
+    brand: {
+      name: 'Test',
+      domain: 'test.example',
+      data_subject_contestation: { url: 'https://test.example/privacy/contest' },
+    },
+    objectives: 'test',
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+  };
+
+  it('HUMAN_REVIEW_CATEGORIES equals registry categories with requires_human_review:true', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const categoriesDir = path.resolve(testDir, '../../../static/registry/policy-categories');
+    const files = await fs.readdir(categoriesDir);
+
+    const registrySet = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const raw = await fs.readFile(path.join(categoriesDir, file), 'utf-8');
+      const cat = JSON.parse(raw) as { category_id: string; requires_human_review?: boolean };
+      if (cat.requires_human_review === true) {
+        registrySet.add(cat.category_id);
+      }
+    }
+
+    // Both directions: every registry entry with requires_human_review:true is in the server constant,
+    // and every server constant value is in the registry with that flag set.
+    for (const categoryId of registrySet) {
+      expect(HUMAN_REVIEW_CATEGORIES.has(categoryId), `registry category ${categoryId} has requires_human_review:true but not in server HUMAN_REVIEW_CATEGORIES`).toBe(true);
+    }
+    for (const categoryId of HUMAN_REVIEW_CATEGORIES) {
+      expect(registrySet.has(categoryId), `server HUMAN_REVIEW_CATEGORIES contains ${categoryId} but registry does not have it with requires_human_review:true (drift — either update the registry or remove from server)`).toBe(true);
+    }
+  });
+
+  it('HUMAN_REVIEW_POLICY_IDS equals registry policies with requires_human_review:true', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const policiesDir = path.resolve(testDir, '../../../static/registry/policies');
+    const files = await fs.readdir(policiesDir);
+
+    const registrySet = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const raw = await fs.readFile(path.join(policiesDir, file), 'utf-8');
+      const policy = JSON.parse(raw) as { policy_id: string; requires_human_review?: boolean };
+      if (policy.requires_human_review === true) {
+        registrySet.add(policy.policy_id);
+      }
+    }
+
+    for (const policyId of registrySet) {
+      expect(HUMAN_REVIEW_POLICY_IDS.has(policyId), `registry policy ${policyId} has requires_human_review:true but not in server HUMAN_REVIEW_POLICY_IDS`).toBe(true);
+    }
+    for (const policyId of HUMAN_REVIEW_POLICY_IDS) {
+      expect(registrySet.has(policyId), `server HUMAN_REVIEW_POLICY_IDS contains ${policyId} but registry does not have it (drift)`).toBe(true);
+    }
+  });
+
+  it('policy_ids:["eu_ai_act_annex_iii"] alone triggers auto-flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        policy_ids: ['eu_ai_act_annex_iii'],
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('eu_ai_act_annex_iii');
+  });
+
+  it('object-form custom_policies with requires_human_review triggers auto-flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        custom_policies: [{
+          policy_id: 'internal_art_22_policy',
+          policy: 'Internal compliance policy requiring human review for Art 22 decisions.',
+          requires_human_review: true,
+          enforcement: 'must',
+        }],
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('internal_art_22_policy');
+  });
+
+  it('human_override with valid fields permits downgrade', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'override.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'override.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'override.example' },
+        human_review_required: false,
+        human_override: {
+          reason: 'Compliance officer confirmed campaign is corporate-branding only, not fair_lending targeting.',
+          approver: 'compliance@override.example',
+        },
+      }],
+    });
+    expect(isError).toBeFalsy();
+  });
+
+  it('human_override rejects short reason', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'shortreason.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'shortreason.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'shortreason.example' },
+        human_review_required: false,
+        human_override: { reason: 'ok', approver: 'legal@example.com' },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('at least 20 characters');
+  });
+
+  it('human_override rejects non-email approver', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'noemail.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'noemail.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'noemail.example' },
+        human_review_required: false,
+        human_override: {
+          reason: 'Confirmed this is corporate branding and not Annex III scoped decision.',
+          approver: 'admin',
+        },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('valid email address');
+  });
+
+  it('revisionHistory grows across re-syncs', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'revisions.example' }, operator: 'test.example' };
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v2',
+      }],
+    });
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v3',
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v4',
+      }],
+    });
+    const plans = (result as { plans: Array<{ version: number }> }).plans;
+    expect(plans[0].version).toBe(4);
+
+    // Inspect session state directly — revisionHistory must actually accumulate prior snapshots.
+    const sessionKey = sessionKeyFromArgs({ account }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+    const session = await getSession(sessionKey);
+    const plan = session.governancePlans.get(PLAN_BASE.plan_id)!;
+    expect(plan.version).toBe(4);
+    expect(plan.revisionHistory).toHaveLength(3); // snapshots of v1, v2, v3 before current v4
+    expect(plan.revisionHistory.map(r => r.version)).toEqual([1, 2, 3]);
+    expect(plan.revisionHistory.every(r => r.humanReviewRequired === true)).toBe(true);
+  });
+
+  it('objectives exceeding 2000 chars is rejected at schema', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        objectives: 'x'.repeat(2001),
+      }],
+    });
+    expect(isError).toBe(true);
   });
 });

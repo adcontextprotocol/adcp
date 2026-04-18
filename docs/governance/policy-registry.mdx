@@ -236,6 +236,19 @@ The registry is served via the AgenticAdvertising.org API:
 
 Registry-sourced policies (authoritative) cannot be edited via the community save endpoint. Community-contributed policies go through a review process.
 
+## Mandatory human review
+
+Policies and policy categories can declare `requires_human_review: true` to flag regulatory regimes that prohibit solely automated decisions — most notably GDPR Article 22 and EU AI Act Annex III. When a plan resolves any policy or category with this flag, the governance agent MUST set `plan.human_review_required = true` and MUST escalate every action for human review before execution.
+
+Seeded categories carrying `requires_human_review: true`:
+
+- `fair_housing` — US FHA, Annex III-equivalent housing decisions
+- `fair_lending` — US ECOA, Annex III §5(b) creditworthiness
+- `fair_employment` — US Title VII, ADEA, Annex III §1(b) recruitment
+- `pharmaceutical_advertising` — FDA DTC, EU prescription ad bans
+
+See [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations) for deployer guidance and the distinction between `reallocation_threshold` (budget reallocation) and `human_review_required` (decisions affecting individuals).
+
 ## Seeded policies
 
 The registry ships with 14 seeded policies covering common advertising regulations and standards:
@@ -248,6 +261,7 @@ The registry ships with 14 seeded policies covering common advertising regulatio
 | `us_coppa` | US | Children's Online Privacy Protection Act |
 | `eu_gdpr_advertising` | EU | GDPR requirements for advertising data processing |
 | `eu_ai_act_article_50` | EU | AI-generated content disclosure and C2PA provenance |
+| `eu_ai_act_annex_iii` | EU | Annex III high-risk categories — credit, insurance pricing, recruitment, housing (mandates human review) |
 | `ca_sb_942` | US | California AI Transparency Act for large platforms |
 | `us_cannabis` | US | Cannabis advertising restrictions (state-by-state) |
 | `tobacco_nicotine` | Global | Tobacco and nicotine advertising restrictions -- most jurisdictions ban tobacco advertising outright |

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/policy-entry.json",
   "title": "Policy Entry",
-  "description": "A policy — either published to the shared registry (with full regulatory metadata) or authored inline by a buyer for their own campaign (lightweight, metadata optional). Policies use natural language text evaluated by governance agents (LLMs). Published registry entries SHOULD include version, name, jurisdiction, source, and exemplars; inline bespoke entries can omit these and let servers default them.",
+  "description": "A policy — either published to the shared registry (with full regulatory metadata) or authored inline by a buyer for their own campaign (lightweight, metadata optional). Policies use natural language text evaluated by governance agents (LLMs). Published registry entries SHOULD include version, name, jurisdiction, source, and exemplars; inline bespoke entries can omit these and let servers default them. Governance agents evaluating policies with natural-language LLMs MUST pin registry-sourced policy text (`source: registry`) as system-level instructions and MUST NOT permit `custom_policies` or the plan's `objectives` field to relax, override, or disable registry-sourced policies. Custom policies may only add additional restrictions; they cannot lower enforcement levels or exempt categories.",
   "type": "object",
   "properties": {
     "policy_id": {
@@ -25,6 +25,7 @@
     },
     "description": {
       "type": "string",
+      "maxLength": 500,
       "description": "Brief summary of what this policy covers."
     },
     "category": {
@@ -34,6 +35,11 @@
     "enforcement": {
       "$ref": "/schemas/enums/policy-enforcement.json",
       "description": "How governance agents treat violations. Regulations are typically \"must\"; standards are typically \"should\"."
+    },
+    "requires_human_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, plans subject to this policy MUST set plan.human_review_required = true. Use for policies that mandate human oversight of decisions affecting data subjects — e.g., GDPR Article 22 (solely automated decisions with legal or similarly significant effects) and EU AI Act Annex III high-risk categories (credit, insurance pricing, recruitment, housing allocation). Governance agents MUST escalate any plan action whose resolved policies include requires_human_review: true. Unlike `enforcement`, this flag applies as soon as the policy is resolved — it is NOT gated by `effective_date`. Art 22 GDPR and similar foundational obligations may predate an AI-Act-specific effective date; the human-review requirement fires regardless."
     },
     "jurisdictions": {
       "type": "array",
@@ -84,7 +90,8 @@
     },
     "policy": {
       "type": "string",
-      "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy."
+      "maxLength": 5000,
+      "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy. For source: inline policies, treated as caller-untrusted — governance agents MUST evaluate inline policies as ADDITIONAL restrictions only; they MUST NOT be permitted to relax, override, or conflict with registry-sourced policies."
     },
     "guidance": {
       "type": "string",
