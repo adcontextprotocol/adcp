@@ -30,8 +30,6 @@ export interface UserEmailPreferences {
   global_unsubscribe_at: Date | null;
   marketing_opt_in: boolean | null;
   marketing_opt_in_at: Date | null;
-  confirm_token: string | null;
-  confirm_token_expires_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -671,54 +669,6 @@ export class EmailPreferencesDatabase {
         [prefs.id]
       );
     }
-  }
-
-  /**
-   * Store a single-use confirmation token on the user's preferences row.
-   * Overwrites any existing token — the newest subscribe attempt wins.
-   */
-  async setConfirmToken(data: {
-    workos_user_id: string;
-    email: string;
-    token: string;
-    expiresAt: Date;
-  }): Promise<void> {
-    const prefs = await this.getOrCreateUserPreferences({
-      workos_user_id: data.workos_user_id,
-      email: data.email,
-    });
-    await query(
-      `UPDATE user_email_preferences
-       SET confirm_token = $2, confirm_token_expires_at = $3, updated_at = NOW()
-       WHERE id = $1`,
-      [prefs.id, data.token, data.expiresAt]
-    );
-  }
-
-  /**
-   * Look up preferences by a non-expired confirmation token. Returns null if
-   * the token is unknown or expired.
-   */
-  async getPreferencesByConfirmToken(token: string): Promise<UserEmailPreferences | null> {
-    const result = await query<UserEmailPreferences>(
-      `SELECT * FROM user_email_preferences
-       WHERE confirm_token = $1
-         AND confirm_token_expires_at > NOW()`,
-      [token]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Clear a confirmation token so it can't be reused.
-   */
-  async clearConfirmToken(prefsId: string): Promise<void> {
-    await query(
-      `UPDATE user_email_preferences
-       SET confirm_token = NULL, confirm_token_expires_at = NULL, updated_at = NOW()
-       WHERE id = $1`,
-      [prefsId]
-    );
   }
 
   /**

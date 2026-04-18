@@ -114,6 +114,7 @@ import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
@@ -1526,10 +1527,10 @@ export class HTTPServer {
     });
 
     // Newsletter subscribe for non-members.
-    // Provisions a WorkOS user (emailVerified: false), mints a 24h single-use
-    // confirmation token on the user's preferences row, and sends a branded
-    // transactional email via Resend. marketing_opt_in stays null until the
-    // user clicks the confirm link. Response is always a generic 200 to
+    // Writes a pending confirmation keyed by email (no WorkOS user yet) and
+    // sends a branded transactional email via Resend. The WorkOS user is
+    // provisioned only when the recipient clicks the confirm link, which
+    // proves they control the inbox. Response is always a generic 200 to
     // prevent email enumeration.
     const SUBSCRIBE_SOURCES = new Set(['footer', 'story-inline', 'unknown']);
     const TOKEN_HEX_LENGTH = 64;
@@ -1545,36 +1546,26 @@ export class HTTPServer {
       const source = typeof rawSource === 'string' && SUBSCRIBE_SOURCES.has(rawSource) ? rawSource : 'unknown';
 
       try {
-        const user = await findOrCreateUserByEmail(email);
-
-        // Per-email cooldown: if an unexpired confirm_token was issued in the
+        // Per-email cooldown: if a pending confirmation was issued in the
         // last 10 minutes, skip sending a duplicate email. Limits grief-spam
         // against a specific inbox even from distributed IPs.
-        const existing = await emailPrefsDb.getUserPreferencesByUserId(user.id);
-        const tokenIssuedAt = existing?.confirm_token_expires_at
-          ? existing.confirm_token_expires_at.getTime() - 24 * 60 * 60 * 1000
-          : null;
-        if (tokenIssuedAt !== null && Date.now() - tokenIssuedAt < PER_EMAIL_RESEND_COOLDOWN_MS) {
-          logger.info({ userId: user.id, source }, 'Newsletter subscribe throttled (per-email cooldown)');
+        const existing = await pendingConfirmationsDb.getByEmail(email);
+        if (existing && Date.now() - existing.created_at.getTime() < PER_EMAIL_RESEND_COOLDOWN_MS) {
+          logger.info({ source }, 'Newsletter subscribe throttled (per-email cooldown)');
           return res.json({ ok: true });
         }
 
         const token = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await emailPrefsDb.setConfirmToken({
-          workos_user_id: user.id,
-          email: user.email,
-          token,
-          expiresAt,
-        });
+        await pendingConfirmationsDb.upsert({ email, token, source, expiresAt });
 
         const confirmUrl = `${process.env.BASE_URL || 'https://agenticadvertising.org'}/newsletter/confirm?token=${token}`;
-        const sent = await sendNewsletterConfirmation({ to: user.email, confirmUrl, source });
+        const sent = await sendNewsletterConfirmation({ to: email, confirmUrl, source });
 
         if (sent) {
-          logger.info({ userId: user.id, source }, 'Newsletter subscribe initiated');
+          logger.info({ source }, 'Newsletter subscribe initiated');
         } else {
-          logger.warn({ userId: user.id, source }, 'Newsletter subscribe email not sent; token remains valid for retry');
+          logger.warn({ source }, 'Newsletter subscribe email not sent; token remains valid for retry');
         }
       } catch (error) {
         logger.error({ err: error, source }, 'Newsletter subscribe failed');
@@ -1584,8 +1575,8 @@ export class HTTPServer {
       res.json({ ok: true });
     });
 
-    // Newsletter confirmation landing. Validates the single-use token, flips
-    // marketing_opt_in to true, and redirects to the welcome page. Does NOT
+    // Newsletter confirmation landing. Validates the single-use token, then
+    // provisions the WorkOS user and flips marketing_opt_in to true. Does NOT
     // log the user in — that happens later via normal OAuth if they return.
     // The 256-bit unpredictable token serves as CSRF defense on this GET.
     this.app.get('/newsletter/confirm', newsletterConfirmRateLimiter, async (req, res) => {
@@ -1596,20 +1587,21 @@ export class HTTPServer {
       }
 
       try {
-        const prefs = await emailPrefsDb.getPreferencesByConfirmToken(token);
-        if (!prefs) {
+        const pending = await pendingConfirmationsDb.getByToken(token);
+        if (!pending) {
           return res.redirect('/welcome-subscribed.html?error=expired');
         }
 
+        const user = await findOrCreateUserByEmail(pending.email);
         await emailPrefsDb.setMarketingOptIn({
-          workos_user_id: prefs.workos_user_id,
-          email: prefs.email,
+          workos_user_id: user.id,
+          email: user.email,
           optIn: true,
         });
-        await emailPrefsDb.clearConfirmToken(prefs.id);
+        await pendingConfirmationsDb.deleteByEmail(pending.email);
 
         invalidateMemberContextCache();
-        logger.info({ userId: prefs.workos_user_id }, 'Newsletter subscribe confirmed');
+        logger.info({ userId: user.id }, 'Newsletter subscribe confirmed');
         res.redirect('/welcome-subscribed.html');
       } catch (error) {
         logger.error({ err: error }, 'Newsletter confirm failed');
