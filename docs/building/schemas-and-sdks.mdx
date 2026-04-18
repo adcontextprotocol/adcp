@@ -37,7 +37,7 @@ adcp-{version}/
   CHANGELOG.md            # release notes
   manifest.json           # version, generated_at, contents summary
   schemas/                # full JSON schema tree (same as /schemas/{version}/)
-  compliance/             # domains/, specialisms/, universal/, test-kits/, index.json
+  compliance/             # protocols/, specialisms/, universal/, test-kits/, index.json
   openapi/registry.yaml   # OpenAPI description
 ```
 
@@ -87,11 +87,11 @@ Storyboards live alongside schemas at `/compliance/{version}/`. They define the 
 | Path | Purpose |
 |------|---------|
 | `/compliance/{version}/universal/` | Required for every agent (capability discovery, error handling, schema validation) |
-| `/compliance/{version}/domains/{domain}/` | Baseline required to claim a domain (`media-buy`, `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`) |
+| `/compliance/{version}/protocols/{protocol}/` | Baseline required to claim a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`) |
 | `/compliance/{version}/specialisms/{id}/` | Optional specialization claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`) |
-| `/compliance/{version}/index.json` | Enumerates available domains, specialisms, and universal storyboards |
+| `/compliance/{version}/index.json` | Enumerates available protocols, specialisms, and universal storyboards |
 
-Declare `supported_protocols` (for domain baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/compliance-catalog) for every protocol and specialism an agent can claim.
+Declare `supported_protocols` (for protocol baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/compliance-catalog) for every protocol and specialism an agent can claim.
 
 ### Common Schemas
 

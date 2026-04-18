@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/tasks-list-request.json",
   "title": "Tasks List Request",
-  "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
+  "description": "Request parameters for listing and filtering async tasks across all AdCP protocols with state reconciliation capabilities",
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -16,14 +16,14 @@
       "description": "Filter criteria for querying tasks",
       "properties": {
         "domain": {
-          "$ref": "/schemas/enums/adcp-domain.json",
+          "$ref": "/schemas/enums/adcp-protocol.json",
           "description": "Filter by single AdCP domain"
         },
         "domains": {
           "type": "array",
           "description": "Filter by multiple AdCP domains",
           "items": {
-            "$ref": "/schemas/enums/adcp-domain.json"
+            "$ref": "/schemas/enums/adcp-protocol.json"
           },
           "minItems": 1
         },

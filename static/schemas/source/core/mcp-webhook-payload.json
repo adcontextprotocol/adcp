@@ -18,7 +18,7 @@
       "description": "Type of AdCP operation that triggered this webhook. Enables webhook handlers to route to appropriate processing logic."
     },
     "domain": {
-      "$ref": "/schemas/enums/adcp-domain.json",
+      "$ref": "/schemas/enums/adcp-protocol.json",
       "description": "AdCP domain this task belongs to. Helps classify the operation type at a high level."
     },
     "status": {
