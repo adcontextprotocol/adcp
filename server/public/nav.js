@@ -930,11 +930,15 @@
               </ul>
             </div>
           </div>
+          <div class="aao-footer__disclosure">
+            Built with AI. Content on this site is authored or assisted by Addie, Sage, and other AI agents operated by AAO. See our <a href="/ai-disclosure">AI disclosure</a> for what's AI-authored, what's AI-assisted, and how to request human review.
+          </div>
           <div class="aao-footer__bottom">
             <div class="aao-footer__legal">
               <a href="/api/agreement?type=privacy_policy">Privacy</a>
               <a href="/api/agreement?type=terms_of_service">Terms</a>
               <a href="/api/agreement?type=bylaws">Bylaws</a>
+              <a href="/ai-disclosure">AI Disclosure</a>
             </div>
             <div class="aao-footer__copyright">
               &copy; ${currentYear} Agentic Advertising Organization
@@ -1033,9 +1037,25 @@
         color: #fff;
       }
 
-      .aao-footer__bottom {
+      .aao-footer__disclosure {
         border-top: 1px solid #374151;
         padding-top: 1.5rem;
+        margin-bottom: 1.5rem;
+        font-size: 0.8125rem;
+        line-height: 1.6;
+        color: #9ca3af;
+      }
+
+      .aao-footer__disclosure a {
+        color: #d1d5db;
+        text-decoration: underline;
+      }
+
+      .aao-footer__disclosure a:hover {
+        color: #fff;
+      }
+
+      .aao-footer__bottom {
         display: flex;
         justify-content: space-between;
         align-items: center;
