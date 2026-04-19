@@ -156,6 +156,31 @@ When a request references a sandbox account, your agent MUST NOT persist product
 
 See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
 
+## Production readiness
+
+Single-instance storyboard success is not sufficient for compliance. Any agent that persists `(brand, account)`-scoped state — sellers, governance agents, signal agents, brand-rights agents — must run its storyboards against at least two independent instances behind round-robin routing before claiming conformance.
+
+The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/docs/protocol/architecture#state-persistence-and-horizontal-scaling). A media buy created on replica A must be readable from replica B. A storyboard that passes single-instance but fails multi-instance is a direct signal that your agent is storing state in process memory.
+
+Run multi-instance validation as:
+
+1. Start two instances of your agent on different ports, or put a round-robin load balancer in front of a replicated deployment.
+2. Point the CLI alias at the shared endpoint (`npx @adcp/client --save-auth my-agent https://my-agent.example/mcp`).
+3. Run the same storyboard set (`npx @adcp/client storyboard run my-agent`). The runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences that fail on in-process-only implementations.
+
+Storyboards that are purely stateless probes — capability discovery, auth rejection, schema validation — are unaffected by multi-instance routing. Storyboards with any stateful step (create → get → update → delete, sync_governance → check_governance, idempotency replay, etc.) exercise cross-instance persistence and will fail under multi-instance validation when state is kept in process memory.
+
+A typical failure looks like:
+
+```
+✗ get_media_buy  MEDIA_BUY_NOT_FOUND
+  create_media_buy on replica A returned media_buy_id=mb_abc123 (status: active)
+  get_media_buy on replica B returned MEDIA_BUY_NOT_FOUND for the same id
+  → Brand-scoped state is not shared across replicas.
+```
+
+Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. If any state you write can be read back by a later call, it must live in a shared store — not a per-process `Map` or module-level variable.
+
 ## The build-validate-fix loop
 
 The typical development workflow:

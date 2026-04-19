@@ -86,3 +86,21 @@ These parties exchange impressions and money through the orchestration layer.
 **Governance agents** provide compliance and quality control across all layers: property lists, brand suitability scoring, quality measurement (MFA score, ad density), and privacy compliance (COPPA, TCF, GDPR). They operate at setup time, real-time, and post-bid.
 
 **Human-in-the-loop** — optional manual approval at key decision points: campaign approval, creative review, budget thresholds, and policy exceptions.
+
+---
+
+## State persistence and horizontal scaling
+
+AdCP is a multi-instance protocol. A single buyer's workflow with an agent may be routed across multiple backend replicas — `create_media_buy` may land on one replica, the subsequent `get_media_buy` on another — and both calls MUST see the same state.
+
+### Normative requirements
+
+State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/docs/building/integration/account-state).
+
+**Acceptable storage:** Postgres, Redis, DynamoDB, or any shared store that persists across process restarts and is reachable from every replica. **Not acceptable:** module-level variables, per-process Maps or dicts, single-node file storage, or sticky-session routing that masks the absence of shared state.
+
+Within a single `(brand, account)` context, implementations MUST support read-your-writes across replicas: after a successful non-async response, a subsequent request routed to any replica MUST observe the write. Async/pending task state (status transitions, `context_id`, push-notification subscriptions) is itself subject to this rule — once a task record is created, it MUST be readable from any replica. Eventual consistency is acceptable when the staleness window is bounded and disclosed — either capped at the implementation's documented async polling interval, or declared explicitly in `get_adcp_capabilities`.
+
+**Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/docs/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
+
+Compliance tooling exercises this invariant by running the same storyboard against two or more agent instances in rotation (multi-instance mode). See [Validate your agent — Production readiness](/docs/building/validate-your-agent#production-readiness).
