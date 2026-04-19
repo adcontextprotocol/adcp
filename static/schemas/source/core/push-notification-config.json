@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended). This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
+  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. By default, webhooks are signed with the AdCP RFC 9421 profile (see docs/building/implementation/security.mdx#webhook-callbacks) — the seller signs outbound with its adagents.json-published key and the buyer verifies against the seller's published JWKS, so no shared secret crosses the wire. The optional `authentication` block selects the legacy Bearer or HMAC-SHA256 fallback for compatibility with receivers that have not yet adopted the 9421 profile; this fallback is deprecated and will be removed in AdCP 4.0. This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
   "type": "object",
   "properties": {
     "url": {
@@ -17,11 +17,11 @@
     },
     "authentication": {
       "type": "object",
-      "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+      "description": "Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 signing instead of the default RFC 9421 webhook profile. Deprecated; removed in AdCP 4.0. When omitted, the seller MUST sign webhooks with the 9421 profile.",
       "properties": {
         "schemes": {
           "type": "array",
-          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit `authentication` and use the RFC 9421 webhook profile.",
           "items": {
             "$ref": "/schemas/enums/auth-scheme.json"
           },
@@ -30,7 +30,7 @@
         },
         "credentials": {
           "type": "string",
-          "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
           "minLength": 32
         }
       },
@@ -42,7 +42,6 @@
     }
   },
   "required": [
-    "url",
-    "authentication"
+    "url"
   ]
 }

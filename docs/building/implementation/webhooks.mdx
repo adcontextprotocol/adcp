@@ -10,19 +10,28 @@ Push notifications let publishers deliver task status updates to you directly, i
 
 1. A unique operation ID is generated per task invocation
 2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
-3. `push_notification_config` is injected into the task request body with that URL and HMAC credentials
-4. The publisher POSTs webhook notifications to your URL as the task status changes
-5. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
+3. `push_notification_config` is injected into the task request body with just the URL — no secret required
+4. The publisher POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in `adagents.json`
+5. You verify the signature against the publisher's published JWKS and dedupe by `idempotency_key`
+6. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
 
 ```
 create_media_buy request
   └── push_notification_config
-        ├── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
-        └── authentication: { schemes: ["HMAC-SHA256"], credentials: "..." }
+        └── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
+              // No shared secret — the publisher signs with its own key, you verify against
+              // its published JWKS. See "Signature verification" below.
 
               ↓ publisher processes task ↓
 
 POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
+  Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                   created=1706097600;expires=1706097900;nonce="...";keyid="seller-webhook-2025";
+                   alg="ed25519";tag="adcp/webhook-signing/v1"
+  Signature: sig1=:<base64url-unpadded>:
+  Content-Digest: sha-256=:<base64url-unpadded>:
+  Content-Type: application/json
+
   {
     "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",   ← dedup by this
     "task_id": "task_456",
@@ -32,7 +41,11 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-
   }
 ```
 
-If you're using the `@adcp/client` library, this entire flow is handled automatically — configure `webhookUrlTemplate` and `webhookSecret` once on the client and `push_notification_config` is injected into every outgoing task call.
+If you're using the `@adcp/client` library, this entire flow is handled automatically — configure `webhookUrlTemplate` and your agent URL once on the client, publish a webhook-signing JWK on your own `adagents.json` entry, and `push_notification_config` is injected into every outgoing task call. Incoming webhooks are verified against the publisher's JWKS automatically.
+
+:::note Legacy HMAC fallback
+Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below.
+:::
 
 ## Naming: snake_case vs camelCase
 
@@ -60,14 +73,12 @@ Include `push_notification_config` as a task argument, merged with the rest of y
   "end_time": "2025-06-30T23:59:59Z",
   "packages": [...],
   "push_notification_config": {
-    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
-    "authentication": {
-      "schemes": ["HMAC-SHA256"],
-      "credentials": "your_shared_secret_min_32_chars"
-    }
+    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
   }
 }
 ```
+
+`authentication` is omitted in the default case — the publisher signs with its own `adcp_use: "webhook-signing"` key. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
 
 ### A2A
 
@@ -88,11 +99,7 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
   },
   "configuration": {
     "pushNotificationConfig": {
-      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
-      "authentication": {
-        "schemes": ["HMAC-SHA256"],
-        "credentials": "your_shared_secret_min_32_chars"
-      }
+      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
     }
   }
 }
@@ -212,39 +219,79 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 | `input-required` | Reason and any validation errors |
 | `submitted` | Minimal acknowledgment |
 
-## Authentication
+## Signature verification
 
-### Bearer token
+Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/implementation/security#webhook-callbacks). The publisher signs with its `adcp_use: "webhook-signing"` key published in `adagents.json`; you verify against the publisher's published JWKS. No shared secret crosses the wire.
 
-Simple token auth — the publisher sends your token in the `Authorization` header.
+**Publisher sends three headers** (plus `Content-Type`):
 
-**Configuration:**
-```json
-{
-  "authentication": {
-    "schemes": ["Bearer"],
-    "credentials": "your_bearer_token_min_32_chars"
-  }
-}
+```
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                 created=<unix>;expires=<unix>;nonce=<base64url>;
+                 keyid=<kid>;alg="ed25519";tag="adcp/webhook-signing/v1"
+Signature: sig1=:<base64url-unpadded>:
+Content-Digest: sha-256=:<base64url-unpadded>:
 ```
 
-**Verifying on your server:**
-```javascript
-app.post('/webhooks/adcp', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
-    return res.status(401).end();
+Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
+
+**Verification** follows the 14-step [request verifier checklist](/docs/building/implementation/security#verifier-checklist-requests) with three webhook substitutions:
+
+- Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/implementation/security#webhook-error-taxonomy)).
+- `tag` MUST be `adcp/webhook-signing/v1`.
+- Resolve `keyid` via the seller's `adagents.json` `agents[]` entry (you already have the seller's agent URL from your integration).
+
+**Receiver implementation sketch:**
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+// Use a validated RFC 9421 library (e.g., `http-message-signatures`) pinned to the AdCP profile.
+
+app.post('/webhooks/adcp/*', async (req, res) => {
+  try {
+    // 1. Parse Signature-Input / Signature headers and reject on malformed.
+    // 2. Resolve keyid against the seller's adagents.json JWKS.
+    // 3. Run the AdCP webhook verifier checklist (14 steps).
+    await verifyAdcpWebhookSignature(req, {
+      sellerAgentUrl: req.sellerContext.agentUrl, // known from your integration
+      requiredTag: 'adcp/webhook-signing/v1',
+      allowedAlgs: ['ed25519', 'ecdsa-p256-sha256'],
+    });
+  } catch (err) {
+    return res.status(401)
+      .setHeader('WWW-Authenticate', `Signature error="${err.code}"`)
+      .end();
   }
+
+  // 4. Dedup by idempotency_key before applying side effects (see Reliability below).
   processWebhook(req.body);
   res.status(200).end();
 });
 ```
 
-### HMAC-SHA256 (recommended for production)
+:::caution Raw body and content-digest
+Your `Content-Digest` verification (step 11 of the checklist) requires the raw HTTP body bytes. Capture them before JSON parsing — any re-serialization will break the digest match.
 
-The publisher signs each request with a shared secret and includes a timestamp for replay protection. You verify both the signature and the timestamp on receipt.
+In Express:
+```typescript
+app.use(express.json({
+  verify: (req, _res, buf) => { (req as any).rawBody = buf.toString('utf-8'); },
+}));
+```
+:::
 
-**Configuration:**
+:::note Replay protection
+The `created`/`expires`/`nonce` sig-params enforce a 5-minute max validity window and `(keyid, nonce)` replay dedup. See [Transport replay dedup](/docs/building/implementation/security#transport-replay-dedup) for the per-keyid cap and memory-bounding rules.
+:::
+
+### Legacy HMAC-SHA256 fallback (deprecated)
+
+:::warning Deprecated — removed in AdCP 4.0
+The HMAC-SHA256 scheme below is a compatibility affordance for 3.x only. New integrations SHOULD omit `push_notification_config.authentication` and use the [9421 webhook profile](#signature-verification) above. Sellers MAY decline to support the legacy scheme.
+:::
+
+Buyers can opt into HMAC-SHA256 by populating `push_notification_config.authentication.credentials`. When present, the seller signs with HMAC-SHA256 using a shared secret and includes a timestamp for replay protection.
+
+**Configuration (legacy):**
 ```json
 {
   "authentication": {
@@ -254,13 +301,13 @@ The publisher signs each request with a shared secret and includes a timestamp f
 }
 ```
 
-**Publisher sends two headers:**
+**Publisher sends two headers (legacy):**
 ```
 X-ADCP-Signature: sha256=<hex digest>
 X-ADCP-Timestamp: <unix timestamp in seconds>
 ```
 
-**Signature algorithm:**
+**Signature algorithm (legacy):**
 
 The signed message is `{unix_timestamp}.{raw_json_body}` — the Unix timestamp (in seconds), a dot, then the exact JSON bytes being sent in the HTTP body.
 
@@ -268,9 +315,9 @@ The signed message is `{unix_timestamp}.{raw_json_body}` — the Unix timestamp 
 Signature = sha256= + hex( HMAC-SHA256( secret, "{timestamp}.{rawBody}" ) )
 ```
 
-The `rawBody` **must** be the exact bytes sent on the wire. Implementations must sign the same serialization that goes in the HTTP body — signing a re-serialized or reformatted version of the payload will cause verification failures.
+The `rawBody` **must** be the exact bytes sent on the wire.
 
-**Publisher implementation (signing):**
+**Publisher implementation (legacy):**
 ```typescript
 import { createHmac } from 'crypto';
 
@@ -278,64 +325,52 @@ function signWebhook(rawBody: string, secret: string): { signature: string; time
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const message = `${timestamp}.${rawBody}`;
   const hex = createHmac('sha256', secret).update(message).digest('hex');
-  return {
-    signature: `sha256=${hex}`,
-    timestamp,
-  };
+  return { signature: `sha256=${hex}`, timestamp };
 }
 ```
 
-**Receiver implementation (verification):**
+**Receiver implementation (legacy):**
 ```typescript
 import { createHmac, timingSafeEqual } from 'crypto';
 
 function verifyWebhook(
-  rawBody: string,
-  signature: string,
-  timestamp: string,
-  secret: string,
+  rawBody: string, signature: string, timestamp: string, secret: string,
 ): boolean {
   const ts = parseInt(timestamp, 10);
   if (isNaN(ts)) return false;
-
-  // Reject requests older than 5 minutes (replay attack prevention)
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - ts) > 300) return false;
 
   const message = `${ts}.${rawBody}`;
   const expected = `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
-
   if (signature.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
+```
 
-app.post('/webhooks/adcp', (req, res) => {
-  const sig = req.headers['x-adcp-signature'] as string;
-  const timestamp = req.headers['x-adcp-timestamp'] as string;
-  if (!sig || !timestamp || !verifyWebhook(req.rawBody, sig, timestamp, process.env.ADCP_WEBHOOK_SECRET)) {
-    return res.status(401).end();
+Normative rules for the legacy scheme are in [Webhook Security](/docs/building/implementation/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40).
+
+### Legacy Bearer token (deprecated)
+
+The A2A `authentication.schemes: ["Bearer"]` scheme is also supported for compatibility and removed in AdCP 4.0. Bearer provides no tamper protection on the body — the 9421 profile is strictly stronger. Sellers SHOULD refuse Bearer for any mutating callback.
+
+```json
+{
+  "authentication": {
+    "schemes": ["Bearer"],
+    "credentials": "your_bearer_token_min_32_chars"
   }
+}
+```
+
+```javascript
+app.post('/webhooks/adcp', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) return res.status(401).end();
   processWebhook(req.body);
   res.status(200).end();
 });
 ```
-
-:::caution Important: raw body verification
-Always verify the signature against the **raw HTTP body bytes**, not a re-serialized version of the parsed JSON. Different languages and libraries may produce different JSON serializations (key ordering, whitespace, number formatting). Capture the raw body before JSON parsing and use those exact bytes for HMAC verification.
-
-In Express, use the `verify` callback on `express.json()` to capture the raw body:
-```typescript
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    (req as any).rawBody = buf.toString('utf-8');
-  },
-}));
-```
-:::
-
-:::note Replay protection
-The 5-minute timestamp window prevents replay attacks. Publishers must use Unix timestamps in seconds (not ISO 8601) in the `X-ADCP-Timestamp` header. Receivers should reject requests where `|current_time - timestamp| > 300` seconds.
-:::
 
 ## Reliability
 
@@ -392,10 +427,10 @@ app.post('/webhooks/adcp', async (req, res) => {
 1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
 2. **Dedupe by `idempotency_key`** — every payload carries a required key stable across retries; track processed keys for at least 24h
 3. **Return 2xx on duplicates** — a successfully-deduped event is a no-op, not an error; returning non-2xx triggers the sender's retry back-off and creates retry storms
-4. **Verify signatures** — always validate `X-ADCP-Signature` before processing
-4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
-5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
-6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
+4. **Verify signatures before processing** — run the 9421 webhook verifier checklist (or the legacy HMAC check if you opted in) before any side effects
+5. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
+6. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+7. **Plan for HMAC removal in 4.0** — if you're currently on the legacy HMAC fallback, migrate to the 9421 webhook profile during 3.x
 
 ## Payload extraction
 

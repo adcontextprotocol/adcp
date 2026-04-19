@@ -3,7 +3,9 @@
   "algorithm": "HMAC-SHA256",
   "secret": "test-secret-key-minimum-32-characters-long",
   "specification": "https://adcontextprotocol.org/docs/building/implementation/webhooks",
-  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification. Each vector contains a raw_body (the exact bytes on the wire), a timestamp (Unix seconds), and the expected signature. Implementations MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it.",
+  "status": "legacy",
+  "deprecation": "AdCP 3.0 unifies webhook signing on the RFC 9421 webhook profile (see docs/building/implementation/security.mdx#webhook-callbacks). This HMAC-SHA256 path is the legacy fallback selected when a buyer populates push_notification_config.authentication.credentials; it is deprecated and removed in AdCP 4.0. Conformance vectors for the 9421 webhook profile will ship alongside the request-signing vectors.",
+  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification (legacy / deprecated path). Each vector contains a raw_body (the exact bytes on the wire), a timestamp (Unix seconds), and the expected signature. Implementations supporting the legacy path MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it.",
   "vectors": [
     {
       "description": "compact JSON (JS-style JSON.stringify)",

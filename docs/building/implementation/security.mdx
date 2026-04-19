@@ -61,7 +61,15 @@ These operations are publicly accessible:
 
 ## Webhook Security
 
-Webhook signature verification and replay prevention are defined in [Push Notifications](/docs/building/implementation/webhooks#hmac-sha256-recommended-for-production). The normative requirements:
+AdCP 3.0 unifies webhook signing on the [AdCP RFC 9421 profile](#webhook-callbacks) — the seller signs outbound webhooks with its adagents.json-published key, and the buyer verifies against the seller's published JWKS. Nothing secret crosses the wire; identity is cryptographically established the same way it is for inbound requests.
+
+**9421 webhook signing is baseline-required in 3.0.** Any seller that emits webhooks MUST sign them per the [Webhook callbacks](#webhook-callbacks) profile unless the buyer explicitly opts into the legacy scheme below by populating `push_notification_config.authentication`.
+
+### Legacy HMAC-SHA256 fallback (deprecated, removed in 4.0)
+
+Buyers who need to interoperate with receivers that have not yet adopted the 9421 profile MAY opt in by populating `push_notification_config.authentication.credentials`. When `authentication` is present on the buyer's request, the seller signs with HMAC-SHA256 using the semantics defined in [Push Notifications](/docs/building/implementation/webhooks#legacy-hmac-sha256-fallback). The legacy scheme is a 3.x-only compatibility affordance; sellers MAY decline to support it, and it is removed in AdCP 4.0.
+
+Normative rules for the legacy scheme when a seller elects to support it:
 
 - **Algorithm**: HMAC-SHA256 only
 - **Signed message**: `{unix_timestamp}.{raw_http_body_bytes}` — never re-serialize the JSON
@@ -71,16 +79,13 @@ Webhook signature verification and replay prevention are defined in [Push Notifi
 - **Minimum secret length**: 32 bytes
 - **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Any body-level `signature` field is a convenience copy and MUST NOT be trusted over the headers.
 
-### Verification order
-
-Verify in this order to minimize computation on invalid requests:
+**Verification order** (legacy scheme):
 1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing
 2. Reject if timestamp is non-numeric
 3. Reject if timestamp is outside the 5-minute window
 4. Compute and compare HMAC
 
-### Secret rotation
-
+**Secret rotation** (legacy scheme):
 - Receivers MUST accept signatures from both current and previous secret during rotation
 - Rotation window SHOULD NOT exceed the replay window (5 minutes)
 - Publishers begin signing with the new secret immediately upon rotation
@@ -727,7 +732,7 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 **Roles:**
 - **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
 - **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
-- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller's `adagents.json` agent entries. This applies only to seller→agent AdCP protocol calls. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) continue to use the HMAC-SHA256 scheme in [Webhook Security](#webhook-security) above and are out of scope for this profile.
+- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller's `adagents.json` agent entries. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) are covered by the symmetric [Webhook callbacks](#webhook-callbacks) variant of this profile — the seller signs outbound with an `adcp_use: "webhook-signing"` key and the buyer verifies.
 
 **Dependencies:**
 - Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
@@ -848,7 +853,7 @@ Each request-signing JWK entry MUST declare:
 |---|---|---|
 | `use` | `"sig"` | Standard JWK signing use. |
 | `key_ops` | `["verify"]` | Verifier-visible JWKS declares verify-only. Publishers hold the corresponding private key locally with `["sign"]` per JWK spec. |
-| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile) and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. |
+| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile), `"webhook-signing"` (seller→buyer webhook callbacks), and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. Sellers that also sign webhooks publish a separate `"webhook-signing"` key under their `adagents.json` entry — see [Webhook callbacks](#webhook-callbacks). |
 | `kid` | distinct | Unique within the JWKS. MUST NOT collide with any other entry's `kid` regardless of `adcp_use`. |
 | `alg` | `"EdDSA"` or `"ES256"` | Must match the signature's `alg` parameter (JWK `alg` uses JWS names; `alg` in `Signature-Input` uses RFC 9421 names). |
 
@@ -1016,11 +1021,86 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 
 **`WWW-Authenticate` format.** AdCP does NOT define a realm value for request-signing challenges. Verifiers MUST emit `WWW-Authenticate: Signature error="<code>"` with no `realm` parameter and no other parameters. Clients parsing the header MUST tolerate other parameters (RFC 7235 permits implementations to include extras) but SHOULD NOT depend on them.
 
+#### Webhook callbacks
+
+Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer registers, and similar asynchronous seller-initiated callbacks) are signed under a symmetric variant of this profile. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. 9421 webhook signing is baseline-required for any 3.0 seller that emits webhooks, with a deprecated HMAC fallback described in [Webhook Security](#webhook-security).
+
+**Baseline, not capability-advertised.** There is no `webhook_signing` block on `get_adcp_capabilities`. Sellers that emit webhooks MUST sign. Buyers that register a `push_notification_config` MUST verify. The buyer opts into the legacy HMAC-SHA256 scheme instead by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme.
+
+**Key publication.** Sellers publish webhook-signing JWKs at the `jwks_uri` on their `adagents.json` `agents[]` entry — the same publication pattern as request-signing keys, with a distinct discriminator:
+
+| Member | Value |
+|---|---|
+| `use` | `"sig"` |
+| `key_ops` | `["verify"]` |
+| `adcp_use` | `"webhook-signing"` |
+| `kid` | distinct within the JWKS; MUST NOT collide with any other `kid` regardless of `adcp_use` |
+| `alg` | `"EdDSA"` or `"ES256"` |
+
+Cross-purpose reuse is forbidden and locally enforceable: a request-signing key MUST NOT verify a webhook signature, and a webhook-signing key MUST NOT verify a request signature. Buyers verifying a webhook MUST reject any JWK whose `adcp_use` is not exactly `"webhook-signing"` with `webhook_signature_key_purpose_invalid`.
+
+**Covered components** are identical to request signing: `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest`. `content-digest` is REQUIRED on webhook callbacks — the body carries the event, and a signature that doesn't commit to the body is not protecting the attack surface that matters. There is no `covers_content_digest: "forbidden"` opt-out for webhooks; transports that cannot preserve webhook body bytes MUST be fixed.
+
+**Signature parameters** are identical to request signing with one override:
+
+| Parameter | Notes |
+|---|---|
+| `created`, `expires`, `nonce`, `keyid`, `alg` | Same semantics as [request signing parameters](#adcp-rfc-9421-profile). |
+| `tag` | MUST be exactly `adcp/webhook-signing/v1`. Verifiers MUST reject `adcp/request-signing/v1` on a webhook route with `webhook_signature_tag_invalid`. The distinct tag prevents a request signature from being replayed as a webhook signature and vice versa. |
+
+**JWKS discovery.** The buyer knows the seller's agent URL from the original AdCP call (it's the agent the buyer is integrated with). Buyer resolves:
+
+1. Seller agent URL → seller's `adagents.json` `agents[]` entry (already cached from integration onboarding).
+2. Fetch the entry's `jwks_uri` (or default to `/.well-known/jwks.json` at the agent URL's origin) with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf).
+3. Resolve `keyid` on the incoming `Signature-Input` to a JWK in the fetched set.
+
+Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `operation_id`, etc.). Identity is established solely via the signature → JWKS → seller agent chain.
+
+**Verifier checklist for webhooks.** Apply the same 14 checks as the [request verifier checklist](#verifier-checklist-requests), with these webhook-specific substitutions:
+
+- Error codes use the `webhook_signature_*` prefix instead of `request_signature_*` (see [Webhook error taxonomy](#webhook-error-taxonomy) below).
+- Step 3: `tag` MUST be `adcp/webhook-signing/v1`.
+- Step 6: `content-digest` is REQUIRED (not policy-advertised); omit the `covers_content_digest` branch.
+- Step 7: resolve `keyid` via the seller's `adagents.json` entry (buyer's side) rather than the buyer's brand.json.
+- Step 8: `adcp_use` MUST equal `"webhook-signing"`.
+- There is no subsequent brand-operator authorization step — the seller's signed identity is sufficient to accept the webhook. The application-layer dedup on `idempotency_key` runs after signature verification.
+
+**Revocation and replay dedup** reuse the same infrastructure as request signing: the seller's operator SHOULD serve a single combined revocation list covering request-signing and webhook-signing keys, and replay dedup is keyed on `(keyid, nonce)` with the same TTL semantics.
+
+**One signature per webhook.** Verifiers MUST process exactly one `Signature-Input` label and ignore additional labels.
+
+##### Webhook error taxonomy
+
+Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), prefixed `webhook_` so SDK error handling distinguishes the two profiles. Buyers MAY return `401` to the seller on any of these; a seller's retry loop will replay with the same signature, so signature-level failures are non-retryable to the sender even though HTTP semantics permit retry.
+
+| Failure | Code |
+|---|---|
+| `Signature` or `Signature-Input` header malformed or one without the other | `webhook_signature_header_malformed` |
+| Required sig-param absent | `webhook_signature_params_incomplete` |
+| `tag` not `adcp/webhook-signing/v1` | `webhook_signature_tag_invalid` |
+| `alg` not in allowlist | `webhook_signature_alg_not_allowed` |
+| Signature window invalid | `webhook_signature_window_invalid` |
+| Required covered components missing (including `content-digest`) | `webhook_signature_components_incomplete` |
+| `keyid` not in seller JWKS after one refetch | `webhook_signature_key_unknown` |
+| JWK `adcp_use` ≠ `webhook-signing` | `webhook_signature_key_purpose_invalid` |
+| `keyid` ∈ `revoked_kids` | `webhook_signature_key_revoked` |
+| Revocation list not refreshed within grace | `webhook_signature_revocation_stale` |
+| Cryptographic verification failed | `webhook_signature_invalid` |
+| `content-digest` mismatch | `webhook_signature_digest_mismatch` |
+| Nonce already seen within window | `webhook_signature_replayed` |
+| Per-keyid replay cache exceeded cap | `webhook_signature_rate_abuse` |
+
+##### Webhook migration timeline
+
+| Phase | Behavior |
+|---|---|
+| 3.0 GA | 9421 webhook signing is baseline for any seller that emits webhooks. Legacy HMAC-SHA256 fallback available when buyer populates `push_notification_config.authentication.credentials`; sellers MAY decline to support it. |
+| 3.x | HMAC fallback is deprecated. Sellers SHOULD log warnings when selected. SDKs SHOULD surface a deprecation notice to buyers that still configure `authentication`. |
+| 4.0 | `authentication` on `push_notification_config` is removed from the schema. 9421 webhook signing is the only supported path. |
+
 #### TMP cross-reference
 
-**Webhooks are out of scope for this profile.** Server→client webhook callbacks (push-notification POSTs to the `push_notification_config.url` a buyer registers, and similar seller-initiated callbacks) continue to use the HMAC-SHA256 scheme defined in [Webhook Security](#webhook-security) above. That profile's 32-byte shared secret, timestamp-bound signing, and replay-window enforcement are adequate for the one-way asynchronous notification case. Do not apply this RFC 9421 profile to webhook callbacks; it would add complexity (JWKS discovery, revocation, replay dedup on signer-chosen nonces) without addressing a threat the HMAC scheme doesn't already cover.
-
-**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing keys is permitted and encouraged — one publication pattern, three signing systems (governance JWS `adcp_use: "governance-signing"`, request-signing 9421 `adcp_use: "request-signing"`, TMP envelope with its own future `adcp_use` value), each `kid`-scoped. Cross-purpose reuse is prevented automatically because step 8 rejects any `adcp_use` that isn't `"request-signing"`.
+**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, four signing systems (governance JWS `adcp_use: "governance-signing"`, request-signing 9421 `adcp_use: "request-signing"`, webhook-signing 9421 `adcp_use: "webhook-signing"`, TMP envelope with its own future `adcp_use` value), each `kid`-scoped. Cross-purpose reuse is prevented automatically because every verifier enforces an exact `adcp_use` match on its own profile.
 
 Trusted Match Protocol signs match-time requests with its own Ed25519 envelope. TMP's per-request budget (sample-verify at ~5%) is too tight for full RFC 9421 verification on every call. **TMP signing is out of scope for this section**; this profile only constrains how TMP keys are published alongside request-signing keys on the same JWKS.
 
