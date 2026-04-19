@@ -163,11 +163,18 @@ function discoverProtocols(sourceDir, specialisms) {
 //
 // Every mutating request in AdCP (any task whose request schema lists
 // `idempotency_key` in its top-level `required` array) MUST carry an
-// idempotency_key, per adcontextprotocol/adcp#2315. Storyboard
-// sample_requests are spec artifacts — when they omit it, the published
-// example is non-conforming even if the runner auto-injects at runtime.
-// This lint reads the request schemas (source of truth) rather than
-// hardcoding a task list, so new mutating tasks are covered on arrival.
+// idempotency_key. Normative anchors:
+//   - docs/reference/migration/v3-readiness.mdx §"idempotency_key required
+//     on all mutating requests"
+//   - docs/reference/release-notes.mdx 3.0 entry, idempotency rollout
+//   - adcontextprotocol/adcp#2315 (the PR that made it required)
+// Storyboard sample_requests are spec artifacts — when they omit it, the
+// published example is non-conforming even if the runner auto-injects at
+// runtime. This lint reads the request schemas (source of truth) rather
+// than hardcoding a task list, so new mutating tasks are covered on
+// arrival. The one documented exception (si-terminate-session: naturally
+// idempotent by session_id) carries a `$comment` on its request schema
+// and is correctly absent from the required-key set.
 
 function loadMutatingSchemaRefs(schemasDir) {
   const refs = new Set();
@@ -211,6 +218,11 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
         // expect_error steps intentionally exercise invalid-request paths,
         // including the "missing idempotency_key" test in universal/idempotency.yaml.
         if (step.expect_error === true) continue;
+        // Steps without schema_ref are HTTP probes, controller calls, or
+        // synthetic invocations (e.g., comply_test_controller's
+        // simulate_budget scenarios, universal/security.yaml's probe steps)
+        // that don't send a task request schema. They're out of scope for
+        // this lint.
         const schemaRef = step.schema_ref;
         if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
         const hasKey =
@@ -245,8 +257,12 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     throw new Error(
       `Storyboard idempotency_key lint: ${violations.length} step(s) invoke a mutating task without declaring idempotency_key in sample_request.\n\n` +
       lines.join('\n') +
-      `\n\nAdd \`idempotency_key: "$generate:uuid_v4#<alias>"\` to each sample_request. ` +
-      `The alias is resolved to a stable UUID per run by the storyboard runner; see static/compliance/source/universal/idempotency.yaml.`
+      `\n\nAdd \`idempotency_key: "$generate:uuid_v4#<storyboard>_<phase>_<step>"\` ` +
+      `to each sample_request (lowercase, hyphens → underscores; the alias is ` +
+      `resolved to a stable UUID per run by the storyboard runner). See ` +
+      `static/compliance/source/universal/idempotency.yaml for the convention, ` +
+      `and note the deliberate alias-reuse pattern there when two steps must ` +
+      `share a key (replay tests).`
     );
   }
 }
