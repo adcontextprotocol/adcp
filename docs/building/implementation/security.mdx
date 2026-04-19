@@ -211,6 +211,23 @@ CREATE POLICY account_isolation_list ON media_buys
   USING (account_id = ANY(current_setting('app.authorized_accounts')::uuid[]));
 ```
 
+### Client-side isolation: cross-principal tool-call confusion
+
+The rules above are server-side enforcement. They protect the seller's data even when a legitimate-but-compromised agent is the caller. The **client-side companion** is the buyer agent's obligation not to let text supplied by principal X drive tool calls that use principal Y's authority.
+
+An LLM-driven buyer agent typically holds credentials for multiple principals at once: several sellers (one credential set per seller) and, inside an agency agent, several brand accounts. Any untrusted string the agent processes — product descriptions returned by a seller, campaign names inherited from a brief, rejection reasons in an error envelope, webhook event bodies — is text sourced from *one* of those principals. If the agent's planning loop can call tools across all of them from a single LLM context, a prompt injected in seller X's text can cause the agent to call `create_media_buy` on seller Y's endpoint, or to spend brand A's budget on brand B's inventory. This is the [confused-deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem) problem at tool-call granularity: the attacker doesn't need to escape the sandbox — the agent's own legitimate authority does the damage.
+
+Operators running LLM-powered AdCP agents MUST apply at least the following controls:
+
+1. **Tag text with its principal of origin.** Every string the LLM context ingests from the network (tool results, webhook bodies, registry documents, creative metadata) MUST be annotated internally with the `{principal_domain, tool_name, response_field}` triple that produced it. Dropping the annotation at ingest time is where this defense dies.
+2. **Restrict tool-call targets to the calling principal.** A tool call whose target principal is not the same as the principal that supplied the string(s) driving the decision MUST either (a) be refused, (b) go through a human approval step, or (c) be mediated by an explicit per-principal policy the operator has declared up front. The default MUST be refuse, not allow.
+3. **Segregate credential scopes by LLM context.** A single LLM planning loop MUST NOT hold live credentials for principals whose interests can conflict (e.g., two brands competing for the same inventory; a buyer credential and a governance agent's signing key in one context). The scope-segregation is enforced at the process / tool-registration layer, not by instructing the LLM — the LLM MUST NOT have the affordance to misuse.
+4. **Log every cross-principal *attempt*, not just successes.** Refusals under rule 2 are the signal operators MUST monitor — a rising refusal rate from a given principal is the earliest detectable sign of an injection campaign targeting your agent.
+
+This threat is distinct from ordinary prompt injection: ordinary injection exfiltrates data or triggers unauthorized tool calls within *one* principal's authority. Cross-principal confusion uses principal X's untrusted text to reach principal Y's authority without the attacker ever holding Y's credentials. The server-side Layer 2 controls above detect the attempt only if principal Y's account isn't already in the buyer agent's authorized set — when it is (the whole point of agency and multi-seller agents), the server sees a legitimate-looking call.
+
+The protocol cannot force this discipline on the client agent. The test for it is operational: every LLM-powered AdCP buyer MUST be able to describe, in writing, which principals can appear together in the same planning context and what gates a cross-principal tool call.
+
 ## Time Semantics
 
 AdCP operates across jurisdictions, ad servers, and daypart calendars. Implementations MUST be precise about time or buyers and sellers will disagree about what "delivered by 5pm" meant.
@@ -620,7 +637,7 @@ Servers MUST NOT echo internal verification details (e.g., which specific claim 
 
 **`policy_decisions` visibility**: the token is a JWS (readable by anyone with the public key), not a JWE (encrypted). If `policy_decisions` contains the full list of policy IDs the governance agent evaluated, every seller who receives the token learns which policies the buyer's governance posture considers — competitive intelligence, and in some cases signaling about sensitive audience characteristics (e.g., a `minors_compliance` policy ID implies targeting of under-18 audiences). Governance agents SHOULD use `policy_decision_hash` in place of `policy_decisions` when the buyer's compliance posture is sensitive; the full log remains available to auditors via `audit_log_pointer` with governance-agent-controlled access.
 
-<a id="intent-phase-disclosure"></a>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
+<span id="intent-phase-disclosure"></span>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
 
 **`caller` URL**: contains the orchestrator's identifier. Sellers and auditors who retain tokens long-term should be aware of the retention policy implied by this.
 
