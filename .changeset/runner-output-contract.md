@@ -1,7 +1,7 @@
 ---
 ---
 
-spec(compliance): define runner output contract for actionable failure detail (#2352)
+spec(compliance): runner output contract + security hardening for actionable failure detail (#2352)
 
 Storyboard runners (evaluate_agent_quality, `@adcp/client storyboard run`, any
 other compliance harness) MUST emit enough detail on validation failures for an
@@ -16,18 +16,43 @@ bug, or a genuine agent bug.
   and fetchable URL of the schema that was applied. Implementors can re-validate
   locally against the same artifact the runner used, eliminating the "my local
   AJV run passed" class of dead-end debugging.
-- Adds a `skip_result` block that requires runners to distinguish
-  `not_applicable` (agent did not claim the protocol) from `no_phases`
-  (storyboard is a placeholder), `prerequisite_failed`, `missing_tool`,
-  `missing_test_controller`, and `unsatisfied_contract` so an agent that
-  declares `supported_protocols: ["signals"]` but sees "Signals track — SKIP"
-  gets a reason that tells them which of those six cases applies.
-- Adds an `extraction` block requiring runners to record which MCP response
-  path (`structured_content` vs `text_fallback`) produced the parsed AdCP
-  response, so runner extraction bugs are separable from agent bugs.
-- Cross-referenced from `storyboard-schema.yaml` — storyboard authors assume
-  failures will be rendered with this detail and write descriptions accordingly.
+- `skip_result` block requires runners to distinguish `not_applicable` (agent
+  did not claim the protocol) from `no_phases` (storyboard is a placeholder),
+  `prerequisite_failed`, `missing_tool`, `missing_test_controller`, and
+  `unsatisfied_contract`. Acknowledges that runners MAY track narrower internal
+  reasons and map them onto the canonical six for stable machine-readable output.
+- `extraction` block requires runners to record which MCP response path
+  (`structured_content` vs `text_fallback`) produced the parsed AdCP response,
+  so runner extraction bugs are separable from agent bugs.
+- A2A response payload shape is now specified precisely:
+  `task.artifacts[0].parts[]` DataPart for final states, `task.status.message.parts[]`
+  for interim states, `status.state` alongside payload.
+
+**Security hardening (v1.1.0).** A runner that emits exact request/response
+payloads into a shared report could leak credentials or agent-planted
+breadcrumbs. Four normative rules close this gap, derived from the conforming
+implementation at adcp-client#611:
+
+- **Payload redaction.** Values at keys matching a minimum case-insensitive
+  regex (authorization, token, api_key, password, secret, bearer, cookie,
+  set-cookie, and variants) are replaced with `"[redacted]"` before emission.
+  The pattern is a floor; runners MAY extend but MUST NOT narrow.
+- **Response-header allowlist.** Only `content-type`, `content-length`,
+  `content-encoding`, `www-authenticate`, `location`, `retry-after`,
+  `x-request-id`, `x-correlation-id` pass through. Everything else is dropped
+  (not redacted) to avoid publishing the set of header names a hostile agent
+  added.
+- **Request headers.** Runners SHOULD NOT populate request.headers by default
+  — echoing an in-flight `Authorization: Bearer <token>` into a shared report
+  is a credential leak. When populated (auth-override probes), keys matching
+  the redaction pattern MUST be redacted and all others MUST pass the
+  allowlist.
+- **LLM fencing.** Agent-controlled `error` / `actual` strings rendered into
+  shared surfaces MUST be fenced so a hostile error message cannot inject
+  instructions into a downstream summarizer.
 
 Non-goals: output formatting, scoring thresholds, UI rendering. The contract
 specifies minimum actionability; runners remain free to add fields and render
 them however the surface requires.
+
+Conforming implementation: adcp-client#611.

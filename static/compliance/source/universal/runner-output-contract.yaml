@@ -26,9 +26,15 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "1.0.0"
+version: "1.1.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
+
+# Conforming implementation: adcp-client PR #611
+# (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,
+# RunnerResponseRecord, ValidationResult, RunnerSkipResult, etc.).
+# The concrete shapes, redaction pattern, and header allowlist below are
+# taken from that implementation.
 
 # A storyboard step result is produced per step the runner executes. Each
 # step result carries zero or more validation results — one per `check` in
@@ -108,18 +114,21 @@ validation_result:
 
 request:
   description: |
-    Exact request the runner sent, per transport.
+    Exact request the runner sent, per transport. Runners MUST redact secrets
+    before emission — see the `security` block below.
   required_fields:
     - transport               # "mcp" | "a2a" | "http"
     - operation               # task/tool/skill name actually invoked (matches
                               # step.task after any test-kit interpolation)
     - payload                 # fully-resolved JSON payload after test-kit
-                              # substitution and context injection — the bytes
-                              # that went on the wire (modulo transport
-                              # framing). Secrets SHOULD be redacted with the
-                              # literal string "[redacted]".
+                              # substitution and context injection, with
+                              # secret-bearing fields replaced per the
+                              # redaction policy in the security block.
   optional_fields:
-    - headers                 # observed request headers, secrets redacted
+    - headers                 # Runners SHOULD NOT populate this field by
+                              # default — see security.request_headers. The
+                              # field exists for future auth-override captures
+                              # that carry a fully-redacted form.
     - url                     # full URL for http/a2a; omit for stdio MCP
 
 response:
@@ -128,11 +137,17 @@ response:
   required_fields:
     - transport               # "mcp" | "a2a" | "http"
     - payload                 # MCP: { isError, structuredContent, content }
-                              # A2A: the artifact envelope
+                              # A2A: the Task object — record task.status.state
+                              #   alongside payload. Extract from
+                              #   task.artifacts[0].parts[] DataPart for final
+                              #   states and task.status.message.parts[] for
+                              #   interim states (per
+                              #   docs/building/implementation/a2a-response-extraction.mdx).
                               # http: parsed body
   optional_fields:
     - status                  # HTTP status where applicable
-    - headers                 # observed response headers
+    - headers                 # observed response headers, filtered through
+                              # the allowlist in security.response_headers
     - duration_ms             # wall-clock time for this request
 
 extraction:
@@ -148,6 +163,72 @@ extraction:
   optional_fields:
     - note                    # e.g. "structuredContent contained only
                               # adcp_error — treated as error"
+
+security:
+  description: |
+    Runner output is consumed in compliance reports, chat transcripts, and
+    shared dashboards where credentials or breadcrumbs a hostile agent plants
+    in a response must not surface. A runner claiming contract conformance
+    without the rules below could leak tokens through a compliant-looking
+    report — defeating the contract's purpose. These rules are normative.
+
+  payload_redaction:
+    description: |
+      Runners MUST recursively redact key-value pairs from request.payload
+      and response.payload before emitting the step result. Values at keys
+      matching the pattern below are replaced with the literal string
+      "[redacted]". Matching is case-insensitive and applies at any depth.
+    pattern: |
+      ^(authorization|credentials?|token|api[_-]?key|password|secret|
+      client[_-]secret|refresh[_-]token|access[_-]token|bearer|
+      session[_-]token|offering[_-]token|cookie|set[_-]cookie)$
+    notes: |
+      The pattern above is the MINIMUM floor taken from the adcp-client#611
+      conforming implementation. Runners MAY extend it for operator-
+      specific key names (e.g., internal vendor headers) but MUST NOT
+      narrow it. Redaction happens after the payload is serialized for
+      the report, not at transport time — the wire request carries real
+      credentials; the emitted record does not.
+
+  response_headers:
+    description: |
+      Response headers MUST pass through an allowlist before emission. Any
+      header not in the allowlist MUST be dropped (not redacted — absent).
+      Dropping rather than redacting avoids publishing the set of header
+      names a hostile agent added, which itself can be a breadcrumb.
+    allowlist:
+      - content-type
+      - content-length
+      - content-encoding
+      - www-authenticate
+      - location
+      - retry-after
+      - x-request-id
+      - x-correlation-id
+    notes: |
+      www-authenticate is retained because it's load-bearing for auth-probe
+      validations (on_401_require_header). Matching is case-insensitive.
+
+  request_headers:
+    description: |
+      Runners SHOULD NOT populate request.headers. A runner that builds
+      `Authorization: Bearer <token>` headers in-flight would leak the token
+      by echoing the observed request into a shared report. When a runner
+      does populate request.headers (e.g., for auth-override probes that
+      intentionally send bogus credentials), values at keys matching the
+      payload_redaction pattern MUST be replaced with "[redacted]" and all
+      other headers MUST pass through the response_headers allowlist.
+
+  rendered_output_fencing:
+    description: |
+      Validation `error` and `actual` fields can carry strings the agent
+      under test controlled. When a runner renders these into a shared
+      surface (chat transcript, markdown report, summary fed to another
+      LLM), those strings MUST be fenced with a nonce or otherwise isolated
+      so a hostile error message cannot inject instructions into a
+      downstream summarizer. This applies to rendered output, not to the
+      machine-readable step_result — the raw string stays in the JSON for
+      programmatic consumers.
 
 skip_result:
   description: |
@@ -191,6 +272,17 @@ skip_result:
       FAIL, not SKIP, for the specialisms that declare them — this reason
       applies only where the contract explicitly permits SKIP.
 
+  detailed_reason_mapping:
+    description: |
+      Runners MAY internally track narrower skip reasons (e.g., a grader
+      distinguishing `rate_abuse_opt_out` from `live_side_effect_opt_in_required`).
+      Such runners MUST still populate `reason` with one of the six canonical
+      values above and encode the narrower cause in `detail`. Machine-
+      readable consumers can then switch on a stable enum; human-readable
+      consumers still see the specific cause. See
+      DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
+      concrete mapping.
+
 summary:
   description: |
     Runners MUST expose a top-level summary for every run. UI surfaces
@@ -224,3 +316,4 @@ references:
   a2a_extraction: docs/building/implementation/a2a-response-extraction.mdx
   transport_errors: docs/building/implementation/transport-errors.mdx
   signed_requests_runner: static/compliance/source/test-kits/signed-requests-runner.yaml
+  conforming_implementation: https://github.com/adcontextprotocol/adcp-client/pull/611
