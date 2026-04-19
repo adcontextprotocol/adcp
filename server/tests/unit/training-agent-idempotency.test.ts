@@ -318,10 +318,14 @@ describe('training agent idempotency middleware', () => {
   });
 
   describe('missing key rejected for every mutating tool', () => {
-    // Parameterized sanity check: the middleware must reject all mutating
-    // tools at the dispatch layer regardless of whether the handler would
-    // have validated the field itself. Catches routing regressions where a
-    // new tool is added to HANDLER_MAP but omitted from MUTATING_TOOLS.
+    // Parameterized sanity check: for every mutating tool the training
+    // agent dispatches (present in HANDLER_MAP), the middleware must reject
+    // a missing idempotency_key at the dispatch layer — catching routing
+    // regressions where a tool is added to HANDLER_MAP but omitted from
+    // MUTATING_TOOLS. Mutating tools that this reference agent doesn't
+    // dispatch (e.g. SI and sync_audiences are in the spec but not in
+    // HANDLER_MAP here) surface as `Unknown tool`, which is also safe —
+    // the idempotency middleware can't be bypassed via a valid path.
     for (const toolName of MUTATING_TOOLS) {
       it(`${toolName}: missing idempotency_key → INVALID_REQUEST`, async () => {
         const { parsed, isError } = await call(server, toolName, {
@@ -329,8 +333,15 @@ describe('training agent idempotency middleware', () => {
           brand: BRAND,
         });
         expect(isError).toBe(true);
-        expect((parsed as any).adcp_error?.code).toBe('INVALID_REQUEST');
-        expect((parsed as any).adcp_error?.field).toBe('idempotency_key');
+        const err = (parsed as any).adcp_error;
+        expect(err?.code).toBe('INVALID_REQUEST');
+        const handledByMiddleware = err?.field === 'idempotency_key';
+        const notDispatchedHere = typeof err?.message === 'string'
+          && (err.message as string).startsWith('Unknown tool:');
+        expect(
+          handledByMiddleware || notDispatchedHere,
+          `expected ${toolName} to hit idempotency middleware or be unknown-tool, got ${JSON.stringify(err)}`,
+        ).toBe(true);
       });
     }
   });
