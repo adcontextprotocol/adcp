@@ -208,11 +208,11 @@ AdCP does not enumerate per-task approval rules. Human review enters through two
 
 ### Universal: any mutation can go async
 
-Any task that mutates state can be returned as `input-required` or `submitted` by the agent handling it, pausing until a human responds — see [task lifecycle](/docs/building/implementation/task-lifecycle). This applies equally to the orchestrator, the seller, the creative agent, and the governance agent. There is no protocol rule that forbids a human step at any boundary; only the operator's latency budget.
+Any task that mutates state can be returned as `input-required` or `submitted` by the agent handling it, pausing until a human responds — see [task lifecycle](/docs/building/implementation/task-lifecycle). This applies equally to the orchestrator, the seller, the creative agent, and the governance agent. There is no protocol rule that forbids a human step at any boundary; only the operator's latency budget. This mechanism is per-call and opaque to the other side — it is not a substitute for the declarative, auditable enforcement campaign governance provides across sellers.
 
 ### Formal buyer-side: campaign governance
 
-Campaign governance is the protocol's specified mechanism for the buyer to *declaratively* require review on campaign actions. The buyer declares constraints in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), and [`check_governance`](/docs/governance/campaign/tasks/check_governance) enforces them on every campaign action. The orchestrator calls it as an **intent check** against its own governance configuration before sending an action to a seller; the seller calls it as an **execution check** on accounts where `governance_agents` has been declared via [`sync_governance`](/docs/accounts/tasks/sync_governance).
+Campaign governance is the protocol's specified mechanism for the buyer to *declaratively* require review on campaign actions. The buyer declares constraints in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans); the policies live on the governance agent, and [`check_governance`](/docs/governance/campaign/tasks/check_governance) enforces them on every campaign action. The orchestrator calls it as an **intent check** to the plan's governance agent before sending an action to a seller — the orchestrator does not evaluate policies locally. The seller calls it as an **execution check** to the same governance agent on accounts where `governance_agents` has been declared via [`sync_governance`](/docs/accounts/tasks/sync_governance). This two-sided structure ensures no party grades its own homework.
 
 The governance agent escalates to a human when any of the following are true:
 

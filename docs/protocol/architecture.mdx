@@ -58,7 +58,7 @@ AdCP's privacy posture is not uniform. TMP is the only domain that enforces priv
 | Creative | Contractual | Creative assets and targeting signals pass through the creative agent under account terms. |
 | Signals | Contractual | Audience and signal data exchanged under account terms and signal-provider agreements. |
 | Brand / Registry / Accounts | Public or contractual | Brand identity is public (`brand.json`); commercial terms are account-scoped. |
-| Sponsored Intelligence | Consent-first | The user consents per session; the brand agent sees conversation content but no persistent identity unless the user shares it. |
+| Sponsored Intelligence | Consent-first | The user consents per session; the brand agent sees conversation content, and identity only when the user shares it. Networks that route sessions may see routing metadata — see [Networks](/docs/sponsored-intelligence/networks). |
 | Governance | Contractual | Governance agents receive the context needed to evaluate policies under account terms. |
 
 "Structural" means the protocol — not the operator's policy — prevents the combination of sensitive data. If you need that property outside TMP, build it yourself or compose with TMP.
