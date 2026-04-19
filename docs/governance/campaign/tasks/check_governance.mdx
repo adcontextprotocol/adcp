@@ -65,6 +65,16 @@ Sellers can adopt committed governance checks incrementally:
 - **Level 2: + Modification** -- One call per `update_media_buy`.
 - **Level 3: + Delivery reporting** -- Periodic calls during active delivery.
 
+## Invocation requirement
+
+When a governance agent is configured on the plan, buyer agents MUST invoke `check_governance` before every spend-commit request (`create_media_buy`, `update_media_buy`, `acquire_rights`, `update_rights`, `activate_signal`, `build_creative`) — full stop. There is no dollar floor, no anomaly threshold, and no cold-start exemption; every commit goes through the governance agent. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields. Auto-approve fast-paths belong inside the governance agent's policy, not in the buyer's decision about whether to call at all.
+
+Seller-side enforcement makes the MUST real through the [signed `governance_context` token](/docs/building/implementation/security#signed-governance-context): a seller receiving a spend-commit request for a plan with a configured governance agent MUST require a valid, in-date token for the matching plan and phase, and MUST reject with `PERMISSION_DENIED` otherwise. A buyer that skips `check_governance` cannot produce a valid token, so the commit is rejected at the seller.
+
+When no governance agent is configured on the plan, `check_governance` invocation is neither required nor meaningful — there is nothing to call.
+
+See the [specification](/docs/governance/campaign/specification#spend-commit-invocation) for the full definition, including audit requirements and interaction with idempotency.
+
 ## Status values
 
 | Status | Meaning | Caller action |

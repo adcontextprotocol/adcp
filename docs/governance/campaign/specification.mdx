@@ -123,6 +123,49 @@ This field is distinct from `budget.reallocation_threshold`:
 
 Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
 
+### Spend-commit invocation
+
+Buyer-side governance invocation is enforceable, not advisory. When a governance agent is configured on the plan, the buyer agent MUST invoke [`check_governance`](/docs/governance/campaign/tasks/check_governance) before sending any spend-commit request to a seller — full stop. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields. No dollar figures, no baseline arithmetic, no operator-declared floors appear in the invocation rule — those auto-approve fast-paths belong inside the governance agent's own policy, not in the buyer's decision about whether to call at all.
+
+#### Spend-commit tasks
+
+The invocation MUST applies to every AdCP task that attaches financial obligation at the moment of the request:
+
+- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — committed budget across packages
+- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) — incremental commit delta (new budget − previously committed)
+- [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) — rights pricing
+- [`update_rights`](/docs/brand-protocol/tasks/update_rights) — incremental commit delta
+- [`activate_signal`](/docs/signals/tasks/activate_signal) — activation fees
+- [`build_creative`](/docs/creative/task-reference/build_creative) — creative generation fees
+- Any future spend-commit task
+
+Invocation is NOT required for discovery tasks (e.g., `get_products`, `get_signals`), reporting tasks (e.g., `get_media_buy_delivery`), or operational-status tasks. The MUST fires specifically at the moment of financial obligation.
+
+When no governance agent is configured on the plan, `check_governance` invocation is neither required nor meaningful — there is nothing to call.
+
+#### Seller enforcement
+
+A seller receiving a spend-commit request for a plan with a configured governance agent MUST require a valid, in-date `governance_context` token on the request, verified per the [seller verification checklist](/docs/building/implementation/security#seller-verification-checklist). A request without a token, with a token that fails verification, or with a token issued for a different plan or phase MUST be rejected with `PERMISSION_DENIED`. This is the enforcement mechanism that makes the buyer-side MUST real: a buyer that skips `check_governance` cannot produce a valid token, and the spend-commit is rejected.
+
+Seller-side governance (if the seller itself has configured a governance agent on the account) is an **independent layer**. A buyer's successful `check_governance` does not obligate the seller to accept the request; the seller's own compliance policies MAY still reject the action via `PERMISSION_DENIED`.
+
+#### Audit logging
+
+Every `check_governance` invocation MUST produce an audit log entry — retrievable via [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) — capturing:
+
+1. Invocation timestamp as a timezone-offset ISO 8601 string
+2. Tool being validated (`create_media_buy`, `acquire_rights`, etc.) and commit amount in the plan's currency
+3. Outcome (`approved`, `denied`, or `conditions`; and whether human review was invoked internally)
+4. Human actor identity and authority, when a human signal was recorded
+5. `check_id` for cross-reference from the downstream spend-commit task's audit entry and from `report_plan_outcome`
+
+#### Interaction with idempotency
+
+- **Retry of an identical payload carrying the prior `governance_context`:** no re-invocation. The cached governance response is reused; the token signature and freshness are re-validated.
+- **Re-plan with a different payload (new `idempotency_key` per [Idempotency](/docs/building/implementation/security#idempotency)):** a fresh `check_governance` invocation is required. A new `governance_context` token is issued.
+
+A retry after a human approval does not re-invoke governance; the existing token remains the authorization until it expires.
+
 ### Channel mix targets
 
 The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `conditions` or `denied` status.
