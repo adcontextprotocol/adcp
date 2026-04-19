@@ -156,6 +156,34 @@ When a request references a sandbox account, your agent MUST NOT persist product
 
 See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
 
+## Verifying cross-instance state
+
+The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/docs/protocol/architecture#state-persistence-and-horizontal-scaling) — a media buy created on one replica must be readable from any other. Single-instance storyboard success does not by itself prove that invariant. Choose a verification approach that fits your deployment.
+
+**Verify by architecture.** If you run on a managed serverless platform with a shared datastore — Lambda + DynamoDB, Cloudflare Workers + D1, Cloud Run + Firestore, Vercel + Neon — the invariant holds by construction. Storyboards that pass against your deployed endpoint are sufficient. Document your storage pattern so it's discoverable.
+
+**Verify by multi-instance testing.** If you deploy long-running processes (containers, VMs, a classic app server behind a load balancer), put ≥2 replicas behind round-robin routing and run storyboards against the shared endpoint:
+
+```bash
+npx @adcp/client --save-auth my-agent https://my-agent.example/mcp
+npx @adcp/client storyboard run my-agent
+```
+
+The compliance runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences most likely to catch in-process state. Stateless probes (capability discovery, auth rejection, schema validation) are unaffected.
+
+A typical failure looks like:
+
+```
+✗ get_media_buy  MEDIA_BUY_NOT_FOUND
+  create_media_buy on replica A returned media_buy_id=mb_abc123 (status: active)
+  get_media_buy on replica B returned MEDIA_BUY_NOT_FOUND for the same id
+  → Brand-scoped state is not shared across replicas.
+```
+
+**Verify by your own testing.** Property-based tests against a real datastore, chaos fault injection between replicas, or production observability that correlates writes and reads across instances are all valid. The protocol cares about the invariant, not the methodology.
+
+Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. Any state you write that a later call can read back must live in a shared store — not a per-process `Map` or module-level variable.
+
 ## The build-validate-fix loop
 
 The typical development workflow:
