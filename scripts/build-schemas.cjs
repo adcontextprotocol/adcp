@@ -144,14 +144,23 @@ function ensureDir(dir) {
 
 const READ_ONLY_VERB_PATTERN = /(^|-)(get|list|check|validate|preview)-/;
 const NON_OPERATION_ALLOWLIST = new Set([
+  // Embedded input types / utility request shapes that aren't operations
+  // themselves — they're referenced via $ref from operation schemas.
   'pagination-request.json',
   'package-request.json',
-  'tasks-get-request.json',
-  'tasks-list-request.json',
-  'comply-test-controller-request.json',
+  // Read-only evaluation operations (TMP matching — no state mutation).
   'context-match-request.json',
   'identity-match-request.json',
 ]);
+// Note: tasks-get-request.json and tasks-list-request.json are matched by
+// READ_ONLY_VERB_PATTERN via the "-get-" / "-list-" fragments — no
+// explicit allowlist entry needed.
+//
+// Note: comply-test-controller-request.json IS mutating (force_*_status,
+// simulate_*) but carries an explicit "naturally idempotent" marker in
+// its description — replays converge to the same observable state because
+// the target state is part of the payload. It passes the lint via the
+// hasNaturallyIdempotentMarker path, not the allowlist.
 
 function isNonMutatingRequestBasename(basename) {
   if (READ_ONLY_VERB_PATTERN.test(basename)) return true;

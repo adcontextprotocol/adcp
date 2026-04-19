@@ -13,9 +13,11 @@ narrative: |
   Agents must also enforce temporal constraints: flight dates must be logically consistent
   (end after start) and start dates should not be in the past.
 
-  This storyboard checks schema compliance on get_products responses and validates that
-  create_media_buy rejects temporally invalid requests. These are foundational requirements
-  that every agent must satisfy regardless of platform type.
+  This storyboard checks schema compliance on get_products responses and enforces temporal
+  constraints on create_media_buy — reversed dates must always be rejected, and past
+  start_time must be either rejected or accepted-with-adjustment (never silently accepted).
+  These are foundational requirements that every agent must satisfy regardless of platform
+  type.
 
 agent:
   interaction_model: media_buy_seller
@@ -330,15 +332,6 @@ phases:
             path: "context.correlation_id"
             value: "schema_validation--reversed_dates"
             description: "Context correlation_id returned unchanged"
-# `past_start_date` used to be a single step whose `expected:` said
-# "either reject with INVALID_REQUEST or accept with adjusted dates."
-# That conflated two observable outcomes into one step with no
-# mechanical way for the runner to validate either branch. The step is
-# now split into two optional paths — a reject path and an adjust path
-# — plus a non-optional enforcement phase that asserts at least one
-# path contributed `past_start_handled`. Matches the `auth_mechanism_verified`
-# pattern in universal/security.yaml.
-
   - id: past_start_reject_path
     title: "Past start date — reject path"
     narrative: |
@@ -354,9 +347,12 @@ phases:
         title: "Submit a past-start create_media_buy — expect rejection"
         narrative: |
           Send a create_media_buy whose start_time is years in the past. An
-          agent on this path rejects with INVALID_REQUEST. No idempotency_key
-          because the request is expected to fail schema/temporal validation
-          before any state is mutated.
+          agent on this path rejects with INVALID_REQUEST. The request
+          carries a valid `idempotency_key` so the rejection is
+          unambiguously about the temporal constraint — without a key the
+          agent could also legitimately reject for missing-key (per
+          universal/idempotency.yaml), and the storyboard couldn't tell
+          which rule fired.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -378,6 +374,7 @@ phases:
               budget: 10000
               pricing_option_id: "test-pricing"
 
+          idempotency_key: "$generate:uuid_v4#schema_validation_past_start_reject"
           context:
             correlation_id: "schema_validation--past_start_date_reject"
         validations:
@@ -460,6 +457,13 @@ phases:
       rejecting or acknowledging an adjustment is non-conformant. Either
       optional path above must succeed. This phase asserts the
       `past_start_handled` contribution was set by at least one of them.
+
+      Note: the spec (docs/media-buy/task-reference/create_media_buy.mdx,
+      §Flight date validation) explicitly mandates INVALID_REQUEST for
+      reversed/out-of-range dates but is silent on past start_time,
+      which is why either-or is the current conformant stance. If a
+      future spec revision commits to one behavior, this phase
+      collapses to a single required path.
 
     steps:
       - id: assert_past_start_handled
