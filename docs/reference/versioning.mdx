@@ -72,6 +72,8 @@ Deprecation notices are published at least **6 months** before any feature is re
 
 Every release with schema changes is called out in the changelog, release notes, and inline documentation. Every release with schema changes ships with a migration guide.
 
+[Experimental surfaces](/docs/reference/experimental-status) operate under a separate, faster notice window of 6 weeks. The deprecation policy above applies only to stable surfaces.
+
 ---
 
 ## 3.x stability guarantees
@@ -85,6 +87,14 @@ Implementations built against 3.0 can rely on the following through the 3.x cycl
 | **Error codes** | Only additive. Existing codes retain their semantics. Clients that handle unknown error codes generically remain compatible. |
 | **Task names** | Never removed or renamed. New tasks may be added. |
 | **Authentication, transport, core security** | Never changed. These are version-level changes only. |
+
+### Experimental surfaces
+
+The stability guarantees in the table above apply to stable surfaces only. AdCP may publish surfaces as **experimental** when they are part of the core protocol but not yet frozen. Experimental surfaces are marked with `x-status: experimental` in their schemas, and sellers that implement them declare so via `experimental_features` on `get_adcp_capabilities`.
+
+Experimental surfaces MAY break between any two 3.x releases with at least 6 weeks' notice in the release notes. They graduate to stable once they have demonstrated real-world signal — see the full [experimental status contract](/docs/reference/experimental-status) for the graduation criteria, notice requirements, and client guidance.
+
+Experimental status is deliberately scoped. If a surface is not marked experimental, the 3.x guarantees above apply.
 
 ### Patch releases
 
@@ -136,6 +146,34 @@ The v2 sunset is the documented exception to this commitment: v2 predates this p
 | **4.0** | Early 2027 | Next major — accumulated breaking changes |
 
 Further 3.x releases will be scheduled based on implementation feedback and working group priorities, with at least 8 weeks between releases.
+
+---
+
+## Extensibility
+
+AdCP distinguishes three levels of schema extension. The rules below apply to every AdCP schema unless a task reference page states otherwise.
+
+| Surface | Who may extend | How |
+|---|---|---|
+| **Core fields** defined by the protocol | Working group, via a release | Proposed in a working group, accepted through the normal release process. Never extended inline by an implementer. |
+| **`ext.{namespace}`** on any request or response object | Anyone, by declaring a namespace in `extensions_supported` | Namespaced, out-of-band, does not affect baseline interop. Namespaces SHOULD be registered in the [extension registry](/docs/building/integration/context-sessions#extensions). |
+| **`additionalProperties: true`** on containers that allow it | Anyone | Additive fields at the declared location. MUST NOT shadow or redefine a core field. Readers MUST ignore unknown fields rather than erroring. When an additional field collides in name with a core field defined on a later release, readers MUST prefer the core field. |
+
+**What MUST NOT happen:**
+
+- Introducing new top-level properties on a response schema in place of `ext.{namespace}`. Implementers that need a field outside `ext` MUST propose the field to the working group.
+- Renaming a core field inline. Aliases are a spec-level operation, not an implementer operation.
+- Tightening a core field's validation locally. An implementer that needs stricter validation performs it before emitting or after receiving the field — not in the wire schema.
+
+This separation is what lets the spec evolve without every non-conforming implementation becoming a fragmentation claim. The wire contract stays narrow and predictable; `ext.{namespace}` is where anyone can move fast without coordination.
+
+### Adding to the core protocol
+
+A field or task enters the core protocol through one of the following paths:
+
+1. **Release addition.** Additive changes (new optional fields, new tasks, new enum values) ship in a 3.x release under the normal release process. These are stable from the release they ship in.
+2. **Experimental addition.** A surface the working group wants to ship for feedback but is not ready to freeze enters the protocol as experimental — see [experimental status](/docs/reference/experimental-status). Experimental surfaces graduate to stable or are removed; there is no permanent experimental state.
+3. **Version boundary.** Changes that are incompatible with the current version are held for the next major. See [schema changes in releases](#schema-changes-in-releases-scope-and-limits) for what is in and out of scope for a release.
 
 ---
 

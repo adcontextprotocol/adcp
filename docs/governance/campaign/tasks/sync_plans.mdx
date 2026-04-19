@@ -7,6 +7,10 @@ description: "sync_plans pushes campaign plans with budget limits, channels, fli
 
 # sync_plans
 
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, authorized markets, and compliance policies -- and serves as the source of truth for all validation.
 
 ## Request

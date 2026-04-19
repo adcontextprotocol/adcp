@@ -1,0 +1,119 @@
+---
+title: Experimental Status
+sidebarTitle: Experimental status
+description: "How AdCP marks surfaces that are in the spec but not yet frozen. What experimental means for implementers, what changes inside 3.x, and how an experimental surface graduates to stable."
+"og:title": "AdCP — Experimental Status"
+---
+
+Some AdCP surfaces are published in a release but not yet frozen. They are shipped so implementers can begin building against them, but they carry a weaker stability contract than stable surfaces. This page defines that contract.
+
+Experimental status is the escape valve that keeps the [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees) credible. A surface is either stable — in which case it cannot break inside 3.x — or explicitly experimental, in which case it can. There is no undeclared middle ground.
+
+---
+
+## What counts as experimental
+
+An AdCP surface is experimental when both of the following are true:
+
+1. Its schema carries `x-status: experimental` at the schema root or on the specific property.
+2. A seller implementing it declares the surface in `experimental_features` on its `get_adcp_capabilities` response.
+
+Both markers are required. The first tells the ecosystem the surface is not frozen; the second tells a specific buyer that this specific seller has opted in to the experimental contract for this surface.
+
+A seller that implements any experimental surface MUST list it in `experimental_features`. Sellers that do not list an experimental surface MUST NOT implement it — there is no "silently experimental" mode.
+
+An experimental feature id covers a cluster of related tasks. A seller that implements any task in the cluster (e.g., `get_rights` but not `acquire_rights` or `update_rights`) MUST still declare the cluster's feature id (`brand.rights_lifecycle`). Partial implementation is allowed; silent implementation is not.
+
+<Note>
+`x-status: experimental` is a schema-local annotation. It is not inherited through `$ref` — a stable schema that references an experimental sub-schema does not automatically become experimental. The `experimental_features` declaration on `get_adcp_capabilities` is the authoritative runtime signal; `x-status` is an authoring hint for schema readers and tooling.
+</Note>
+
+## Contract for experimental surfaces
+
+**Inside 3.x, experimental surfaces MAY change in ways that stable surfaces cannot:**
+
+- Fields may be renamed, removed, or have their type changed
+- Required fields may become optional and vice versa
+- Enums may have values removed or renamed
+- Task names may be renamed or removed
+- Error codes introduced for an experimental surface may be renamed or removed
+
+**Notice requirements for breaking changes to experimental surfaces:**
+
+- At least **6 weeks** published in release notes and the changelog before the change lands
+- A migration note describing the change, with before/after examples where possible
+- Where feasible, an alias accepting both old and new forms in the release that introduces the change
+
+This is a deliberate relaxation of the [6-month deprecation notice](/docs/reference/versioning#deprecation-policy) that applies to stable surfaces.
+
+<Tip>
+**Why experimental exists.** The architecture committee uses this label on surfaces that are genuinely part of the core protocol but not yet field-tested. Without an iteration path, AdCP would either ship rigid schemas nobody has deployed or hold features back until they are perfect. Neither serves implementers.
+</Tip>
+
+**What does not change for experimental surfaces:**
+
+- Authentication, transport, and core security requirements. These are version-level concerns and never change inside 3.x, experimental or not.
+- Idempotency semantics. A seller's declared idempotency contract applies to experimental surfaces the same way it applies to stable ones.
+- Error envelope shape. Experimental surfaces return errors using the same envelope as stable surfaces; only the specific codes may shift.
+
+## Graduation to stable
+
+An experimental surface graduates to stable when ALL of the following are met:
+
+| Criterion | Requirement |
+|---|---|
+| **Production signal** | At least one implementation running in **production** (not sandbox) for **≥45 days**. |
+| **Cross-party validation** | Either (a) a second implementation exists and has been running for ≥45 days, with at least one of the two in production, OR (b) at least one buyer has successfully integrated against the surface in production. Solo-implementer graduation without buyer integration is not allowed. |
+| **Schema stability** | No open breaking-change issues against the surface for **≥30 days** prior to graduation. |
+| **Deliberate promotion** | A graduation PR removes `x-status: experimental` from the schema and removes the feature id from the canonical experimental list, called out in the release notes for the 3.x release that carries the change. |
+
+Two implementers is a lower bar than one because cross-implementation friction is what shakes out spec ambiguity. A single implementer can match their own schema by reflex; two cannot. When only one implementer is ready, buyer-integration signal substitutes — that signal covers the buyer-side ergonomic bugs that a solo implementer would otherwise miss.
+
+Graduation is never automatic. The architecture committee reviews graduation PRs and may require additional cycles if the surface still shows signs of instability.
+
+### Graduation cadence
+
+The architecture committee reviews experimental surfaces at each 3.x release. Every release's notes include, for each experimental surface:
+
+- Current status (still experimental / on track to graduate / under active breaking revision)
+- A list of changes the next release is expected to carry
+- A pointer to the most recent breaking-change notice for the surface, when applicable
+
+Enterprise procurement teams can subscribe to release notes to track experimental surfaces on a predictable review cadence; there is no separate mailing list or ticketing process.
+
+## Client behavior
+
+Buyers integrating against AdCP sellers SHOULD:
+
+- **Inspect `experimental_features` before relying on experimental surfaces.** A seller that does not list an experimental surface is asserting it does not implement that surface.
+- **Pin to specific 3.x releases** when depending on experimental surfaces, or subscribe to release notes for the features they consume.
+- **Design retry and error handling to tolerate new error codes** added to experimental surfaces between releases.
+- **Treat experimental surfaces as unsuitable for regulated workflows** without additional vendor assurance. Experimental is not a claim of compliance-grade stability.
+
+### Buyer-side refusal
+
+Buyers that do not want to interact with experimental surfaces — typically for regulated workflows, compliance-sensitive deployments, or procurement policies that forbid non-frozen features — enforce this client-side. The pattern:
+
+1. **At capability discovery**, read `experimental_features` from the seller's `get_adcp_capabilities` response.
+2. **Filter before invocation.** Do not call tasks that belong to experimental feature ids your policy rejects. The list of tasks per feature id is published in the canonical experimental-surfaces list below.
+3. **Short-circuit upstream.** When an orchestrator or upstream caller requests behavior that would require an experimental surface, return a policy-level error (e.g., the caller's own `POLICY_EXPERIMENTAL_REFUSED`) rather than attempting the call. The refusal is the buyer's concern, not the seller's — sellers MUST NOT be expected to infer buyer policy.
+
+There is no wire-level refusal field in 3.0. Buyer-side filtering is sufficient and keeps the contract asymmetric (sellers declare; buyers decide). A reciprocal wire mechanism may be revisited in a future release if multi-party refusal handoff patterns emerge from real integrations.
+
+## Current experimental surfaces
+
+Schemas marked with `x-status: experimental` are the authoritative source. The canonical list of feature ids for `experimental_features` in AdCP 3.0:
+
+| Feature id | Surface | Why experimental |
+|---|---|---|
+| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights); the `brand.rights`, `brand.right_types`, `brand.available_uses`, and `brand.generation_providers` capability fields on `get_adcp_capabilities`; and the `right-use` and `right-type` enums that these surfaces reference | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. The two enums are marked experimental because their values are expected to evolve as new licensable-use categories surface (e.g. embodiment, hologram, generative-music-style). |
+| `governance.campaign` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Multi-party governance semantics (buyer vs seller approval conflicts, audit provenance verification, tie-breaking under Embedded Human Judgment) are not yet settled. |
+| `trusted_match.core` | [TMP](/docs/trusted-match/) | Privacy architecture is thinly specified relative to what a regulator deep-dive will demand. Exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
+
+Graduation progress and notice of upcoming breaking changes will be called out in the [release notes](/docs/reference/release-notes) for each 3.x release starting with 3.0 GA.
+
+## Relationship to extensions
+
+Experimental status is not the same as an [extension](/docs/reference/versioning#extensibility). Extensions live in the `ext.{namespace}` field and are governed by the extension registry; they are permanently out-of-band for the core protocol. Experimental surfaces are in the core protocol — they are candidates for promotion to stable, not third-party additions.
+
+A surface should be experimental when the architecture committee intends it as part of the core protocol but is not yet willing to freeze it. A surface should be an extension when it is domain-specific, maintained outside the core protocol, or unlikely to apply to the broader AdCP ecosystem.

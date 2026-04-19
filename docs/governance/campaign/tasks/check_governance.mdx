@@ -7,6 +7,10 @@ description: "check_governance is the universal validation gate in AdCP — orch
 
 # check_governance
 
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task. The governance agent infers the check type from the fields present:
 
 | Check type | Who calls | Discriminating fields | Purpose |

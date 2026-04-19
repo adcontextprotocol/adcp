@@ -3,6 +3,7 @@
   "$id": "/schemas/governance/get-plan-audit-logs-request.json",
   "title": "Get Plan Audit Logs Request",
   "description": "Retrieve governance state and audit trail for one or more plans.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {

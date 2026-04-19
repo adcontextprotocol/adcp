@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/right-use.json",
   "title": "Right Use",
   "description": "Types of rights usage that can be licensed through the brand protocol. Aligned with DDEX UseType direction for interoperability with music and media rights systems.",
+  "x-status": "experimental",
   "type": "string",
   "enum": [
     "likeness",
