@@ -33,6 +33,6 @@
     "error_code": "request_signature_key_revoked",
     "failed_step": 9
   },
-  "harness_mode_required": "revocation_contract",
-  "$comment": "Revocation check runs BEFORE cryptographic verify (step 9, before step 10) — this prevents cheap amplification where an attacker replays a revoked key's valid signature and forces the verifier to do an Ed25519/ECDSA verify for every rejection. Verifier MUST reject at step 9 without computing the signature base or running crypto verification. The keyid test-revoked-2026 is a dedicated revoked keypair in keys.json so this vector does not conflict with the purpose-mismatch vector (009) or the runner signing keys (test-ed25519-2026, test-es256-2026)."
+  "requires_contract": "revocation",
+  "$comment": "Revocation check runs BEFORE cryptographic verify (step 9, before step 10) — this prevents cheap amplification where an attacker replays a revoked key's valid signature and forces the verifier to do an Ed25519/ECDSA verify for every rejection. Verifier MUST reject at step 9 without computing the signature base or running crypto verification. Implementations that defer the revocation check until after crypto verify will fail this vector because the committed Signature bytes are a placeholder copied from positive/001 and do not verify cryptographically against this vector's own signature base (different keyid in @signature-params); a crypto-first verifier will return request_signature_invalid instead of request_signature_key_revoked, which is a graded mismatch. The keyid test-revoked-2026 is a dedicated revoked keypair in keys.json so this vector does not conflict with the purpose-mismatch vector (009) or the runner signing keys (test-ed25519-2026, test-es256-2026)."
 }

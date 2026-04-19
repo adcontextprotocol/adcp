@@ -16,10 +16,11 @@
 # a request-signing agent under test. Agents claiming the specialism MUST
 # pre-configure their verifier per this contract before the negative phase runs.
 # The runner reads this file to know (a) the keyids it will sign with, (b) how
-# to provoke each stateful negative vector, and (c) the minimum cap values it
-# should target. See `scope` below for what the contract does NOT specify.
+# to provoke each stateful negative vector, and (c) the grading-time cap values
+# it will target (which are NOT production recommendations — see each field).
+# See `scope` below for what the contract does NOT specify.
 
-id: signed-requests-runner
+id: signed_requests_runner
 applies_to:
   specialism: signed-requests
 
@@ -30,8 +31,17 @@ description: |
   keyid, replay TTL, per-keyid cap — so that the three stateful negative vectors
   produce their expected error codes without the runner injecting verifier state.
 
-  Vectors requiring coordination declare `harness_mode_required` in their
-  fixture; the runner gates those vectors on this contract being in scope.
+  Vectors requiring coordination declare `requires_contract` in their fixture;
+  the runner gates those vectors on this contract being in scope.
+
+endpoint_scope: sandbox
+# The replay-window contract sends a live, validly-signed mutating request as
+# its first step (the second copy is what the grader expects to be rejected).
+# Running this against a production endpoint would create a real media buy.
+# Graders MUST target a sandbox/staging endpoint or an idempotency-keyed
+# sacrificial path the agent discards post-grading. Agents claiming the
+# specialism SHOULD expose a dedicated grading endpoint rather than grading in
+# prod.
 
 harness_mode: black_box
 # Agents participating in a white-box test harness (e.g., SDK internal tests
@@ -62,12 +72,20 @@ stateful_vector_contract:
     # (standard positive path) and reject the second with
     # request_signature_replayed at checklist step 12.
     #
+    # The agent's replay-cache TTL for this test counterparty MUST be at least
+    # as long as `max_interval_seconds`, otherwise the cache entry for the
+    # first request may evict before the second arrives and the vector will
+    # pass spuriously (i.e., both requests accepted = no replay rejection).
+    # The runner's own interval between the two submissions MUST NOT exceed
+    # `max_interval_seconds`.
+    #
     # This supersedes vector 016's `test_harness_state.replay_cache_entries`
     # for black-box mode. In white-box mode, the harness MAY inject the cache
     # entry directly and skip the first request.
     vector_id: 016-replayed-nonce
     black_box_behavior: repeat_request
     max_interval_seconds: 5
+    min_replay_ttl_seconds: 5
 
   revocation:
     # Vector 017-key-revoked.
@@ -88,22 +106,31 @@ stateful_vector_contract:
     #
     # The runner sends N+1 distinct-nonce requests signed by the same keyid
     # within the window. The agent MUST reject the (N+1)th with
-    # request_signature_rate_abuse once the per-keyid cap is hit. The spec
-    # recommends a cap of 1M; this contract declares a minimum the runner
-    # will target so the test is feasible in a grading session.
+    # request_signature_rate_abuse once the per-keyid cap is hit.
     #
-    # Agents with larger caps MAY configure a lower cap for the test-kit
-    # counterparty only; production caps SHOULD follow the spec recommendation.
+    # `grading_target_per_keyid_cap_requests` is the cap the runner will
+    # target during grading — NOT a production recommendation. Agents MAY
+    # configure a lower cap for the test-kit counterparty only so grading
+    # finishes in a reasonable time. Production caps MUST follow the spec
+    # recommendation at docs/building/implementation/security.mdx
+    # §per-keyid cap (at least 1,000,000 entries per keyid). Implementers
+    # copying a value from this file into production code SHOULD use
+    # `production_min_per_keyid_cap_requests` below as the floor, not
+    # `grading_target_per_keyid_cap_requests`.
     vector_id: 020-rate-abuse
-    per_keyid_cap_requests: 100
+    grading_target_per_keyid_cap_requests: 100
+    production_min_per_keyid_cap_requests: 1000000
     window_seconds: 60
 
 scope:
   in_scope: |
     - Keyids the runner will sign with and their JWKS source.
     - Agent-side preconditions for each stateful negative vector.
-    - Minimum per-keyid cap the runner will target for rate-abuse grading.
+    - Grading-time cap the runner will target for rate-abuse grading (NOT a
+      production recommendation; see rate_abuse block).
+    - Minimum replay-cache TTL so the replay-window contract is reliable.
     - Black-box vs. white-box harness mode selection.
+    - Endpoint scope (sandbox only — see endpoint_scope).
   out_of_scope: |
     - Specific error-code strings — those live in each vector's
       expected_outcome.error_code and are graded byte-for-byte.
@@ -114,6 +141,8 @@ scope:
       for white-box cross-SDK byte-equivalence checks.
     - The agent's internal replay TTL or cap storage mechanism — the contract
       specifies observable behavior, not implementation.
+    - Production verifier configuration — this contract configures a test
+      counterparty only.
 
 references:
   specialism: static/compliance/source/specialisms/signed-requests/index.yaml

@@ -47,11 +47,14 @@ narrative: |
 
   Three negative vectors — 016 (replayed nonce), 017 (key revoked), and 020 (per-keyid cap) —
   assert verifier state the runner cannot set from the outside. Those vectors declare
-  `harness_mode_required` and are gated on the `signed-requests-runner` test-kit contract
+  `requires_contract` and are gated on the `signed_requests_runner` test-kit contract
   at `test-kits/signed-requests-runner.yaml`, which specifies the runner's signing keyids,
-  a dedicated pre-revoked keyid (`test-revoked-2026`), and the minimum per-keyid cap the
-  runner will target. Agents claiming the specialism MUST pre-configure their verifier per
-  that contract before the negative phase runs.
+  a dedicated pre-revoked keyid (`test-revoked-2026`), and the grading-time per-keyid cap
+  the runner will target. Agents claiming the specialism MUST pre-configure their verifier
+  per that contract before the negative phase runs. If the agent does not satisfy the
+  contract (e.g., the runner can't coordinate the pre-state), the affected vectors grade
+  as FAIL, never as SKIP — the contract is a prerequisite for the claim, not an optional
+  extension.
 
 agent:
   interaction_model: request_verifier
