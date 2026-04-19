@@ -55,17 +55,17 @@ Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
 Every signal request involves two roles:
 
 - **Orchestrator**: The platform making the API request (e.g., Scope3, Claude)
-- **Principal**: The entity on whose behalf the request is made (e.g., Nike, Omnicom)
+- **Account**: The commercial relationship on whose behalf the request is made (e.g., Nike, Omnicom). See [Accounts Protocol](/docs/accounts/overview).
 
 ### Signal Agent Types
 
-**Private Signal Agents** — owned by the principal with exclusive access:
-- Signal agents MUST return `AGENT_NOT_FOUND` for unauthorized principals
-- Signal agents MUST NOT expose private signals to other principals
+**Private Signal Agents** — owned by a single account with exclusive access:
+- Signal agents MUST return `AGENT_NOT_FOUND` for unauthorized accounts
+- Signal agents MUST NOT expose private signals across accounts
 
-**Marketplace Signal Agents** — license signal data to multiple principals:
-- Signal agents MUST support public catalog access without principal registration
-- Signal agents SHOULD support personalized catalogs for registered principals
+**Marketplace Signal Agents** — license signal data to multiple accounts:
+- Signal agents MUST support public catalog access without account registration
+- Signal agents SHOULD support personalized catalogs for registered accounts
 
 ### Identifiers
 
@@ -129,7 +129,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 - Orchestrators MUST authenticate with signal agents using valid credentials
 - Signal agents MUST validate credentials before processing requests
-- Signal agents SHOULD use principal context to determine catalog access level
+- Signal agents SHOULD use account context to determine catalog access level
 
 ### Activation Key Security
 
@@ -138,7 +138,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 ### Data Minimization
 
-- Signal agents MUST NOT return signals the principal is not authorized to access
+- Signal agents MUST NOT return signals the authenticated agent or account is not authorized to access
 
 ## Conformance
 
