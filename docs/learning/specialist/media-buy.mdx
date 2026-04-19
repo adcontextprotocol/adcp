@@ -18,6 +18,9 @@ Passing earns the **AdCP specialist — Media buy** credential.
 ## What you'll demonstrate
 
 - Execute the full media buy lifecycle including proposals and forecasting
+- Explain why every mutating media-buy request is cryptographically signed (RFC 9421): the signature is what lets the seller authenticate the buyer and detect tampering. No amount of lifecycle logic matters if you can't trust who sent the request.
+- Walk the buyer-identity resolution chain: signature → JWKS → agent entry → brand.json. Explain why `iss` claims and client-supplied headers are never treated as identity, and what each link in the chain defends against.
+- Apply `idempotency_key` correctly across the lifecycle: fresh UUID v4 per logical buy, same key + same payload on network retry (returns `replayed: true`), new key when the agent re-plans with a different payload, and the handling of `IDEMPOTENCY_CONFLICT` and `IDEMPOTENCY_EXPIRED`. Explain why this is what makes agent retries safe for real money.
 - Trace the state machine: `create_media_buy` returns `pending_creatives` or `pending_start`; `sync_creatives` clears `pending_creatives`; the seller MUST transition `pending_start` → `active` at flight start and webhook the orchestrator. Seller-initiated `rejected` is only valid from the pending states.
 - Reason about which actions are valid in which states (`cancel`, `sync_creatives` from pending states; `pause`/`resume`/`update_media_buy` from `active`), and handle `NOT_CANCELLABLE` and concurrency conflicts via `revision`
 - Select a `pricing_option_id` from a product's `pricing_options[]` array — CPM, vCPM, CPP, CPA, flat rate, time — and explain why different pricing models carry different `parameters`

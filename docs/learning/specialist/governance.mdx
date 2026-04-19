@@ -33,6 +33,7 @@ Passing earns the **AdCP specialist — Governance** credential.
 - Explain when to use each layer alone and how they compose (most buyers use one or two)
 - Explain how governance domains compose — campaign, property, collection, content standards, creative
 - Handle `GOVERNANCE_DENIED` end-to-end: read the `governance_context`, identify the failed rule, correct the payload, and retry
+- Walk through the 15-step seller verification of a signed `governance_context` (JWS): `alg` allowlist, `typ` match, JWKS resolution via SSRF-validated fetch, `aud`/`sub`/`phase` binding, `jti` replay dedup, revocation-list check. Explain why each step closes a specific attack (spoofed issuer, plan swap, token replay, key compromise).
 - Apply governance across `purchase_type` values: `media_buy`, `rights_license`, `signal_activation`, `creative_services`. All share the same loop; media-buy-specific validations (channel compliance, seller concentration, pacing) apply only when the payload contains the relevant fields
 - Explain the `governance_context` correlation model: governance agent issues an opaque token on first check; buyer attaches it to the media buy envelope; seller echoes it on execution checks so the agent reconnects each lifecycle event without re-deriving state
 - Configure audience constraints on a campaign plan using policy categories and restricted attributes

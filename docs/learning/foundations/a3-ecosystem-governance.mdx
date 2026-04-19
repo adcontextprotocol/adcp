@@ -21,6 +21,7 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
 - Explain `adagents.json` and how agents discover each other
 - Name all eight AdCP protocol domains and what each covers
 - Identify which areas you want to explore deeper in a role track
+- Recognize the three trust primitives that make the ecosystem safe: authenticated identity, signed governance tokens, and agent/account isolation
 
 ## Reading list
 
@@ -58,6 +59,9 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
   <Card title="Accounts protocol" icon="building" href="/docs/accounts/overview">
     The commercial layer: advertisers, operators, authentication, billing, and account lifecycle.
   </Card>
+  <Card title="Security Model" icon="shield-halved" href="/docs/building/understanding/security-model">
+    How AdCP defends against unauthorized spend, cross-tenant leakage, replay attacks, and SSRF across the ecosystem.
+  </Card>
 </CardGroup>
 
 ## What you'll cover with Addie
@@ -69,6 +73,11 @@ Addie walks through each domain with a quick live example — just enough to und
 - `adagents.json`: how publishers declare which agents can access their inventory
 - Community registry: how agents and brands find each other
 - AgenticAdvertising.org: working groups, industry councils, how the spec evolves
+
+**Trust primitives (how the ecosystem stays safe):**
+- **Authenticated identity** — cryptographic proof of which agent is calling, not a header claim the seller has to take on faith
+- **Signed governance context** — approval tokens from the buyer's governance agent that bind a plan to a specific seller and phase, verifiable by auditors years later
+- **Agent and account isolation** — every piece of state is scoped to the calling agent and the account it is acting on; cross-tenant reads are rejected with a generic "not found"
 
 **Protocol domains:**
 - **Accounts** — commercial identity, operator-billed vs agent-billed, account lifecycle, `get_adcp_capabilities`

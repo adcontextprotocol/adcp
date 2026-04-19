@@ -184,11 +184,12 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 ### What you'll build
 
 - Product catalog with at least 3 products and `sync_catalogs` support, each product declaring `reporting_capabilities`
-- `get_adcp_capabilities` that declares `adcp.major_versions` and validates `adcp_major_version` on incoming requests
+- `get_adcp_capabilities` that declares `adcp.major_versions` and validates `adcp_major_version` on incoming requests — including a truthful `capabilities.idempotency.replay_ttl_seconds` declaration
 - Creative format support for at least 2 formats
 - Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
 - Account setup via `sync_accounts`
-- Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, and `TERMS_REJECTED` where applicable
+- Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable
+- Idempotency enforcement on every mutating request: reject missing or malformed `idempotency_key` with `INVALID_REQUEST` before touching business logic; cache only on success; scope per authenticated agent
 - Lifecycle transitions: seller moves media buys through `pending_creatives` → `pending_start` → `active` and notifies via webhook on each transition
 
 ### How you'll validate
