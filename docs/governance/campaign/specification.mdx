@@ -519,6 +519,17 @@ Campaign Governance's buyer-side validation has a trust limitation: the buyer's 
 
 The seller POSTs to the buyer's `governance_agents` URLs when governed action events occur. The governance agent maintains all state and correlates requests by `plan_id` + `governance_context` -- the seller does not need to track governance history or chain IDs across calls.
 
+### Both checks must pass
+
+Every governed action **MUST** pass both the buyer-side intent check and the seller-side planned-delivery check. Both calls hit the same authority (the buyer's governance agent), so there is no "two agents disagreeing" case — but the invariant that both calls must succeed is load-bearing:
+
+- The buyer-side intent check confirms the *plan permits the spend in principle*.
+- The seller-side planned-delivery check confirms the *seller's actual delivery parameters are consistent with the approved plan*.
+
+These are not redundant. A buyer's intent check can pass (the plan allows $100K on premium video) while the seller's planned-delivery check fails (the seller's planned line-up includes inventory the plan excludes). If either returns `denied`, the action **MUST NOT** proceed. When both return `approved` with non-empty `conditions`, the applied set is the **union** of both responses' conditions. Contradictory conditions (one side requires X, the other requires NOT X) resolve to `denied` with a structured `finding` rather than silent precedence.
+
+A seller that rejects a trade for its own content-standards or commercial reasons is not participating in a governance conflict — that is a separate, commerce-layer rejection (e.g., `TERMS_REJECTED`) and follows the regular rejection path. Governance speaks only for the buyer's plan.
+
 ### Setup
 
 The buyer syncs governance agents via [`sync_governance`](/docs/accounts/tasks/sync_governance), pairing each account with the governance agent endpoints to call. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
