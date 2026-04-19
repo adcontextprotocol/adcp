@@ -412,14 +412,13 @@ export interface GovernanceCheckState {
   planId: string;
   governanceContext?: string;
   binding: 'proposed' | 'committed';
-  status: 'approved' | 'denied' | 'conditions' | 'escalated';
+  status: 'approved' | 'denied' | 'conditions';
   caller: string;
   tool?: string;
   purchaseType?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
-  escalation?: { reason: string; action?: string };
   explanation: string;
   mode: string;
   categoriesEvaluated: string[];
