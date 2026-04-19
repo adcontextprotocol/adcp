@@ -52,8 +52,8 @@ AdCP is designed so that parties learn only what they need to act. This is enfor
 
 - **[Trusted Match Protocol](/docs/trusted-match)** splits impression-time decisions into two independent calls: *Context Match* carries content signals (topic, sentiment, embeddings) with no user identity; *Identity Match* carries an opaque user token with no page context. Neither call alone reveals which user visited which page — the decomposition is the privacy property.
 - **Signals Protocol** returns `activation_key` values to authenticated callers with deployment access only, and structurally separates marketplace catalog access (public) from private-signal disclosure (account-scoped).
-- **Governance tokens** use `policy_decision_hash` instead of inline `policy_decisions` when the buyer's compliance posture is sensitive — the full decision log remains available to auditors via an access-controlled pointer.
-- **Audience members** in `sync_audiences` are SHA-256 hashed on the buyer side; the protocol never carries cleartext PII.
+- **Governance tokens** use `policy_decision_hash` instead of inline `policy_decisions` when the buyer's compliance posture is sensitive — the full decision log remains available to auditors via the signed `audit_log_pointer`, under the governance agent's access control.
+- **Audience members** in `sync_audiences` are SHA-256 hashed on the buyer side; audience-member payloads never carry cleartext PII.
 
 "Structural" here means an attacker who compromises one leg of a split workflow gains no information that was designed to live only in the other leg. It's a weaker guarantee than cryptographic confidentiality but a stronger one than policy alone.
 
@@ -139,7 +139,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 
 - [ ] How is the calling agent authenticated? (mTLS, API key, or RFC 9421 signed requests — not a header field, not `iss`)
 - [ ] Where are tokens stored? (KMS / secret manager — not files, not env vars at rest)
-- [ ] What is the rotation cadence? (≤24h for write-capable tokens, ≤15 min for financial tokens)
+- [ ] Is the rotation cadence right-sized to blast radius and documented? (≤24h is a reasonable default for write-capable tokens; tighter windows are appropriate for tokens that commit spend at scale or cross organizational boundaries.)
 - [ ] What is the revocation path, and who can execute it in under an hour?
 
 ### Isolation
@@ -208,10 +208,11 @@ A useful reading: the security controls on this page defend the *boundary* the h
 
 Knowing what a protocol doesn't do is part of evaluating it. These are explicit non-goals or deferred items in 3.0 — tracked as follow-ups, not hidden:
 
+- **No end-user authentication.** AdCP authenticates agents, not the humans they act for. User-level identity, consent capture, and data-subject rights are handled upstream in the buyer's stack and are outside the protocol's scope.
 - **No protocol-level breach-notification SLA.** AdCP does not specify "seller MUST notify buyer within N hours of suspected key compromise." Notification commitments live in DPAs between parties. A future major version may tighten this.
 - **No coordinated vulnerability disclosure policy baked into the protocol.** Individual agent operators should publish `/.well-known/security.txt`; there is no normative AdCP requirement yet.
 - **No protocol-level PII transport.** Audience members are hashed client-side by design; if you need cleartext PII on the wire, AdCP is not the right carrier.
-- **No in-protocol payment or settlement.** `report_usage` is consumption reporting for billing, not settlement. Money moves out-of-band through the buyer/seller commercial relationship.
+- **No in-protocol payment or settlement.** `report_usage` provides the consumption data that feeds invoicing, but invoicing and settlement happen out-of-band through the buyer/seller commercial relationship.
 - **No protocol guarantee about LLM prompt-injection defense.** That is an operator concern on every LLM-powered agent in the loop. See the threat class above.
 - **No protocol-level data-residency mechanism.** Residency is a configuration and contract property of individual agents.
 
