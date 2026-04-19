@@ -330,21 +330,45 @@ phases:
             path: "context.correlation_id"
             value: "schema_validation--reversed_dates"
             description: "Context correlation_id returned unchanged"
-      - id: past_start_date
-        title: "Handle past start date"
+# `past_start_date` used to be a single step whose `expected:` said
+# "either reject with INVALID_REQUEST or accept with adjusted dates."
+# That conflated two observable outcomes into one step with no
+# mechanical way for the runner to validate either branch. The step is
+# now split into two optional paths — a reject path and an adjust path
+# — plus a non-optional enforcement phase that asserts at least one
+# path contributed `past_start_handled`. Matches the `auth_mechanism_verified`
+# pattern in universal/security.yaml.
+
+  - id: past_start_reject_path
+    title: "Past start date — reject path"
+    narrative: |
+      Some agents reject past start dates with INVALID_REQUEST. This phase
+      exercises that path. Passing agents that reject here contribute
+      `past_start_handled`; passing agents that accept-with-adjustment do so
+      in the parallel adjust path below. Either path satisfies the temporal
+      enforcement assertion at the end.
+    optional: true
+
+    steps:
+      - id: create_buy_past_start_reject
+        title: "Submit a past-start create_media_buy — expect rejection"
         narrative: |
-          Send a create_media_buy request with a start_time in the past. The agent
-          should either reject the request or auto-adjust the start date forward.
+          Send a create_media_buy whose start_time is years in the past. An
+          agent on this path rejects with INVALID_REQUEST. No idempotency_key
+          because the request is expected to fail schema/temporal validation
+          before any state is mutated.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
+        expect_error: true
         stateful: false
+        contributes_to: past_start_handled
         expected: |
-          Either reject with INVALID_REQUEST or accept with adjusted dates.
-          Both behaviors are valid — the key is that the agent does not silently
-          accept a past start date without acknowledgment.
+          Reject the request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating the past start_time violation
 
         sample_request:
           start_time: "2020-01-01T00:00:00Z"
@@ -354,14 +378,103 @@ phases:
               budget: 10000
               pricing_option_id: "test-pricing"
 
-          idempotency_key: "$generate:uuid_v4#schema_validation_temporal_validation_past_start_date"
           context:
-            correlation_id: "schema_validation--past_start_date"
+            correlation_id: "schema_validation--past_start_date_reject"
         validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Past start_time rejected with INVALID_REQUEST"
+
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "schema_validation--past_start_date"
+            value: "schema_validation--past_start_date_reject"
             description: "Context correlation_id returned unchanged"
+
+  - id: past_start_adjust_path
+    title: "Past start date — adjust path"
+    narrative: |
+      Some agents accept past start dates and auto-adjust them forward to a
+      legal flight window. This phase exercises that path. Passing agents
+      contribute `past_start_handled`; the parallel reject path above covers
+      agents that chose rejection instead.
+
+      The response doesn't carry the adjusted start_time directly, so the
+      validation here is success-envelope + context echo — a conformant
+      accept-with-adjustment response returns a media_buy_id, and the agent
+      is trusted to have adjusted the date per its own policy.
+    optional: true
+
+    steps:
+      - id: create_buy_past_start_adjust
+        title: "Submit a past-start create_media_buy — expect accept-and-adjust"
+        narrative: |
+          Same request as the reject path. An agent on this path accepts it,
+          auto-adjusts the start_time forward, and returns a media_buy_id.
+          idempotency_key is present because the request is a real mutation.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        stateful: false
+        contributes_to: past_start_handled
+        expected: |
+          Accept the request with auto-adjusted dates:
+          - Response matches create-media-buy-response.json schema
+          - media_buy_id present
+          - context.correlation_id echoed
+
+        sample_request:
+          start_time: "2020-01-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          idempotency_key: "$generate:uuid_v4#schema_validation_past_start_adjust"
+          context:
+            correlation_id: "schema_validation--past_start_date_adjust"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response carries a media_buy_id (accept branch)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--past_start_date_adjust"
+            description: "Context correlation_id returned unchanged"
+
+  - id: past_start_enforcement
+    title: "Past start date — require handling"
+    narrative: |
+      An agent that silently accepts a past start_time without either
+      rejecting or acknowledging an adjustment is non-conformant. Either
+      optional path above must succeed. This phase asserts the
+      `past_start_handled` contribution was set by at least one of them.
+
+    steps:
+      - id: assert_past_start_handled
+        title: "Require past_start_handled from either path"
+        narrative: |
+          Synthetic assertion over accumulated flags from the two optional
+          phases. Fails only if neither path contributed past_start_handled.
+        task: assert_contribution
+        comply_scenario: temporal_validation
+        stateful: false
+        expected: |
+          At least one of past_start_reject_path or past_start_adjust_path
+          contributed `past_start_handled`.
+
+        validations:
+          - check: any_of
+            allowed_values: ["past_start_handled"]
+            description: "Agent must either reject the past start_time (reject path) or accept-and-adjust (adjust path). Silent acceptance without either outcome is non-conformant."
