@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import YAML from 'yaml';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -10,7 +11,14 @@ import {
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
+import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+
+function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!MUTATING_TOOLS.has(toolName)) return args;
+  if (args.idempotency_key !== undefined) return args;
+  return { ...args, idempotency_key: `test-${randomUUID()}` };
+}
 
 const REPO_ROOT = join(process.cwd());
 const STORYBOARD_PATH = join(
@@ -49,7 +57,7 @@ async function simulateCallTool(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
@@ -129,6 +137,7 @@ describe('collection-lists specialism storyboard', () => {
     clearSessions();
     invalidateCache();
     clearTaskStore();
+    clearIdempotencyCache();
     server = createTrainingAgentServer(ctx);
   });
 

@@ -230,6 +230,14 @@ import {
   getAccountStatus,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
+import {
+  isMutatingTool,
+  validateKeyFormat,
+  lookupIdempotency,
+  cacheResponse,
+  scopedPrincipal,
+  isPrincipalAtCap,
+} from './idempotency.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -263,6 +271,28 @@ function toolSupportsTask(toolName: string): boolean {
   const tool = TOOLS.find(t => t.name === toolName);
   const support = tool?.execution?.taskSupport as string | undefined;
   return support === 'optional' || support === 'required';
+}
+
+/**
+ * Extract an account-scoping string for the idempotency cache from the
+ * tool arguments. Mirrors `sessionKeyFromArgs` but returns just the scope
+ * portion (no `open:` prefix) so callers can feed it to `scopedPrincipal`.
+ *
+ * The scope is caller-controlled, so it doesn't authenticate anything —
+ * its only job is to keep two different buyers on the same shared token
+ * from seeing each other's idempotency outcomes.
+ */
+function deriveAccountScope(args: Record<string, unknown>): string | undefined {
+  const account = (args.account as { account_id?: string; brand?: { domain?: string } } | undefined);
+  if (account?.account_id && typeof account.account_id === 'string') {
+    return `a:${account.account_id}`;
+  }
+  const domain = account?.brand?.domain
+    ?? (args.brand as { domain?: string } | undefined)?.domain;
+  if (typeof domain === 'string' && domain.length > 0) {
+    return `b:${domain.toLowerCase()}`;
+  }
+  return undefined;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -3060,18 +3090,110 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error(`Tool "${name}" does not support task augmentation`);
     }
 
+    // Idempotency enforcement for mutating tools (#2315, #2346).
+    // Key presence + format are schema-level requirements; we check them
+    // before the handler so a malformed key never touches the cache
+    // (prevents key-format-accepting cache misses from leaking timing).
+    const authPrincipal = ctx.principal ?? 'anonymous';
+    // Partition the idempotency cache by caller-stated account scope so the
+    // shared public sandbox token doesn't pool every buyer into one oracle
+    // (security.mdx §"three-state response"). An attacker on the same auth
+    // principal using a different account ref can still cross-probe, but
+    // callers can already enumerate their own account's keys — so the
+    // scoping adds no useful probing surface while closing the cross-caller
+    // leak.
+    const accountScope = deriveAccountScope(handlerArgs);
+    const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
+    const idempotencyKey = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
+    let toolResult: CallToolResult | null = null;
+    let taskFailed = false;
+    let handlerThrew = false;
+    let cachableResponse: Record<string, unknown> | null = null;
+    let skipHandler = false;
+
+    if (isMutatingTool(name)) {
+      if (idempotencyKey === undefined || idempotencyKey === null) {
+        return {
+          result: adcpError('INVALID_REQUEST', {
+            message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
+            field: 'idempotency_key',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (!validateKeyFormat(idempotencyKey)) {
+        return {
+          result: adcpError('INVALID_REQUEST', {
+            message: 'idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ (UUID v4 recommended).',
+            field: 'idempotency_key',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      // Fail closed when the cache bucket for this principal is full —
+      // silently dropping the insert would let a retry re-execute and
+      // double-book (security.mdx rule 8).
+      if (isPrincipalAtCap(idempotencyPrincipal)) {
+        return {
+          result: adcpError('RATE_LIMITED', {
+            message: 'Idempotency cache capacity exceeded for this principal. Retry after existing keys expire.',
+            recovery: 'transient',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      const outcome = lookupIdempotency(idempotencyPrincipal, idempotencyKey, handlerArgs);
+      if (outcome.kind === 'expired') {
+        return {
+          result: adcpError('IDEMPOTENCY_EXPIRED', {
+            message: 'idempotency_key is past the replay window. Generate a fresh UUID v4 and resend.',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (outcome.kind === 'conflict') {
+        // Error body carries code + message only — no `field` json-pointer,
+        // no cached payload, no hash. Any shape hint turns key-reuse into
+        // a read oracle (security.mdx §IDEMPOTENCY_CONFLICT response shape).
+        return {
+          result: adcpError('IDEMPOTENCY_CONFLICT', {
+            message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (outcome.kind === 'replay') {
+        // Cached inner response; envelope fields (`replayed`, `context`) are
+        // produced fresh on every response per security.mdx. Replayed
+        // responses bypass the handler entirely — no mutations, no flush.
+        const body: Record<string, unknown> = { ...outcome.response, replayed: true };
+        if (callerContext !== undefined) body.context = callerContext;
+        toolResult = {
+          content: [{ type: 'text', text: JSON.stringify(body) }],
+          structuredContent: body,
+        };
+        skipHandler = true;
+      }
+    }
+
     // Execute the tool handler. Structured AdCP errors (handler returns
     // { errors: [...] }) are well-formed responses — the task completes
     // successfully with an adcp_error envelope. Only thrown exceptions
     // mark the task as failed.
-    let toolResult: CallToolResult;
-    let taskFailed = false;
-    let handlerThrew = false;
-    try {
+    if (skipHandler) {
+      // toolResult already set from idempotency replay path above
+    } else try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
       const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
+        // Error-in-body responses are errors from the buyer's POV — do NOT
+        // cache (security.mdx rule 3). cachableResponse stays null so the
+        // post-dispatch gate below never inserts this into the replay cache.
         const firstError = resultObj.errors![0];
         if (ERROR_IN_BODY_TOOLS.has(name)) {
           const body: Record<string, unknown> = { errors: resultObj.errors };
@@ -3093,9 +3215,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           }, callerContext);
         }
       } else {
+        // Inner response (what gets cached for replay). Per security.mdx:
+        // "replayed: false" MAY be omitted on fresh executions and buyers
+        // MUST treat omission as false. Omitting keeps strict per-task
+        // response schemas (additionalProperties: false) passing.
+        const inner = result as Record<string, unknown>;
+        cachableResponse = inner;
         const response = callerContext !== undefined
-          ? { ...result as object, context: callerContext }
-          : result;
+          ? { ...inner, context: callerContext }
+          : inner;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(response) }],
         };
@@ -3108,6 +3236,38 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
       }, callerContext);
+    }
+
+    // TypeScript: by this point toolResult is guaranteed set — either the
+    // handler branch wrote it or the replay short-circuit did.
+    if (!toolResult) {
+      throw new Error('Internal error: toolResult missing after dispatch');
+    }
+
+    // Cache ONLY successful inner responses (security.mdx rule 2+3).
+    // Errors re-execute on retry; structured { errors: [...] } responses
+    // are errors from the buyer's perspective and are not cached either.
+    if (
+      isMutatingTool(name)
+      && typeof idempotencyKey === 'string'
+      && cachableResponse !== null
+      && !toolResult.isError
+      && !handlerThrew
+    ) {
+      const inserted = cacheResponse(idempotencyPrincipal, idempotencyKey, handlerArgs, cachableResponse);
+      if (!inserted) {
+        // Cap was hit between the pre-check and post-execution insert.
+        // The handler already ran and (likely) mutated state — we can't
+        // undo that. Return RATE_LIMITED so a retry with the same key
+        // doesn't silently re-execute and double-book.
+        return {
+          result: adcpError('RATE_LIMITED', {
+            message: 'Idempotency cache capacity exceeded after request completed. The request succeeded but was not cached; a retry with the same idempotency_key may re-execute.',
+            recovery: 'transient',
+          }, callerContext),
+          flushable: !handlerThrew,
+        };
+      }
     }
 
     // If not task-augmented, return result directly.

@@ -20,6 +20,10 @@ export interface TrainingContext {
   moduleId?: string;
   trackId?: string;
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
+  /** Authenticated principal for idempotency cache scoping.
+   *  Derived from the bearer token in the MCP route; defaults to `anonymous`
+   *  when no auth is configured (dev / test). */
+  principal?: string;
 }
 
 export interface ShowSpecial {

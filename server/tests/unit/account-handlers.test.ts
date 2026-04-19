@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -6,9 +7,16 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+
+function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!MUTATING_TOOLS.has(toolName)) return args;
+  if (args.idempotency_key !== undefined) return args;
+  return { ...args, idempotency_key: `test-${randomUUID()}` };
+}
 
 /**
  * Simulate CallTool request on an MCP server.
@@ -24,7 +32,7 @@ async function simulateCallTool(
     throw new Error('CallTool handler not found');
   }
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
@@ -45,6 +53,7 @@ describe('sync_accounts', () => {
     clearSessions();
     clearAccountStore();
     clearTaskStore();
+    clearIdempotencyCache();
     invalidateCache();
     server = createTrainingAgentServer(DEFAULT_CTX);
   });
@@ -238,6 +247,7 @@ describe('sync_governance', () => {
     clearSessions();
     clearAccountStore();
     clearTaskStore();
+    clearIdempotencyCache();
     invalidateCache();
     server = createTrainingAgentServer(DEFAULT_CTX);
   });
