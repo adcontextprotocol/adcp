@@ -14,6 +14,11 @@ name: "Summit Foods"
 description: "Organic food CPG brand for retail media storyboard testing"
 sandbox: true
 
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-summit-foods-v1"
+  probe_task: list_creatives
+
 brand:
   house:
     domain: "summitfoods.example"
