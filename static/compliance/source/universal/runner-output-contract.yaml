@@ -1,0 +1,226 @@
+# Runner Output Contract
+#
+# Defines the failure-result shape that any AdCP compliance runner MUST emit
+# when it reports storyboard results to a user or coding agent. Applies to
+# evaluate_agent_quality, `@adcp/client storyboard run`, and any other harness
+# that executes the storyboards published under /compliance/{version}/.
+#
+# Rationale
+# ---------
+# A failing validation is only actionable if the implementor can see:
+#   1. The exact request the runner sent.
+#   2. The exact response the agent returned.
+#   3. Which field failed (as an RFC 6901 JSON Pointer).
+#   4. What the runner expected vs. what it observed.
+#   5. The identity of the schema applied (so the implementor can re-validate
+#      locally against the same artifact).
+#
+# Without these, a buyer building an agent cannot diagnose failures even when
+# their own local validation passes — a mismatch between the schema they tested
+# against and the schema the runner used is indistinguishable from a genuine
+# agent bug.
+#
+# Storyboard AUTHORING is covered in storyboard-schema.yaml. This contract
+# covers runner OUTPUT.
+#
+# --- Schema definition ---
+
+id: runner_output_contract
+version: "1.0.0"
+title: "Runner output contract"
+summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
+
+# A storyboard step result is produced per step the runner executes. Each
+# step result carries zero or more validation results — one per `check` in
+# the storyboard's step.validations array, plus any transport-level check
+# the runner performs (e.g., extraction path).
+
+step_result:
+  description: |
+    Runners MUST emit one step result per executed step. Skipped steps MUST
+    include a skip result block. Failed steps MUST include at least one
+    validation result with passed: false.
+  required_fields:
+    - storyboard_id           # e.g. "capability_discovery"
+    - phase_id                # e.g. "protocol_discovery"
+    - step_id                 # e.g. "get_capabilities"
+    - task                    # AdCP task name invoked, e.g. "get_adcp_capabilities"
+    - passed                  # boolean — all required validations passed
+    - duration_ms             # wall-clock time for this step
+    - validations             # array of validation_result objects (see below)
+    - extraction              # transport extraction record (see below)
+  optional_fields:
+    - skip                    # skip_result block when the step was not run
+    - error                   # transport-level error (no validations attempted)
+    - request                 # exact request the runner sent (see request block)
+    - response                # exact response observed (see response block)
+
+validation_result:
+  description: |
+    Every validation result — whether passed or failed — MUST carry the fields
+    below. Failed validations MUST include request, response, json_pointer,
+    expected, and actual unless the failure is transport-level (in which case
+    json_pointer, expected, and actual MAY be null and the step-level error
+    field carries the transport failure).
+  required_fields:
+    - check                   # Validation kind from storyboard-schema.yaml:
+                              # response_schema | field_present | field_value |
+                              # status_code | http_status | http_status_in |
+                              # error_code | on_401_require_header |
+                              # resource_equals_agent_url | any_of
+    - passed                  # boolean
+    - description             # human-readable description copied from the
+                              # storyboard validation entry (so the implementor
+                              # sees the same text the author wrote)
+  required_on_failure:
+    - request                 # exact request the runner sent (see request block)
+    - response                # exact response observed (see response block)
+    - json_pointer            # RFC 6901 pointer to the failing field in the
+                              # response, or the request for input-level
+                              # failures. Null only when the failure is
+                              # transport-level and no payload was returned.
+    - expected                # machine-readable expected value:
+                              #   response_schema → schema $id that was applied
+                              #   field_value     → expected value (any JSON type)
+                              #   field_present   → the path that should resolve
+                              #   status_code     → expected status
+                              #   error_code      → expected error code
+                              #   any_of          → array of acceptable forms
+    - actual                  # machine-readable actual value observed:
+                              #   response_schema → array of schema errors
+                              #                     (each { instance_path,
+                              #                     schema_path, keyword,
+                              #                     message })
+                              #   field_value     → actual value (any JSON type)
+                              #   field_present   → null (the field was missing)
+                              #                     or the observed non-object
+                              #                     value
+    - schema_id               # $id of the response schema applied. Required
+                              # when check == response_schema, null otherwise.
+    - schema_url              # Resolvable URL the implementor can fetch to
+                              # validate locally. Required when
+                              # check == response_schema, null otherwise.
+  optional_fields:
+    - remediation             # runner-suggested fix when the failure maps to
+                              # a well-known cause (e.g., "agent did not echo
+                              # context.correlation_id — see
+                              # docs/building/implementation/task-lifecycle")
+
+request:
+  description: |
+    Exact request the runner sent, per transport.
+  required_fields:
+    - transport               # "mcp" | "a2a" | "http"
+    - operation               # task/tool/skill name actually invoked (matches
+                              # step.task after any test-kit interpolation)
+    - payload                 # fully-resolved JSON payload after test-kit
+                              # substitution and context injection — the bytes
+                              # that went on the wire (modulo transport
+                              # framing). Secrets SHOULD be redacted with the
+                              # literal string "[redacted]".
+  optional_fields:
+    - headers                 # observed request headers, secrets redacted
+    - url                     # full URL for http/a2a; omit for stdio MCP
+
+response:
+  description: |
+    Exact response observed from the agent, per transport.
+  required_fields:
+    - transport               # "mcp" | "a2a" | "http"
+    - payload                 # MCP: { isError, structuredContent, content }
+                              # A2A: the artifact envelope
+                              # http: parsed body
+  optional_fields:
+    - status                  # HTTP status where applicable
+    - headers                 # observed response headers
+    - duration_ms             # wall-clock time for this request
+
+extraction:
+  description: |
+    Runners MUST follow the MCP response-extraction algorithm at
+    docs/building/implementation/mcp-response-extraction.mdx and the A2A
+    equivalent. When both structuredContent and content[].text are present,
+    structuredContent wins. Recording the path that was actually used lets
+    the implementor distinguish a runner extraction bug from an agent bug.
+  required_fields:
+    - path                    # "structured_content" | "text_fallback" |
+                              # "error" | "none"
+  optional_fields:
+    - note                    # e.g. "structuredContent contained only
+                              # adcp_error — treated as error"
+
+skip_result:
+  description: |
+    When a track, storyboard, phase, or step is skipped, runners MUST
+    distinguish between the reasons below so an implementor knows whether
+    the skip is informative (the agent did not claim the protocol) or
+    masking (the runner could not apply the storyboard even though the
+    agent claimed the protocol).
+  required_fields:
+    - reason                  # not_applicable | no_phases |
+                              # prerequisite_failed | missing_tool |
+                              # missing_test_controller |
+                              # unsatisfied_contract
+    - detail                  # human-readable explanation citing the
+                              # declared supported_protocols / specialisms
+                              # and, if relevant, the missing tool,
+                              # prerequisite step id, or contract key.
+  reasons:
+    not_applicable: |
+      The agent did not declare the protocol or specialism this storyboard
+      targets. detail MUST cite the agent's declared supported_protocols
+      and specialisms.
+    no_phases: |
+      The storyboard is a placeholder with no phases to run (e.g., a
+      protocol baseline that has not been populated yet). detail MUST cite
+      the storyboard id and version.
+    prerequisite_failed: |
+      A prior step this one depends on did not pass. detail MUST cite the
+      prerequisite step id.
+    missing_tool: |
+      The agent declared the protocol or specialism but does not expose a
+      required tool. detail MUST cite the tool name declared in the
+      storyboard's required_tools and the agent's advertised tool list.
+    missing_test_controller: |
+      The storyboard requires comply_test_controller and the agent did not
+      advertise it. Applies only to deterministic_testing phases.
+    unsatisfied_contract: |
+      A test-kit harness contract (e.g., signed-requests-runner) is not in
+      scope for this grading run. detail MUST cite the contract key. Per
+      the signed-requests-runner contract, unsatisfied contracts grade as
+      FAIL, not SKIP, for the specialisms that declare them — this reason
+      applies only where the contract explicitly permits SKIP.
+
+summary:
+  description: |
+    Runners MUST expose a top-level summary for every run. UI surfaces
+    (Addie, CLI, web) may present a condensed form, but the full summary
+    MUST be available in the machine-readable (--json / structuredContent)
+    output.
+  required_fields:
+    - total_steps
+    - steps_passed
+    - steps_failed
+    - steps_skipped
+    - tracks                  # per-track status with the skip distinctions above
+    - schemas_used            # array of { schema_id, schema_url } so an
+                              # implementor can re-validate locally against
+                              # the exact artifacts the runner applied
+
+# --- Non-goals ---
+#
+# This contract does NOT specify:
+#   - Output formatting (markdown, JSON shape in the outer envelope, colors).
+#   - Storage or retention of run artifacts.
+#   - Scoring weights or pass/fail thresholds for a "compliant" verdict.
+#   - How to render results in conversational interfaces.
+# Runners remain free to add fields, nest them under implementation-specific
+# keys, and render them however best fits the surface. The contract is about
+# minimum actionability.
+
+references:
+  storyboard_schema: static/compliance/source/universal/storyboard-schema.yaml
+  mcp_extraction: docs/building/implementation/mcp-response-extraction.mdx
+  a2a_extraction: docs/building/implementation/a2a-response-extraction.mdx
+  transport_errors: docs/building/implementation/transport-errors.mdx
+  signed_requests_runner: static/compliance/source/test-kits/signed-requests-runner.yaml
