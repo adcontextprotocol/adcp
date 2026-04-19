@@ -15,6 +15,21 @@ name: "Acme Outdoor"
 description: "Fictional outdoor gear brand for storyboard testing"
 sandbox: true
 
+# Authentication fixture for the universal security_baseline storyboard
+# (universal/security.yaml). Declares:
+#   - api_key: the demo Bearer the runner sends on the positive api-key
+#     probe. The conformance handle is the `demo-<kit>-` prefix — agents
+#     SHOULD accept any Bearer matching that prefix (not this literal
+#     value) so the suffix can rotate across spec versions without
+#     breaking previously-conformant agents.
+#   - probe_task: the protected, auth-required read the runner calls under
+#     `auth: none` and with a random-invalid key. Default is list_creatives;
+#     declare explicitly so the api_key phase runs instead of being skipped
+#     via `skip_if: "!test_kit.auth.api_key"`.
+auth:
+  api_key: "demo-acme-outdoor-v1"
+  probe_task: list_creatives
+
 brand:
   house:
     domain: "acmeoutdoor.example"

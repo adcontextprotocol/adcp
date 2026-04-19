@@ -14,6 +14,11 @@ name: "Bistro Oranje"
 description: "Dutch restaurant chain for rights licensing storyboard testing"
 sandbox: true
 
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-bistro-oranje-v1"
+  probe_task: list_creatives
+
 brand:
   house:
     domain: "bistro-oranje.example"
