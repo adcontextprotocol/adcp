@@ -1,5 +1,6 @@
 {
   "policy_id": "us_ecoa_targeting",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US Equal Credit Opportunity Act — Targeting Restrictions",
   "description": "Prohibits discriminatory targeting in credit and lending advertising under ECOA (15 U.S.C. 1691) and Regulation B.",

@@ -1,5 +1,6 @@
 {
   "policy_id": "us_fda_dtc_fair_balance",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US FDA — DTC Pharmaceutical Advertising Fair Balance",
   "description": "Requires fair balance of benefit and risk information in direct-to-consumer pharmaceutical advertising (21 CFR 202.1).",

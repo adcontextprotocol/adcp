@@ -1,5 +1,6 @@
 {
   "policy_id": "eu_gdpr_special_category_targeting",
+  "source": "registry",
   "version": "1.0.0",
   "name": "EU GDPR — Special Category Data Targeting Restrictions",
   "description": "Restricts processing of special categories of personal data for advertising targeting under GDPR Article 9.",

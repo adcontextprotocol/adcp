@@ -1,5 +1,6 @@
 {
   "policy_id": "us_fha_targeting",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US Fair Housing Act — Targeting Restrictions",
   "description": "Prohibits targeting or exclusion by protected characteristics in housing advertising under the Fair Housing Act (42 U.S.C. 3604(c)).",

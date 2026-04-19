@@ -1,5 +1,6 @@
 {
   "policy_id": "us_eeoc_employment_targeting",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US EEOC — Employment Ad Targeting Restrictions",
   "description": "Prohibits discriminatory targeting in employment advertising under Title VII, ADEA, ADA, and GINA.",

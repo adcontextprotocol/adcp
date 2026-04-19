@@ -1,5 +1,6 @@
 {
   "policy_id": "us_state_gambling_geofencing",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US State Gambling — Geofencing Requirements",
   "description": "Requires gambling advertising to be geofenced to jurisdictions where online gambling is legal, with age restrictions.",
@@ -8,6 +9,7 @@
   "jurisdictions": ["US"],
   "policy_categories": ["gambling_advertising"],
   "governance_domains": ["campaign"],
+  "effective_date": "2019-09-23",
   "source_url": "https://www.americangaming.org/resources/responsible-marketing-code-for-sports-wagering/",
   "source_name": "American Gaming Association",
   "policy": "Online gambling and sports betting advertising must be geofenced to states where the activity is legal and must target only adults of legal gambling age.\n\nRequirements:\n1. Advertising must be geographically restricted to states/territories where the specific gambling activity (sports betting, online casino, daily fantasy) is licensed and legal.\n2. Audience targeting must include age verification — minimum age is 21 in most states, 18 in some.\n3. Self-exclusion lists must be respected where platforms support them.\n4. Ads must not target audiences identified as having gambling problems or addictive behaviors.\n5. Cross-state ad delivery (serving to users in states where the activity is illegal) must be prevented.\n\nState gaming commissions can revoke licenses for advertising violations.",
