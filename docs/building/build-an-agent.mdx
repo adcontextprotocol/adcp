@@ -5,7 +5,11 @@ description: "Use AdCP SDK skill files to generate storyboard-compliant agents w
 "og:title": "AdCP — Build an Agent"
 ---
 
-The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a working, storyboard-validated agent in 2–8 minutes.
+The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a protocol-compliant, storyboard-validated agent in 2–8 minutes.
+
+<Note>
+**Publisher without an engineering team?** Protocol compliance is one piece of going live — product management, activation into your ad server, and hosting are separate lifts. See **[Operating an Agent](/docs/building/operating-an-agent)** for the three paths: partner with a managed platform, self-host a prebuilt agent, or build your own.
+</Note>
 
 ## Install the SDK
 
@@ -122,9 +126,9 @@ In Cursor or Windsurf, download the skill file and include it as context with yo
 
 ## Validate with storyboards
 
-<Warning>
+<Note>
 The storyboard runner requires Node.js, regardless of what language your agent is written in.
-</Warning>
+</Note>
 
 Once the agent is running, validate it against the matching storyboard:
 
@@ -158,6 +162,10 @@ media_buy_seller (9 steps)
   9/9 passed
 ```
 
+<Warning>
+**Protocol-compliant ≠ production-ready.** A passing run means your agent speaks AdCP correctly. Going live requires business infrastructure behind each tool call — products and pricing, activation into your ad server, order management, hosting, and discovery registration via `adagents.json`. See **[Operating an Agent](/docs/building/operating-an-agent)** for the full list and whether to partner, self-host, or build.
+</Warning>
+
 <Tip>
 Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client storyboard list` to see all available storyboards.
 </Tip>
@@ -178,6 +186,7 @@ Python and Go equivalents are in each SDK's GitHub repository. See [adcp-python]
 ## What's next
 
 - **[Validate Your Agent](/docs/building/validate-your-agent)** — Storyboards, compliance checks, and the build-validate-fix loop
+- **[Operating an Agent](/docs/building/operating-an-agent)** — What sits behind the protocol layer, and whether to partner, self-host, or build
 - **[Schemas and SDKs](/docs/building/schemas-and-sdks)** — Schema access, CLI tools, and SDK package exports
 - **[MCP integration guide](/docs/building/integration/mcp-guide)** — Transport, sessions, and auth details
 - **[Task lifecycle](/docs/building/implementation/task-lifecycle)** — Status values, transitions, and polling
