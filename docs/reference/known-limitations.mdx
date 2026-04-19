@@ -33,8 +33,7 @@ Each limitation below is either a visible edge of the specification or a tracked
 ## Governance
 
 - **Regulated-category human review is enforced by governance agents, not by a schema invariant.** 3.0 GA will reject `authority_level: agent_full` on campaigns that declare `fair_housing`, `fair_lending`, or `fair_employment` — before GA, enforcement depends on the governance-agent implementation, not a schema rule. A schema-level invariant is tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310).
-- **No protocol-mandated HITL on buy-terms negotiation.** The `TERMS_REJECTED` retry loop is agent-to-agent by default. Operators can add human review at any boundary via the task lifecycle, but the protocol does not require it. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol).
-- **No protocol-mandated HITL on `sync_catalogs`, `sync_creatives`, or `acquire_rights`.** Same principle — the universal task-lifecycle mechanism is available; no normative rule requires a human gate.
+- **No protocol-mandated HITL on `sync_catalogs` or `sync_creatives`.** The universal task-lifecycle mechanism is available; no normative rule requires a human gate. `acquire_rights` is governed via the campaign-governance path ([purchase phase](/docs/governance/campaign/specification#governance-phases)) when the buyer's plan is configured for it. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol) for the two channels and the EHJ register for the normative rules on `check_governance`, `TERMS_REJECTED`, and lifecycle tasks.
 
 ## Conformance and testing
 
@@ -57,5 +56,6 @@ Think of AdCP as specifying the locks on the doors. The operator still owns the 
 
 - [Security Model](/docs/building/understanding/security-model) — the threat model and layered defense
 - [Privacy Considerations](/docs/reference/privacy-considerations) — cross-protocol privacy entry point
+- [Experimental Status](/docs/reference/experimental-status) — surfaces shipped in 3.x but not yet frozen
 - [Versioning & Governance](/docs/reference/versioning) — cadence, support windows, and how limitations become follow-ups
 - [Roadmap](/docs/reference/roadmap) — what's coming next

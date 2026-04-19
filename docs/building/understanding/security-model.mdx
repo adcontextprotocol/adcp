@@ -53,7 +53,7 @@ AdCP is designed so that parties learn only what they need to act. This is enfor
 - **[Trusted Match Protocol](/docs/trusted-match)** splits impression-time decisions into two independent calls: *Context Match* carries content signals (topic, sentiment, embeddings) with no user identity; *Identity Match* carries an opaque user token with no page context. Neither call alone reveals which user visited which page — the decomposition is the privacy property.
 - **Signals Protocol** returns `activation_key` values to authenticated callers with deployment access only, and structurally separates marketplace catalog access (public) from private-signal disclosure (account-scoped).
 - **Governance tokens** use `policy_decision_hash` instead of inline `policy_decisions` when the buyer's compliance posture is sensitive — the full decision log remains available to auditors via the signed `audit_log_pointer`, under the governance agent's access control.
-- **Audience members** in `sync_audiences` are SHA-256 hashed on the buyer side; audience-member payloads never carry cleartext PII.
+- **Audience members** in `sync_audiences` use `hashed_email` and `hashed_phone` fields whose schemas require SHA-256 hashing on the buyer side and structurally reject cleartext; other identifier types exist for non-PII spaces.
 
 "Structural" here means an attacker who compromises one leg of a split workflow gains no information that was designed to live only in the other leg. It's a weaker guarantee than cryptographic confidentiality but a stronger one than policy alone.
 
