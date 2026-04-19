@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/sync-creatives-response.json",
   "title": "Sync Creatives Response",
-  "description": "Response from creative sync operation. Returns either per-creative results (best-effort processing) OR operation-level errors (complete failure). This enforces atomic semantics at the operation level while allowing per-item failures within successful operations.",
+  "description": "Response from creative sync operation. Exactly one of three shapes: (1) synchronous success — per-creative results in the creatives array (best-effort processing with per-item status/failures); (2) terminal failure — errors array with no creatives processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (batch ingestion, async review that must settle before per-item results can be issued). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-item results land on the task completion artifact, not this envelope. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "oneOf": [
     {
@@ -30,7 +30,11 @@
               },
               "action": {
                 "$ref": "/schemas/enums/creative-action.json",
-                "description": "Action taken for this creative"
+                "description": "Action taken for this creative during this sync operation (lifecycle operation, not approval state)."
+              },
+              "status": {
+                "$ref": "/schemas/enums/creative-status.json",
+                "description": "Current approval/lifecycle state of the creative after this sync. Orthogonal to action — action says what this operation did (created, updated, etc.); status says where the creative is in the review lifecycle. Sellers that determine review state synchronously SHOULD return a terminal value (approved, rejected). Sellers with async review return processing or pending_review and the buyer reconciles via list_creatives or a webhook. Omit only when the seller has no review lifecycle at all; authoritative state is always via list_creatives."
               },
               "platform_id": {
                 "type": "string",
@@ -109,8 +113,22 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "errors"
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
         ]
       }
     },
@@ -154,7 +172,60 @@
             "required": [
               "sandbox"
             ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
           }
+        ]
+      }
+    },
+    {
+      "title": "SyncCreativesSubmitted",
+      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion, when async review must settle before per-item results can be issued, or when governance review gates the sync. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creatives array with per-item action/status lands on the completion artifact, not this envelope. Per-item async review (an item in pending_review while the rest of the sync resolves synchronously) belongs on the SyncCreativesSuccess branch with status: pending_review, not here.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose creatives array carries per-item approval state via CreativeStatus. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The creatives array is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id."
+        },
+        "message": {
+          "type": "string",
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Suitable for display to buyer-side humans or agent reasoning."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "creatives"
         ]
       }
     }

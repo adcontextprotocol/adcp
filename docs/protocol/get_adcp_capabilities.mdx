@@ -76,6 +76,36 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[1]`) |
+| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
+
+#### idempotency
+
+Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  }
+}
+```
+
+Sellers that do not support replay dedup declare it explicitly:
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": false }
+  }
+}
+```
 
 ### supported_protocols
 
@@ -371,7 +401,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [1],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["governance"],
   "governance": {
@@ -692,7 +722,7 @@ const buy = await client.createMediaBuy({
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [1],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
   "account": {
@@ -785,7 +815,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy", "creative"],
   "account": {

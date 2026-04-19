@@ -122,6 +122,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 | `PRODUCT_NOT_FOUND` | correctable | Referenced product IDs are unknown or expired | Remove invalid IDs, or re-discover with `get_products` |
 | `PRODUCT_UNAVAILABLE` | correctable | Product is sold out or no longer available | Choose a different product |
 | `PROPOSAL_EXPIRED` | correctable | Referenced proposal has passed its `expires_at` | Run `get_products` to get a fresh proposal |
+| `SIGNAL_NOT_FOUND` | correctable | Referenced signal does not exist in the catalog | Verify `signal_id` via `get_signals`, or confirm availability from this agent |
 | `AUDIENCE_TOO_SMALL` | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
 
 ### Budget and Creative
@@ -130,6 +131,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 |------|----------|-------------|------------|
 | `BUDGET_TOO_LOW` | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
 | `BUDGET_EXHAUSTED` | terminal | Account or campaign budget fully spent | Buyer must add funds or increase budget cap |
+| `CREATIVE_NOT_FOUND` | correctable | Referenced creative does not exist in the library | Verify `creative_id` via `list_creatives`, or register it via `sync_creatives` |
 | `CREATIVE_REJECTED` | correctable | Creative failed content policy review | Revise per seller's `advertising_policies` |
 
 ### System
