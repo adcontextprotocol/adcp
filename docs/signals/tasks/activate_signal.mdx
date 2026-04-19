@@ -21,6 +21,7 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/implementation/security#idempotency) for normative semantics. |
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |

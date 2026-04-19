@@ -206,6 +206,37 @@ CREATE POLICY account_isolation_list ON media_buys
   USING (account_id = ANY(current_setting('app.authorized_accounts')::uuid[]));
 ```
 
+## Time Semantics
+
+AdCP operates across jurisdictions, ad servers, and daypart calendars. Implementations MUST be precise about time or buyers and sellers will disagree about what "delivered by 5pm" meant.
+
+### Timestamp format
+
+All timestamp fields in AdCP requests, responses, and webhook payloads MUST be [ISO 8601](https://www.iso.org/iso-8601-date-and-time-format.html) with an explicit timezone offset.
+
+```
+✅ 2026-04-19T10:00:00Z            // UTC, recommended
+✅ 2026-04-19T10:00:00-04:00       // explicit offset
+❌ 2026-04-19T10:00:00             // no offset — ambiguous
+❌ 2026-04-19 10:00:00             // not ISO 8601
+```
+
+Implementations MUST reject ambiguous ("naïve") timestamps with `INVALID_REQUEST`. Implementations SHOULD use UTC (`Z` suffix) on the wire and convert to local time at the presentation layer.
+
+### Intervals
+
+Any time window in AdCP — flight dates, reporting windows, daypart targeting, idempotency replay TTLs — uses a **half-open interval**: `[start, end)`. The start timestamp is inclusive; the end timestamp is exclusive. A campaign with `start_time: 2026-04-01T00:00:00Z` and `end_time: 2026-05-01T00:00:00Z` runs for April and stops at the first tick of May.
+
+### Daypart targeting
+
+Daypart definitions MUST declare their **timezone semantics** — which of the three meanings the time values carry:
+
+- **Buyer-declared zone** — an IANA zone name alongside the daypart (e.g., `timezone: "America/New_York"`). The daypart is evaluated against that zone regardless of viewer or publisher location. Use this when the buyer wants "9–11pm New York time" enforced globally.
+- **Publisher-local** — the daypart is evaluated in the publisher's declared local zone. Use this when the buyer wants "prime time on the publisher's schedule" and is willing to let the publisher decide what that means.
+- **Viewer-local** — the daypart is evaluated against each viewer's timezone, resolved at serve time from the viewer's location signal. Use this when the buyer wants "serve at 8pm local" across a global audience.
+
+A daypart with no declared semantics is ambiguous and MUST be rejected with `INVALID_REQUEST`. Sellers MUST honor the declared semantics; if a seller cannot support the requested mode (e.g., a publisher operating in a single zone cannot serve viewer-local dayparting), the seller MUST reject with `INVALID_REQUEST` rather than silently converting. Per-agent defaults are non-normative and MUST NOT be relied on.
+
 ## Request Safety
 
 ### Idempotency
