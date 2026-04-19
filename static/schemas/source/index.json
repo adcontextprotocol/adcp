@@ -1550,35 +1550,69 @@
       }
     },
     "brand-protocol": {
-      "description": "Brand protocol schemas for identity retrieval, rights discovery, and rights acquisition",
-      "schemas": {
-        "get-brand-identity-request": {
-          "$ref": "/schemas/brand/get-brand-identity-request.json",
-          "description": "Request brand identity data from a brand agent"
-        },
-        "get-brand-identity-response": {
-          "$ref": "/schemas/brand/get-brand-identity-response.json",
-          "description": "Brand identity data response"
-        },
-        "get-rights-request": {
-          "$ref": "/schemas/brand/get-rights-request.json",
-          "description": "Search for licensable rights with pricing"
-        },
-        "get-rights-response": {
-          "$ref": "/schemas/brand/get-rights-response.json",
-          "description": "Matching rights with pricing options"
-        },
-        "acquire-rights-request": {
-          "$ref": "/schemas/brand/acquire-rights-request.json",
-          "description": "Acquire rights with contractual clearance"
-        },
-        "acquire-rights-response": {
-          "$ref": "/schemas/brand/acquire-rights-response.json",
-          "description": "Rights acquisition result with terms and generation credentials"
-        },
+      "description": "Brand protocol for identity retrieval, rights discovery, acquisition, and lifecycle management",
+      "supporting-schemas": {
         "rights-pricing-option": {
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
+        },
+        "rights-terms": {
+          "$ref": "/schemas/brand/rights-terms.json",
+          "description": "Terms returned with a rights grant — coverage, restrictions, revocation, and credentials"
+        },
+        "creative-approval-request": {
+          "$ref": "/schemas/brand/creative-approval-request.json",
+          "description": "Payload the buyer submits to the approval_webhook from acquire_rights for rights-holder creative review"
+        },
+        "creative-approval-response": {
+          "$ref": "/schemas/brand/creative-approval-response.json",
+          "description": "Response from the approval_webhook — approved, rejected, or pending_review"
+        },
+        "revocation-notification": {
+          "$ref": "/schemas/brand/revocation-notification.json",
+          "description": "Notification sent to the buyer's revocation_webhook when an acquired rights grant is revoked"
+        }
+      },
+      "tasks": {
+        "get-brand-identity": {
+          "request": {
+            "$ref": "/schemas/brand/get-brand-identity-request.json",
+            "description": "Request parameters for retrieving brand identity data from a brand agent"
+          },
+          "response": {
+            "$ref": "/schemas/brand/get-brand-identity-response.json",
+            "description": "Response payload for get_brand_identity task"
+          }
+        },
+        "get-rights": {
+          "request": {
+            "$ref": "/schemas/brand/get-rights-request.json",
+            "description": "Request parameters for searching licensable rights with pricing"
+          },
+          "response": {
+            "$ref": "/schemas/brand/get-rights-response.json",
+            "description": "Response payload for get_rights task"
+          }
+        },
+        "acquire-rights": {
+          "request": {
+            "$ref": "/schemas/brand/acquire-rights-request.json",
+            "description": "Request parameters for acquiring rights with contractual clearance"
+          },
+          "response": {
+            "$ref": "/schemas/brand/acquire-rights-response.json",
+            "description": "Response payload for acquire_rights task — terms and generation credentials"
+          }
+        },
+        "update-rights": {
+          "request": {
+            "$ref": "/schemas/brand/update-rights-request.json",
+            "description": "Request parameters for modifying an active rights grant — dates, caps, pricing, or pause/resume"
+          },
+          "response": {
+            "$ref": "/schemas/brand/update-rights-response.json",
+            "description": "Response payload for update_rights task"
+          }
         }
       }
     },
