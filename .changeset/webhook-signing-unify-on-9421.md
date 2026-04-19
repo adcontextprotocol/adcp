@@ -1,5 +1,5 @@
 ---
-"adcp": minor
+"adcontextprotocol": minor
 ---
 
 Unify webhook signing on the AdCP RFC 9421 profile.
