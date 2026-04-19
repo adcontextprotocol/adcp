@@ -7,7 +7,7 @@ description: "Cross-protocol privacy entry point for AdCP implementers, complian
 
 This page is the cross-protocol entry point for privacy in AdCP. It names the categories implementers and compliance reviewers need to think about, summarizes what each AdCP protocol carries and does not carry, and links to the deeper references. It does not replace any of them.
 
-If you need the deep architectural picture of a specific domain, follow the links. If you need a [Privacy Impact Assessment template](https://github.com/adcontextprotocol/adcp/issues/2378) for deploying an AdCP agent, that is a separate document (in progress).
+If you need the deep architectural picture of a specific domain, follow the links. A Privacy Impact Assessment template for deploying an AdCP agent is a separate deliverable for deployers, not covered on this page.
 
 ## What AdCP's privacy posture is — and isn't
 
@@ -29,19 +29,19 @@ AdCP's privacy guarantees are not uniform across protocols. See [Privacy posture
 - **Sponsored Intelligence** — **per-session consent**. The user consents per session; networks that route sessions may see routing metadata. See [SI networks](/docs/sponsored-intelligence/networks).
 - **Brand / Registry** — **public by design**. `brand.json` is discoverable at `/.well-known/brand.json`; the registry exposes public entity resolution.
 
-Governance gating (via campaign governance) is orthogonal to this: it can require human approval on budget, policy, or brand-safety grounds, but it does not change the privacy mechanism of the underlying domain.
+Governance gating (via campaign governance) operates independently of privacy posture: it can require human approval on budget, policy, or brand-safety grounds, but it does not change what data the underlying domain carries.
 
 ## Privacy categories to think about
 
 ### Data minimization
 
-AdCP minimizes the data that crosses protocol boundaries by design:
+AdCP minimizes the data that crosses protocol boundaries where it can:
 
-- Audience members in `sync_audiences` are SHA-256 hashed **on the buyer side** before transport. Cleartext PII does not cross the wire.
-- TMP Context Match carries no user identity; TMP Identity Match carries no page context.
+- When using `hashed_email` or `hashed_phone` in `sync_audiences`, buyers MUST SHA-256 hash normalized values before transport — the schemas for those fields do not accept cleartext. Non-hashed identifier types exist for other spaces; implementers MUST choose a hashed type when transporting email or phone.
+- TMP Context Match carries no user identity; TMP Identity Match carries no page context. Both are enforced at the schema level.
 - `governance_context` tokens can use `policy_decision_hash` instead of inline decisions when the buyer's compliance posture is sensitive.
 
-Implementers SHOULD review whether any fields they add to `ext` re-introduce data that the protocol minimized out.
+Implementers SHOULD review whether any fields they add to `ext` or `context` re-introduce data that the protocol minimized out.
 
 ### Separation
 
@@ -73,6 +73,8 @@ Operators MUST document their role for each data flow and carry a DPA with each 
 ### Subprocessors and LLM providers
 
 Every LLM-powered agent has subprocessors: the LLM provider itself, plus any retrieval services, embeddings stores, or tool integrations. The DPA with each provider must be explicit about whether prompts, brand assets, first-party signals, or creative metadata may be retained or used for model training. See the [Security Model — data handling checklist](/docs/building/understanding/security-model#data-handling-and-subprocessors).
+
+LLM subprocessors also introduce an **integrity** risk, not only a confidentiality one: untrusted text in briefs, creative metadata, or tool outputs can carry prompt-injection payloads that cause the agent to leak credentials, issue unauthorized tool calls, or tamper with outputs. See [Threats specific to agentic advertising](/docs/building/understanding/security-model#threats-specific-to-agentic-advertising). This is out of scope for the protocol but in scope for every operator.
 
 ## Boundaries implementers must handle
 

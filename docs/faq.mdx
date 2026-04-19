@@ -123,15 +123,15 @@ AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
-AAMP — IAB Tech Lab's Agentic Advertising Management Protocols framework — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). AdCP and AAMP overlap in ambition (both target AI agents in advertising) and differ in several ways today:
+AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). AdCP and AAMP overlap in ambition (both target AI agents in advertising) and differ in several ways today. As of April 2026:
 
 | | AAMP | AdCP |
 |---|---|---|
 | **Maintainer** | IAB Tech Lab | AgenticAdvertising.org (open 501(c)(6), four equal voting classes) |
-| **Maturity** | Emerging framework / work-in-progress | 3.0 release candidate, 3.0 GA targeted April 2026 |
+| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 release candidate, 3.0 GA targeted April 2026 |
 | **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
-| **Governance verification** | Under development | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/understanding/security-model)) |
-| **Public schemas** | To be defined | [Published](https://adcontextprotocol.org/schemas/latest/), Apache 2.0 |
+| **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/understanding/security-model)) |
+| **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/latest/), Apache 2.0 |
 
 We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize. AdCP and AAMP are not mutually exclusive — a platform could implement both if scopes remain distinct.
 </Accordion>
@@ -149,7 +149,7 @@ MCP defines *how* an agent calls a tool. AdCP defines *what* the agent says when
 
 AdCP is what makes the tools interchangeable. If every publisher's MCP server speaks AdCP's `create_media_buy`, one buyer agent can integrate with all of them. Without AdCP, "connect to a new publisher" is a new development task every time.
 
-Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [How AdCP relates to MCP and A2A](#how-does-adcp-relate-to-mcp-and-a2a) above, and [Industry landscape](/docs/building/understanding/industry-landscape) for the full picture.
+Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [Industry landscape](/docs/building/understanding/industry-landscape) for how AdCP, OpenRTB, MCP, and A2A relate.
 </Accordion>
 
 <Accordion title="Why isn't AdCP an auction protocol?">
@@ -191,7 +191,7 @@ See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md)
 <Accordion title="What if my buyer agent is compromised?">
 AdCP today uses bearer-token authentication between agents — see [authentication](/docs/building/integration/authentication) for the shipped model.
 
-AdCP 3.0 GA will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
+AdCP 3.1 will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies as a normative requirement, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
 
 Governance decisions will also be signed so that a seller or regulator can verify a `governance_context` token genuinely came from the issuing governance agent. Tracked in [#2306](https://github.com/adcontextprotocol/adcp/issues/2306). Until those land, implementers should treat bearer auth as an interim floor, not the long-term contract.
 </Accordion>
