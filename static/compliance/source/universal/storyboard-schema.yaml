@@ -128,3 +128,105 @@
 # distinguish not_applicable vs. no_phases vs. missing_tool — is defined in
 # runner-output-contract.yaml. Storyboard authors SHOULD assume failures will
 # be rendered with that detail and write descriptions accordingly.
+#
+# --- Webhook receiver (optional, for outbound-webhook conformance) ---
+#
+# Storyboards that verify outbound webhook conformance (signing, idempotency_key
+# presence, idempotency_key stability across retries) require the runner to host
+# a webhook receiver during test execution. The receiver URL is injected into
+# push_notification_config on steps that trigger webhooks, and a subsequent
+# expect_webhook* step asserts on what arrived.
+#
+# Receiver behavior is specified by a test-kit contract referenced from the
+# storyboard's prerequisites.test_kit field — see test-kits/webhook-callbacks-runner.yaml
+# for the reference contract (endpoint modes, retry-replay shape, client-primitive
+# hooks). Specialism authors MUST declare the contract in prerequisites; the
+# webhook-callbacks specialism (specialisms/webhook-callbacks/index.yaml) is the
+# reference consumer.
+#
+# --- Substitution variables (webhook-receiver enabled) ---
+#
+# When a storyboard's test-kit contract declares a webhook_receiver, the runner
+# exposes these substitutions for use in sample_request payloads and expectations:
+#
+#   {{runner.webhook_base}}            → HTTPS base of the runner's receiver for this run
+#   {{runner.webhook_url:<step_id>}}   → per-step URL; unique per step unless shared_receiver: true
+#
+# Per-step receivers are the default so each step's expect_webhook matches only
+# its own deliveries. Set shared_receiver: true on a step to emit into a shared
+# bucket (e.g., multi-task fan-in dedup tests).
+#
+# --- Webhook-assertion steps ---
+#
+# The following step `task` values are only valid when the storyboard's test-kit
+# declares a webhook_receiver. They are scheduled alongside regular task steps
+# and reference earlier steps by id.
+#
+# task: expect_webhook
+#   Wait up to `timeout_seconds` (default 30) for a webhook matching the filter,
+#   then validate. Runner delegates to the `@adcp/client` AsyncHandler; the webhook
+#   is observed via onActivity with type webhook_received, and WebhookMetadata
+#   (including idempotency_key) is provided by the client.
+#
+#   Fields:
+#     triggered_by: <step_id>     # earlier step whose task triggered this webhook
+#     filter:                     # match by payload fields
+#       operation_id: "{{prior_step.<id>.operation_id}}"
+#       status: "completed"       # optional; match any status if omitted
+#     timeout_seconds: 30         # optional; fail if no match within window
+#     expect_idempotency_key: true  # default true; assert the key is present and pattern-valid
+#     schema_ref: <path>          # optional; validate payload against the webhook schema
+#     expect_max_deliveries_per_logical_event: 1
+#                                 # optional — if set, runner asserts at most N distinct
+#                                 # logical webhook events (grouped by idempotency_key)
+#                                 # arrive within the window. Used by idempotency storyboards
+#                                 # to catch duplicate-side-effect bugs where a seller
+#                                 # re-executes on replay with a fresh idempotency_key.
+#     requires_contract: <contract_id>
+#                                 # optional — step grades as not_applicable (not fail)
+#                                 # when the named test-kit contract is not in scope.
+#                                 # Used on cross-specialism assertions that depend on
+#                                 # webhook_callbacks_runner being active.
+#
+#   Error modes: no_webhook_received, schema_violation, missing_idempotency_key,
+#   invalid_idempotency_key_format, signature_invalid (when signature assertion on),
+#   duplicate_webhook_on_replay (when expect_max_deliveries_per_logical_event exceeded).
+#
+# task: expect_webhook_retry_keys_stable
+#   The runner's webhook receiver deterministically returns 5xx for the first
+#   `retry_trigger.count` deliveries of the matching webhook, then 2xx. The
+#   runner asserts that every delivery within the retry window carries the
+#   byte-identical idempotency_key (the sender regenerating a key on retry is a
+#   conformance failure).
+#
+#   Fields:
+#     triggered_by: <step_id>
+#     filter: { ... }             # same shape as expect_webhook
+#     retry_trigger:
+#       count: 3                  # runner returns 5xx for the first N deliveries
+#       http_status: 503          # optional; default 503
+#     timeout_seconds: 90         # longer default — must cover sender's retry back-off
+#     expect_min_deliveries: 2    # fail if fewer deliveries observed within window
+#
+#   Error modes: insufficient_retries, idempotency_key_rotated,
+#   idempotency_key_format_changed.
+#
+# task: expect_webhook_signature_valid
+#   Assert that the inbound webhook passed the 9421 webhook-signing verifier
+#   checklist (see docs/building/implementation/security.mdx#verifier-checklist-for-webhooks).
+#   Runner delegates verification to the `@adcp/client` 9421 webhook verifier;
+#   this step is gated on the client library having that verifier available
+#   (see test-kit contract). Negative conformance — signatures that MUST be
+#   rejected with a specific webhook_signature_* code — is tested via static
+#   conformance vectors under /compliance/{version}/test-vectors/webhook-signing/
+#   when those land, not by this step type.
+#
+#   Fields:
+#     triggered_by: <step_id>
+#     filter: { ... }             # same shape as expect_webhook
+#     timeout_seconds: 30
+#     require_tag: "adcp/webhook-signing/v1"  # default; sanity check
+#
+#   Error modes: signature_invalid, signature_expired, signature_key_unknown,
+#   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
+#   signature_replayed.

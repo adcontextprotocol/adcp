@@ -235,8 +235,13 @@ phases:
           - media_buy_id: same as $context.initial_media_buy_id
           - No new side effects (no duplicate webhooks, no new audit log entry)
 
-          The compliance reviewer SHOULD verify in the seller's audit log or webhook
-          delivery history that only ONE set of side effects fired across both calls.
+          Programmatic verification of "no duplicate webhooks" runs in the next step
+          (no_duplicate_webhooks_on_replay) when the storyboard is driven by a runner
+          that implements the webhook_callbacks_runner contract. Runners without a
+          webhook receiver grade that step as not_applicable — agents MAY still claim
+          idempotency compliance, but the replay-side-effect invariant is only
+          programmatically graded when the webhook_callbacks specialism is also in
+          scope.
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#replay_key"
@@ -277,6 +282,45 @@ phases:
             path: "context.correlation_id"
             value: "idempotency--create_media_buy_replay"
             description: "Context correlation_id returned unchanged"
+
+      - id: no_duplicate_webhooks_on_replay
+        title: "No duplicate webhooks fired across initial + replay"
+        narrative: |
+          The central invariant of idempotency: replaying with the same key MUST
+          NOT produce duplicate side effects. Webhook emission is the observable
+          side effect most likely to leak if the seller re-executes on replay
+          instead of returning cached state.
+
+          This step requires the storyboard runner to implement the
+          `webhook_callbacks_runner` contract at
+          `test-kits/webhook-callbacks-runner.yaml`. Runners without a webhook
+          receiver skip this step with a stable not_applicable marker; the
+          replay-side-effect invariant then relies on the next phase's cached-
+          response assertions plus manual audit of the seller's webhook
+          delivery history.
+
+          When the receiver IS in scope, the runner counts webhooks arriving at
+          {{runner.webhook_url:create_media_buy_initial}} across the initial
+          call's window AND the replay call's window. A conformant seller emits
+          webhooks only on the first execution; a non-conformant seller that
+          re-executes on replay emits a second set, catchable only by live
+          observation.
+        task: expect_webhook
+        triggered_by: create_media_buy_replay
+        filter:
+          operation_id: "{{prior_step.create_media_buy_initial.operation_id}}"
+        timeout_seconds: 30
+        expect_max_deliveries_per_logical_event: 1
+        requires_contract: webhook_callbacks_runner
+        stateful: true
+        expected: |
+          At most one logical webhook event delivered for the create_media_buy
+          operation across both the initial and replay windows. If the runner
+          observes a second webhook delivery tagged with a distinct
+          idempotency_key but the same media_buy_id/operation_id, the seller is
+          re-executing on replay and the step fails with
+          duplicate_webhook_on_replay. Not_applicable when the runner does not
+          host a webhook receiver.
 
   - id: key_reuse_conflict
     title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"

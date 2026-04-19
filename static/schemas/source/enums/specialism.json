@@ -27,7 +27,8 @@
     "sales-streaming-tv",
     "signal-marketplace",
     "signal-owned",
-    "signed-requests"
+    "signed-requests",
+    "webhook-callbacks"
   ],
   "enumDescriptions": {
     "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
@@ -52,6 +53,7 @@
     "sales-streaming-tv": "Connected TV and streaming seller with ad-supported video inventory",
     "signal-marketplace": "Marketplace signal agent reselling third-party data",
     "signal-owned": "Owned signal agent exposing first-party segments",
-    "signed-requests": "Agent verifies RFC 9421 transport-layer request signatures per the AdCP request-signing profile. Graded by exercising 29 conformance vectors (21 negative + 8 positive) against the agent's live verifier."
+    "signed-requests": "Agent verifies RFC 9421 transport-layer request signatures per the AdCP request-signing profile. Graded by exercising 29 conformance vectors (21 negative + 8 positive) against the agent's live verifier.",
+    "webhook-callbacks": "Agent emits conformant outbound webhooks per the AdCP webhook-callbacks profile: every payload carries an idempotency_key stable across retries, and — when advertised — every delivery is signed under the RFC 9421 webhook-signing profile. Graded by a runner hosting a webhook receiver that observes live deliveries during storyboard execution."
   }
 }
