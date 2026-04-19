@@ -16,7 +16,8 @@
     "sync",
     "background_music",
     "editorial",
-    "commercial"
+    "commercial",
+    "ai_generated_image"
   ],
   "enumDescriptions": {
     "likeness": "Visual representation of a person's appearance, including AI-generated imagery",
@@ -29,6 +30,7 @@
     "sync": "Synchronization of music with visual media (ads, video)",
     "background_music": "Use of music as background audio in advertising",
     "editorial": "Use in editorial or informational contexts",
-    "commercial": "Use in commercial advertising and promotional contexts"
+    "commercial": "Use in commercial advertising and promotional contexts",
+    "ai_generated_image": "License to produce AI-generated still imagery derived from the rights holder's IP (brand assets, character designs, talent likeness). Distinct from likeness/voice by output modality — a get_rights query filtered on ai_generated_image returns rights whose pricing options cover image generation, regardless of the underlying IP category."
   }
 }
