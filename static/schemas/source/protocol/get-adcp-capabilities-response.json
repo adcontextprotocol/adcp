@@ -746,6 +746,7 @@
         "generation_providers": {
           "type": "array",
           "description": "LLM/generation providers this agent can issue credentials for",
+          "x-status": "experimental",
           "items": {
             "type": "string"
           }
@@ -872,7 +873,7 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
-        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match')"
+        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match.core')"
       },
       "uniqueItems": true
     },

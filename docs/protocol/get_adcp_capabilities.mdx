@@ -438,14 +438,14 @@ Array of experimental AdCP surfaces this agent implements. A surface is experime
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 
 **Example:**
 ```json
 {
-  "experimental_features": ["brand.rights_lifecycle", "trusted_match"]
+  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
 }
 ```
 

@@ -21,7 +21,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
-| **Brand rights** | No licensing protocol | `get_rights`, `acquire_rights`, `update_rights` with HMAC-authenticated webhooks |
+| **Brand rights** | No licensing protocol | `get_rights`, `acquire_rights`, `update_rights` with HMAC-authenticated webhooks — shipping [experimental](/docs/reference/experimental-status) in 3.0 |
 | **Visual guidelines** | No structured brand visuals | `visual_guidelines` on `brand.json` for generative creative systems |
 | **Creative workflows** | Basic build / preview / sync separation | Inline preview, multi-format `build_creative`, library retrieval, quality tiers, and catalog `item_limit` |
 | **Creative libraries** | Media Buy-centric creative reads/writes | `list_creatives` / `sync_creatives` as Creative Protocol operations plus `supports_generation`, `supports_transformation`, and `has_creative_library` discovery |
@@ -37,7 +37,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Keyword targeting** | No keyword support | `keyword_targets` with match types and bid prices |
 | **Optimization** | Single optimization goal | Multi-goal `optimization_goals` array with metric and event types |
 | **Delivery reporting** | Aggregate delivery only | Opt-in dimension breakdowns (geo, device, audience, placement, keyword) |
-| **Signal pricing** | Simple CPM | Structured pricing models (CPM, percent of media, flat fee) |
+| **Signal pricing** | Simple CPM | Structured pricing models: CPM, percent of media, flat fee, per-unit, and `custom` escape hatch for non-standard constructs |
 | **Device targeting** | No form-factor targeting | `device_type` (desktop, mobile, tablet, ctv, dooh, unknown) distinct from `device_platform` (OS) |
 | **Proximity targeting** | No point-based geo targeting | `geo_proximity` with travel time, radius, and GeoJSON methods |
 | **Refinement** | Free-text with `proposal_id` | Typed change-request array with seller acknowledgment |
@@ -295,6 +295,24 @@ Whether a format supports third-party measurement is determined by whether its a
 <Card title="Format definitions" icon="arrow-right" href="/docs/creative/formats#third-party-tracker-support">
   How to determine tracker support from format asset definitions.
 </Card>
+
+### Experimental surfaces
+
+AdCP 3.0 ships a core of stable surfaces under the [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees), plus three surfaces that are part of the core protocol but not yet frozen. Experimental surfaces carry `x-status: experimental` in their schemas, and sellers implementing them declare the feature id in `experimental_features` on `get_adcp_capabilities`. They may change between 3.x releases with at least 6 weeks' notice.
+
+| Surface | Feature id | Why experimental |
+|---|---|---|
+| [Brand rights lifecycle](/docs/brand-protocol/tasks/get_rights) | `brand.rights_lifecycle` | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
+| [Campaign governance](/docs/governance/campaign/specification) | `governance.campaign` | Multi-party governance semantics (approval conflicts, audit provenance, tie-breaking under Embedded Human Judgment) are not yet settled. |
+| [Trusted Match Protocol](/docs/trusted-match/) | `trusted_match.core` | Privacy architecture will evolve with regulator engagement; TMPX exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
+
+The experimental label is deliberately scoped — everything else in 3.0 follows the normal 6-month deprecation notice. See [experimental status](/docs/reference/experimental-status) for the full contract, graduation criteria, and client guidance.
+
+### Signal pricing: custom escape hatch
+
+Vendor pricing gains a `custom` model alongside `cpm`, `percent_of_media`, `flat_fee`, and `per_unit`. Requires a human-readable `description` and a structured `metadata` object. Buyers SHOULD route custom pricing through operator review before commitment — automatic selection is not recommended.
+
+Motivation: performance kickers, tiered volume, hybrid (flat + CPM), and outcome-shared pricing are already appearing in the field. Shipping the escape hatch now avoids retrofit pain when real deployments hit a construct the enumerated models cannot express. Structured metadata keeps the model machine-inspectable without a schema change per new pattern.
 
 ---
 

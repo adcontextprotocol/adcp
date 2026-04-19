@@ -22,6 +22,12 @@ Both markers are required. The first tells the ecosystem the surface is not froz
 
 A seller that implements any experimental surface MUST list it in `experimental_features`. Sellers that do not list an experimental surface MUST NOT implement it — there is no "silently experimental" mode.
 
+An experimental feature id covers a cluster of related tasks. A seller that implements any task in the cluster (e.g., `get_rights` but not `acquire_rights` or `update_rights`) MUST still declare the cluster's feature id (`brand.rights_lifecycle`). Partial implementation is allowed; silent implementation is not.
+
+<Note>
+`x-status: experimental` is a schema-local annotation. It is not inherited through `$ref` — a stable schema that references an experimental sub-schema does not automatically become experimental. The `experimental_features` declaration on `get_adcp_capabilities` is the authoritative runtime signal; `x-status` is an authoring hint for schema readers and tooling.
+</Note>
+
 ## Contract for experimental surfaces
 
 **Inside 3.x, experimental surfaces MAY change in ways that stable surfaces cannot:**
@@ -38,7 +44,11 @@ A seller that implements any experimental surface MUST list it in `experimental_
 - A migration note describing the change, with before/after examples where possible
 - Where feasible, an alias accepting both old and new forms in the release that introduces the change
 
-This is a deliberate relaxation of the [6-month deprecation notice](/docs/reference/versioning#deprecation-policy) that applies to stable surfaces. Experimental exists so the architecture committee can iterate on surfaces that are not yet field-tested — without that iteration ability, we would either ship rigid schemas nobody has deployed or hold features back until they are perfect. Neither serves implementers.
+This is a deliberate relaxation of the [6-month deprecation notice](/docs/reference/versioning#deprecation-policy) that applies to stable surfaces.
+
+<Tip>
+**Why experimental exists.** The architecture committee uses this label on surfaces that are genuinely part of the core protocol but not yet field-tested. Without an iteration path, AdCP would either ship rigid schemas nobody has deployed or hold features back until they are perfect. Neither serves implementers.
+</Tip>
 
 **What does not change for experimental surfaces:**
 
@@ -48,17 +58,28 @@ This is a deliberate relaxation of the [6-month deprecation notice](/docs/refere
 
 ## Graduation to stable
 
-An experimental surface graduates to stable when it satisfies **all** of the following:
+An experimental surface graduates to stable when ALL of the following are met:
 
-1. **Implementation signal**, demonstrated by one of:
-   - At least one active implementation in **production** (not sandbox) for **at least 45 days**, OR
-   - At least two implementations at any maturity for at least 45 days
-2. **No open breaking-change issues** against the surface for 30 days prior to graduation.
-3. **A deliberate graduation PR** that removes `x-status: experimental` from the schema and removes the surface from the canonical experimental list. Called out in the release notes for the 3.x release that carries the change.
+| Criterion | Requirement |
+|---|---|
+| **Production signal** | At least one implementation running in **production** (not sandbox) for **≥45 days**. |
+| **Cross-party validation** | Either (a) a second implementation exists and has been running for ≥45 days, with at least one of the two in production, OR (b) at least one buyer has successfully integrated against the surface in production. Solo-implementer graduation without buyer integration is not allowed. |
+| **Schema stability** | No open breaking-change issues against the surface for **≥30 days** prior to graduation. |
+| **Deliberate promotion** | A graduation PR removes `x-status: experimental` from the schema and removes the feature id from the canonical experimental list, called out in the release notes for the 3.x release that carries the change. |
 
-Two implementers is a lower bar than one because cross-implementation friction is what shakes out spec ambiguity. A single implementer can match their own schema by reflex; two cannot. The "OR" exists because single-implementer graduation is a legitimate path when the one implementation has been exercised in production long enough to surface real issues.
+Two implementers is a lower bar than one because cross-implementation friction is what shakes out spec ambiguity. A single implementer can match their own schema by reflex; two cannot. When only one implementer is ready, buyer-integration signal substitutes — that signal covers the buyer-side ergonomic bugs that a solo implementer would otherwise miss.
 
 Graduation is never automatic. The architecture committee reviews graduation PRs and may require additional cycles if the surface still shows signs of instability.
+
+### Graduation cadence
+
+The architecture committee reviews experimental surfaces at each 3.x release. Every release's notes include, for each experimental surface:
+
+- Current status (still experimental / on track to graduate / under active breaking revision)
+- A list of changes the next release is expected to carry
+- A pointer to the most recent breaking-change notice for the surface, when applicable
+
+Enterprise procurement teams can subscribe to release notes to track experimental surfaces on a predictable review cadence; there is no separate mailing list or ticketing process.
 
 ## Client behavior
 
@@ -77,11 +98,11 @@ Schemas marked with `x-status: experimental` are the authoritative source. The c
 
 | Feature id | Surface | Why experimental |
 |---|---|---|
-| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights) | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
+| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights); plus the `brand.rights`, `brand.right_types`, `brand.available_uses`, and `brand.generation_providers` capability fields on `get_adcp_capabilities` | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
 | `governance.campaign` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Multi-party governance semantics (buyer vs seller approval conflicts, audit provenance verification, tie-breaking under Embedded Human Judgment) are not yet settled. |
-| `trusted_match` | [TMP](/docs/trusted-match/) | Privacy architecture is thinly specified relative to what a regulator deep-dive will demand. Exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
+| `trusted_match.core` | [TMP](/docs/trusted-match/) | Privacy architecture is thinly specified relative to what a regulator deep-dive will demand. Exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
 
-Graduation progress and notice of upcoming breaking changes are published in the [release notes](/docs/reference/release-notes) for each 3.x release.
+Graduation progress and notice of upcoming breaking changes will be called out in the [release notes](/docs/reference/release-notes) for each 3.x release starting with 3.0 GA.
 
 ## Relationship to extensions
 

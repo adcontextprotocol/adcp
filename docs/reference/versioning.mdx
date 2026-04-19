@@ -157,7 +157,7 @@ AdCP distinguishes three levels of schema extension. The rules below apply to ev
 |---|---|---|
 | **Core fields** defined by the protocol | Working group, via a release | Proposed in a working group, accepted through the normal release process. Never extended inline by an implementer. |
 | **`ext.{namespace}`** on any request or response object | Anyone, by declaring a namespace in `extensions_supported` | Namespaced, out-of-band, does not affect baseline interop. Namespaces SHOULD be registered in the [extension registry](/docs/building/integration/context-sessions#extensions). |
-| **`additionalProperties: true`** on containers that allow it | Anyone | Additive fields at the declared location. MUST NOT shadow or redefine a core field. Readers MUST ignore unknown fields rather than erroring. |
+| **`additionalProperties: true`** on containers that allow it | Anyone | Additive fields at the declared location. MUST NOT shadow or redefine a core field. Readers MUST ignore unknown fields rather than erroring. When an additional field collides in name with a core field defined on a later release, readers MUST prefer the core field. |
 
 **What MUST NOT happen:**
 

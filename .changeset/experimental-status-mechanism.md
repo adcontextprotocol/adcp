@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
 Add experimental status mechanism and codify extensibility policy.

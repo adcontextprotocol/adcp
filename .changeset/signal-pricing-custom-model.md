@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
 Add `custom` pricing model to the vendor pricing schema as an escape hatch for constructs that do not fit cpm, percent_of_media, flat_fee, or per_unit.
