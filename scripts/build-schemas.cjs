@@ -114,6 +114,97 @@ function ensureDir(dir) {
   }
 }
 
+// ── Mutating-request idempotency lint ───────────────────────────────
+//
+// Every mutating AdCP request MUST declare `idempotency_key` in its
+// top-level `required` array, per v3-readiness.mdx §"idempotency_key
+// required on all mutating requests," release-notes.mdx 3.0 entry, and
+// adcontextprotocol/adcp#2315. This is enforced at the storyboard layer
+// by scripts/build-compliance.cjs (see #2372). This complementary lint
+// enforces it at the *schema* layer — so a new mutating request schema
+// can't ship without the required field, which would silently bypass the
+// storyboard lint (the storyboard lint only fails when a storyboard
+// declares sample_request but omits the key; if the schema never
+// required it, the storyboard lint sees the task as non-mutating and
+// passes).
+//
+// A request schema is considered non-mutating if:
+//   1. Its basename matches a read-only verb pattern
+//      (`get-`, `list-`, `check-`, `validate-`, `preview-`, optionally
+//      prefixed by a domain like `si-get-*`), OR
+//   2. It's one of a short allowlist of core/utility request types that
+//      don't represent operations (pagination, package, tasks-*,
+//      comply-test-controller, context-match, identity-match), OR
+//   3. Its `$comment` or `description` contains the phrase
+//      "naturally idempotent" (case-insensitive) — the explicit exemption
+//      pattern documented in sponsored-intelligence/si-terminate-session-request.json.
+//
+// Otherwise the schema's top-level `required` array MUST include
+// `idempotency_key`.
+
+const READ_ONLY_VERB_PATTERN = /(^|-)(get|list|check|validate|preview)-/;
+const NON_OPERATION_ALLOWLIST = new Set([
+  'pagination-request.json',
+  'package-request.json',
+  'tasks-get-request.json',
+  'tasks-list-request.json',
+  'comply-test-controller-request.json',
+  'context-match-request.json',
+  'identity-match-request.json',
+]);
+
+function isNonMutatingRequestBasename(basename) {
+  if (READ_ONLY_VERB_PATTERN.test(basename)) return true;
+  if (NON_OPERATION_ALLOWLIST.has(basename)) return true;
+  return false;
+}
+
+function hasNaturallyIdempotentMarker(schema) {
+  const haystack = String(schema.$comment || '') + ' ' + String(schema.description || '');
+  return /naturally idempotent/i.test(haystack);
+}
+
+function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
+  const violations = [];
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        // Skip extensions/ and bundled/ — extension schemas manage their
+        // own idempotency semantics per the extension registry, and
+        // bundled/ is generated output.
+        if (entry.name === 'extensions' || entry.name === 'bundled') continue;
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('-request.json')) continue;
+      if (isNonMutatingRequestBasename(entry.name)) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (required.includes('idempotency_key')) continue;
+      if (hasNaturallyIdempotentMarker(schema)) continue;
+      violations.push(path.relative(sourceDir, p));
+    }
+  }
+  walk(sourceDir);
+
+  if (violations.length > 0) {
+    const lines = violations.map(v =>
+      `  ${v}: mutating request schema does not declare idempotency_key in required[], and does not carry a "naturally idempotent" exemption marker.`
+    );
+    throw new Error(
+      `Schema idempotency lint: ${violations.length} request schema(s) appear to represent mutating operations without requiring idempotency_key.\n\n` +
+      lines.join('\n') +
+      `\n\nFix options:\n` +
+      `  A) Add "idempotency_key" to the top-level "required" array (the common case — any create/update/delete/sync/activate/submit operation).\n` +
+      `  B) If the operation is genuinely read-only, rename the schema file to start with get-/list-/check-/validate-/preview- (or add it to NON_OPERATION_ALLOWLIST in scripts/build-schemas.cjs if it's a core utility).\n` +
+      `  C) If the operation is naturally idempotent by some other key (e.g., session_id), add the phrase "naturally idempotent" to the schema's description or $comment, matching the pattern in sponsored-intelligence/si-terminate-session-request.json.`
+    );
+  }
+}
+
 /**
  * Compare two minor versions (e.g., "2.5" vs "2.6")
  * Returns: negative if a < b, 0 if equal, positive if a > b
@@ -628,6 +719,11 @@ async function main() {
     console.log(`   Latest released version: ${latestReleasedVersion}`);
   }
   console.log('');
+
+  // Lint mutating request schemas before we build anything — a schema
+  // that's supposed to be mutating but forgets idempotency_key is a
+  // latent spec bug that silently bypasses the storyboard-level lint.
+  lintMutatingRequestsRequireIdempotencyKey(SOURCE_DIR);
 
   // Update source registry version
   updateSourceRegistry(version);
