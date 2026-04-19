@@ -51,7 +51,7 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 
 1. Authenticate with sales agents
 2. Include required fields per request schemas
-3. Handle asynchronous responses (`submitted`, `working`, `pending_approval`)
+3. Handle asynchronous task-level responses (`submitted`, `working`, `input-required`) and webhook delivery of completion artifacts
 4. Use `media_buy_id` for all subsequent operations
 5. Respect `creative_deadline` for creative uploads
 

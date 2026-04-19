@@ -207,9 +207,9 @@ phases:
           specify C7 as the guarantee window — the seller will reconcile delivery
           and billing against C7 ratings.
 
-          The response may be synchronous (buy confirmed) or require human approval
-          (pending_approval with a URL for the traffic manager to review and confirm
-          the order in their scheduling system).
+          The response may be synchronous (buy confirmed) or — when traffic-manager
+          review is needed — the A2A task returns submitted with a task_id, and the
+          buyer waits on a webhook or tasks/get poll until the order is scheduled.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -225,9 +225,13 @@ phases:
           - measurement_terms: confirmed guarantee window (c7)
           - valid_actions: sync_creatives as the next step
 
-          If pending_approval:
-          - setup URL for the traffic manager to review and confirm scheduling
-          - estimated_completion for when the buyer should expect confirmation
+          If traffic-manager review is needed, return an A2A task envelope instead:
+          - status: submitted (task-level — not a MediaBuy status)
+          - task_id / taskId: handle the buyer polls or receives webhooks on
+          - message (optional): explanation that the traffic manager is reviewing
+
+          Do NOT use a "pending_approval" media buy status — that value is not in the
+          MediaBuy.status enum. IO / traffic-manager review is modelled at the task layer.
 
         sample_request:
           account:

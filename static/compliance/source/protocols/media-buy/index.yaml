@@ -115,8 +115,9 @@ phases:
           provisions the account, and returns its status.
 
           If your platform requires manual approval (credit checks, sales team review),
-          return pending_approval with a setup URL. The buyer will complete setup there
-          and poll list_accounts until the status changes to active.
+          return the account with status pending_approval and account.setup.url populated.
+          The buyer directs the human to that URL to complete setup, then polls list_accounts
+          until the account status changes to active.
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -129,7 +130,7 @@ phases:
           - action: created or updated
           - status: active (instant approval) or pending_approval (requires human review)
           - account_scope: operator, brand, operator_brand, or agent
-          - setup: URL and message if pending_approval (where the human completes onboarding)
+          - setup.url and setup.message: populated on the account when status is pending_approval (where the human completes onboarding)
           - rate_card: pricing tiers if applicable
           - payment_terms: net_30, prepay, etc.
 
@@ -314,9 +315,11 @@ phases:
       equivalent of signing an IO — the buyer commits to specific products, budgets,
       and flight dates.
 
-      This operation may be synchronous (completed immediately), asynchronous (working
-      or submitted while your platform processes), or require human approval
-      (pending_approval with a URL for the human to sign off).
+      This operation may be synchronous (completed immediately), short-async (working
+      while your platform processes), or long-async (task stays submitted while a human
+      signs the IO internally; task completion delivers the final media_buy_id). There
+      is no "pending_approval" media buy status — IO review is modelled at the task
+      layer, not as a MediaBuy.status value.
 
       If the buyer registered governance agents in Phase 2, your platform calls
       check_governance before confirming the buy. The governance agent validates budget
@@ -361,13 +364,15 @@ phases:
           - current_step: what's happening ("Validating inventory", "Checking governance")
 
           Async with human approval (submitted):
-          - estimated_completion: when the buyer should expect a result
-          - The buyer configures push_notification_config to receive a webhook when done
+          - task_id / taskId: handle the buyer polls or receives webhooks on
+          - message (optional): explanation of what the seller is waiting on (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
+          - No media_buy_id yet — it is issued on task completion
+          - Seller-side IO signing is modelled here (task stays submitted until signed). Do not emit a "pending_approval" media buy status — that value is not in MediaBuy.status
 
           Needs input (input-required):
           - reason: APPROVAL_REQUIRED, BUDGET_EXCEEDS_LIMIT, CLARIFICATION_NEEDED
           - errors: what needs to be resolved
-          - setup URL for human to complete approval (IO signing, budget authorization)
+          - Used only when the seller needs the buyer to respond (e.g., confirm a budget). If the blocker is account-level (credit application, funding), the resolution path is list_accounts / sync_accounts, where account.setup.url surfaces on the pending_approval account
 
         sample_request:
           account:
@@ -411,14 +416,15 @@ phases:
       - id: check_buy_status
         title: "Check media buy status"
         narrative: |
-          If create_media_buy returned working or submitted, the buyer polls for status
-          updates. Your platform returns the current state of the media buy — whether
-          it's still processing, awaiting approval, or active.
+          Once create_media_buy has completed and a media_buy_id is issued, the buyer
+          calls get_media_buys to read current state — pending_creatives, pending_start,
+          active, paused, completed, rejected, or canceled.
 
-          This is also how the buyer checks for pending_approval status. If your platform
-          requires IO signing or human authorization, the buy sits at pending_approval
-          until the human completes the action. Your platform sends back a URL where the
-          human goes to approve.
+          While the create_media_buy task is still submitted (e.g., waiting on internal
+          IO signing), the media buy does not exist as a queryable MediaBuy yet. IO
+          review is tracked at the task layer, not as a MediaBuy.status value. The buyer
+          polls tasks/get or waits on the webhook until the task completes and a
+          media_buy_id is delivered.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
