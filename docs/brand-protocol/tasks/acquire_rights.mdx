@@ -253,7 +253,7 @@ Partial revocation is supported — if `revoked_uses` is present, only those use
 
 Return HTTP `200` immediately upon receiving and validating a revocation notification. The rights holder retries on non-`2xx` responses using exponential backoff (1s, 5s, 30s, 5m, 30m). After 6 failed attempts, the rights holder may escalate through other channels.
 
-All webhook signing follows the AdCP [push notification signing profile](/docs/building/implementation/webhooks#signature-verification) — RFC 9421 by default (publisher signs with its `adcp_use: "webhook-signing"` key), with the deprecated HMAC-SHA256 fallback available when the buyer populates `authentication.credentials`.
+All webhook signing follows the AdCP [push notification signing profile](/docs/building/implementation/webhooks#signature-verification) — RFC 9421 by default (rights agent signs with its `adcp_use: "webhook-signing"` key published at its brand.json `agents[]` entry), with the deprecated HMAC-SHA256 fallback available when the rights holder populates `authentication.credentials` on the webhook registration.
 
 ## Impression caps and overage
 

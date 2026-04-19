@@ -1,28 +1,28 @@
 ---
 title: Push Notifications
-description: "AdCP push notifications: how sellers deliver async task status updates to your webhook endpoint via HMAC-authenticated POST requests. Setup, URL templates, and idempotency."
+description: "AdCP push notifications: how sellers deliver async task status updates to your webhook endpoint via RFC 9421–signed POST requests (with legacy HMAC fallback). Setup, URL templates, and idempotency."
 "og:title": "AdCP — Push Notifications"
 ---
 
-Push notifications let publishers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the publisher POSTs status changes to that URL as the task progresses.
+Push notifications let sellers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the seller POSTs status changes to that URL as the task progresses.
 
 ## How it works
 
 1. A unique operation ID is generated per task invocation
 2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
 3. `push_notification_config` is injected into the task request body with just the URL — no secret required
-4. The publisher POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in `adagents.json`
-5. You verify the signature against the publisher's published JWKS and dedupe by `idempotency_key`
+4. The seller POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry
+5. You verify the signature against the seller's published JWKS and dedupe by `idempotency_key`
 6. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
 
 ```
 create_media_buy request
   └── push_notification_config
         └── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
-              // No shared secret — the publisher signs with its own key, you verify against
+              // No shared secret — the seller signs with its own key, you verify against
               // its published JWKS. See "Signature verification" below.
 
-              ↓ publisher processes task ↓
+              ↓ seller processes task ↓
 
 POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
   Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
@@ -41,10 +41,10 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-
   }
 ```
 
-If you're using the `@adcp/client` library, this entire flow is handled automatically — configure `webhookUrlTemplate` and your agent URL once on the client, publish a webhook-signing JWK on your own `adagents.json` entry, and `push_notification_config` is injected into every outgoing task call. Incoming webhooks are verified against the publisher's JWKS automatically.
+If you're using the `@adcp/client` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a webhook-signing JWK at your brand.json `agents[]` entry (with `adcp_use: "webhook-signing"`) and the client signs outgoing webhooks for you.
 
-:::note Legacy HMAC fallback
-Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below.
+:::warning Legacy HMAC fallback (deprecated)
+Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/implementation/security#webhook-callbacks) for the operational mitigations.
 :::
 
 ## Naming: snake_case vs camelCase
@@ -78,7 +78,7 @@ Include `push_notification_config` as a task argument, merged with the rest of y
 }
 ```
 
-`authentication` is omitted in the default case — the publisher signs with its own `adcp_use: "webhook-signing"` key. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
+`authentication` is omitted in the default case — the seller signs with its own `adcp_use: "webhook-signing"` key. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
 
 ### A2A
 
@@ -111,7 +111,7 @@ Operation IDs let you route incoming webhooks to the right handler. The typical 
 
 1. Generate a unique ID per task call
 2. Embed it in the webhook URL path
-3. The publisher echoes `operation_id` in the payload — no URL parsing needed
+3. The seller echoes `operation_id` in the payload — no URL parsing needed
 
 **URL template pattern:**
 ```
@@ -128,7 +128,7 @@ const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${o
 // pass webhookUrl in push_notification_config.url
 ```
 
-The publisher's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
 
 ## When webhooks fire
 
@@ -221,7 +221,7 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 
 ## Signature verification
 
-Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/implementation/security#webhook-callbacks). The publisher signs with its `adcp_use: "webhook-signing"` key published in `adagents.json`; you verify against the publisher's published JWKS. No shared secret crosses the wire.
+Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/implementation/security#webhook-callbacks). The seller signs with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry; you verify against the seller's published JWKS. No shared secret crosses the wire.
 
 **Publisher sends three headers** (plus `Content-Type`):
 
@@ -352,7 +352,7 @@ Normative rules for the legacy scheme are in [Webhook Security](/docs/building/i
 
 ### Legacy Bearer token (deprecated)
 
-The A2A `authentication.schemes: ["Bearer"]` scheme is also supported for compatibility and removed in AdCP 4.0. Bearer provides no tamper protection on the body — the 9421 profile is strictly stronger. Sellers SHOULD refuse Bearer for any mutating callback.
+The A2A `authentication.schemes: ["Bearer"]` scheme is also supported for compatibility and removed in AdCP 4.0. Bearer provides no tamper protection on the body. The 9421 profile is stronger on signer identity (JWKS-anchored, rotatable, revocable) and key management (no shared secret on the wire); body-integrity protection is comparable to the legacy HMAC scheme since both cover the body bytes. Sellers SHOULD refuse Bearer for any mutating callback.
 
 ```json
 {
@@ -385,9 +385,9 @@ Every webhook payload — MCP task envelope, governance list-change webhooks (`c
 - The key MUST be stable across retries of the same event and MUST NOT be reused for a distinct event.
 
 **Receiver requirements:**
-- Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the credential binding from the verified HMAC secret or Bearer token — never a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple publishers MUST NOT collapse them.
+- Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the sender's cryptographic identity as established by signature verification — under the 9421 default, the resolved `keyid` → signer `agents[]` entry URL; under the legacy fallback, the credential binding from the verified HMAC secret or Bearer token. Never derive identity from a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple sellers MUST NOT collapse them. During an HMAC→9421 migration, a receiver SHOULD map both sender-identity forms for the same logical seller to one keyspace so that a duplicate across schemes still dedupes.
 - Dedup state SHOULD persist for at least 24h. Publishers SHOULD NOT retry beyond that window; retries arriving after the receiver's TTL will be reprocessed as fresh events.
-- Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile publisher emitting high-volume fresh keys is otherwise a storage-amplification vector.
+- Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile seller emitting high-volume fresh keys is otherwise a storage-amplification vector.
 - **Duplicates MUST be answered with `2xx`** (typically `200 OK`), not `409 Conflict`. At-least-once senders interpret any non-2xx response as "delivery failed" and retry with exponential back-off; returning `4xx` on a successfully-deduped event turns correct receiver behavior into a retry storm. A duplicate is a no-op, not an error.
 - Webhook receivers do **not** verify payload equivalence across key reuse. If a sender reuses a key with a changed payload (a sender bug), the receiver's cached first copy wins and the second is silently deduped. This differs from the request-side `IDEMPOTENCY_CONFLICT` behavior — senders are solely responsible for generating a fresh key on every distinct event.
 
@@ -397,7 +397,7 @@ app.post('/webhooks/adcp', async (req, res) => {
   const { idempotency_key, task_id, status, timestamp, result } = payload;
 
   // Scope dedup to the authenticated sender — never trust a payload field for identity.
-  const sender = req.verifiedSenderId; // set by HMAC/Bearer middleware
+  const sender = req.verifiedSenderId; // set by 9421 verifier (keyid → agent URL) or legacy HMAC/Bearer middleware
 
   // Dedup: same (sender, idempotency_key) within the replay window → already processed.
   // Return 200 (not 409) so the sender stops retrying.
@@ -428,7 +428,7 @@ app.post('/webhooks/adcp', async (req, res) => {
 2. **Dedupe by `idempotency_key`** — every payload carries a required key stable across retries; track processed keys for at least 24h
 3. **Return 2xx on duplicates** — a successfully-deduped event is a no-op, not an error; returning non-2xx triggers the sender's retry back-off and creates retry storms
 4. **Verify signatures before processing** — run the 9421 webhook verifier checklist (or the legacy HMAC check if you opted in) before any side effects
-5. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
+5. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid seller timeouts and unnecessary retries
 6. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
 7. **Plan for HMAC removal in 4.0** — if you're currently on the legacy HMAC fallback, migrate to the 9421 webhook profile during 3.x
 
@@ -468,9 +468,9 @@ function detectFormat(payload) {
 
 ### Security requirements
 
-- **Content-Type validation**: Publishers MUST send `application/json`. Receivers MUST reject other types before HMAC verification.
-- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before HMAC computation — computing HMAC over large payloads is a DoS vector. Return `413 Payload Too Large`.
-- **Deduplication**: `idempotency_key` is the canonical dedup field. HMAC + timestamp replay rejection protects the transport; `idempotency_key` protects against duplicate side effects at the application layer.
+- **Content-Type validation**: Senders MUST send `application/json`. Receivers MUST reject other types before signature verification.
+- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before signature verification — computing a digest or HMAC over large payloads is a DoS vector. Return `413 Payload Too Large`.
+- **Deduplication**: `idempotency_key` is the canonical dedup field. Signature verification (9421 or legacy HMAC) plus replay dedup protect the transport; `idempotency_key` protects against duplicate side effects at the application layer.
 - **Format detection**: Auto-detection is a defensive fallback. Receivers SHOULD use the known format from their transport configuration (`knownFormat` parameter) rather than relying solely on payload inspection. A compromised intermediary could craft an ambiguous payload that routes extraction to the wrong path.
 
 ### Test vectors
