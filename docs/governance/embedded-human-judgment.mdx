@@ -202,6 +202,22 @@ Each EHJ principle surfaces in specific protocol mechanisms:
 
 Plan-level autonomy settings map directly to EHJ decision types. `budget.reallocation_threshold` at or above `budget.total` grants autonomous execution of reallocations; a positive value below the total sets guardrails; `0` requires human approval for every reallocation. Orthogonally, `plan.human_review_required: true` mandates human review of every action on the plan — set automatically when resolved policies or policy categories carry `requires_human_review: true`. When human review is needed, `check_governance` behaves as an async task: it returns async status and resolves to `approved` or `denied` once the human acts. The caller does not need to know whether a human was involved.
 
+## Human-in-the-loop by task
+
+This table names every protocol operation that mutates state or commits resources, whether the protocol mandates a human in the loop, and the mechanism that enforces it. The list is normative for AdCP 3.x; additions require a minor version bump.
+
+| Operation | Human approval? | Mechanism |
+|---|---|---|
+| `create_media_buy` | Conditional | Escalates via `check_governance` when `plan.human_review_required: true`, when `budget.reallocation_threshold` is exceeded, or when a resolved policy carries `requires_human_review: true`. |
+| `update_media_buy` (budget reallocation) | Conditional | Mandatory when `budget.reallocation_threshold: 0`; escalates when the threshold is exceeded. |
+| `sync_creatives` | Conditional | Mandatory when `plan.human_review_required: true` or when a resolved policy category (e.g., `fair_housing`, `fair_lending`, other regulated classes) carries `requires_human_review: true`. |
+| `acquire_rights` | Conditional (seller-defined) | The `creative_approval` webhook is available but not protocol-mandatory; the seller decides. |
+| Buy-terms negotiation (`TERMS_REJECTED` retry loop) | Not mandated | No protocol-mandated human gate; agent-to-agent retry with relaxed terms. Operators may add their own review step; it is not a protocol requirement. |
+| `sync_catalogs` (brand identity, properties, product feeds) | Not mandated | Operators may add their own review step; the protocol does not require one. |
+| `sync_plans` | Not an action gate | This task *registers* the plan and its autonomy settings — it is the declaration of human-in-the-loop, not an operation requiring approval. |
+
+"Conditional" means a human is mandatory only when the plan or policy configuration triggers it. "Not mandated" means the protocol does not require a human step at this boundary — if the deployer wants one, adding it is the deployer's responsibility.
+
 ## How this manifests in practice
 
 The [governance protocol overview](/docs/governance/overview) walks through a complete campaign scenario where every one of these principles is visible in action — from plan registration through human approval to audit trail. The [campaign governance safety model](/docs/governance/campaign/safety-model) details the structural controls that implement these principles at the protocol level.

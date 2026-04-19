@@ -189,6 +189,32 @@ All `$ref` paths should be absolute from schema root:
 "$ref": "../../enums/asset-content-type.json"
 ```
 
+## Platform Agnosticism
+
+**RULE**: Normative (non-`ext`) schema fields MUST NOT reference specific platforms, vendors, or proprietary identifiers by name.
+
+**Why**: AdCP is a protocol, not a platform. A field named `google_campaign_id` or `ttd_line_id` at the top level of a schema bakes one vendor's data model into the spec and creates lock-in. The protocol is credible as an open standard only to the extent that its normative surface is vendor-neutral.
+
+**How**: Platform-specific or vendor-specific fields belong in the `ext.{vendor}` namespace (see `/schemas/source/core/ext.json`).
+
+```json
+// ❌ BAD: vendor name in a normative field
+{
+  "google_campaign_id": "abc123"
+}
+
+// ✅ GOOD: vendor-specific under ext
+{
+  "ext": {
+    "gam": { "campaign_id": "abc123" }
+  }
+}
+```
+
+Vendor names are permitted in **example blocks** (for illustrative values like email addresses and sample IDs). They are not permitted in **normative field names, enum values, or descriptions that prescribe behavior**.
+
+Reviewers should flag any new normative field whose name includes a recognized platform token (e.g., `gam`, `ttd`, `meta`, `amazon`, `google`, `scope3`, `nielsen`, `roku`) and require it to move into `ext.*` before merge.
+
 ## Breaking Changes
 
 ### What Constitutes a Breaking Change
