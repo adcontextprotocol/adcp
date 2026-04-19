@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/rights-terms.json",
   "title": "Rights Terms",
   "description": "Contractual terms for a rights grant. Shared between acquire_rights and update_rights responses.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "pricing_option_id": { "type": "string" },

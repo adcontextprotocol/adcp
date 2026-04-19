@@ -5,6 +5,10 @@ description: "acquire_rights is the AdCP task for binding rights acquisition. Su
 testable: true
 ---
 
+<Note>
+**Experimental.** Brand rights lifecycle (`get_rights`, `acquire_rights`, `update_rights`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `brand.rights_lifecycle` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Binding contractual request to acquire rights from a brand agent. Parallels `create_media_buy` — select a `pricing_option_id` from `get_rights` and provide campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.
 
 ## Schema
@@ -239,10 +243,10 @@ If `acquire_rights` returns `pending_approval` and you provided `push_notificati
 
 ## Revocation
 
-If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains a `notification_id` (for deduplication), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
+If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
 
 The buyer is responsible for:
-- Deduplicating by `notification_id` — the same revocation may be delivered multiple times
+- Deduplicating by `idempotency_key` — the same revocation may be delivered multiple times; see [Push Notifications — Reliability](/docs/building/implementation/webhooks#reliability) for the canonical dedup contract
 - Stopping creative delivery by `effective_at`
 - Removing or replacing affected creatives from active campaigns
 - Ceasing use of generation credentials (providers may also invalidate credentials independently)

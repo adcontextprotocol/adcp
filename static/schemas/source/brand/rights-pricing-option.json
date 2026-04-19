@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/rights-pricing-option.json",
   "title": "Rights Pricing Option",
   "description": "A pricing option for licensable rights. Separate from media-buy pricing options — rights pricing includes period, impression caps, overage rates, and use-type scoping.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "pricing_option_id": {

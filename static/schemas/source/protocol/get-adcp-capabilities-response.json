@@ -138,6 +138,7 @@
             "trusted_match": {
               "type": "object",
               "description": "Trusted Match Protocol (TMP) support. Presence of this object indicates the seller has TMP infrastructure deployed. Check individual products via get_products for per-product TMP capabilities.",
+              "x-status": "experimental",
               "properties": {
                 "surfaces": {
                   "type": "array",
@@ -723,11 +724,13 @@
         "rights": {
           "type": "boolean",
           "description": "Supports get_rights and acquire_rights for rights discovery and clearance",
+          "x-status": "experimental",
           "default": false
         },
         "right_types": {
           "type": "array",
           "description": "Types of rights available through this agent",
+          "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-type.json"
           }
@@ -735,6 +738,7 @@
         "available_uses": {
           "type": "array",
           "description": "Rights uses available across this agent's roster",
+          "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-use.json"
           }
@@ -742,6 +746,7 @@
         "generation_providers": {
           "type": "array",
           "description": "LLM/generation providers this agent can issue credentials for",
+          "x-status": "experimental",
           "items": {
             "type": "string"
           }
@@ -859,6 +864,16 @@
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*$",
         "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')"
+      },
+      "uniqueItems": true
+    },
+    "experimental_features": {
+      "type": "array",
+      "description": "Experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries x-status: experimental and the working group has not yet frozen it. Sellers that implement any experimental surface MUST list its feature id here. Buyers inspect this array before relying on experimental surfaces — a seller that does not list a surface is asserting it does not implement it. Experimental surfaces MAY break between any two 3.x releases with at least 6 weeks notice; the full contract is in docs/reference/experimental-status.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match.core')"
       },
       "uniqueItems": true
     },

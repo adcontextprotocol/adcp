@@ -8,6 +8,10 @@ sidebarTitle: Specification
 
 # Campaign Governance specification
 
+<Note>
+**Experimental.** Campaign governance is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 **Status**: Request for Comments
 **Last Updated**: March 2026
 
@@ -122,6 +126,57 @@ This field is distinct from `budget.reallocation_threshold`:
 | `human_review_required` | Regulatory | Mandates human review of decisions affecting individuals (e.g., GDPR Art 22, EU AI Act Annex III) |
 
 Callers MAY set `human_review_required: true` explicitly on a plan even when no triggering policy is present. Callers MUST NOT set it to `false` to override a policy that requires human review — the governance agent re-evaluates the flag from resolved policies on every sync and overrides a caller-supplied `false` when a triggering policy is present.
+
+### Spend-commit invocation
+
+Buyer-side governance invocation is enforceable, not advisory. When a governance agent is configured on the plan, the buyer agent MUST invoke [`check_governance`](/docs/governance/campaign/tasks/check_governance) before sending any spend-commit request to a seller — full stop — producing an **intent-phase** `governance_context` token to attach to that request. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields. No dollar figures, no baseline arithmetic, no operator-declared floors appear in the invocation rule — those auto-approve fast-paths belong inside the governance agent's own policy, not in the buyer's decision about whether to call at all.
+
+#### Spend-commit tasks
+
+The invocation MUST applies to every AdCP task that attaches financial obligation at the moment of the request:
+
+- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — committed budget across packages
+- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) — incremental commit delta (new budget − previously committed)
+- [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) — rights pricing
+- [`update_rights`](/docs/brand-protocol/tasks/update_rights) — incremental commit delta
+- [`activate_signal`](/docs/signals/tasks/activate_signal) — activation fees
+- [`build_creative`](/docs/creative/task-reference/build_creative) — creative generation fees
+- Any future spend-commit task
+
+Invocation is NOT required for discovery tasks (e.g., `get_products`, `get_signals`), reporting tasks (e.g., `get_media_buy_delivery`), or operational-status tasks. The MUST fires specifically at the moment of financial obligation.
+
+When no governance agent is configured on the plan, `check_governance` invocation is neither required nor meaningful — there is nothing to call. Sellers MAY refuse to transact on plans lacking a configured governance agent as a matter of their own commercial policy (enterprise sellers typically will); the protocol does not mandate one, and the brand's published configuration is how a seller discovers whether one exists.
+
+Orchestrators fanning out the same plan to multiple sellers produce one intent token per seller, because `aud` is bound byte-for-byte to the target seller. This is the correct protocol shape, but it means the governance agent sees the buyer's full shopping list on a plan. Operators who treat shopping intent as commercially sensitive SHOULD choose governance agents whose data-handling posture they trust.
+
+#### Seller enforcement
+
+A seller receiving a spend-commit request for a plan with a configured governance agent MUST require a valid, in-date **intent-phase** `governance_context` token on the request, verified per the [seller verification checklist](/docs/building/implementation/security#seller-verification-checklist). The token MUST carry `phase: "intent"`, match the request's `plan_id` (via `sub`), and be addressed (`aud`) to this seller. A request without a token, with a token that fails verification, or with a token issued for a different plan, a different seller, or a non-intent phase MUST be rejected with `PERMISSION_DENIED`. The seller then performs its own execution check by calling `check_governance` with `planned_delivery` and the received `governance_context`; that call produces the `purchase`-phase token (bound to the seller-assigned `media_buy_id`) used for the remainder of the media buy lifecycle. This two-step flow is what makes the buyer-side MUST real: a buyer that skips `check_governance` cannot produce a valid intent token, and the spend-commit is rejected before the seller ever reaches its execution check.
+
+Sellers MUST persist the accepted intent token and any lifecycle tokens they subsequently hold, keyed at minimum by `jti` with `iss`, `aud`, `sub` (plan_id), `phase`, decision outcome, and the timestamp of acceptance. Retention follows the seller's regulatory retention period. Without seller-side retention, the audit log is single-sourced from the governance agent; independent reconciliation between seller records and `get_plan_audit_logs` is the cross-check that catches a compromised or misbehaving governance agent.
+
+Seller-side governance (if the seller itself has configured a governance agent on the account) is an **independent layer**. A buyer's successful `check_governance` does not obligate the seller to accept the request; the seller's own compliance policies MAY still reject the action via `PERMISSION_DENIED`.
+
+An approved token carries an `exp` that is authoritative at verification time; a policy change inside the token's validity window is accepted residual risk of any signed-decision system. Tight `exp` values (intent tokens SHOULD expire within 15 minutes per the JWS profile) bound the window rather than closing it. Operators who cannot tolerate the window MUST set `reallocation_threshold` to `0` or `human_review_required: true` so every action goes through an internal human review regardless of caching.
+
+#### Audit logging
+
+Every `check_governance` invocation MUST produce an audit log entry — retrievable via [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) — capturing:
+
+1. Invocation timestamp as a timezone-offset ISO 8601 string
+2. Tool being validated (`create_media_buy`, `acquire_rights`, etc.) and commit amount in the plan's currency
+3. Outcome (`approved`, `denied`, or `conditions`; and whether human review was invoked internally)
+4. Human actor identity and authority, when a human signal was recorded
+5. `check_id` for cross-reference from the downstream spend-commit task's audit entry and from `report_plan_outcome`
+
+The buyer-side intent check and the seller-side execution check each produce a distinct `check_id`; `report_plan_outcome` correlates via `plan_id` rather than a single check identifier. Auditors reconstructing a spend-commit reconcile the buyer-side entry, the seller-side entry, and the seller's persisted token record.
+
+#### Interaction with idempotency
+
+- **Retry of an identical payload carrying the prior intent-phase `governance_context`:** no re-invocation. The cached governance response is reused; the token signature and freshness are re-validated. Seller-side replay-dedup keys (see the [verification checklist](/docs/building/implementation/security#seller-verification-checklist)) MUST treat a repeated `jti` carrying the same `idempotency_key` as a legitimate retry rather than a replay attack — this is the one narrow carve-out.
+- **Re-plan with a different payload (new `idempotency_key` per [Idempotency](/docs/building/implementation/security#idempotency)):** a fresh `check_governance` invocation is required. A new `governance_context` token is issued.
+
+A retry after a human approval does not re-invoke governance; the existing token remains the authorization until it expires. Post-execution lifecycle retries operate against the seller's `purchase`-phase token, which is a distinct artifact governed by the seller's execution check, not the buyer's intent check.
 
 ### Channel mix targets
 
