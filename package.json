@@ -126,7 +126,7 @@
     "supertest": "^7.2.2",
     "tar": "^6.2.1",
     "tsx": "^4.21.0",
-    "typescript": "~5.9.3",
+    "typescript": "~6.0.3",
     "vitest": "^4.1.4"
   },
   "engines": {
