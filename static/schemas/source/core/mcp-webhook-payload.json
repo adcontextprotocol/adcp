@@ -5,6 +5,13 @@
   "description": "Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to the URL configured in `pushNotificationConfig`. NOTE: This envelope is NOT used in A2A integration, which uses native Task/TaskStatusUpdateEvent messages with the AdCP payload nested in `status.message.parts[].data`.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook event. Publishers MUST generate a unique key per distinct event (typically a UUID v4) and reuse the same key when retrying delivery of that event. Receivers MUST dedupe by this key; a repeat key with matching payload is a retry of an already-delivered event and MUST NOT re-trigger side effects. This is the canonical dedup field — the (task_id, status, timestamp) tuple is insufficient when two status transitions share a timestamp.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "operation_id": {
       "type": "string",
       "description": "Client-generated identifier that was embedded in the webhook URL by the buyer. Publishers echo this back in webhook payloads so clients can correlate notifications without parsing URL paths. Typically generated as a unique ID per task invocation."
@@ -44,6 +51,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "task_id",
     "task_type",
     "status",
@@ -54,6 +62,7 @@
     {
       "description": "Webhook for input-required status (human approval needed)",
       "data": {
+        "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
@@ -77,6 +86,7 @@
     {
       "description": "Webhook for completed create_media_buy",
       "data": {
+        "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
@@ -110,6 +120,7 @@
     {
       "description": "Webhook for working status with progress",
       "data": {
+        "idempotency_key": "whk_01HW9D4K5RMS7P8T2V4X6Z8B0D",
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
@@ -128,6 +139,7 @@
     {
       "description": "Webhook for failed sync_creatives",
       "data": {
+        "idempotency_key": "whk_01HW9D5N9TQV4M6P8R0T2V4X6Z",
         "operation_id": "op_789",
         "task_id": "task_789",
         "task_type": "sync_creatives",

@@ -5,6 +5,13 @@
   "description": "Payload sent by sales agents to orchestrators when pushing content artifacts for governance validation. Complements get_media_buy_artifacts for push-based artifact delivery.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook event. Sales agents MUST generate a unique key per distinct batch push (typically a UUID v4) and reuse the same key when retrying delivery of that batch. Recipients MUST dedupe by this key. Distinct from `batch_id`, which identifies the logical batch but may be reused if a batch is re-emitted; `idempotency_key` identifies the specific delivery attempt of that batch.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Media buy identifier these artifacts belong to"
@@ -67,6 +74,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["media_buy_id", "batch_id", "timestamp", "artifacts"],
+  "required": ["idempotency_key", "media_buy_id", "batch_id", "timestamp", "artifacts"],
   "additionalProperties": true
 }

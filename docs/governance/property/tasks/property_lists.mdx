@@ -138,6 +138,7 @@ Configure webhooks via `update_property_list` to receive notifications when the 
 
 ```json
 {
+  "idempotency_key": "plch_01HW9DFQK6NP9R3T5V7X9Z1B3D",
   "event": "property_list_changed",
   "list_id": "uk_premium_news_q1",
   "list_name": "UK Premium News Sites Q1 2026",
@@ -147,11 +148,14 @@ Configure webhooks via `update_property_list` to receive notifications when the 
     "total_properties": 856
   },
   "resolved_at": "2026-01-03T18:00:00Z",
-  "cache_valid_until": "2026-01-04T18:00:00Z"
+  "cache_valid_until": "2026-01-04T18:00:00Z",
+  "signature": "..."
 }
 ```
 
 The webhook payload includes counts but NOT the actual properties. This keeps payloads small and avoids redundant data transfer when recipients may not need the full list immediately.
+
+Recipients MUST verify the `signature` before processing and MUST dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
 
 ### Webhook Use Cases
 
