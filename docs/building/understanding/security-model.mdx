@@ -215,6 +215,9 @@ Knowing what a protocol doesn't do is part of evaluating it. These are explicit 
 - **No in-protocol payment or settlement.** `report_usage` provides the consumption data that feeds invoicing, but invoicing and settlement happen out-of-band through the buyer/seller commercial relationship.
 - **No protocol guarantee about LLM prompt-injection defense.** That is an operator concern on every LLM-powered agent in the loop. See the threat class above.
 - **No protocol-level data-residency mechanism.** Residency is a configuration and contract property of individual agents.
+- **No OAuth 2.1 + resource-indicators normative requirement.** AdCP authenticates agents using mTLS, pre-provisioned API keys, and RFC 9421 signed HTTP requests (the last normative in 3.1). These are deliberately chosen for mutual authentication between autonomous agents rather than for delegated human-user authorization. OAuth 2.1 with resource indicators is an acceptable transport where an operator's infrastructure already standardizes on it, but is not a protocol requirement and does not substitute for the three mechanisms above.
+- **No cross-currency buy support in 3.0.** Each media buy uses a single ISO 4217 currency (see `static/schemas/source/core/price.json`). If the buyer's budget currency differs from the seller's pricing currency, the buy either uses a matching currency or is rejected. FX rate pinning, risk attribution, and cross-currency reporting are deferred to a future version.
+- **No protocol-level delivery-dispute flow.** When buyer and seller delivery numbers disagree, reconciliation happens out-of-band through the commercial relationship between counterparties (backed by the audit trail on both sides). A structured dispute task is a candidate for future work.
 
 None of these are hidden. Each is a visible edge of the specification and a candidate for future work.
 

@@ -10,6 +10,10 @@ As AI agents gain autonomy in advertising — discovering inventory, building cr
 
 Embedded Human Judgment (EHJ) is AdCP's answer. It is not an after-the-fact review process. It is not a temporary safety phase while AI "matures." It is a permanent design constraint for accountable systems.
 
+<Note>
+**On register.** This page specifies *where* humans belong in the loop — which classes of decisions require human judgment — not *how* operators implement that judgment. AdCP uses a principles register here rather than RFC 2119 MUST/SHOULD because the enforceable surface is elsewhere: [`check_governance`](/docs/governance/campaign/tasks/check_governance) returning `conditions` or `denied` (MUST escalate), `TERMS_REJECTED` (MUST route to human), and lifecycle tasks like [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) (MUST be available to authorized humans). Those are where the normative rules live. The principles below tell you *which* decisions those rules must cover; they do not prescribe UI or workflow.
+</Note>
+
 ## The five principles
 
 ### 1. Humans remain the locus of judgment and accountability
