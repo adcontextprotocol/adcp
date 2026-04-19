@@ -19,6 +19,21 @@ A creative library organizes assets at three levels:
 
 **Concepts** group related creatives across sizes and formats. A "Holiday 2026" concept might contain a 300x250 banner, a 728x90 leaderboard, and a 30s video — all expressing the same campaign idea. Use `concept_id` to filter and manage them as a group.
 
+### Creative state and assignment state are separate
+
+Two things the library tracks independently:
+
+- **Creative state** — the review status of the creative itself: `processing`, `pending_review`, `approved`, `rejected`, or `archived`. Set by the creative agent's review workflow. Applies to the creative as a library asset, regardless of where it is used.
+- **Assignment state** — the relationship between a creative and a package on a specific media buy. Created when the buyer assigns the creative (via `sync_creatives`, `creative_assignments`, or inline creatives on `create_media_buy`). Released when the media buy or package is rejected, canceled, or completed, or when the buyer removes the assignment.
+
+These lifecycles do not collapse into each other:
+
+- A creative in the library has **zero or more** active assignments at any time.
+- Rejecting or canceling a media buy releases its assignments. It does not change the creative's review state, remove the creative from the library, or affect the creative's use in other media buys.
+- Re-reviewing a creative (seller pulls back an approval, seller approves a rejected creative) does not change existing assignments — sellers decide independently whether in-flight assignments continue serving based on the new state. See [creative review](/docs/creative/sales-agent-creative-capabilities#creative-review).
+
+Buyer agents reusing a library creative on a new media buy check **creative state** to know whether the asset is usable, and **assignment state** to know where it is currently in flight.
+
 ## Connecting to a library
 
 Establish account access before querying:
