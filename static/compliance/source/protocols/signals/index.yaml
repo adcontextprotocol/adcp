@@ -156,13 +156,14 @@ phases:
       exercise owned vs. marketplace activation patterns in depth.
 
     steps:
-      - id: activate_discovered_signal
-        title: "Activate a discovered signal"
+      - id: activate_on_agent
+        title: "Activate on a sales agent destination"
         narrative: |
           Using the signal_agent_segment_id and pricing_option_id captured
           from the previous step, the buyer activates the signal on a sales
-          agent destination. The agent returns a deployments array with at
-          least one entry describing how the activation was handled.
+          agent destination. Every signals agent MUST accept `type: agent`
+          per the signals specification — the SA records the activation
+          internally and applies targeting in subsequent media-buy calls.
         task: activate_signal
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
@@ -171,10 +172,9 @@ phases:
         stateful: true
         expected: |
           Return a deployments array with at least one entry carrying a
-          `type` discriminator (platform | agent | cleanroom) and, for
-          live deployments, an `activation_key`. Agents MAY return an
-          async deployment with `is_live: false` and
-          `estimated_activation_duration_minutes`.
+          `type` discriminator and, for live deployments, an
+          `activation_key`. Agents MAY return an async deployment with
+          `is_live: false` and `estimated_activation_duration_minutes`.
 
         sample_request:
           signal_agent_segment_id: "$context.signal_agent_segment_id"
@@ -182,8 +182,9 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://wonderstruck.salesagents.example"
+          idempotency_key: "$generate:uuid_v4#signals_baseline_activate_agent"
           context:
-            correlation_id: "signals_baseline--activate_discovered_signal"
+            correlation_id: "signals_baseline--activate_on_agent"
           ext:
             test_platform:
               test_run: true
@@ -199,5 +200,53 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "signals_baseline--activate_discovered_signal"
+            value: "signals_baseline--activate_on_agent"
+            description: "Context correlation_id returned unchanged"
+
+      - id: activate_on_platform
+        title: "Activate on a platform destination"
+        narrative: |
+          The buyer re-activates the same signal against a platform
+          destination (a DSP). Signal agents MUST accept `type: platform`
+          per the signals specification — the agent pushes the segment to
+          the platform and returns a deployment record.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return a deployments array with at least one entry whose
+          `type: "platform"` and, for live deployments, an
+          `activation_key` with `type: "segment_id"`. Async deployments
+          MAY report `is_live: false` with
+          `estimated_activation_duration_minutes`.
+
+        sample_request:
+          signal_agent_segment_id: "$context.signal_agent_segment_id"
+          pricing_option_id: "$context.pricing_option_id"
+          destinations:
+            - type: "platform"
+              platform: "the-trade-desk"
+              account: "agency-123-ttd"
+          idempotency_key: "$generate:uuid_v4#signals_baseline_activate_platform"
+          context:
+            correlation_id: "signals_baseline--activate_on_platform"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches activate-signal-response.json schema"
+          - check: field_present
+            path: "deployments[0].type"
+            description: "Deployment carries a type discriminator"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signals_baseline--activate_on_platform"
             description: "Context correlation_id returned unchanged"
