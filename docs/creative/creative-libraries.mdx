@@ -234,6 +234,8 @@ Upload the creative directly with the media buy — no separate sync step:
 
 The agent adds the creative to its library and assigns it to the package in one operation. See [inline creative management](/docs/creative/sales-agent-creative-capabilities) for details.
 
+**Inline creatives follow the same library lifecycle as `sync_creatives` uploads.** The inline form is a convenience — "sync and assign in one call" — not a separate lifecycle. Once submitted, the creative enters the library with the same review flow, retention, and identifiers it would have under `sync_creatives`. If the media buy is rejected, canceled, or returns `pending_manual` and never activates, only the package assignments are released; the creatives remain in the library and may be referenced by `creative_id` in a subsequent `create_media_buy` call. Creative review proceeds independently of the media buy outcome — sellers MUST NOT short-circuit review based on a rejected buy, and a buy rejection does not imply rejection of the submitted creatives.
+
 ### Multi-seller distribution
 
 When you work with multiple sellers, build creatives once and distribute them:

@@ -1339,6 +1339,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
+- **Inline creative lifecycle**: Inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. If the media buy is rejected, canceled, or held in `pending_manual` and never activates, only the package assignments are released — the creatives remain in the library and can be reused by `creative_id` on a later `create_media_buy` call. Creative review is independent of the buy outcome. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
 
 ## Content Standards
 
