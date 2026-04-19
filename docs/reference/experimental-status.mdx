@@ -73,7 +73,15 @@ Buyers MAY choose to refuse traffic on experimental surfaces by filtering `exper
 
 ## Current experimental surfaces
 
-The canonical list of experimental surfaces is maintained in the [release notes](/docs/reference/release-notes) for each 3.x release. Schemas marked with `x-status: experimental` are the authoritative source; sellers reflect their implemented subset via `experimental_features`.
+Schemas marked with `x-status: experimental` are the authoritative source. The canonical list of feature ids for `experimental_features` in AdCP 3.0:
+
+| Feature id | Surface | Why experimental |
+|---|---|---|
+| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights) | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
+| `governance.campaign` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Multi-party governance semantics (buyer vs seller approval conflicts, audit provenance verification, tie-breaking under Embedded Human Judgment) are not yet settled. |
+| `trusted_match` | [TMP](/docs/trusted-match/) | Privacy architecture is thinly specified relative to what a regulator deep-dive will demand. Exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
+
+Graduation progress and notice of upcoming breaking changes are published in the [release notes](/docs/reference/release-notes) for each 3.x release.
 
 ## Relationship to extensions
 

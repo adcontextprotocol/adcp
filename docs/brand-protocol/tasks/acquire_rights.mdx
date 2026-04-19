@@ -5,6 +5,10 @@ description: "acquire_rights is the AdCP task for binding rights acquisition. Su
 testable: true
 ---
 
+<Note>
+**Experimental.** `acquire_rights` is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `brand.rights_lifecycle` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Binding contractual request to acquire rights from a brand agent. Parallels `create_media_buy` — select a `pricing_option_id` from `get_rights` and provide campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.
 
 ## Schema

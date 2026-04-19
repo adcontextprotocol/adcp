@@ -5,6 +5,10 @@ description: "get_rights is the AdCP task for discovering licensable talent, mus
 testable: true
 ---
 
+<Note>
+**Experimental.** `get_rights` is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `brand.rights_lifecycle` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Search for licensable rights across a brand agent's roster. Returns matches with pricing options. Discovery is natural-language-first — no taxonomy, LLMs interpret intent from the query.
 
 ## Schema

@@ -138,6 +138,7 @@
             "trusted_match": {
               "type": "object",
               "description": "Trusted Match Protocol (TMP) support. Presence of this object indicates the seller has TMP infrastructure deployed. Check individual products via get_products for per-product TMP capabilities.",
+              "x-status": "experimental",
               "properties": {
                 "surfaces": {
                   "type": "array",
@@ -723,11 +724,13 @@
         "rights": {
           "type": "boolean",
           "description": "Supports get_rights and acquire_rights for rights discovery and clearance",
+          "x-status": "experimental",
           "default": false
         },
         "right_types": {
           "type": "array",
           "description": "Types of rights available through this agent",
+          "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-type.json"
           }
@@ -735,6 +738,7 @@
         "available_uses": {
           "type": "array",
           "description": "Rights uses available across this agent's roster",
+          "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-use.json"
           }

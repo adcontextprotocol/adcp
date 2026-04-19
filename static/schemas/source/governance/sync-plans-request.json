@@ -3,6 +3,7 @@
   "$id": "/schemas/governance/sync-plans-request.json",
   "title": "Sync Plans Request",
   "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {

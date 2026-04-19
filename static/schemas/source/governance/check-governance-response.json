@@ -3,6 +3,7 @@
   "$id": "/schemas/governance/check-governance-response.json",
   "title": "Check Governance Response",
   "description": "Governance agent's response to a check request. Returns whether the action is approved under the governance plan.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "check_id": {
