@@ -182,7 +182,10 @@ grading:
   pass_criteria: |
     All vectors in positive/ produce 2xx, and all vectors in negative/ produce 401 with
     the expected error code byte-for-byte. Any single vector's failure to produce its
-    expected outcome fails the specialism.
+    expected outcome fails the specialism. Vectors that declare `requires_contract`
+    whose contract the runner cannot satisfy grade as FAIL, never as SKIP — the
+    signed-requests-runner contract is a prerequisite for the claim, not an optional
+    extension.
   report_format: |
     Pass/fail per vector, with the response's error code (if any) and a diff against
     the vector's expected_outcome. Operators receive specific per-vector diagnostics

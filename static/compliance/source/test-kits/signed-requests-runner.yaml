@@ -73,10 +73,12 @@ stateful_vector_contract:
     # request_signature_replayed at checklist step 12.
     #
     # The agent's replay-cache TTL for this test counterparty MUST be at least
-    # as long as `max_interval_seconds`, otherwise the cache entry for the
-    # first request may evict before the second arrives and the vector will
-    # pass spuriously (i.e., both requests accepted = no replay rejection).
-    # The runner's own interval between the two submissions MUST NOT exceed
+    # `min_replay_ttl_seconds`, which is strictly greater than
+    # `max_interval_seconds` to absorb clock skew between runner and agent and
+    # scheduler jitter on either side. Otherwise the cache entry for the first
+    # request may evict before the second arrives and the vector will pass
+    # spuriously (i.e., both requests accepted = no replay rejection). The
+    # runner's own interval between the two submissions MUST NOT exceed
     # `max_interval_seconds`.
     #
     # This supersedes vector 016's `test_harness_state.replay_cache_entries`
@@ -85,7 +87,7 @@ stateful_vector_contract:
     vector_id: 016-replayed-nonce
     black_box_behavior: repeat_request
     max_interval_seconds: 5
-    min_replay_ttl_seconds: 5
+    min_replay_ttl_seconds: 10
 
   revocation:
     # Vector 017-key-revoked.
