@@ -1027,6 +1027,8 @@ Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer 
 
 **Baseline, not capability-advertised.** There is no `webhook_signing` block on `get_adcp_capabilities`. Sellers that emit webhooks MUST sign. Buyers that register a `push_notification_config` MUST verify. The buyer opts into the legacy HMAC-SHA256 scheme instead by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme.
 
+**Mode selection is a switch, not both.** The presence of `push_notification_config.authentication` selects exactly one signing mode for every webhook delivered to that URL: `authentication` present → legacy HMAC-SHA256 (or Bearer); `authentication` absent → 9421. Sellers MUST NOT sign the same webhook both ways. Buyers MUST NOT attempt "try 9421 first, fall back to HMAC" verification — that pattern creates downgrade oracle behavior and accepts signatures the buyer did not ask for. Verifiers key the verification path strictly off whether the receiver has a configured HMAC secret for the `push_notification_config` registration.
+
 **Key publication.** Webhook-signing keys are published by the seller in its **own brand.json** `agents[]` entry at the signing agent's operator domain, at the `jwks_uri` member of that entry — the same publication pattern as any other AdCP agent key. An agent that signs both outgoing requests and outgoing webhooks publishes one JWKS with two distinct JWKs differentiated by `adcp_use`. Each webhook-signing JWK MUST declare:
 
 | Member | Value |
@@ -1054,8 +1056,8 @@ Cross-purpose reuse is forbidden and locally enforceable: a request-signing key 
 
 1. Seller agent URL `A` → fetch `/.well-known/brand.json` at the operator domain of `A` with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). brand.json resolution follows one redirect (`authoritative_location` or `house` redirect variant) and stops.
 2. In the fetched brand.json, find the `agents[]` entry whose `url` byte-for-byte matches `A`.
-3. Fetch that entry's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of `A`) with SSRF validation. JWKS cache TTL bounded above by the revocation-list polling interval.
-4. Resolve `keyid` on the incoming `Signature-Input` to a JWK in the fetched set. On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `webhook_signature_key_unknown`.
+3. Fetch that entry's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of `A`) with SSRF validation. JWKS cache TTL bounded above by the revocation-list polling interval (floor 1 min, ceiling 15 min). Long-running task flows cross JWKS rotations; verifiers MUST NOT pin a single JWKS snapshot for the lifetime of a task.
+4. Resolve `keyid` on the incoming `Signature-Input` to a JWK in the fetched set. On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `webhook_signature_key_unknown`. The refetch-on-miss path is the load-bearing mechanism for handling mid-task key rotation — clients that skip it will reject legitimate post-rotation deliveries.
 
 Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `operation_id`, etc.) or from `adagents.json` entries — those are publisher authorization, not signer identity. Identity is established solely via the signature → JWKS → seller `agents[]` entry chain.
 
@@ -1066,7 +1068,7 @@ Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `
 - **Buyers MUST alarm, not silently downgrade**, when they receive a 9421-signed webhook after registering with `authentication.credentials`, or when they receive HMAC-signed webhooks after registering without `authentication`. Silent mode-mismatch acceptance is exactly the denial-of-information surface.
 - **Buyers SHOULD negotiate HMAC-mode out-of-band** at onboarding when interoperating with sellers that have not yet implemented 9421. Durable per-counterparty mode selection in operator records is not MITM-mutable the way a per-request field is.
 
-**Verifier checklist for webhooks.** Apply these 14 checks in order, short-circuiting on the first failure. They parallel the [request verifier checklist](#verifier-checklist-requests) — the mechanical loop is identical; the differences below are where the webhook profile diverges.
+**Verifier checklist for webhooks.** Apply these 14 checks in order, short-circuiting on the first failure. The steps below are the [request verifier checklist](#verifier-checklist-requests) with exactly two substitutions: the `tag` value (`adcp/webhook-signing/v1` instead of `adcp/request-signing/v1`) and the direction-of-trust resolution (seller's brand.json `agents[]` entry instead of the buyer's). Implementations SHOULD share verifier code between the two profiles and branch only on those two substitutions. Error codes are prefixed `webhook_signature_*` so caller-side error handling distinguishes the two profiles.
 
 1. Parse `Signature-Input` and `Signature` headers per RFC 9421 §4. Reject if malformed (`webhook_signature_header_malformed`). If `Signature` or `Signature-Input` is present without the other, reject with the same code — a bound pair, not a guessable one.
 2. Reject if any of `created`, `expires`, `nonce`, `keyid`, `alg`, or `tag` is absent from the `Signature-Input` parameters (`webhook_signature_params_incomplete`).
@@ -1125,6 +1127,8 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 | `content-digest` mismatch | `webhook_signature_digest_mismatch` |
 | Nonce already seen within window | `webhook_signature_replayed` |
 | Per-keyid replay cache exceeded cap | `webhook_signature_rate_abuse` |
+
+**Retry semantics for signature failures.** At-least-once delivery tells senders to retry on any non-2xx response, but a signature verification failure is not a transient error — the signature bytes arrive identically on every retry, so every retry fails identically. Senders MUST treat a `401` response carrying `WWW-Authenticate: Signature error="webhook_signature_*"` as a terminal failure for that specific delivery attempt: stop retrying the current event, log the failure with the error code for operator attention, and continue the normal retry queue for subsequent events. Senders SHOULD route sustained `webhook_signature_*` rates above an operator-defined threshold to incident response rather than continuing to emit them — persistent signature failure indicates a key-rotation coordination problem or a compromise, both of which need human action. Receivers MUST NOT silently discard signature failures; surfacing them in operator logs is part of the security posture.
 
 ##### Webhook migration timeline
 
