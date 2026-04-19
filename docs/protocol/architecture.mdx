@@ -49,7 +49,7 @@ Human-in-the-loop enters the protocol through two mechanisms: any mutation may b
 
 ### Privacy posture across domains
 
-AdCP's privacy posture is not uniform. TMP is the only domain that enforces privacy **structurally** — through separated code paths, schema-level prohibitions on combining identity with context, and independently verifiable decorrelation. Every other domain relies on **contractual confidentiality** — the parties exchanging data are bound by the account's terms, not by protocol-level separation.
+AdCP's privacy posture is not uniform. TMP is the only domain that enforces privacy **structurally** — through separated code paths, schema-level prohibitions on combining identity with context, and independently verifiable decorrelation. Every other domain relies on **contractual confidentiality or per-session consent** — the parties exchanging data are bound by the account's terms or the user's consent, not by protocol-level separation. Governance gating (via campaign governance) is orthogonal: it can require human approval on budget, policy, or brand-safety grounds, but it does not change the privacy mechanism of the underlying domain.
 
 | Domain | Privacy mechanism | Notes |
 |---|---|---|
@@ -101,7 +101,7 @@ These parties exchange impressions and money through the orchestration layer.
 
 **Governance agents** provide compliance and quality control across all layers: property lists, brand suitability scoring, quality measurement (MFA score, ad density), and privacy compliance (COPPA, TCF, GDPR). They operate at setup time, real-time, and post-bid.
 
-**Human-in-the-loop** — manual approval at decision points. Any mutation may be taken async for human review via the task lifecycle; campaign governance provides a declarative buyer-side review channel. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol).
+**Human-in-the-loop** — manual approval at decision points. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol).
 
 ---
 

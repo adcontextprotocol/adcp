@@ -191,14 +191,14 @@ All `$ref` paths should be absolute from schema root:
 
 ## Platform Agnosticism
 
-**RULE**: Normative (non-`ext`) schema fields MUST NOT reference specific platforms, vendors, or proprietary identifiers by name.
+**RULE**: Normative schema **field names** MUST NOT represent a specific vendor's version of a general concept. Platform-specific fields belong under `ext.{vendor}`.
 
-**Why**: AdCP is a protocol, not a platform. A field named `google_campaign_id` or `ttd_line_id` at the top level of a schema bakes one vendor's data model into the spec and creates lock-in. The protocol is credible as an open standard only to the extent that its normative surface is vendor-neutral.
+**Why**: AdCP is a protocol, not a platform. A field named `google_campaign_id` or `ttd_line_id` at the top level of a schema bakes one vendor's data model into the spec and creates lock-in. The protocol is credible as an open standard only to the extent that its normative field surface is vendor-neutral.
 
-**How**: Platform-specific or vendor-specific fields belong in the `ext.{vendor}` namespace (see `/schemas/source/core/ext.json`).
+**How**: Vendor-specific fields belong in the `ext.{vendor}` namespace (schema: `/schemas/core/ext.json`, source: `static/schemas/source/core/ext.json`). `ext` is `additionalProperties: true` — the namespacing is a convention enforced by review, not by JSON Schema.
 
 ```json
-// ❌ BAD: vendor name in a normative field
+// ❌ BAD: vendor name in a normative field (a general concept dressed up as a vendor)
 {
   "google_campaign_id": "abc123"
 }
@@ -211,9 +211,22 @@ All `$ref` paths should be absolute from schema root:
 }
 ```
 
-Vendor names are permitted in **example blocks** (for illustrative values like email addresses and sample IDs). They are not permitted in **normative field names, enum values, or descriptions that prescribe behavior**.
+### Enum values naming external systems
 
-Reviewers should flag any new normative field whose name includes a recognized platform token (e.g., `gam`, `ttd`, `meta`, `amazon`, `google`, `scope3`, `nielsen`, `roku`) and require it to move into `ext.*` before merge.
+Enum values MAY name specific external systems, formats, or identifier spaces when the enum itself enumerates "which external system." These are legitimate and already appear in AdCP — for example:
+
+- Distribution-platform identifier types: `amazon_music_id`, `roku_channel_id` in `distribution-identifier-type.json`
+- Feed formats: `google_merchant_center`, `facebook_catalog`, `openai_product_feed` in `brand.json`
+- Measurement/data identifiers: `nielsen_dma` in get-adcp-capabilities
+
+The rule to apply: if the enum asks "which vendor-equivalent concept?" (bad — use `ext`), reject; if the enum asks "which externally-defined system/format/identifier space?" (legitimate), allow.
+
+### Reviewer checklist
+
+- Reject a new top-level or request/response field whose name is `{vendor}_{general_concept}` (e.g., `google_campaign_id`, `ttd_line_id`).
+- Accept an enum value naming an externally-defined system, format, or identifier space.
+- Vendor names in **example blocks** (email addresses, sample IDs) are fine.
+- When uncertain, ask: "Is this field or value representing *one vendor's version of something the protocol already has a general concept for*?" If yes, it belongs under `ext.{vendor}`.
 
 ## Breaking Changes
 

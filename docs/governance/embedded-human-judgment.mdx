@@ -212,14 +212,14 @@ Any task that mutates state can be returned as `input-required` or `submitted` b
 
 ### Formal buyer-side: campaign governance
 
-Campaign governance is the protocol's specified mechanism for the buyer to *declaratively* require review on campaign actions. The buyer declares constraints in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), and [`check_governance`](/docs/governance/campaign/tasks/check_governance) enforces them on every campaign action — called by the orchestrator as an intent check before sending to the seller, and by the seller as an execution check on accounts that have `governance_agents` configured via [`sync_governance`](/docs/accounts/tasks/sync_governance).
+Campaign governance is the protocol's specified mechanism for the buyer to *declaratively* require review on campaign actions. The buyer declares constraints in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), and [`check_governance`](/docs/governance/campaign/tasks/check_governance) enforces them on every campaign action. The orchestrator calls it as an **intent check** against its own governance configuration before sending an action to a seller; the seller calls it as an **execution check** on accounts where `governance_agents` has been declared via [`sync_governance`](/docs/accounts/tasks/sync_governance).
 
 The governance agent escalates to a human when any of the following are true:
 
 | Trigger | Declared in |
 |---|---|
 | `plan.human_review_required: true` | `sync_plans` |
-| `budget.reallocation_threshold` exceeded | `sync_plans` |
+| Budget reallocation exceeds `budget.reallocation_threshold` | `sync_plans` |
 | Resolved policy with `requires_human_review: true` | Policy registry / plan policies |
 | Governance agent's own judgment | Governance agent's internal logic |
 
@@ -227,7 +227,13 @@ When the governance agent escalates, `check_governance` itself goes async and re
 
 ### What this means for specific operations
 
-Operations that flow through `sync_plans`-registered plans — `create_media_buy`, `update_media_buy`, and policy-gated `sync_creatives` — are subject to campaign governance as above. Operations outside the governance path — buy-terms negotiation, `sync_catalogs`, `acquire_rights` — use the universal mechanism only: any party may take them async for human review, but the protocol does not require it.
+Campaign governance covers the media-buy lifecycle in three phases (see [Governance phases](/docs/governance/campaign/specification#governance-phases)):
+
+- **Purchase** — `create_media_buy`, `acquire_rights`, `activate_signal`, `build_creative`
+- **Modification** — `update_media_buy`, `update_rights`
+- **Delivery** — seller-initiated periodic checks
+
+Operations outside this set — buy-terms negotiation, `sync_catalogs`, `sync_creatives`, and anything else — use the universal mechanism only: any party may take them async for human review, but the protocol does not require it.
 
 ## How this manifests in practice
 
