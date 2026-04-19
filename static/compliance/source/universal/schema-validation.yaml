@@ -354,6 +354,7 @@ phases:
               budget: 10000
               pricing_option_id: "test-pricing"
 
+          idempotency_key: "$generate:uuid_v4#schema_validation_temporal_validation_past_start_date"
           context:
             correlation_id: "schema_validation--past_start_date"
         validations:

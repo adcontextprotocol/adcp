@@ -72,6 +72,7 @@ phases:
                 start: "2026-04-01T00:00:00Z"
                 end: "2026-06-30T23:59:59Z"
               countries: ["US"]
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_governance_plan_setup_sync_plans"
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
@@ -95,6 +96,7 @@ phases:
               operator: "pinnacle-agency.com"
               billing: "operator"
               payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_signal_agent_setup_sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -120,6 +122,7 @@ phases:
               governance_agents:
                 - url: "$context.governance_agent_url"
                   categories: ["budget_authority"]
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_signal_agent_setup_sync_governance"
         validations:
           - check: response_schema
             description: "Response matches sync-governance-response.json schema"

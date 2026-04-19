@@ -196,6 +196,7 @@ phases:
                   asset_type: "text"
                   content: "Trail Pro 3000 — Built for the Summit"
 
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_sync_multiple_sync_creatives"
           context:
             correlation_id: "creative_lifecycle--sync_creatives"
         validations:
