@@ -270,11 +270,11 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - **`rejected`**: Declined by the seller (terminal)
 - **`canceled`**: Terminated before natural completion. Check `cancellation.canceled_by` to determine whether the buyer or seller initiated.
 
+**Effect on creatives**: A media buy reaching `rejected`, `canceled`, or `completed` releases its creative assignments but does not modify the creatives themselves. Assigned creatives remain in the library with their existing review status and are available for assignment to other media buys. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
+
 **Order confirmation**: A successful `create_media_buy` response constitutes order confirmation. The response includes `confirmed_at` with the confirmation timestamp.
 
 **Terminal states**: `completed`, `rejected`, and `canceled` are terminal — no transitions out. Sellers MUST reject updates to terminal-state media buys with error code `INVALID_STATE`.
-
-**Effect on creatives**: A media buy reaching `rejected`, `canceled`, or `completed` releases its creative assignments but does not modify the creatives themselves. Assigned creatives remain in the library with their existing review status and are available for assignment to other media buys. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
 
 **Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine:
 
