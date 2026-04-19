@@ -341,29 +341,41 @@ The 5-minute timestamp window prevents replay attacks. Publishers must use Unix 
 
 Webhooks use **at-least-once delivery** — you may receive the same event more than once, and events may arrive out of order.
 
-**Primary dedup key: `idempotency_key`.** Every webhook payload (MCP envelope, governance list-change webhooks, artifact push webhooks) carries a required `idempotency_key`. Publishers generate this key once per distinct event and reuse it on every retry. Receivers MUST dedupe by it: a repeat key with a matching payload is a retry of an already-delivered event and MUST NOT re-trigger side effects.
+### Dedup by `idempotency_key`
+
+Every webhook payload — MCP task envelope, governance list-change webhooks (`collection_list_changed`, `property_list_changed`), artifact push webhooks, and rights `revocation-notification` — carries a required `idempotency_key`. Publishers generate this key once per distinct event and reuse it on every retry. Receivers MUST dedupe by it.
+
+**Sender requirements:**
+- The key MUST be cryptographically random (UUID v4 recommended). Sequential, timestamp-only, or otherwise predictable values are non-conformant: receivers dedupe on the raw value, so a predictable key lets an attacker pre-seed a receiver's cache to suppress a later legitimate event.
+- The key MUST be stable across retries of the same event and MUST NOT be reused for a distinct event.
+
+**Receiver requirements:**
+- Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the credential binding from the verified HMAC secret or Bearer token — never a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple publishers MUST NOT collapse them.
+- Dedup state SHOULD persist for at least 24h. Publishers SHOULD NOT retry beyond that window; retries arriving after the receiver's TTL will be reprocessed as fresh events.
+- Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile publisher emitting high-volume fresh keys is otherwise a storage-amplification vector.
+- Webhook receivers do **not** verify payload equivalence across key reuse. If a sender reuses a key with a changed payload (a sender bug), the receiver's cached first copy wins and the second is silently deduped. This differs from the request-side `IDEMPOTENCY_CONFLICT` behavior — senders are solely responsible for generating a fresh key on every distinct event.
 
 ```javascript
-async function processWebhook(payload) {
+async function processWebhook(req, payload) {
   const { idempotency_key, task_id, status, timestamp, result } = payload;
 
-  // Dedup: same idempotency_key within the replay window → already processed
-  if (await db.webhookAlreadyProcessed(idempotency_key)) return;
+  // Scope dedup to the authenticated sender — never trust a payload field for identity.
+  const sender = req.verifiedSenderId; // set by HMAC/Bearer middleware
 
-  // Ordering: don't apply a stale status on top of a newer one
+  // Dedup: same (sender, idempotency_key) within the replay window → already processed
+  if (await db.webhookAlreadyProcessed(sender, idempotency_key)) return;
+  await db.markWebhookProcessed(sender, idempotency_key); // before side effects — fail-closed on crash
+
+  // Ordering: separately, don't apply a stale status on top of a newer one.
+  // Ordering state is keyed on task_id, not idempotency_key — two distinct events
+  // (different keys) can still arrive out of order.
   const task = await db.getTask(task_id);
-  if (task?.updated_at >= timestamp) {
-    await db.markWebhookProcessed(idempotency_key);
-    return;
-  }
+  if (task?.updated_at >= timestamp) return;
 
   await db.updateTask(task_id, { status, updated_at: timestamp, result });
-  await db.markWebhookProcessed(idempotency_key);
   await triggerBusinessLogic(task_id, status);
 }
 ```
-
-Dedup state SHOULD persist for at least the longest expected retry window (24h is a safe default).
 
 **Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
 

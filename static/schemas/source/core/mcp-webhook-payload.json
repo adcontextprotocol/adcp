@@ -7,7 +7,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Sender-generated key stable across retries of the same webhook event. Publishers MUST generate a unique key per distinct event (typically a UUID v4) and reuse the same key when retrying delivery of that event. Receivers MUST dedupe by this key; a repeat key with matching payload is a retry of an already-delivered event and MUST NOT re-trigger side effects. This is the canonical dedup field — the (task_id, status, timestamp) tuple is insufficient when two status transitions share a timestamp.",
+      "description": "Sender-generated key stable across retries of the same webhook event. Publishers MUST generate a cryptographically random value (UUID v4 recommended) per distinct event and reuse the same key on every retry of that event. Receivers MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential) — keys from different publishers are independent. This is the canonical dedup field — the (task_id, status, timestamp) tuple is insufficient when a single transition is retried with unchanged timestamp or when two transitions share a timestamp.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
