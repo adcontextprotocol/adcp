@@ -432,6 +432,25 @@ Extension schemas are published in the [AdCP extension registry](/docs/building/
 }
 ```
 
+### experimental_features
+
+Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match"]`) |
+
+Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
+
+**Example:**
+```json
+{
+  "experimental_features": ["brand.rights_lifecycle", "trusted_match"]
+}
+```
+
+See [experimental status](/docs/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
+
 This tells buyers:
 - Responses may include `ext.iab_tcf` with IAB TCF consent data
 - Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
