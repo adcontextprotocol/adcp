@@ -1,0 +1,94 @@
+---
+title: Privacy Considerations
+sidebarTitle: Privacy Considerations
+description: "Cross-protocol privacy entry point for AdCP implementers, compliance reviewers, and CISOs — what each protocol carries, what it does not, and where implementers must handle privacy themselves."
+"og:title": "AdCP — Privacy Considerations"
+---
+
+This page is the cross-protocol entry point for privacy in AdCP. It names the categories implementers and compliance reviewers need to think about, summarizes what each AdCP protocol carries and does not carry, and links to the deeper references. It does not replace any of them.
+
+If you need the deep architectural picture of a specific domain, follow the links. If you need a [Privacy Impact Assessment template](https://github.com/adcontextprotocol/adcp/issues/2378) for deploying an AdCP agent, that is a separate document (in progress).
+
+## What AdCP's privacy posture is — and isn't
+
+AdCP specifies a wire protocol between agents. It does not specify:
+
+- End-user authentication or consent capture (handled upstream)
+- Data-subject rights workflows (the buyer's responsibility)
+- Data residency (a configuration and contract property of individual agents)
+- Retention policy (the operator's responsibility)
+
+What AdCP does specify is the *shape* of what each protocol carries, the prohibitions on what it must not carry, and the structural separations that apply where the protocol is privacy-sensitive. Implementers are responsible for privacy controls at every boundary the protocol does not itself enforce.
+
+## Privacy posture by domain
+
+AdCP's privacy guarantees are not uniform across protocols. See [Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains) for the full table. Summary:
+
+- **Trusted Match Protocol (TMP)** — **structural separation**. Context Match and Identity Match run on separated code paths; schemas prohibit crossover; TEE attestation (when deployed) makes the separation independently verifiable. See [TMP privacy architecture](/docs/trusted-match/privacy-architecture).
+- **Media Buy, Creative, Signals, Governance** — **contractual confidentiality**. The parties exchanging data are bound by the account's terms, not by protocol-level separation.
+- **Sponsored Intelligence** — **per-session consent**. The user consents per session; networks that route sessions may see routing metadata. See [SI networks](/docs/sponsored-intelligence/networks).
+- **Brand / Registry** — **public by design**. `brand.json` is discoverable at `/.well-known/brand.json`; the registry exposes public entity resolution.
+
+Governance gating (via campaign governance) is orthogonal to this: it can require human approval on budget, policy, or brand-safety grounds, but it does not change the privacy mechanism of the underlying domain.
+
+## Privacy categories to think about
+
+### Data minimization
+
+AdCP minimizes the data that crosses protocol boundaries by design:
+
+- Audience members in `sync_audiences` are SHA-256 hashed **on the buyer side** before transport. Cleartext PII does not cross the wire.
+- TMP Context Match carries no user identity; TMP Identity Match carries no page context.
+- `governance_context` tokens can use `policy_decision_hash` instead of inline decisions when the buyer's compliance posture is sensitive.
+
+Implementers SHOULD review whether any fields they add to `ext` re-introduce data that the protocol minimized out.
+
+### Separation
+
+Where two facts combined would create a privacy harm (e.g., identity + context at impression time), the protocol separates them. Structural separation is TMP-specific; other domains rely on contractual separation.
+
+### Transport
+
+All AdCP traffic is over HTTPS (see [Security — Identity](/docs/building/understanding/security-model#layer-1-identity--who-is-actually-calling)). Signed requests (RFC 9421) are normative in 3.1. Transport security is a baseline assumption; the protocol builds on top of it.
+
+### Residency
+
+Residency is not carried in the protocol. An agent's residency posture is a configuration and a contract property — implementers MUST document it, and operators MUST configure it to meet EU / UK / other regional requirements where applicable. See the [Security Model — data handling and subprocessors checklist](/docs/building/understanding/security-model#data-handling-and-subprocessors).
+
+### Retention
+
+The protocol describes cache retention for idempotency (see [Layer 3: Idempotency](/docs/building/understanding/security-model#layer-3-idempotency--at-most-once-execution)) and audit-log retention for governance (see [Layer 5: Auditability](/docs/building/understanding/security-model#layer-5-auditability--the-trail-survives-the-transaction)). Retention of other data — creative assets, campaign state, LLM prompts, conversation logs — is the operator's responsibility.
+
+### Processor / controller roles
+
+Who is a controller and who is a processor depends on the deployment. AdCP does not assign roles at the protocol layer. The typical allocation:
+
+- The buyer is typically a controller for the campaign they run.
+- A governance agent acts as a processor for the controller(s) it serves and often has **multi-customer blast radius** — treat it accordingly in due diligence.
+- A seller may be a controller for its own inventory data and a processor for buyer-scoped campaign data.
+- A TMP Router operator is typically a processor for both sides, operating under the separation guarantees described in [TMP privacy architecture](/docs/trusted-match/privacy-architecture).
+
+Operators MUST document their role for each data flow and carry a DPA with each counterparty that reflects it.
+
+### Subprocessors and LLM providers
+
+Every LLM-powered agent has subprocessors: the LLM provider itself, plus any retrieval services, embeddings stores, or tool integrations. The DPA with each provider must be explicit about whether prompts, brand assets, first-party signals, or creative metadata may be retained or used for model training. See the [Security Model — data handling checklist](/docs/building/understanding/security-model#data-handling-and-subprocessors).
+
+## Boundaries implementers must handle
+
+The protocol does not enforce these; the operator must:
+
+- **End-user consent and data-subject rights** (GDPR Art. 15–22, CCPA).
+- **Purpose limitation** beyond what field shapes enforce.
+- **Cross-border data transfer controls** (SCCs, adequacy, UK IDTA).
+- **PII discovery in unstructured fields** (creative metadata, chat logs, brief text). AdCP does not scan `ext`, `context`, brief prose, or creative assets for PII.
+- **Log retention and PII redaction** in logs.
+- **Prompt-injection containment** for LLM-powered agents processing untrusted text.
+
+## Related references
+
+- **[TMP Privacy Architecture](/docs/trusted-match/privacy-architecture)** — the structural separation model, with TEE attestation details
+- **[Security Model](/docs/building/understanding/security-model)** — threat model, layered defense, deployment checklist
+- **[Security (implementation reference)](/docs/building/implementation/security)** — normative rules for auth, idempotency, SSRF, governance verification
+- **[Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains)** — the summary table
+- **[Known Limitations](/docs/reference/known-limitations)** — what the protocol does not do on privacy

@@ -211,15 +211,22 @@ All `$ref` paths should be absolute from schema root:
 }
 ```
 
-### Enum values naming external systems
+### External system identifiers
 
-Enum values MAY name specific external systems, formats, or identifier spaces when the enum itself enumerates "which external system." These are legitimate and already appear in AdCP — for example:
+Names that reference **canonical external identifier spaces** are legitimate in both field names and enum values. The distinction is not "does it contain a vendor token" but "does it represent *that vendor's version of something the protocol already has a general concept for*":
 
-- Distribution-platform identifier types: `amazon_music_id`, `roku_channel_id` in `distribution-identifier-type.json`
-- Feed formats: `google_merchant_center`, `facebook_catalog`, `openai_product_feed` in `brand.json`
-- Measurement/data identifiers: `nielsen_dma` in get-adcp-capabilities
+- `google_campaign_id` (bad) — a vendor-specific ID for a concept the protocol already models (`media_buy_id`). Move to `ext.gam`.
+- `apple_podcast_id` (legitimate) — a canonical identifier for a specific Apple Podcasts item. There is no general concept to map to; the Apple Podcasts namespace is *the* namespace.
+- `nielsen_dma` (legitimate) — the industry-standard geographic division, not "Nielsen's version of geography."
 
-The rule to apply: if the enum asks "which vendor-equivalent concept?" (bad — use `ext`), reject; if the enum asks "which externally-defined system/format/identifier space?" (legitimate), allow.
+Existing examples of legitimate patterns:
+
+- Distribution-platform identifier types: `amazon_music_id`, `roku_channel_id` in `distribution-identifier-type.json` (enum values)
+- Feed formats: `google_merchant_center`, `facebook_catalog`, `openai_product_feed` in `brand.json` (enum values)
+- Measurement/data identifiers: `nielsen_dma` in `get-adcp-capabilities-response` (field name)
+- Platform IDs: `apple_podcast_id`, `apple_id` (field names)
+
+The rule to apply: if the name asks "which vendor-equivalent version of something AdCP models?" (bad — use `ext`), reject; if the name asks "which externally-defined system/format/identifier space?" (legitimate), allow. When allowing a field name, add it to `tests/check-platform-agnostic.cjs` `FIELD_ALLOWLIST` with a one-line justification.
 
 ### Reviewer checklist
 

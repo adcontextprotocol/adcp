@@ -122,6 +122,36 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
 </Accordion>
 
+<Accordion title="How does AdCP compare to AAMP?">
+AAMP — IAB Tech Lab's Agentic Advertising Management Protocols framework — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). AdCP and AAMP overlap in ambition (both target AI agents in advertising) and differ in several ways today:
+
+| | AAMP | AdCP |
+|---|---|---|
+| **Maintainer** | IAB Tech Lab | AgenticAdvertising.org (open 501(c)(6), four equal voting classes) |
+| **Maturity** | Emerging framework / work-in-progress | 3.0 release candidate, 3.0 GA targeted April 2026 |
+| **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
+| **Governance verification** | Under development | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/understanding/security-model)) |
+| **Public schemas** | To be defined | [Published](https://adcontextprotocol.org/schemas/latest/), Apache 2.0 |
+
+We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize. AdCP and AAMP are not mutually exclusive — a platform could implement both if scopes remain distinct.
+</Accordion>
+
+<Accordion title="Why not just roll our own protocol?">
+You can, and for some deployments that is the right call — proprietary internal protocols are fine when the scope stays inside a single organization.
+
+A shared protocol earns its cost when two conditions hold: (1) agents need to interoperate across organizational boundaries, and (2) the guarantees an implementer needs — idempotency, signed governance, structural privacy separation, conformance — are nontrivial to build from scratch. AdCP already specifies the wire, publishes schemas, runs conformance tests, and carries a signed-governance profile with 15-step verification (see the [security model](/docs/building/understanding/security-model)). Rebuilding that internally is a real cost, and if you want counterparties to trust your internal protocol, you have to socialize it anyway.
+
+If AdCP is missing something you need, the cheaper path is usually: extend via `ext.{vendor}`, or propose a change to the working group. See the [contributing guide](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md).
+</Accordion>
+
+<Accordion title="Why not use MCP directly without AdCP?">
+MCP defines *how* an agent calls a tool. AdCP defines *what* the agent says when it calls an advertising tool. An MCP server that exposes ad-buying tools without AdCP defines its own task shapes, its own response schemas, its own error codes, and its own governance semantics — and every buyer agent has to integrate one server at a time.
+
+AdCP is what makes the tools interchangeable. If every publisher's MCP server speaks AdCP's `create_media_buy`, one buyer agent can integrate with all of them. Without AdCP, "connect to a new publisher" is a new development task every time.
+
+Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [How AdCP relates to MCP and A2A](#how-does-adcp-relate-to-mcp-and-a2a) above, and [Industry landscape](/docs/building/understanding/industry-landscape) for the full picture.
+</Accordion>
+
 <Accordion title="Why isn't AdCP an auction protocol?">
 AdCP is built for agentic workflows — direct-sold inventory, guaranteed deals, and commerce media — not the impression-level auction where OpenRTB already works. Buyers and sellers transact directly through their agents, with pricing surfaced via `pricing_options`, `price_guidance`, and (when the transaction warrants it) `price_breakdown`.
 
