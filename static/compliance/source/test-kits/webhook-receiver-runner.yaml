@@ -1,11 +1,17 @@
-# Webhook-Callbacks Runner — Harness Contract Test Kit
+# Webhook Receiver Runner — Harness Contract Test Kit
 #
-# Applies to: specialisms/webhook-callbacks/index.yaml
+# Applies to:
+#   - universal/webhook-emission.yaml (primary consumer — grades outbound
+#     webhook conformance: idempotency_key presence, stability across retries,
+#     and RFC 9421 signature validity when 9421 is in effect)
+#   - universal/idempotency.yaml (replay-side-effect invariant — "no duplicate
+#     webhooks on replay" step is gated on this contract being in scope)
+#   - Any future storyboard that needs to observe outbound webhooks.
 #
-# The webhook-callbacks specialism grades an agent's outbound-webhook
+# The webhook-emission universal grades an agent's outbound-webhook
 # conformance: idempotency_key presence and stability across retries, and —
-# when the agent advertises 9421 webhook signing — RFC 9421 signature validity
-# per docs/building/implementation/security.mdx#webhook-callbacks.
+# when the 9421 webhook profile is in effect — RFC 9421 signature validity per
+# docs/building/implementation/security.mdx#webhook-callbacks.
 #
 # Storyboards are unidirectional by default (runner → agent). Verifying what
 # the agent sends back requires the runner to host a webhook receiver during
@@ -18,9 +24,11 @@
 # IdempotencyBackend) so the same code that production receivers use is what
 # the conformance runner exercises. A single bug fix in the library covers both.
 
-id: webhook_callbacks_runner
+id: webhook_receiver_runner
 applies_to:
-  specialism: webhook-callbacks
+  universals:
+    - webhook-emission
+    - idempotency
 
 description: |
   Coordination contract between a black-box runner hosting a webhook receiver
@@ -199,7 +207,7 @@ scope:
       test counterparties only.
 
 references:
-  specialism: static/compliance/source/specialisms/webhook-callbacks/index.yaml
+  universal: static/compliance/source/universal/webhook-emission.yaml
   spec_section: /docs/building/implementation/security.mdx#webhook-callbacks
   client_receiver_pr: https://github.com/adcontextprotocol/adcp-client/pull/629
   signing_upstream_pr: https://github.com/adcontextprotocol/adcp/pull/2423

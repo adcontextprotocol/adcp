@@ -237,7 +237,7 @@ phases:
 
           Programmatic verification of "no duplicate webhooks" runs in the next step
           (no_duplicate_webhooks_on_replay) when the storyboard is driven by a runner
-          that implements the webhook_callbacks_runner contract. Runners without a
+          that implements the webhook_receiver_runner contract. Runners without a
           webhook receiver grade that step as not_applicable — agents MAY still claim
           idempotency compliance, but the replay-side-effect invariant is only
           programmatically graded when the webhook_callbacks specialism is also in
@@ -292,8 +292,8 @@ phases:
           instead of returning cached state.
 
           This step requires the storyboard runner to implement the
-          `webhook_callbacks_runner` contract at
-          `test-kits/webhook-callbacks-runner.yaml`. Runners without a webhook
+          `webhook_receiver_runner` contract at
+          `test-kits/webhook-receiver-runner.yaml`. Runners without a webhook
           receiver skip this step with a stable not_applicable marker; the
           replay-side-effect invariant then relies on the next phase's cached-
           response assertions plus manual audit of the seller's webhook
@@ -311,7 +311,7 @@ phases:
           operation_id: "{{prior_step.create_media_buy_initial.operation_id}}"
         timeout_seconds: 30
         expect_max_deliveries_per_logical_event: 1
-        requires_contract: webhook_callbacks_runner
+        requires_contract: webhook_receiver_runner
         stateful: true
         expected: |
           At most one logical webhook event delivered for the create_media_buy

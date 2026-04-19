@@ -138,11 +138,12 @@
 # expect_webhook* step asserts on what arrived.
 #
 # Receiver behavior is specified by a test-kit contract referenced from the
-# storyboard's prerequisites.test_kit field — see test-kits/webhook-callbacks-runner.yaml
+# storyboard's prerequisites.test_kit field — see test-kits/webhook-receiver-runner.yaml
 # for the reference contract (endpoint modes, retry-replay shape, client-primitive
-# hooks). Specialism authors MUST declare the contract in prerequisites; the
-# webhook-callbacks specialism (specialisms/webhook-callbacks/index.yaml) is the
-# reference consumer.
+# hooks). Storyboard authors MUST declare the contract in prerequisites; the
+# webhook-emission universal (universal/webhook-emission.yaml) is the reference
+# consumer, and universal/idempotency.yaml uses it for the "no duplicate webhooks
+# on replay" assertion.
 #
 # --- Substitution variables (webhook-receiver enabled) ---
 #
@@ -186,7 +187,7 @@
 #                                 # optional — step grades as not_applicable (not fail)
 #                                 # when the named test-kit contract is not in scope.
 #                                 # Used on cross-specialism assertions that depend on
-#                                 # webhook_callbacks_runner being active.
+#                                 # webhook_receiver_runner being active.
 #
 #   Error modes: no_webhook_received, schema_violation, missing_idempotency_key,
 #   invalid_idempotency_key_format, signature_invalid (when signature assertion on),
