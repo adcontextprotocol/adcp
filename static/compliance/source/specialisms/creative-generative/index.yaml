@@ -174,6 +174,7 @@ phases:
           quality: "draft"
           include_preview: true
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_generate_from_brief_build_draft"
           context:
             correlation_id: "creative_generative--build_draft"
         validations:
@@ -241,6 +242,7 @@ phases:
           quality: "draft"
           include_preview: true
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_refine_refine_creative"
           context:
             correlation_id: "creative_generative--refine_creative"
         validations:
@@ -315,6 +317,7 @@ phases:
             domain: "acme-outdoor.example.com"
           quality: "production"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_multi_format_build_multi_format"
           context:
             correlation_id: "creative_generative--build_multi_format"
         validations:
@@ -381,6 +384,7 @@ phases:
           quality: "production"
           include_preview: true
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_production_build_build_production"
           context:
             correlation_id: "creative_generative--build_production"
         validations:

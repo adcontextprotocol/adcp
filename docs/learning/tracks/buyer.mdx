@@ -212,7 +212,7 @@ Create a working buyer agent that discovers products and executes media buys. Us
 
 - Account setup with `sync_accounts`
 - Product discovery from at least 2 sellers
-- Media buy creation with targeting and budget
+- Media buy creation with targeting and budget — including a fresh UUID v4 `idempotency_key` per logical buy, and correct retry behavior that resends the identical payload with the same key on network failure (the mechanics of what the seller does with the key — replay, conflict, expired — are taught in [S1: Media buy](/docs/learning/specialist/media-buy))
 - Creative sync with at least 1 format
 - Campaign monitoring via delivery reporting
 

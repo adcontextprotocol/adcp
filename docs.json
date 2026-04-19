@@ -109,6 +109,7 @@
                       "docs/building/understanding/protocol-comparison",
                       "docs/building/understanding/adcp-vs-openrtb",
                       "docs/building/understanding/how-agents-communicate",
+                      "docs/building/understanding/security-model",
                       "docs/building/understanding/industry-landscape"
                     ]
                   },
@@ -601,6 +602,7 @@
                   "docs/building/understanding/protocol-comparison",
                   "docs/building/understanding/adcp-vs-openrtb",
                   "docs/building/understanding/how-agents-communicate",
+                  "docs/building/understanding/security-model",
                   "docs/building/understanding/industry-landscape"
                 ]
               },

@@ -257,6 +257,7 @@ phases:
                 - "Bearer"
               credentials: "pinnacle-revocation-webhook-secret-token"
 
+          idempotency_key: "$generate:uuid_v4#brand_rights_rights_acquisition_acquire_rights"
           context:
             correlation_id: "brand_rights--acquire_rights"
         context_outputs:

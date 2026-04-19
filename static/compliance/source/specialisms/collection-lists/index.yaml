@@ -132,6 +132,7 @@ phases:
           filters:
             kinds: ["series"]
 
+          idempotency_key: "$generate:uuid_v4#collection_lists_create_list_create_inclusion_list"
           context:
             correlation_id: "collection_lists--create_inclusion_list"
         context_outputs:
@@ -284,6 +285,7 @@ phases:
                 - type: "imdb_id"
                   value: "tt9999906"
 
+          idempotency_key: "$generate:uuid_v4#collection_lists_update_list_update_collection_list"
           context:
             correlation_id: "collection_lists--update_collection_list"
         validations:
@@ -330,6 +332,7 @@ phases:
               domain: "novamotors.example"
             operator: "novamotors.example"
 
+          idempotency_key: "$generate:uuid_v4#collection_lists_delete_list_delete_collection_list"
           context:
             correlation_id: "collection_lists--delete_collection_list"
         validations:

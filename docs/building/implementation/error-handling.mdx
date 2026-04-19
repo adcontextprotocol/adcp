@@ -171,6 +171,17 @@ function isRetryable(error) {
 
 ## Retry Logic
 
+### Normative throttling behavior
+
+These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape):
+
+- Callers **MUST** honor `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated number of seconds.
+- Callers **SHOULD** use exponential backoff with jitter when `retry_after` is absent. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
+- Callers **MUST NOT** treat non-throttling errors (e.g., `INVALID_REQUEST`, `CREATIVE_REJECTED`) as if they were throttled. Retrying a rejected-for-other-reasons response at backoff cadence is a bug, not a defensive posture.
+- Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent `RATE_LIMITED` response is a capacity or policy signal, not a transient blip.
+- Sellers **SHOULD** return `RATE_LIMITED` with a populated `retry_after` rather than silently queuing or dropping requests, so well-behaved callers can back off intentionally.
+- Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
+
 ### Exponential Backoff
 
 Implement exponential backoff for retryable errors:

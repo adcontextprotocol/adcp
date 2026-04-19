@@ -391,10 +391,10 @@ When a buyer calls `get_products` with a `property_list` containing only `site_a
 
 When a buyer calls `get_products` with a `property_list` containing only `tech` and `sports`, this product is **included** because there is an intersection. The buyer can then purchase this product and target only the matching properties via `targeting_overlay.property_list` in the package.
 
-### Custom & Principal-Specific Products
+### Custom & Account-Specific Products
 
 A server can offer a general catalog, but it can also return:
-- **Principal-Specific Products**: Products reserved for or negotiated with specific clients
+- **Account-Specific Products**: Products reserved for or negotiated with specific accounts (buyers, agencies, or brands)
 - **Custom Products**: Dynamically generated products with `is_custom: true` and an `expires_at` timestamp
 
 ## Product Examples

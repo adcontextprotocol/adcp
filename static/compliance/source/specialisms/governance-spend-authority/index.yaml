@@ -257,6 +257,7 @@ phases:
               budget: 15000
               pricing_option_id: "cpm_standard"
 
+          idempotency_key: "$generate:uuid_v4#governance_spend_authority_create_buy_with_conditions_create_media_buy"
           context:
             correlation_id: "governance_spend_authority--create_media_buy"
         validations:

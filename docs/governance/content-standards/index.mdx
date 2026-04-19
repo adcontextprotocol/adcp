@@ -221,6 +221,16 @@ The policy prompt enables AI-powered verification agents to understand context a
 
 See [Artifacts](./artifacts) for details on artifact structure and secured asset access.
 
+## Versioning and mid-flight amendments
+
+Content standards carry a `version` field and MAY be amended while campaigns are running. `update_content_standards` creates a new version for audit purposes rather than mutating the previous one.
+
+AdCP 3.0 default: **pinned at buy time.** Unless otherwise declared, a media buy references the version of the standards that was in effect when its `create_media_buy` was approved, and subsequent amendments do **not** retroactively apply to in-flight delivery on that buy. This is the conservative default because it prevents a mid-campaign amendment from silently re-characterizing already-approved delivery.
+
+Governance agents MAY mark an individual policy as continuously re-evaluated by declaring `evaluation_mode: continuous` on the policy entry (default is `pinned`). Use `continuous` for policies that must track regulatory changes without re-approval — emerging regulatory disclosures, new legal prohibitions, accessibility requirements. Use the default `pinned` for brand-voice, taxonomy, and commercial preferences where stability across a flight is the desired behavior.
+
+When a policy is `continuous`, a finding generated against a newer version **MUST** carry both the evaluation-time version and the pinned-at-buy version on the finding, so downstream audit can reconstruct which version applied. When a policy is `pinned`, the pinned version applies for the life of the buy; the governance agent MAY still surface advisory findings based on later versions but **MUST NOT** mark them as enforcement failures against the pinned buy.
+
 ## Scoped Standards
 
 Buyers typically maintain multiple standards configurations for different contexts - UK TV campaigns have different regulations than US display, and children's brands need stricter safety than adult beverages.

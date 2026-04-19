@@ -156,6 +156,7 @@ phases:
               content:
                 media_url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
 
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_sync_creative"
           context:
             correlation_id: "pending_creatives_to_start--sync_creative"
         validations:
@@ -181,6 +182,7 @@ phases:
               creative_assignments:
                 - creative_id: "acme-outdoor-display-q3"
 
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_assign_creative_to_package"
           context:
             correlation_id: "pending_creatives_to_start--assign_creative_to_package"
         validations:

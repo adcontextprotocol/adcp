@@ -514,6 +514,7 @@ phases:
               budget: 5000
               pricing_option_id: 'test-pricing'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_media_buy_create_media_buy"
           context:
             correlation_id: "deterministic_testing--create_media_buy"
         validations:
@@ -728,6 +729,7 @@ phases:
                   url: 'https://via.placeholder.com/300x250'
                   mime_type: 'image/png'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_creative_sync_creative_for_state"
           context:
             correlation_id: "deterministic_testing--sync_creative_for_state"
         validations:
@@ -1036,6 +1038,7 @@ phases:
               budget: 5000
               pricing_option_id: 'test-pricing'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_delivery_create_media_buy_for_delivery"
           context:
             correlation_id: "deterministic_testing--create_media_buy_for_delivery"
         validations:
@@ -1166,6 +1169,7 @@ phases:
               budget: 10000
               pricing_option_id: 'test-pricing'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_budget_create_media_buy_for_budget"
           context:
             correlation_id: "deterministic_testing--create_media_buy_for_budget"
         validations:

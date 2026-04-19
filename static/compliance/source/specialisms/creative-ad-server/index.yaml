@@ -212,6 +212,7 @@ phases:
           media_buy_id: "mb_summer_campaign_001"
           package_id: "pkg_ctv_premium"
 
+          idempotency_key: "$generate:uuid_v4#creative_ad_server_generate_tags_build_tag"
           context:
             correlation_id: "creative_ad_server--build_tag"
         validations:

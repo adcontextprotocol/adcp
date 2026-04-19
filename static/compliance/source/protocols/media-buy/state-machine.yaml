@@ -160,6 +160,7 @@ phases:
               budget: 10000
               pricing_option_id: "test-pricing"
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_create_buy"
           context:
             correlation_id: "media_buy_state_machine--create_buy"
         context_outputs:
@@ -208,6 +209,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           paused: true
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_pause_buy"
           context:
             correlation_id: "media_buy_state_machine--pause_buy"
         validations:
@@ -239,6 +241,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           paused: false
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_resume_buy"
           context:
             correlation_id: "media_buy_state_machine--resume_buy"
         validations:
@@ -271,6 +274,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_cancel_buy"
           context:
             correlation_id: "media_buy_state_machine--cancel_buy"
         validations:
@@ -379,5 +383,6 @@ phases:
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_terminal_enforcement_recancel_buy"
           context:
             correlation_id: "media_buy_state_machine--recancel_buy"

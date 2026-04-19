@@ -219,6 +219,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_invalid_transitions_double_cancel_first_cancel"
           context:
             correlation_id: "invalid_transitions--first_cancel"
         validations:

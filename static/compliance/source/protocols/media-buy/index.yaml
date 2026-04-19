@@ -141,6 +141,7 @@ phases:
               operator: "pinnacle-agency.com"
               billing: "operator"
               payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
           context:
             correlation_id: "media_buy_seller--sync_accounts"
 
@@ -196,6 +197,7 @@ phases:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   categories: ["budget_authority", "brand_policy"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_setup_sync_governance"
           context:
             correlation_id: "media_buy_seller--sync_governance"
           ext:
@@ -396,6 +398,7 @@ phases:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
               scheme: "HMAC-SHA256"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
 
@@ -576,6 +579,7 @@ phases:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
                   mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_sync_sync_creatives"
           context:
             correlation_id: "media_buy_seller--sync_creatives"
 

@@ -161,6 +161,12 @@ Protocol feature allowing publishers to require manual approval for operations.
 **Identity Match**
 TMP operation that evaluates user eligibility against package criteria using an opaque user token. Returns a boolean `eligible` flag and optional `intent_score` per package. Carries no page context. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. See [Trusted Match Protocol](/docs/trusted-match).
 
+**Idempotency**
+The property that repeating the same operation produces the same result as running it once, with no extra side effects. Every mutating AdCP request carries a required `idempotency_key`; on retry with the same key and payload, the seller returns the cached response with `replayed: true` instead of re-executing. This is what lets an agent safely retry a `create_media_buy` after a network timeout without creating two buys. See the [Security Model](/docs/building/understanding/security-model#layer-3-idempotency--at-most-once-execution) for the narrative and [Security: Request Safety](/docs/building/implementation/security#idempotency) for the normative rules.
+
+**Idempotency Key**
+A unique, unguessable identifier (UUID v4 or equivalent CSPRNG output) attached to every mutating AdCP request. Scoped per `(authenticated agent, account)`. The seller uses it as the cache key for at-most-once execution within the declared `replay_ttl_seconds` window (minimum 1 hour, recommended 24 hours, maximum 7 days). Same key + same payload = replay; same key + different payload = `IDEMPOTENCY_CONFLICT`. See [Security: Request Safety](/docs/building/implementation/security#idempotency).
+
 **Impressions** (Media Buy Protocol)
 The number of times an ad is displayed, used for pricing and delivery tracking.
 
@@ -226,7 +232,7 @@ The method by which advertising inventory is priced and billed. AdCP supports CP
 A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
 
 **Principal**
-*Deprecated term.* See **Account** (billing relationship) and **Agent** (authenticated caller). Previously used to refer to the authenticated entity with its associated platform mappings. AdCP now splits these responsibilities: the **Agent** handles authentication and API access, while the **Account** handles billing, rate cards, and platform mappings.
+*Deprecated term.* See [Account](#a) (billing relationship) and [Agent](#a) (authenticated caller). Previously used to refer to the authenticated entity with its associated platform mappings. AdCP now splits these responsibilities: the **Agent** handles authentication and API access, while the **Account** handles billing, rate cards, and platform mappings.
 
 **Product**
 Advertising inventory available for purchase, discovered through natural language queries.
@@ -286,7 +292,7 @@ The specific identifier used for signal activation, may differ from signal_id.
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
 
 **Signal Agent**
-A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
+A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single buyer and visible only to that buyer's accounts) or marketplace (licensing data across multiple accounts). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
 **Signal Catalog**
 A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
@@ -323,6 +329,9 @@ An open standard for conversational brand experiences in AI assistants. Like VAS
 
 **SSP (Supply-Side Platform)**
 A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.
+
+**SSRF (Server-Side Request Forgery)**
+A class of attack where an adversary supplies a URL that tricks an agent into making an HTTP request to an address it shouldn't — typically an internal service, a cloud metadata endpoint (e.g., `169.254.169.254`), or a localhost port. Every URL an AdCP counterparty supplies (webhook callbacks, TMP provider endpoints, governance `jwks_uri`, reporting buckets, `adagents.json` `authoritative_location`) is a potential vector. Defense is implemented in code via a 6-point check: HTTPS-only, reserved-IP deny list, IP pinning against DNS rebinding, no redirects, response size and timeout caps, suppressed error detail. See the [Security Model](/docs/building/understanding/security-model) for the narrative and [Security: Webhook URL validation](/docs/building/implementation/security#webhook-url-validation-ssrf) for the normative rules.
 
 **Storyboard**
 A compliance test bundle that verifies a protocol baseline or [specialism](#specialism) claim. Each storyboard is a YAML file under `/compliance/{version}/` that declares an `id`, phases of test steps, sample requests, and validations the agent must pass. Storyboards live in three buckets: `universal/` (applies to every agent), `protocols/{protocol}/` (one baseline per supported protocol), and `specialisms/{id}/` (one per specialism claim).

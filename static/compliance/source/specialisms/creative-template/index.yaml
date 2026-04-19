@@ -312,6 +312,7 @@ phases:
           brand:
             domain: "acme-outdoor.example.com"
 
+          idempotency_key: "$generate:uuid_v4#creative_template_build_build_creative"
           context:
             correlation_id: "creative_template--build_creative"
         validations:
@@ -373,6 +374,7 @@ phases:
           brand:
             domain: "acme-outdoor.example.com"
 
+          idempotency_key: "$generate:uuid_v4#creative_template_build_build_multi_format"
           context:
             correlation_id: "creative_template--build_multi_format"
         validations:

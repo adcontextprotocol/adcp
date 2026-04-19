@@ -101,6 +101,7 @@ phases:
               operator: "pinnacle-agency.com"
               billing: "operator"
               payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_seller_setup_sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -126,6 +127,7 @@ phases:
               governance_agents:
                 - url: "$context.governance_agent_url"
                   categories: ["budget_authority", "brand_policy"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_seller_setup_sync_governance"
         validations:
           - check: response_schema
             description: "Response matches sync-governance-response.json schema"
@@ -186,6 +188,7 @@ phases:
             - product_id: "outdoor_ctv_q2"
               budget: 25000
               pricing_option_id: "cpm_standard"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_buy_with_conditions_create_media_buy_conditions"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"

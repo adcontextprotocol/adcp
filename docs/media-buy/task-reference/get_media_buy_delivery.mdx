@@ -61,6 +61,14 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 
 See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for complete field list.
 
+### Billing-grade vs best-effort numbers
+
+Unless the seller explicitly declares otherwise, `get_media_buy_delivery` returns **best-effort** numbers: real-time or near-real-time telemetry, subject to revision as counts settle, **not** an invoicing source of truth. Callers that use these numbers for client reporting or pacing decisions are safe; callers that use them for reconciliation, accruals, or finance close are not.
+
+Sellers **MAY** declare a finalization window in their capabilities (e.g., `delivery_reporting.finalization_window_hours`) and, once that window has elapsed for a reporting period, treat the numbers returned for that period as authoritative for billing — stable across subsequent calls, suitable for invoice reconciliation, and liable as the source of truth in a dispute. Callers **MUST NOT** assume finalization in the absence of such a declaration.
+
+When a buyer's independent measurement disagrees with these numbers, reconciliation happens out-of-band through the commercial relationship between counterparties, backed by the audit trail on both sides. AdCP 3.0 does not specify a structured dispute task.
+
 ## Common Scenarios
 
 ### Single Media Buy

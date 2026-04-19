@@ -209,6 +209,7 @@ phases:
                   agent_url: "https://governance.pinnacle-agency.example"
                   list_id: "acme_outdoor_no_match_collections_v1"
 
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inventory_list_targeting_update_swap_lists_update_buy_swap_lists"
           context:
             correlation_id: "inventory_list_targeting--update_buy_swap_lists"
         validations:

@@ -294,7 +294,7 @@ phases:
             - type: "platform"
               platform: "the-trade-desk"
               account: "agency-123-ttd"
-
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_activate_platform"
           context:
             correlation_id: "signal_marketplace--activate_on_platform"
           ext:
@@ -363,7 +363,7 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://wonderstruck.salesagents.example"
-
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_activate_agent"
           context:
             correlation_id: "signal_marketplace--activate_on_agent"
           ext:

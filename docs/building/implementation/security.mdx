@@ -10,11 +10,15 @@ description: "AdCP security guide: risk classification for financial operations,
 AdCP handles financial commitments and potentially sensitive campaign data. Implementations managing real advertising budgets must implement the security controls outlined in this document.
 </Warning>
 
+<Note>
+**Looking for the *why*?** This page is the normative implementation reference — the rules a compliant agent follows. For the threat model, the layered defense narrative, and a checklist for brand IT and CISOs, see the [Security Model](/docs/building/understanding/security-model).
+</Note>
+
 ## Overview
 
 AdCP operates in a high-stakes environment where:
 - **Financial transactions** involve real advertising spend
-- **Multi-party trust** requires coordination between Principals, Publishers, and Orchestrators
+- **Multi-party trust** requires coordination between authenticated agents, publishers, and orchestrators
 - **Sensitive data** includes first-party signals, pre-launch creatives, and competitive targeting strategies
 - **Asynchronous operations** span multiple systems and protocols
 
@@ -30,7 +34,7 @@ These operations commit real advertising budgets:
 | `update_media_buy` | Modifies budgets and campaign parameters | Unauthorized modifications |
 
 **Requirements:**
-- Short-lived credentials (tokens expiring in ≤15 minutes)
+- Short-lived credentials — right-sized to the blast radius of a leaked token. ≤1 hour is a reasonable default for tokens that can commit spend; ≤15 minutes is appropriate for tokens that can commit spend above a material threshold or that cross organizational boundaries. Document and justify the chosen window rather than defaulting to the lowest number.
 - Request signing for transaction integrity
 - Multi-factor authentication or approval workflows for large budgets
 - Full audit trail with immutable logging
@@ -112,9 +116,9 @@ Feature-specific security sections extend these rules with their own lifecycle a
 // Use environment variables or secret managers
 
 // Example: Secure credential retrieval
-async function getCredentials(principalId) {
+async function getCredentials(agentId) {
   // Retrieve from secure storage (AWS KMS, Vault, etc.)
-  const encrypted = await secretManager.get(`principal/${principalId}/apiKey`);
+  const encrypted = await secretManager.get(`agent/${agentId}/apiKey`);
   return decrypt(encrypted);
 }
 ```
@@ -142,22 +146,36 @@ function validateToken(token, operationType) {
 }
 ```
 
-## Principal Isolation
+## Agent and Account Isolation
 
-### Multi-Tenant Security
+Every piece of state — media buys, creatives, idempotency cache entries, session IDs, governance tokens — is scoped to the [account](/docs/reference/glossary#a) that owns it. Cross-account reads MUST return a generic "not found" rather than leak existence. The authenticated [agent](/docs/reference/glossary#a) is how the seller knows *who is calling*; the `account` on the request is *what billing relationship the call is acting on*. Isolation requires both checks.
 
-Orchestrators managing multiple principals must enforce strict isolation:
+See the glossary for the formal definitions of [Account](/docs/reference/glossary#a) and [Agent](/docs/reference/glossary#a).
+
+### The two-step pattern
+
+Every request carries an explicit `account` (via `account_id` for explicit-account models, or the `{brand, operator}` natural key for implicit models). Correct isolation is two checks, performed in order:
+
+1. **Auth precheck** — the request's `account` MUST be in the authenticated agent's authorized set. Fail closed with a 403 or a generic "not found" (never "you are not authorized for that account" — that's an existence leak).
+2. **Resource query** — filter by the request's `account_id` as the primary key constraint. Not by the whole authorized set — only by the specific account this request is acting on.
 
 ```javascript
-// ALWAYS filter by principal_id - never query without it
-async function getMediaBuy(mediaBuyId, principalId) {
+// Two-step: precheck request account is authorized, then scope the query to it.
+async function getMediaBuy(mediaBuyId, requestAccountId, authAgent) {
+  // Step 1: auth precheck
+  if (!authAgent.authorizedAccountIds.includes(requestAccountId)) {
+    // Generic error - don't reveal whether the account exists
+    throw new NotFoundError("Media buy not found");
+  }
+
+  // Step 2: resource query scoped to the specific account
   const mediaBuy = await db.mediaBuys.findOne({
     id: mediaBuyId,
-    principal_id: principalId  // Critical: prevents cross-principal access
+    account_id: requestAccountId  // Primary filter
   });
 
   if (!mediaBuy) {
-    // Generic error - don't reveal if campaign exists for another principal
+    // Generic error - same shape as the precheck failure
     throw new NotFoundError("Media buy not found");
   }
 
@@ -165,36 +183,47 @@ async function getMediaBuy(mediaBuyId, principalId) {
 }
 ```
 
+Filtering by the *whole* authorized set on a by-ID lookup is a regression: a `get_media_buy(X)` issued under account A would succeed for a buy owned by account B if both are in the agent's authorized set. The request-supplied `account_id` is what ties a lookup to the caller's *stated* intent.
+
 ### Row-Level Security
 
-Implement row-level security in your database:
+Implement row-level security at the database layer so a bug in one handler cannot punch through the wall:
 
 ```sql
 -- PostgreSQL example
-CREATE POLICY principal_isolation ON media_buys
-  USING (principal_id = current_setting('app.current_principal')::uuid);
+-- app.current_account is set by the auth layer AFTER the precheck above succeeds
+CREATE POLICY account_isolation ON media_buys
+  USING (account_id = current_setting('app.current_account')::uuid);
 
 ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
+```
+
+For **list endpoints** (`get_media_buys` without an explicit account filter), RLS scopes to the agent's authorized set via a session variable populated at auth time:
+
+```sql
+CREATE POLICY account_isolation_list ON media_buys
+  FOR SELECT
+  USING (account_id = ANY(current_setting('app.authorized_accounts')::uuid[]));
 ```
 
 ## Request Safety
 
 ### Idempotency
 
-`idempotency_key` is **required** on every mutating AdCP task request (`create_media_buy`, `update_media_buy`, `sync_creatives`, `activate_signal`, `acquire_rights`, `creative_approval`, `update_rights`, `build_creative`, `calibrate_content`, `create_content_standards`, `update_content_standards`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `log_event`, `provide_performance_feedback`, `report_usage`, `report_plan_outcome`, `si_initiate_session`, `si_send_message`, and the `sync_*` tasks). Sellers MUST reject any mutating request that omits it with `INVALID_REQUEST`. Keys are scoped per authenticated principal — they have no meaning across principals on the same seller, or across sellers.
+`idempotency_key` is **required** on every mutating AdCP task request (`create_media_buy`, `update_media_buy`, `sync_creatives`, `activate_signal`, `acquire_rights`, `creative_approval`, `update_rights`, `build_creative`, `calibrate_content`, `create_content_standards`, `update_content_standards`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `log_event`, `provide_performance_feedback`, `report_usage`, `report_plan_outcome`, `si_initiate_session`, `si_send_message`, and the `sync_*` tasks). Sellers MUST reject any mutating request that omits it with `INVALID_REQUEST`. Keys are scoped per `(authenticated agent, account)` — they have no meaning across agents on the same seller, across accounts under the same agent, or across sellers. Scoping by both dimensions prevents cross-account cache collisions when one agent (e.g. an agency) acts on multiple accounts: an identical-looking `create_media_buy` under account A and account B is two distinct buys, never one cached response replayed across the two.
 
 This section applies only to AdCP task requests. OpenRTB bid streams have their own semantics (`BidRequest.id` is a transaction ID, not an idempotency key) and are out of scope.
 
 #### Normative seller behavior
 
 1. **Schema validation runs first.** Sellers MUST validate the request against its schema (including presence and format of `idempotency_key`) BEFORE consulting the idempotency cache. A malformed request returns `INVALID_REQUEST` without ever touching the cache — otherwise cache misses become a timing side channel that leaks whether schema validation accepted the key format. Validation errors are never cached (per rule 2).
-2. **First call is canonical.** On **task success** (`status: completed` or `status: submitted` for async operations), the seller stores the inner response payload (not the protocol envelope) keyed by `(authenticated_principal, idempotency_key)` along with a hash of the canonical request payload. For async tasks, the cached response is the `submitted` result containing `task_id`. **The cache entry is immutable** — even if the async task subsequently completes, fails, or is canceled, a replay within the TTL MUST return the originally-cached `submitted` response (with `replayed: true`), NOT the current terminal state. The buyer uses the returned `task_id` to observe current state via `tasks/get` or webhook, exactly as it would have on the first call. This preserves the byte-stable cache property and keeps the idempotency layer decoupled from async task lifecycle — sellers don't need to update cache entries when task state changes.
+2. **First call is canonical.** On **task success** (`status: completed` or `status: submitted` for async operations), the seller stores the inner response payload (not the protocol envelope) keyed by `(authenticated_agent, account_id, idempotency_key)` along with a hash of the canonical request payload. For async tasks, the cached response is the `submitted` result containing `task_id`. **The cache entry is immutable** — even if the async task subsequently completes, fails, or is canceled, a replay within the TTL MUST return the originally-cached `submitted` response (with `replayed: true`), NOT the current terminal state. The buyer uses the returned `task_id` to observe current state via `tasks/get` or webhook, exactly as it would have on the first call. This preserves the byte-stable cache property and keeps the idempotency layer decoupled from async task lifecycle — sellers don't need to update cache entries when task state changes.
 3. **Only successful responses are cached.** On any error — validation, governance denial, transport failure, internal error — the key is **not** stored. A retry re-executes. This matches buyer intent: a retry after a 5xx should try again, not replay a failure. It also prevents a buyer's malformed request from being locked into a key for its full TTL.
 4. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND an equivalent canonical-form payload (see "Payload equivalence" below) MUST return the stored inner response without re-executing side effects. The seller injects `replayed: true` onto the outgoing protocol envelope at response time — `replayed` is an envelope-level field produced by the idempotency layer, NOT part of the cached inner response. Injection at replay time keeps the cached payload byte-stable across replays regardless of envelope changes (new `timestamp`, rotated `governance_context`, etc.). Transport-specific note for MCP: MCP tool responses do not have a separate envelope slot; servers MAY expose `replayed` inside the tool result object itself (e.g., at the top of the structured return) or via a response metadata field. REST and A2A responses use the envelope field directly.
 5. **Key reuse with a different canonical payload is a conflict.** Same key, different canonical hash within the replay window MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
 6. **Expired keys are rejected explicitly.** After `replay_ttl_seconds` elapses the seller MAY evict the cache entry. A request arriving after eviction with a key the seller has seen SHOULD be rejected with `IDEMPOTENCY_EXPIRED` rather than silently treated as new — silent re-execution is exactly the double-booking footgun the key was meant to prevent. Sellers SHOULD allow a ±60s clock-skew window at the TTL boundary (the same tolerance applied to JWS `exp` elsewhere in this document) so that a retry arriving seconds after nominal expiry is still replayed from cache rather than treated as fresh. Sellers that cannot distinguish "never seen" from "evicted" (e.g., memory-only stores after restart) MAY return a success path, but buyers MUST assume at-most-once only inside the declared TTL.
 7. **Replay window is declared, not inferred.** Sellers MUST declare `capabilities.idempotency.replay_ttl_seconds` on `get_adcp_capabilities` (minimum 3600s / 1h, recommended 86400s / 24h, maximum 604800s / 7d). Clients MUST NOT fall back to an assumed default — a seller with no declaration is non-compliant and MUST be treated as unsafe for retry-sensitive operations.
-8. **Cache-growth defense.** Sellers SHOULD apply per-principal rate limits on idempotency cache inserts separately from request rate limits. A natural bound: `inserts_per_hour × replay_ttl_hours ≤ max_cache_rows_per_principal`. When that bound is crossed, sellers SHOULD return `RATE_LIMITED` rather than let the cache grow unbounded — a buyer submitting N fresh keys per second on a cheap success-path operation (e.g., `log_event`) could otherwise force unbounded storage.
+8. **Cache-growth defense.** Sellers SHOULD apply per-agent rate limits on idempotency cache inserts separately from request rate limits. A natural bound: `inserts_per_hour × replay_ttl_hours ≤ max_cache_rows_per_agent`. When that bound is crossed, sellers SHOULD return `RATE_LIMITED` rather than let the cache grow unbounded — a buyer submitting N fresh keys per second on a cheap success-path operation (e.g., `log_event`) could otherwise force unbounded storage.
 
 #### Payload equivalence
 
@@ -266,7 +295,7 @@ Leaking cached state turns key-reuse into a read oracle. An attacker who guesses
 
 #### SI send_message idempotency model
 
-`si_send_message` needs a narrower scope than other mutations because conversational turns advance session state. The key is scoped `(authenticated_principal, session_id, idempotency_key)`.
+`si_send_message` needs a narrower scope than other mutations because conversational turns advance session state. The key is scoped `(authenticated_agent, account_id, session_id, idempotency_key)`.
 
 - **Retry of turn N within the TTL returns the cached response for turn N**, even if turn N+1 has since been accepted. Idempotency returns what you did, not rewinds what the session is. The buyer's retry is asking "did my message get through" — the answer is still "yes, here's what came back."
 - **A new `si_send_message` with a fresh `idempotency_key` is a new turn**, processed against the current session state. Buyers MUST generate a fresh key per logical turn, not per HTTP attempt.
@@ -287,13 +316,15 @@ When in doubt, ask whether the serialized request bytes are the same. If yes, re
 
 **TTL boundary for persisted keys.** Some buyers persist `idempotency_key` alongside their own object (e.g., `campaign.pending_idempotency_key` in the buyer's DB) so that retries after a process restart or overnight reconcile still dedup. This works **only within the seller's declared `replay_ttl_seconds`**. Beyond the TTL, the seller will either reject the retry with `IDEMPOTENCY_EXPIRED` (good) or, if the cache was evicted, treat it as a new request (silent double-booking — the failure mode this field exists to prevent). Buyers retrying past the TTL MUST fall back to a natural-key check (e.g., query `get_media_buys` by `context.internal_campaign_id`) before resending. The `idempotency_key` guarantees at-most-once execution within the replay window, not forever. Queue-based retry systems and workflow engines with retry horizons longer than the seller's TTL MUST be designed around this — don't put a key into a dead-letter queue that replays days later without a natural-key re-check.
 
-**Keys are security-sensitive.** An `idempotency_key` is a secret capability token within its TTL — anyone who holds one and knows the original payload can replay it and read the cached response. Treat keys the way you treat session tokens: do not log them in full, do not embed them in URLs, do not share them across principals. Log prefix-only (first 8 chars of the UUID) if you need correlation. Buyers persisting `pending_idempotency_key` at rest (e.g., alongside a campaign row in the buyer's DB) MUST encrypt it with the same controls used for bearer tokens, and SHOULD purge the key after success confirmation to minimize the exposure window.
+**Keys are security-sensitive.** An `idempotency_key` is a secret capability token within its TTL — anyone who holds one and knows the original payload can replay it and read the cached response. Treat keys the way you treat session tokens: do not log them in full, do not embed them in URLs, do not share them across agents. Log prefix-only (first 8 chars of the UUID) if you need correlation. Buyers persisting `pending_idempotency_key` at rest (e.g., alongside a campaign row in the buyer's DB) MUST encrypt it with the same controls used for bearer tokens, and SHOULD purge the key after success confirmation to minimize the exposure window.
 
-**Keys MUST be unguessable.** Schema enforces `^[A-Za-z0-9_.:-]{16,255}$` and buyers MUST use UUID v4 (~122 bits of entropy) or an equivalent CSPRNG-generated value. Low-entropy keys like `retry-001` or monotonic counters turn the cache into an enumerable surface: an attacker can walk the key space and test each one against a target principal. Sellers SHOULD reject keys that fail a basic entropy check (e.g., all-zeros, repeated characters, short ASCII words) with `INVALID_REQUEST` when the authenticated principal is not individually trusted.
+**Keys MUST be unguessable.** Schema enforces `^[A-Za-z0-9_.:-]{16,255}$` and buyers MUST use UUID v4 (~122 bits of entropy) or an equivalent CSPRNG-generated value. Low-entropy keys like `retry-001` or monotonic counters turn the cache into an enumerable surface: an attacker can walk the key space and test each one against a target agent. Sellers SHOULD reject keys that fail a basic entropy check (e.g., all-zeros, repeated characters, short ASCII words) with `INVALID_REQUEST` when the authenticated agent is not individually trusted.
 
-**The three-state response (`success` / `IDEMPOTENCY_CONFLICT` / `IDEMPOTENCY_EXPIRED`) is an existence oracle for idempotency keys.** An attacker who holds a candidate key can probe it: `success` means never seen, `IDEMPOTENCY_CONFLICT` means live with a different payload, `IDEMPOTENCY_EXPIRED` means previously used. The per-principal scoping above is the primary defense — an attacker authenticated as principal A cannot probe principal B's keys. Unguessable keys are the secondary defense — an attacker who cannot guess a victim's key cannot probe the oracle usefully. Sellers MUST NOT surface `IDEMPOTENCY_EXPIRED` across principal boundaries or to unauthenticated callers. Sellers SHOULD also avoid distinguishable timing between "key exists" and "key does not exist" lookups in the idempotency layer; a constant-time floor on the negative path closes a side channel that persists even without an error-code oracle.
+**The three-state response (`success` / `IDEMPOTENCY_CONFLICT` / `IDEMPOTENCY_EXPIRED`) is an existence oracle for idempotency keys.** An attacker who holds a candidate key can probe it: `success` means never seen, `IDEMPOTENCY_CONFLICT` means live with a different payload, `IDEMPOTENCY_EXPIRED` means previously used. The per-`(agent, account)` scoping above is the primary defense — an attacker authenticated as agent A cannot probe agent B's keys, and a caller scoped to account A cannot probe account B's keys even under a shared agent credential. Unguessable keys are the secondary defense — an attacker who cannot guess a victim's key cannot probe the oracle usefully. Sellers MUST NOT surface `IDEMPOTENCY_EXPIRED` across scope boundaries or to unauthenticated callers. Sellers SHOULD also avoid distinguishable timing between "key exists" and "key does not exist" lookups in the idempotency layer; a constant-time floor on the negative path closes a side channel that persists even without an error-code oracle.
 
-**SI session scope.** For `si_send_message` the key is scoped `(authenticated_principal, session_id, idempotency_key)`. `session_id` is therefore part of the oracle surface: if session IDs are guessable, an attacker who steals one key can probe it against many sessions. SI sellers MUST generate `session_id` server-side using a CSPRNG with ≥122 bits of entropy (UUID v4 or equivalent) and MUST NOT derive it from anything observable to another principal (request sequence number, user handle, timestamps). The same idempotency_key sent with a different `session_id` is a different scope tuple — always a new request, never a conflict.
+**SI session scope.** For `si_send_message` the key is scoped `(authenticated_agent, account_id, session_id, idempotency_key)`. `session_id` is therefore part of the oracle surface: if session IDs are guessable, an attacker who steals one key can probe it against many sessions. SI sellers MUST generate `session_id` server-side using a CSPRNG with ≥122 bits of entropy (UUID v4 or equivalent) and MUST NOT derive it from anything observable to another agent (request sequence number, user handle, timestamps). The same idempotency_key sent with a different `session_id` is a different scope tuple — always a new request, never a conflict.
+
+**`account_id` entropy for cache-scope safety.** `account_id` is part of every idempotency scope tuple, so it is also part of the oracle surface: an attacker authenticated as agent A with a stolen idempotency key could probe it against candidate account IDs to enumerate accounts in A's authorized set or learn which accounts A has ever operated on. When account IDs are short sequential or semantic values (`acct_123`, `nike-us`), this is a real enumeration channel. Sellers that issue server-assigned account IDs MUST use unguessable values (UUID v4 / ULID, ≥122 bits of entropy) for any account ID that participates in an idempotency cache scope. Sellers operating under the implicit-accounts model (natural-key `{brand, operator}`) MUST hash the natural key with a seller-local salt before using it as a cache-scope component — the natural key is public by design and cannot be used directly as an oracle defense.
 
 ```javascript
 import { canonicalize } from "@truestamp/canonify"; // RFC 8785 JCS
@@ -328,7 +359,8 @@ async function createMediaBuy(request, envelope) {
   const requestHash = payloadHash(request);
 
   const existing = await db.findByIdempotencyKey({
-    principal_id: currentPrincipal.id,
+    agent_id: currentAgent.id,
+    account_id: request.account.account_id,
     idempotency_key: request.idempotency_key,
   });
 
@@ -348,7 +380,8 @@ async function createMediaBuy(request, envelope) {
     const response = await processMediaBuy(tx, request);
     // Cache ONLY on success, and cache only the inner response payload
     await tx.idempotencyKeys.insert({
-      principal_id: currentPrincipal.id,
+      agent_id: currentAgent.id,
+      account_id: request.account.account_id,
       key: request.idempotency_key,
       request_hash: requestHash,
       response,
@@ -386,7 +419,7 @@ The same string is also the primary correlation key for the governance lifecycle
 - **Out of scope (3.0)**: seller-side governance authorities. A future RFC may extend this profile to cover seller-side signed decisions declared via `adagents.json`.
 - **Out of scope (ever)**: OpenRTB bid streams. Governance attestation terminates at the AdCP media buy boundary. Threading a signed attestation through per-impression bid requests is operationally infeasible (one token, many recipients, broadcast-fan-out) and unnecessary (spend authorization happens at media buy time, not per-impression).
 
-**Dependency on Transport Signing (#2307)**: the anti-spoof property of this profile depends on sellers being able to authenticate the buyer principal independently of the token's `iss` claim — see [Buyer identity resolution](#buyer-identity-resolution) below. In 3.0 without #2307, sellers MUST either use mTLS or a pre-provisioned buyer API key to establish buyer identity; treating the request's bearer token alone as identity input to brand.json resolution is circular and does not prevent spoofing. 3.1 normatively requires #2307-style signed requests.
+**Dependency on Transport Signing (#2307)**: the anti-spoof property of this profile depends on sellers being able to establish the buyer domain independently of the token's `iss` claim — see [Buyer identity resolution](#buyer-identity-resolution) below. In 3.0 without #2307, sellers MUST either use mTLS or a pre-provisioned buyer API key to establish buyer identity; treating the request's bearer token alone as identity input to brand.json resolution is circular and does not prevent spoofing. 3.1 normatively requires #2307-style signed requests.
 
 #### AdCP JWS profile
 
@@ -403,7 +436,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 | Claim | Required | Description |
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
-| `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a principal. Implementations that log `sub` as a user ID should be aware of this. |
+| `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
@@ -424,13 +457,13 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 
 #### Buyer identity resolution
 
-The brand.json cross-check (step 13 of the verification checklist) is the anti-spoofing control. It requires sellers to know which buyer's brand.json to consult. In 3.0 sellers MUST establish the buyer principal via one of:
+The brand.json cross-check (step 13 of the verification checklist) is the anti-spoofing control. It requires sellers to know *which buyer's brand.json to consult* — the authenticated agent proves who is calling, and the resolution chain maps that agent to the buyer domain whose brand.json the seller should fetch. In 3.0 sellers MUST establish the buyer domain via one of:
 
 1. **mTLS**: buyer presents a client certificate; the certificate Subject/SAN resolves to the buyer's registered domain; the seller fetches `https://{domain}/.well-known/brand.json`.
 2. **Pre-provisioned buyer identity**: an API key or OAuth client identifier issued by the seller at onboarding, mapped to the buyer's domain in the seller's records.
 3. **Signed requests per #2307** (3.1 normative): RFC 9421 HTTP Signatures with `keyid` resolving to a buyer-declared public key in the buyer's adagents-style agent registry.
 
-Sellers MUST NOT derive the buyer identity from an unauthenticated field in the request (including the token's `iss`, `caller`, or any client-supplied header). Doing so creates a circular trust chain: the attacker proves "I am the buyer" by presenting a token signed by an attacker-controlled governance agent declared in an attacker-controlled brand.json.
+Sellers MUST NOT derive the buyer identity from an unauthenticated field in the request (including the token's `iss`, `caller`, or any client-supplied header). Doing so creates a circular trust chain: the attacker proves "I am the buyer" by presenting a token signed by an attacker-controlled governance agent declared in an attacker-controlled brand.json. In particular, **the token's `iss` is untrusted input until step 13 of the verification checklist confirms it appears as a governance-typed entry in the *authenticated* buyer's brand.json** — the authentication mechanism (mTLS, API key, or signed request) establishes the buyer domain first, and only the brand.json fetched from *that* domain is trusted to attest which governance agent (`iss`) may sign for this buyer.
 
 brand.json resolution follows one redirect (`authoritative_location` or `house` redirect variant) and stops. Sellers MUST NOT follow redirect chains.
 
@@ -438,7 +471,7 @@ brand.json resolution follows one redirect (`authoritative_location` or `house` 
 
 Sellers and auditors resolve the governance agent's public keys via JWKS (RFC 7517):
 
-1. Establish the buyer principal via the rules in [Buyer identity resolution](#buyer-identity-resolution).
+1. Establish the buyer domain via the rules in [Buyer identity resolution](#buyer-identity-resolution).
 2. Fetch the buyer's brand.json. Locate the `agents[]` entry whose `type` is `governance` and whose `url` byte-for-byte equals the token's `iss`. Reject if no matching entry exists.
 3. Use the entry's `jwks_uri` if declared. If absent, default to `{origin of iss}/.well-known/jwks.json` where origin = scheme+host+port per RFC 6454. Multi-tenant governance agents serving multiple buyers from a shared origin MUST declare explicit per-tenant `jwks_uri` so tenant key material is not pooled across the origin.
 4. Fetch the JWKS over HTTPS.
@@ -806,7 +839,7 @@ A valid signature establishes exactly one fact: **the request was issued by the 
 
 Authorization — whether this operator is permitted to act for the brand named in the request body — is a separate protocol-level check governed by the target house's brand.json `authorized_operator[]` entries. It happens whether the request is signed or not, and is outside the scope of this profile. Verifiers MUST perform both checks; this section specifies only the first.
 
-Verifiers MUST NOT derive signer identity from request body fields (e.g., a `principal_id` in the payload). The signature → JWKS → agent entry chain is the only authoritative identity path.
+Verifiers MUST NOT derive signer identity from request body fields (e.g., a `buyer_id` or `agent_id` in the payload). The signature → JWKS → agent entry chain is the only authoritative identity path.
 
 brand.json discovery follows one redirect (`authoritative_location`) and stops.
 
@@ -1077,7 +1110,7 @@ export async function verifyAdcpRequestSignature(req: Request, ctx: {
 Validate budgets before committing:
 
 ```javascript
-async function validateBudget(request, principal) {
+async function validateBudget(request, account) {
   const { budget } = request;
 
   // Check positive amount
@@ -1086,13 +1119,13 @@ async function validateBudget(request, principal) {
   }
 
   // Check against account limits
-  const limits = await getAccountLimits(principal.id);
+  const limits = await getAccountLimits(account.account_id);
   if (budget.amount > limits.daily_spend_limit) {
     throw new BudgetError('Exceeds daily spend limit');
   }
 
   // Check available balance
-  const balance = await getAvailableBalance(principal.id);
+  const balance = await getAvailableBalance(account.account_id);
   if (budget.amount > balance) {
     throw new BudgetError('Insufficient balance');
   }
@@ -1162,10 +1195,10 @@ function validateRequest(request) {
 Always use parameterized queries:
 
 ```javascript
-// GOOD: Parameterized query
+// GOOD: Parameterized query (request-supplied account_id after auth precheck)
 const result = await db.query(
-  'SELECT * FROM media_buys WHERE id = $1 AND principal_id = $2',
-  [mediaBuyId, principalId]
+  'SELECT * FROM media_buys WHERE id = $1 AND account_id = $2',
+  [mediaBuyId, request.account.account_id]
 );
 
 // BAD: String concatenation (NEVER do this)
@@ -1195,7 +1228,8 @@ function logSecurityEvent(eventType, details) {
   console.log(JSON.stringify({
     event: eventType,
     timestamp: new Date().toISOString(),
-    principal_id: details.principalId,
+    agent_id: details.agentId,
+    account_id: details.accountId,
     ip_address: details.ipAddress,
     resource: details.resource,
     outcome: details.outcome,
@@ -1215,14 +1249,14 @@ function logSecurityEvent(eventType, details) {
 ### For Publishers (AdCP Servers)
 
 - [ ] Implement strong authentication (OAuth 2.0, API keys, or mTLS)
-- [ ] Enforce principal isolation in all database queries
+- [ ] Enforce agent and account isolation in all database queries
 - [ ] Implement idempotency for financial operations
 - [ ] Validate all input with strict schema validation
 - [ ] Use TLS 1.3+ for all communications
 - [ ] Verify webhook signatures cryptographically
 - [ ] Log all security events immutably
 
-### For Principals (AdCP Clients)
+### For Buyer Agents (AdCP Clients)
 
 - [ ] Store credentials in secure key management system
 - [ ] Rotate credentials every 90 days
@@ -1230,16 +1264,17 @@ function logSecurityEvent(eventType, details) {
 - [ ] Validate responses from publishers
 - [ ] Implement alerts for unusual spending patterns
 
-### For Orchestrators (Multi-Principal Agents)
+### For Orchestrators (Multi-Agent, Multi-Account)
 
-- [ ] Store each principal's credentials separately (encrypted)
-- [ ] Enforce principal_id filtering in ALL queries
+- [ ] Store each agent's credentials separately (encrypted)
+- [ ] Enforce agent and account filtering in ALL queries
 - [ ] Use row-level security in databases
-- [ ] Log all operations with principal identity
-- [ ] Implement per-principal rate limiting
+- [ ] Log all operations with agent and account identity
+- [ ] Implement per-agent rate limiting
 
 ## Next Steps
 
+- **Security Model**: See [Security Model](/docs/building/understanding/security-model) for the threat model and the five-layer defense narrative this reference implements
 - **Webhooks**: See [Webhooks](/docs/building/implementation/webhooks) for webhook security patterns
 - **Error Handling**: See [Error Handling](/docs/building/implementation/error-handling) for authentication errors
 - **Orchestrator Design**: See [Orchestrator Design](/docs/building/implementation/orchestrator-design) for multi-tenant security

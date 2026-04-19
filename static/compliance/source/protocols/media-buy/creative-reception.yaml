@@ -150,6 +150,7 @@ phases:
                   asset_type: "url"
                   url: "https://acme-outdoor.example.com/summer-sale"
 
+          idempotency_key: "$generate:uuid_v4#creative_sales_agent_push_creatives_sync_creatives"
           context:
             correlation_id: "creative_sales_agent--sync_creatives"
         validations:

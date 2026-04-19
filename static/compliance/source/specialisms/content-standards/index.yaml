@@ -123,6 +123,7 @@ phases:
               enforcement: must
               policy: "Brand colors must match palette within 5% tolerance"
 
+          idempotency_key: "$generate:uuid_v4#content_standards_create_standards_create_content_standards"
           context:
             correlation_id: "content_standards--create_content_standards"
         validations:
@@ -251,6 +252,7 @@ phases:
               enforcement: should
               policy: "All images must have alt text"
 
+          idempotency_key: "$generate:uuid_v4#content_standards_update_standards_update_content_standards"
           context:
             correlation_id: "content_standards--update_content_standards"
         validations:
@@ -301,6 +303,7 @@ phases:
                 width: 300
                 height: 250
 
+          idempotency_key: "$generate:uuid_v4#content_standards_calibration_calibrate_content"
           context:
             correlation_id: "content_standards--calibrate_content"
         validations:
@@ -348,6 +351,7 @@ phases:
                 width: 300
                 height: 250
 
+          idempotency_key: "$generate:uuid_v4#content_standards_must_rule_violation_calibrate_must_violation"
         validations:
           - check: response_schema
             description: "Response matches calibrate-content-response.json schema"
@@ -406,6 +410,7 @@ phases:
               enforcement: must
               policy: "No stock photography"
 
+          idempotency_key: "$generate:uuid_v4#content_standards_standards_version_change_update_stricter_standards"
         validations:
           - check: response_schema
             description: "Response matches update-content-standards-response.json schema"
@@ -439,6 +444,7 @@ phases:
                 width: 300
                 height: 250
 
+          idempotency_key: "$generate:uuid_v4#content_standards_standards_version_change_calibrate_after_policy_change"
         validations:
           - check: response_schema
             description: "Response matches calibrate-content-response.json schema"
