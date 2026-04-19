@@ -79,11 +79,13 @@ flowchart TB
 
 ### Layer 1: Identity — who is actually calling?
 
-Before any other check, the seller must establish *which authenticated agent* is making the request. In AdCP 3.0 that is one of:
+Before any other check, the seller must establish *which authenticated agent* is making the request. AdCP defines three mechanisms; the version-gating determines which are permitted for which operation class:
 
-- **mTLS** — the buyer presents a client certificate resolving to a registered domain
-- **Pre-provisioned API key** — issued by the seller at onboarding, mapped to the buyer
-- **RFC 9421 signed HTTP requests** (normative in 3.1) — the buyer signs each request with a key declared in its public agent registry
+- **RFC 9421 signed HTTP requests** — the buyer signs each request with a key declared in its public agent registry. *Recommended in 3.0 for all authenticated operations; REQUIRED for mutating / financial operations in 3.1+.*
+- **mTLS** — the buyer presents a client certificate resolving to a registered domain. *Permitted for any operation in 3.0 and 3.1+.*
+- **Bearer tokens** (pre-provisioned API key or JWT) — issued by the seller at onboarding, mapped to the buyer. *Permitted in 3.0 as the effective baseline; **PROHIBITED for mutating / financial operations in 3.1+**, read-only thereafter.*
+
+The normative matrix and verifier rules live in [Authentication](/docs/building/integration/authentication#authentication-method); the 3.0 → 3.1 sunset for bearer on mutating operations is logged under [known limitations](/docs/reference/known-limitations#authentication-and-identity).
 
 **What this defends against.** An attacker cannot claim to be Acme by setting an `iss` field or a `caller` header. Identity is bound to something the attacker cannot forge (a private key, a certificate, or a pre-shared secret). Every subsequent layer uses the authenticated agent as its scope — get this wrong and the rest of the stack is decorative.
 
@@ -137,7 +139,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 
 ### Identity
 
-- [ ] How is the calling agent authenticated? (mTLS, API key, or RFC 9421 signed requests — not a header field, not `iss`)
+- [ ] How is the calling agent authenticated? (RFC 9421 signed requests, mTLS, or Bearer/API key — not a header field, not `iss`. For mutating / financial operations, plan the migration off Bearer before the 3.1 sunset — see [Authentication](/docs/building/integration/authentication#authentication-method).)
 - [ ] Where are tokens stored? (KMS / secret manager — not files, not env vars at rest)
 - [ ] Is the rotation cadence right-sized to blast radius and documented? (≤24h is a reasonable default for write-capable tokens; tighter windows are appropriate for tokens that commit spend at scale or cross organizational boundaries.)
 - [ ] What is the revocation path, and who can execute it in under an hour?
