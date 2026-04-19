@@ -68,7 +68,7 @@ Schema changes are accepted in releases under the following conditions:
 
 ### Deprecation policy
 
-Deprecated features remain functional for at least one full release cycle after deprecation. Deprecated features are never removed within the same version — a feature deprecated in 3.x will not be removed until 4.0 at the earliest.
+Deprecation notices are published at least **6 months** before any feature is removed. Deprecated features remain functional for at least one full release cycle after deprecation, and are never removed within the same major version — a feature deprecated in 3.x will not be removed until 4.0 at the earliest.
 
 Every release with schema changes is called out in the changelog, release notes, and inline documentation. Every release with schema changes ships with a migration guide.
 
@@ -107,11 +107,24 @@ Any change that requires an implementation to adapt — renamed field, required-
 
 ## Release cadence
 
-AdCP releases frequently early in a version cycle (every 6–8 weeks) and stretches toward quarterly as the version stabilizes. This gives builders fast iteration when they need it and predictability when they don't.
+AdCP publishes the following named policy so implementers can plan:
 
-Version cycles lengthen over time. The 3.x cycle is expected to last roughly a year, with 4.0 targeted for early 2027. Future version cycles may run 18 months to two years. Longer cycles mean builders can plan further ahead and invest in implementations with confidence.
+| Commitment | Window |
+|---|---|
+| **Major releases (breaking)** | minimum 18 months apart |
+| **Next major (4.0)** | target early 2027 |
+| **Support for previous major after successor GA** | minimum 12 months |
+| **Deprecation notice before removal** | minimum 6 months |
 
-The number of releases within a version is not predetermined. It depends on what builders need and what the working groups surface.
+Within a version, releases land every 6–8 weeks early in the cycle and stretch toward quarterly as the version stabilizes. Release count within a version is not fixed.
+
+### Support window for previous major
+
+When a new major ships, the prior major receives security patches for at least 12 months after successor GA. Security patches (CVE fixes and security advisories) are backported for the full window; feature work is not. The exact end-of-life date for each version is published on a per-version sunset page and linked from the transition note that accompanies the successor's GA release.
+
+Deprecation windows do not reset when a deprecated feature is modified — the original removal date holds.
+
+The v2 sunset is the documented exception to this commitment: v2 predates this policy and lacks account and governance protections that cannot be backported. Its security-only window runs through August 1, 2026 — see the [v2 sunset page](/docs/reference/v2-sunset). Future majors will not invoke this exception.
 
 ### Planned releases
 
@@ -120,6 +133,7 @@ The number of releases within a version is not predetermined. It depends on what
 | **3.0** | April 2026 | GA release |
 | **3.1** | Late June 2026 | |
 | **3.2** | Late September 2026 | |
+| **4.0** | Early 2027 | Next major — accumulated breaking changes |
 
 Further 3.x releases will be scheduled based on implementation feedback and working group priorities, with at least 8 weeks between releases.
 

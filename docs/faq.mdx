@@ -92,7 +92,7 @@ Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/l
 <Accordion title="How mature is the protocol?">
 AdCP is in the 3.0 release-candidate cycle, with 3.0 GA targeted for April 2026. The protocol design is stable and suitable for pilot implementations; schemas may still receive minor refinements based on implementer feedback before GA.
 
-The next major version (4.0) is targeted for early 2027, with future major cycles running 18 months to two years. See [Versioning & Governance](/docs/reference/versioning) for the full release cadence, stability guarantees within a version, and deprecation policy. For production use prior to 3.0 GA, we recommend implementing against [v2.5](/docs/reference/v2-sunset).
+The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. For production use prior to 3.0 GA, we recommend implementing against [v2.5](/docs/reference/v2-sunset).
 </Accordion>
 
 <Accordion title="I built against AdCP 2.5 — what changed?">
@@ -146,7 +146,7 @@ AdCP is governed by AgenticAdvertising.Org, a pending 501(c)(6) trade associatio
 The Foundation has four voting member classes with equal representation on the Board — Brands, Agencies, Publishers, and Technology Providers — targeting ten seats per class at the first elected board, replacing the current interim board at the 2026 Annual General Meeting. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
 </Accordion>
 
-<Accordion title="What is AAO's relationship with Scope3?">
+<Accordion title="Is Scope3 getting preferential treatment?">
 Scope3 contributed foundational IP and early funding to AgenticAdvertising.Org. Specifically:
 
 - **CSBS (Common Sense Brand Standards)** — formerly "Scope3 Common Sense" — was donated to AAO and is now governed by AAO. The formal donation and rename are tracked in [#2305](https://github.com/adcontextprotocol/adcp/issues/2305).
@@ -158,7 +158,7 @@ The interim board has four directors: Michael Blum (Scope3), Brian O'Kelley (Sco
 See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) for the governance framework and [agenticadvertising.org/governance](https://agenticadvertising.org/governance) for the authoritative board list, funding disclosures, and recusal rules.
 </Accordion>
 
-<Accordion title="How is AdCP secured against a compromised buyer agent?">
+<Accordion title="What if my buyer agent is compromised?">
 AdCP today uses bearer-token authentication between agents — see [authentication](/docs/building/integration/authentication) for the shipped model.
 
 AdCP 3.0 GA will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
