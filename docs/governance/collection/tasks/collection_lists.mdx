@@ -275,6 +275,7 @@ When a collection list's resolved collections change (new programs matched, rati
 
 ```json
 {
+  "idempotency_key": "clch_01HW9DEPJ5MN8Q2R4T6V8X0Z2B",
   "event": "collection_list_changed",
   "list_id": "cl_novamotors_dna_2026",
   "list_name": "Nova Motors CTV Do Not Air — 2026",
@@ -289,7 +290,7 @@ When a collection list's resolved collections change (new programs matched, rati
 }
 ```
 
-Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the `signature` before processing.
+Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the `signature` before processing and MUST dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
 
 ## Live sports
 

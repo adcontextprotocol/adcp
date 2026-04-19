@@ -130,6 +130,7 @@ After delivery, push artifacts to the orchestrator so they can validate against 
 ```json
 // Artifact webhook payload (you send this to the orchestrator)
 {
+  "idempotency_key": "artw_01HW9DGRM7NQ0S4U6W8Y0A2C4E",
   "media_buy_id": "mb_nike_reddit_q1",
   "batch_id": "batch_20250115_001",
   "timestamp": "2025-01-15T11:00:00Z",
