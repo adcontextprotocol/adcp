@@ -21,7 +21,6 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
-  clearIdempotencyCache,
 } from '../../src/training-agent/idempotency.js';
 import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
