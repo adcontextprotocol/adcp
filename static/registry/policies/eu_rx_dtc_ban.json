@@ -1,5 +1,6 @@
 {
   "policy_id": "eu_rx_dtc_ban",
+  "source": "registry",
   "version": "1.0.0",
   "name": "EU — Prescription Drug DTC Advertising Ban",
   "description": "Prohibits direct-to-consumer advertising of prescription medicines in the EU under Directive 2001/83/EC Article 88.",

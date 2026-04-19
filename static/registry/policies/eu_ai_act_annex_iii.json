@@ -1,5 +1,6 @@
 {
   "policy_id": "eu_ai_act_annex_iii",
+  "source": "registry",
   "version": "1.0.0",
   "name": "EU AI Act — Annex III High-Risk Decisions (Ad Targeting)",
   "description": "When AdCP agents make automated decisions affecting access to credit, insurance, housing, or employment opportunities, the deployer falls within EU AI Act Annex III high-risk categories. Those decisions require human oversight and cannot be made solely by an agent.",

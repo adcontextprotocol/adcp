@@ -1,5 +1,6 @@
 {
   "policy_id": "us_coppa_data_collection",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US COPPA — Children's Data Collection Restrictions",
   "description": "Restricts collection and use of personal information from children under 13 for advertising under COPPA (15 U.S.C. 6501-6506).",

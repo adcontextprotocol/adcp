@@ -1,5 +1,6 @@
 {
   "policy_id": "eu_dsa_political_targeting",
+  "source": "registry",
   "version": "1.0.0",
   "name": "EU Digital Services Act — Political Ad Targeting Restrictions",
   "description": "Prohibits targeting political advertisements using special categories of personal data under DSA Article 26 and the EU Political Advertising Regulation.",

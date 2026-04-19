@@ -1,5 +1,6 @@
 {
   "policy_id": "platform_special_ad_categories",
+  "source": "registry",
   "version": "1.0.0",
   "name": "Platform Special Ad Categories (Housing, Employment, Credit)",
   "description": "Platform-enforced restrictions on audience targeting for ads related to housing, employment, and credit, following the Meta/DOJ settlement model.",
