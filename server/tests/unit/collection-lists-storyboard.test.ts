@@ -14,10 +14,26 @@ import { clearSessions } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
+// Storyboard sample_requests declare `idempotency_key: "$generate:uuid_v4#<alias>"`
+// per the convention in static/compliance/source/universal/idempotency.yaml.
+// The runtime runner substitutes a stable UUID per alias per run; this test
+// walks the YAML directly, so it performs the same substitution here — a
+// fresh UUID per alias per test invocation. Aliases are test-local; we don't
+// need the cached cross-step reuse the runner implements.
+function resolveIdempotencyPlaceholder(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  if (!value.startsWith('$generate:uuid_v4#')) return value;
+  return `test-${randomUUID()}`;
+}
+
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
-  if (args.idempotency_key !== undefined) return args;
-  return { ...args, idempotency_key: `test-${randomUUID()}` };
+  if (args.idempotency_key === undefined) {
+    return { ...args, idempotency_key: `test-${randomUUID()}` };
+  }
+  const resolved = resolveIdempotencyPlaceholder(args.idempotency_key);
+  if (resolved === args.idempotency_key) return args;
+  return { ...args, idempotency_key: resolved };
 }
 
 const REPO_ROOT = join(process.cwd());
