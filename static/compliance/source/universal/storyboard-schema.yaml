@@ -119,3 +119,12 @@
 # value: any (expected value — string, number, or boolean; required when check is "field_value")
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
 # description: string (human-readable description of validation)
+#
+# --- Runner output ---
+#
+# How a runner MUST report validation results — including which fields a
+# failing validation carries (exact request, response, JSON Pointer, expected
+# vs. actual, schema $id, schema URL) and how skipped storyboards MUST
+# distinguish not_applicable vs. no_phases vs. missing_tool — is defined in
+# runner-output-contract.yaml. Storyboard authors SHOULD assume failures will
+# be rendered with that detail and write descriptions accordingly.
