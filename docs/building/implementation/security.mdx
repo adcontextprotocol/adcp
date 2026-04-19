@@ -1162,6 +1162,15 @@ Replay dedup for webhooks reuses the `(keyid, nonce)` key shape and TTL semantic
 - **Aggregate cache cap**: recommended `min(aggregate_memory_budget, 10,000,000)` entries across all signers. On aggregate-cap exceeded, verifiers MUST reject new signatures with `webhook_signature_rate_abuse` and SHOULD alert operators — silent eviction creates replay windows precisely when the verifier is under attack.
 - **Per-seller budget**: operators SHOULD budget per-seller by integration criticality rather than equal-weighting all sellers at 100K each. A spend-committing seller's webhook fan-in differs from a discovery-only seller's.
 
+**Cross-endpoint scoping (MUST).** A buyer that exposes more than one webhook endpoint (per-integration, per-environment, per-tenant, or per-pod in a horizontally-scaled fleet) MUST either:
+
+1. **Share a single logical replay cache across every endpoint** a given signer can reach (Redis / shared dedup service — not per-process in-memory), so that a `(keyid, nonce)` inserted by endpoint A is visible to endpoint B before step 12 runs; or
+2. **Include the canonical destination URL in the replay key**, scoping dedup to `(keyid, canonical destination URL, nonce)`. The canonical form is the `@target-uri` after normalisation per [the request-signing profile](#adcp-rfc-9421-profile) (scheme lowercased, host IDNA-normalised, default port elided, fragment stripped).
+
+Option 1 is stronger — it rejects cross-endpoint replay outright within the ±360 s window. Option 2 is weaker — the same `(keyid, nonce)` is replayable at each distinct endpoint URL, but because the signed `@target-uri` is covered by the signature, the verifier at endpoint B will reject any payload whose `@target-uri` was signed for endpoint A with `webhook_signature_digest_mismatch` (the canonical signature base fails) or `webhook_signature_invalid`. Option 2 is acceptable only when the signer's canonical `@target-uri` is per-endpoint; a signer that signs the same payload for multiple endpoints defeats option 2 and MUST use option 1.
+
+Per-pod or per-region *in-memory* replay caches without a shared tier are non-conformant for buyers that run more than one endpoint: they leave a cross-endpoint replay window bounded only by ±360 s and the attacker's ability to route to a different pod. Operators MUST either front the webhook fleet with a shared dedup tier or document and enforce the per-endpoint URL scoping above.
+
 All other rules from [Transport replay dedup](#transport-replay-dedup) apply verbatim: in-memory LRU for single-process verifiers, Redis `SETNX` at high volume, atomic insert-with-cap-check at step 13 in distributed deployments.
 
 ##### Webhook revocation and rotation
