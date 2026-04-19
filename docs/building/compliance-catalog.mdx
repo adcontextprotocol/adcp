@@ -105,7 +105,8 @@ Specialisms are grouped below by parent protocol.
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
 | `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
-| `inventory-lists` | stable | Property and collection list governance — curated inventory groupings for targeting and authorization |
+| `property-lists` | stable | Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance |
+| `collection-lists` | stable | Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety |
 | `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
 | `measurement-verification` | **preview** | Third-party measurement and verification. Parked under `governance` for 3.1; a dedicated `measurement` protocol is planned once the viewability, attribution, brand-safety, and SI-outcome surfaces split out. |
@@ -143,7 +144,7 @@ Four casings coexist in the taxonomy. Which one applies depends on where the ide
 | Casing | Layer | Example | Where it appears |
 |--------|-------|---------|------------------|
 | `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | `get_adcp_capabilities` response, JSON payloads, generated schemas |
-| `kebab-case` | Specialism IDs and compliance URLs | `sales-streaming-tv`, `inventory-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
+| `kebab-case` | Specialism IDs and compliance URLs | `sales-streaming-tv`, `property-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
 | `snake_case` | Storyboard `id:` and `category:` fields | `sales_broadcast_tv`, `audience_sync` | Compliance YAML frontmatter, runner output, test reports |
 | Prose / hyphenated | Titles and narrative | "Streaming TV", "non-guaranteed" | Catalog pages, narrative copy |
 
@@ -154,7 +155,8 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 | `sales-streaming-tv` | `channels: ['ctv']` | `sales_streaming_tv` | — |
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | `sales_broadcast_tv` | — |
 | `audience-sync` | `sync_audiences` tool | `audience_sync` | — |
-| `inventory-lists` | `property_list` tools | `inventory_lists` | — |
+| `property-lists` | `property_list` tools | `property_lists` | — |
+| `collection-lists` | `collection_list` tools | `collection_lists` | — |
 | `governance-spend-authority` | `check_governance`, `sync_plans` | `governance_spend_authority` | `governance_spend_authority/denied` |
 | `creative-generative` | `build_creative` | `creative_generative` | `creative_generative/seller` |
 | `brand-rights` | `get_brand_identity`, `acquire_rights` | `brand_rights` | `brand_rights/governance_denied` |
@@ -166,7 +168,7 @@ The case split is deliberate: `supported_protocols` is a pre-existing 3.0 field 
 The protocol an agent claims does not always match the tool family name a specialism uses:
 
 - `audience-sync` lives under the `media-buy` protocol because `sync_audiences` is a media-buy tool.
-- `inventory-lists` is the specialism name; the actual tools are named `create_property_list`, `validate_property_delivery`, etc. "Inventory list" is the prose concept; `property_list` is the tool family.
+- `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family (`create_property_list`, `validate_property_delivery`) and storyboard category `property_lists`.
 - `sales-streaming-tv` declares `channels: ['ctv']` — "Streaming TV" is the prose name; `ctv` is the wire value.
 
 `/compliance/{version}/index.json` surfaces each specialism's `required_tools` so agents can discover the tool families without reading the full storyboard YAML.

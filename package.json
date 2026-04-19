@@ -46,6 +46,7 @@
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
     "verify-version-sync": "node scripts/verify-version-sync.cjs",
+    "check:registry": "node scripts/check-registry-completeness.cjs",
     "check:seo": "node scripts/check-seo-metadata.cjs",
     "check:owned-links": "node scripts/check-owned-links.js",
     "check:images": "bash scripts/check-image-quality.sh"
@@ -68,6 +69,7 @@
     "@workos-inc/node": "^8.12.1",
     "@workos-inc/widgets": "^1.10.1",
     "axios": "^1.13.6",
+    "canonicalize": "^3.0.0",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.2.1",
     "dotenv": "^17.3.1",

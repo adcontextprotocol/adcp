@@ -157,7 +157,7 @@ A brand buying direct (no agency, no policy team) still gets:
 - Seller-side verification via governance checks
 - Full audit trail via `get_plan_audit_logs`
 
-Set `authority_level: "agent_limited"` with a `reallocation_threshold` to define guardrails. The governance agent handles the rest.
+Set a `budget.reallocation_threshold` to define guardrails on how much the agent may reallocate without human approval. The governance agent handles the rest.
 
 ### For multi-agency and holding company setups
 
@@ -214,7 +214,7 @@ Finding severity levels indicate urgency:
 - **`warning`** -- Human should review. Used on `approved` responses when action is allowed but attention is needed.
 - **`critical`** -- Action is blocked. Used on `denied` responses.
 
-When the governance agent determines that human review is required (e.g., the action exceeds the plan's `authority_level` thresholds), the task goes async — it returns standard async task lifecycle statuses and eventually resolves to `approved` or `denied` once the human acts. This integrates with the existing AdCP async task mechanism. The caller does not need special handling beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
+When the governance agent determines that human review is required (e.g., a reallocation exceeds the plan's `reallocation_threshold`, or the plan has `human_review_required: true`), the task goes async — it returns standard async task lifecycle statuses and eventually resolves to `approved` or `denied` once the human acts. This integrates with the existing AdCP async task mechanism. The caller does not need special handling beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
 
 ## Relationship to other governance domains
 

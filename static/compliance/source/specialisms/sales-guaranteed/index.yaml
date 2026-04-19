@@ -11,22 +11,32 @@ required_tools:
 requires_scenarios:
   - media_buy_seller/governance_approved
   - media_buy_seller/governance_denied
+  - media_buy_seller/governance_denied_recovery
   - media_buy_seller/governance_conditions
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
+  - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/invalid_transitions
 
 narrative: |
   You run a sell-side platform that requires human approval before guaranteed media buys go
-  live. When a buyer creates a guaranteed buy, your platform returns a submitted status with
-  an estimated completion time. A human reviewer on your side reviews the deal terms and
-  signs the IO through a URL your platform provides.
+  live. When a buyer creates a guaranteed buy, your platform returns an A2A task in the
+  submitted state with a task_id — no media_buy_id is issued yet because IO signing may fail.
+  A human reviewer on your side reviews the deal terms and signs the IO through your own
+  internal workflow.
 
-  The buyer either polls get_media_buys or configures a push_notification_config webhook to
-  receive a callback when the IO is signed. Once approved, the media buy transitions from
-  pending_approval to active and the buyer can sync creatives and monitor delivery.
+  The buyer either polls tasks/get with the task_id or configures a push_notification_config
+  webhook to receive a callback when IO signing completes. Only on task completion does your
+  platform issue a media_buy_id and the final CreateMediaBuy result; the buyer then calls
+  get_media_buys to confirm the buy is active and sync creatives.
 
   This storyboard isolates the guaranteed approval path — the async handshake between agent
-  automation and human decision-making that makes guaranteed buys work in practice.
+  automation and human decision-making that makes guaranteed buys work in practice. IO review
+  is modelled entirely at the A2A task layer; there is no interim "pending_approval" media buy
+  status (that value only exists on Account.status, not MediaBuy.status).
 
 agent:
   interaction_model: media_buy_seller
@@ -216,25 +226,24 @@ phases:
             path: "products[0].format_ids[0].id"
             description: "Format IDs include id — must be accepted back in sync_creatives"
   - id: create_buy_submitted
-    title: "Create guaranteed buy (submitted for approval)"
+    title: "Create guaranteed buy (task submitted for approval)"
     narrative: |
       The buyer creates a guaranteed media buy. Because your platform requires human
-      IO signing for guaranteed deals, the response comes back as submitted — not
-      completed. The buyer gets an estimated_completion timestamp indicating when the
-      IO review should finish. The buyer configures a webhook to be notified when the
-      status changes.
+      IO signing, the A2A task transitions to submitted rather than completed. The
+      buyer gets back a task_id and configures a webhook (or polls tasks/get) to be
+      notified when IO review finishes.
 
     steps:
       - id: create_media_buy
         title: "Create a guaranteed media buy"
         narrative: |
           The buyer commits to guaranteed products with budgets and flight dates. Your
-          platform accepts the request but does not confirm it immediately. Instead,
-          it enters an IO approval workflow and returns submitted status with an
-          estimated_completion timestamp.
+          platform accepts the request but does not create the media buy yet. Instead,
+          the A2A task enters the submitted state — no media_buy_id is issued because
+          IO signing may fail. The buyer receives a task_id to watch.
 
           The buyer includes push_notification_config so your platform can call back
-          when the IO is signed (or rejected).
+          when the IO is signed (completed) or rejected (failed).
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -242,14 +251,15 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expected: |
-          Return the media buy in submitted status:
-          - media_buy_id: your platform's identifier
-          - status: submitted (NOT completed — this requires human approval)
-          - estimated_completion: timestamp when the IO review should finish
-          - packages: the proposed line items echoed back
-          - The buyer's push_notification_config is acknowledged
+          Return an A2A task envelope in submitted state:
+          - status: submitted (task-level — the CreateMediaBuy success artifact is not yet produced)
+          - task_id / taskId: the handle the buyer polls or receives webhooks on
+          - message (optional): human-readable explanation (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
 
-          Do NOT return completed status for guaranteed buys that require IO signing.
+          Do NOT return media_buy_id or packages yet — those land on the task's final artifact
+          when the task transitions to completed. Do NOT return completed status for guaranteed
+          buys that require IO signing. Do NOT use a "pending_approval" media buy status; that
+          value is not in MediaBuy.status — IO review is modelled at the task layer only.
 
         sample_request:
           account:
@@ -287,78 +297,25 @@ phases:
             path: "context.correlation_id"
             value: "sales_guaranteed--create_media_buy"
             description: "Context correlation_id returned unchanged"
-  - id: poll_approval
-    title: "Poll for IO approval"
-    narrative: |
-      The media buy is sitting in an approval queue. A human on the seller side needs
-      to review the deal terms and sign the IO. The buyer polls get_media_buys to check
-      the current status. Your platform returns pending_approval with a setup URL where
-      the human reviewer signs the IO and a message explaining what is needed.
-
-    steps:
-      - id: get_media_buys_pending
-        title: "Check media buy status (pending approval)"
-        narrative: |
-          The buyer polls for the media buy status. Your platform returns
-          pending_approval with a setup object containing the URL where the human
-          reviewer signs the IO and a message describing what action is needed.
-        task: get_media_buys
-        schema_ref: "media-buy/get-media-buys-request.json"
-        response_schema_ref: "media-buy/get-media-buys-response.json"
-        doc_ref: "/media-buy/task-reference/get_media_buys"
-        comply_scenario: media_buy_lifecycle
-        stateful: true
-        expected: |
-          Return the media buy in pending_approval status:
-          - media_buy_id: matches the buy created earlier
-          - status: pending_approval
-          - setup.url: where the human goes to review and sign the IO
-          - setup.message: explains what the human needs to do (e.g., "Review and sign the IO for Acme Outdoor Q2 campaign")
-          - packages: line items with their current state
-          - valid_actions: what the buyer can do in this state
-
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          media_buy_ids:
-            - "mb_acme_q2_2026_guaranteed"
-
-          context:
-            correlation_id: "sales_guaranteed--get_media_buys_pending"
-        validations:
-          - check: response_schema
-            description: "Response matches get-media-buys-response.json schema"
-          - check: field_present
-            path: "media_buys[0].status"
-            description: "Media buy has a status"
-          - check: field_present
-            path: "media_buys[0].valid_actions"
-            description: "Pending approval buy includes valid actions"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_guaranteed--get_media_buys_pending"
-            description: "Context correlation_id returned unchanged"
   - id: confirm_active
     title: "Confirm active after IO signing"
     narrative: |
-      The human has reviewed the IO and signed it through the setup URL. The buyer
-      polls get_media_buys again (or received a webhook notification) and sees that the
-      media buy has transitioned from pending_approval to active. The buy
-      is now live.
+      The human on your side reviews and signs the IO through your internal workflow.
+      Your platform then transitions the A2A task to completed and emits the final
+      CreateMediaBuy result — including the newly-issued media_buy_id — to the buyer's
+      push_notification webhook (or to the next tasks/get poll). The buyer now calls
+      get_media_buys with that media_buy_id and sees the buy active. There is no
+      intermediate "pending_approval" media buy status in this flow; the buy does not
+      exist as a queryable MediaBuy until the task completes.
 
     steps:
       - id: get_media_buys_active
         title: "Check media buy status (active)"
         narrative: |
-          After the human signs the IO, the buyer checks the media buy status again.
-          Your platform returns active, indicating the buy is approved
-          and inventory is reserved.
+          After the task completes and your platform issues a media_buy_id, the buyer
+          calls get_media_buys to confirm the buy is live. Your platform returns active
+          (or pending_creatives when creatives are still outstanding), indicating the
+          buy is approved and inventory is reserved.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"

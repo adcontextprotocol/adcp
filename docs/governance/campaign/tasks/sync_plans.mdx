@@ -25,9 +25,8 @@ Push campaign plans to the governance agent. A plan defines the authorized param
         "budget": {
           "total": 500000,
           "currency": "USD",
-          "authority_level": "agent_limited",
-          "per_seller_max_pct": 40,
           "reallocation_threshold": 25000,
+          "per_seller_max_pct": 40,
           "allocations": {
             "media_buy": { "amount": 400000 },
             "rights_license": { "amount": 75000 },
@@ -128,9 +127,8 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].budget` | object | Yes | Budget parameters. |
 | `plans[].budget.total` | number | Yes | Total authorized budget. |
 | `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
-| `plans[].budget.authority_level` | enum | Yes | `agent_full`, `agent_limited`, or `human_required`. See [specification](/docs/governance/campaign/specification#budget-authority-levels). |
+| `plans[].budget.reallocation_threshold` | number | Yes | Amount the agent may reallocate without escalation. `0` requires human approval for every reallocation; a value at or above `budget.total` is effectively unlimited. See [specification](/docs/governance/campaign/specification#budget-reallocation). |
 | `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
-| `plans[].budget.reallocation_threshold` | number | No | Amount above which reallocations require escalation (for `agent_limited`). |
 | `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
 | `plans[].flight` | object | Yes | Authorized flight dates. Governed actions with dates outside this window are rejected. |

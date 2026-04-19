@@ -1,5 +1,6 @@
 {
   "policy_id": "us_ftc_health_claims",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US FTC — Health and Wellness Claim Substantiation",
   "description": "Requires competent and reliable scientific evidence for health-related advertising claims under FTC Act Section 5.",

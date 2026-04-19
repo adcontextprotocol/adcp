@@ -55,8 +55,8 @@ The platform or system making the API request to the governance agent. In AdCP d
 - **Responsibilities**: Makes API calls, handles authentication, manages the technical interaction
 - **Account**: Has technical credentials and API access to the governance agent
 
-#### Principal
-The entity on whose behalf the request is being made:
+#### Account
+The billing and policy entity on whose behalf the request is being made, identified via `account` (`account_id` or the `{brand, operator}` natural key):
 - **Examples**: Advertiser (Nike), agency (Omnicom), brand team
 - **Responsibilities**: Owns the campaign objectives and policy requirements
 - **Policies**: May have custom thresholds, blocklists, or compliance requirements
@@ -238,7 +238,7 @@ Retrieve a property list with resolved properties.
 
 #### list_property_lists
 
-List all property lists accessible to the authenticated principal.
+List property lists owned by a given account, or all property lists accessible to the authenticated agent when `account` is omitted.
 
 #### delete_property_list
 

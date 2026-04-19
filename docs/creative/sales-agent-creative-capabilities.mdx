@@ -16,7 +16,10 @@ A sales agent declares Creative Protocol support in `get_adcp_capabilities`:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [3] },
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["media_buy", "creative"],
   "media_buy": {
     "features": {

@@ -1,0 +1,73 @@
+---
+title: AI Disclosure
+description: "How AdCP and AgenticAdvertising.org use AI — what's AI-authored, what's AI-assisted, model and provider disclosure, and how to request human review."
+"og:title": "AdCP — AI Disclosure"
+---
+
+AgenticAdvertising.org uses AI extensively to write content, generate imagery, ship code, and run operations. This page names every surface where that happens, the models behind it, and how to request human review.
+
+---
+
+## What's AI-authored
+
+These surfaces are written primarily by an AI agent operated by AAO, with human editorial oversight:
+
+- **Addie** — AAO's teaching assistant and chat agent. All Addie chat responses are AI-generated.
+- **Sage** — the AdCP protocol explainer agent. Protocol Q&A in the docs chat is answered by Sage.
+- **The Prompt** — our biweekly newsletter, authored in first person as Addie. The Prompt is editorial and is also a marketing surface for AAO; read it as both.
+- **The Build** — our triweekly technical newsletter, authored by Sage.
+- **Member portraits** — graphic-novel-style illustrations for members are AI-generated.
+- **Certification grading** — Addie grades the free Basics track against a fixed rubric of 3–5 required demonstrations per module, and also grades the paid Practitioner and Specialist tracks. AAO is both the issuer and the grader of these credentials; we disclose this conflict rather than deny it, and human review of any grading decision is available on request (see below).
+
+## What's AI-assisted
+
+Most of the rest of AAO's public surface is built with AI coding assistants, reviewed by humans before publishing. This includes:
+
+- The protocol schemas and documentation (this site)
+- The open-source reference implementations
+- The admin tools operated by AAO staff
+- Most public-facing code in the [adcontextprotocol](https://github.com/adcontextprotocol) organization
+
+We don't mark individual paragraphs or pull requests as AI-assisted — the default is that AI tools were involved.
+
+## Model and provider disclosure
+
+- **Addie and Sage** run on Anthropic Claude models.
+- **Image generation** (member portraits, illustrations) uses Google Gemini image models.
+- **Protocol development** uses Claude Code and other agentic development tools.
+
+## Data handling
+
+- **Addie and Sage chat** — conversations are logged to improve teaching quality and to allow appeals on grading decisions. Logs are retained by AAO and not used by model providers for training. EU/UK residents: chat inputs are processed on our behalf by Anthropic; see our [privacy policy](https://agenticadvertising.org/api/agreement?type=privacy_policy) for the current data-processor chain and transfer mechanism.
+- **Grading decisions** — the required-demonstrations, the Addie interaction that produced the credit, and the resulting assessment are retained so that a learner (or a regulator) can reconstruct the decision.
+- **Member portraits** — AI-generated images are produced from member-provided inputs; the prompt and generated image are retained on the member's profile.
+
+## Human review
+
+You can request human review on any AI-generated surface. Target turnaround is **five business days**; complex cert appeals may take longer.
+
+- **Certification grading** — if you believe Addie's assessment of your work was wrong, email [help@agenticadvertising.org](mailto:help@agenticadvertising.org) for human review by AAO staff.
+- **Content corrections** — factual errors in Addie's teaching, Sage's protocol explanations, or any AI-authored content can be reported via [GitHub issues](https://github.com/adcontextprotocol/adcp/issues) or [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
+- **Protocol guidance** — Sage is not a substitute for legal or regulatory advice. For compliance-sensitive questions, consult qualified counsel.
+
+## Regulatory posture
+
+This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel. Specific obligations that go beyond what this page provides:
+
+- **EU AI Act Art 50(2)** and **CA SB 942** require machine-readable provenance (e.g., C2PA manifests) on AI-generated images and video. We do not currently apply C2PA manifests to member portraits; adding provenance metadata is on the roadmap.
+- **FTC Endorsement Guides** apply to endorsements and testimonials for compensation. They are not activated by general AI authorship; we call them out here for completeness, not because we claim they are satisfied by this page alone.
+
+If you believe a specific AI surface falls short of an applicable standard, let us know.
+
+## Institutional conflicts
+
+AI authorship and evaluation by AAO intersect with AAO's broader governance in ways readers should know:
+
+- AAO is both the issuer and the grader of its certifications (Addie evaluates coursework and grants credentials AAO sells).
+- AAO's founder's other company (Scope3) contributed funding and foundational IP — see the [FAQ entry](/docs/faq#what-is-aao-s-relationship-with-scope3) for the full relationship.
+
+The governance framework, board composition, and recusal rules are set out in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md), with the authoritative board list and funding disclosures at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+
+---
+
+Material changes to how AI is used at AAO will be reflected on this page.

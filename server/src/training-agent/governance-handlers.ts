@@ -21,15 +21,122 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 
+// Categories that require human oversight per GDPR Art 22 / EU AI Act Annex III.
+// See static/registry/policy-categories/*.json (requires_human_review: true).
+// Exported for parity tests against the registry to detect drift.
+export const HUMAN_REVIEW_CATEGORIES = new Set([
+  'fair_housing',
+  'fair_lending',
+  'fair_employment',
+  'pharmaceutical_advertising',
+]);
+
+// Registry policies that carry requires_human_review: true.
+// Exported for parity tests.
+export const HUMAN_REVIEW_POLICY_IDS = new Set([
+  'eu_ai_act_annex_iii',
+]);
+
+// Brand industries that commonly fall under Annex III even when a buyer omits policy_categories.
+// Surfaced as an advisory finding, not a hard trigger — Annex III attaches to the decision, not the company.
+export const HUMAN_REVIEW_INDUSTRIES = new Set([
+  'consumer_finance', 'banking', 'mortgage', 'credit',
+  'life_insurance', 'health_insurance', 'insurance',
+  'recruitment', 'staffing',
+  'real_estate', 'property_management', 'housing',
+]);
+
+/**
+ * Returns the list of reasons a plan requires human review under Art 22 / Annex III.
+ * Governance agents MUST set plan.human_review_required = true when this list is non-empty.
+ * Buyers cannot opt out by omitting the flag — the cascade is authoritative.
+ *
+ * Hard triggers: policy_categories, policy_ids, custom_policies. Brand industries are
+ * treated separately as an advisory signal (see annexIIIIndustrySignals) — a CPG holding
+ * company with industries: ['consumer_finance'] running a corporate-branding campaign
+ * shouldn't be force-escalated; Annex III attaches to the decision, not the company.
+ */
+function resolveHumanReviewTriggers(plan: SyncPlanInput): string[] {
+  const triggers: string[] = [];
+
+  for (const cat of plan.policy_categories ?? []) {
+    if (HUMAN_REVIEW_CATEGORIES.has(cat)) {
+      triggers.push(`policy_category:${cat}`);
+    }
+  }
+
+  for (const pid of plan.policy_ids ?? []) {
+    if (HUMAN_REVIEW_POLICY_IDS.has(pid)) {
+      triggers.push(`policy_id:${pid}`);
+    }
+  }
+
+  for (const cp of plan.custom_policies ?? []) {
+    if (cp && typeof cp === 'object' && !Array.isArray(cp) && cp.requires_human_review === true) {
+      triggers.push(`custom_policy:${cp.policy_id ?? 'unnamed'}`);
+    }
+  }
+
+  return triggers;
+}
+
+/**
+ * Returns brand industries that commonly fall under Annex III but should surface as
+ * advisory findings rather than hard auto-flips. A buyer whose brand.industries includes
+ * 'consumer_finance' running a non-lending campaign should see the warning and either
+ * declare policy_categories explicitly or accept that the governance agent is flagging
+ * a potentially relevant regime.
+ */
+function annexIIIIndustrySignals(plan: SyncPlanInput): string[] {
+  const matches: string[] = [];
+  for (const industry of plan.brand?.industries ?? []) {
+    if (HUMAN_REVIEW_INDUSTRIES.has(industry)) {
+      matches.push(industry);
+    }
+  }
+  return matches;
+}
+
+/**
+ * Capture a snapshot of the current plan state for append-only revision history.
+ * Returned value is a minimal diff-friendly shape; not exposed on the wire.
+ */
+function snapshotRevision(state: GovernancePlanState): GovernancePlanState['revisionHistory'][number] {
+  return {
+    version: state.version,
+    syncedAt: state.syncedAt,
+    humanReviewRequired: state.humanReviewRequired,
+    humanReviewAutoFlippedBy: state.humanReviewAutoFlippedBy,
+    humanOverride: state.humanOverride ? {
+      reason: state.humanOverride.reason,
+      approver: state.humanOverride.approver,
+      approvedAt: state.humanOverride.approvedAt,
+    } : undefined,
+    mode: state.mode,
+    reallocationThreshold: state.budget.reallocationThreshold,
+    reallocationUnlimited: state.budget.reallocationUnlimited,
+    policyCategories: state.policyCategories,
+    policyIds: state.policyIds,
+  };
+}
+
 interface SyncPlansInput extends ToolArgs {
   plans: SyncPlanInput[];
 }
 
 interface SyncPlanInput {
   plan_id: string;
-  brand: BrandReference;
+  brand: BrandReference & { industries?: string[]; data_subject_contestation?: { url?: string; email?: string } };
   objectives: string;
-  budget: { total: number; currency: string; authority_level: string; per_seller_max_pct?: number; reallocation_threshold?: number; allocations?: Record<string, { amount?: number; max_pct?: number }> };
+  budget: {
+    total: number;
+    currency: string;
+    reallocation_threshold?: number;
+    reallocation_unlimited?: boolean;
+    per_seller_max_pct?: number;
+    allocations?: Record<string, { amount?: number; max_pct?: number }>;
+  };
+  human_review_required?: boolean;
   flight: { start: string; end: string };
   channels?: { required?: string[]; allowed?: string[]; mix_targets?: Record<string, { min_pct?: number; max_pct?: number }> };
   countries?: string[];
@@ -37,8 +144,16 @@ interface SyncPlanInput {
   delegations?: Array<{ agent_url: string; authority: string; budget_limit?: { amount: number; currency: string }; markets?: string[]; expires_at?: string }>;
   approved_sellers?: string[] | null;
   policy_ids?: string[];
-  custom_policies?: string[];
+  policy_categories?: string[];
+  custom_policies?: Array<{
+    policy_id?: string;
+    policy: string;
+    description?: string;
+    enforcement?: 'must' | 'should' | 'may';
+    requires_human_review?: boolean;
+  }>;
   mode?: GovernancePlanState['mode'];
+  human_override?: { reason: string; approver: string; approved_at?: string };
 }
 
 interface CheckGovernanceInput extends ToolArgs {
@@ -129,15 +244,16 @@ export const GOVERNANCE_TOOLS = [
             properties: {
               plan_id: { type: 'string' },
               brand: { type: 'object' },
-              objectives: { type: 'string' },
+              objectives: { type: 'string', maxLength: 2000, description: 'Natural language campaign objectives. Treated as caller-untrusted — MUST be truncated or sanitized before inclusion in governance-agent LLM prompts.' },
               budget: {
                 type: 'object',
+                description: 'Budget with exactly one of reallocation_threshold or reallocation_unlimited.',
                 properties: {
                   total: { type: 'number' },
                   currency: { type: 'string' },
-                  authority_level: { type: 'string', enum: ['agent_full', 'agent_limited', 'human_required'] },
+                  reallocation_threshold: { type: 'number', minimum: 0, description: 'Amount above which reallocations require human escalation. Denominated in currency.' },
+                  reallocation_unlimited: { type: 'boolean', description: 'Set to true for deliberate full-autonomy declarations. Mutually exclusive with reallocation_threshold.' },
                   per_seller_max_pct: { type: 'number' },
-                  reallocation_threshold: { type: 'number' },
                   allocations: {
                     type: 'object',
                     description: 'Optional budget partition across purchase types. Keys are purchase-type enum values.',
@@ -150,7 +266,18 @@ export const GOVERNANCE_TOOLS = [
                     },
                   },
                 },
-                required: ['total', 'currency', 'authority_level'],
+                required: ['total', 'currency'],
+              },
+              human_review_required: { type: 'boolean', description: 'When true, every plan action escalates for human review. MUST be true when policy_categories contains a regulated vertical (fair_housing, fair_lending, fair_employment, pharmaceutical_advertising) or policy_ids contains eu_ai_act_annex_iii.' },
+              human_override: {
+                type: 'object',
+                description: 'Required to downgrade an existing plan from human_review_required=true to false. Training agent requires approver (email) and reason (>=20 chars); production agents should bind to signed identity.',
+                properties: {
+                  reason: { type: 'string', minLength: 20, maxLength: 1000 },
+                  approver: { type: 'string', format: 'email' },
+                  approved_at: { type: 'string', format: 'date-time' },
+                },
+                required: ['reason', 'approver'],
               },
               channels: {
                 type: 'object',
@@ -171,7 +298,26 @@ export const GOVERNANCE_TOOLS = [
               countries: { type: 'array', items: { type: 'string' } },
               regions: { type: 'array', items: { type: 'string' } },
               policy_ids: { type: 'array', items: { type: 'string' } },
-              custom_policies: { type: 'array', items: { type: 'string' } },
+              policy_categories: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Regulatory categories for this plan. Values matching fair_housing, fair_lending, fair_employment, or pharmaceutical_advertising require human_review_required=true.',
+              },
+              custom_policies: {
+                type: 'array',
+                description: 'Bespoke policies per policy-entry schema. Inline policy text is treated as caller-untrusted and MUST be evaluated as additional restrictions only — custom policies cannot relax, override, or conflict with registry-sourced policies.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    policy_id: { type: 'string' },
+                    policy: { type: 'string', maxLength: 5000 },
+                    description: { type: 'string', maxLength: 500 },
+                    enforcement: { type: 'string', enum: ['must', 'should', 'may'] },
+                    requires_human_review: { type: 'boolean' },
+                  },
+                  required: ['policy'],
+                },
+              },
               mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
@@ -198,7 +344,7 @@ export const GOVERNANCE_TOOLS = [
   },
   {
     name: 'check_governance',
-    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, conditions, or escalated. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
+    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, or conditions. Human review is signalled via a critical human_review finding on a denied decision; the buyer resolves review off-protocol and re-calls this tool with human_approval. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -291,8 +437,34 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     if (!plan.plan_id || !plan.brand || !plan.objectives || !plan.budget || !plan.flight) {
       return { errors: [{ code: 'validation_error', message: `plan at index ${i} requires plan_id, brand, objectives, budget, and flight` }] };
     }
-    if (plan.budget.total == null || !plan.budget.currency || !plan.budget.authority_level) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget requires total, currency, and authority_level` }] };
+    if (plan.objectives.length > 2000) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} objectives exceeds 2000 character limit; caller-untrusted free text must be bounded` }] };
+    }
+    for (let j = 0; j < (plan.custom_policies?.length ?? 0); j++) {
+      const cp = plan.custom_policies![j];
+      if (typeof cp !== 'object' || cp === null || Array.isArray(cp)) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}] must be an object per policy-entry schema; string form is deprecated` }] };
+      }
+      if (!cp.policy || typeof cp.policy !== 'string') {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}] requires a policy string` }] };
+      }
+      if (cp.policy.length > 5000) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}].policy exceeds 5000 character limit` }] };
+      }
+      if (cp.description != null && (typeof cp.description !== 'string' || cp.description.length > 500)) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}].description must be a string ≤ 500 characters` }] };
+      }
+    }
+    if (typeof plan.budget.total !== 'number' || !plan.budget.currency) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget requires total (number) and currency (string)` }] };
+    }
+    const hasThreshold = typeof plan.budget.reallocation_threshold === 'number';
+    const hasUnlimited = plan.budget.reallocation_unlimited === true;
+    if (hasThreshold === hasUnlimited) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget must specify exactly one of reallocation_threshold (number >= 0) or reallocation_unlimited (true)` }] };
+    }
+    if (hasThreshold && plan.budget.reallocation_threshold! < 0) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget.reallocation_threshold must be >= 0` }] };
     }
     if (!plan.flight.start || !plan.flight.end) {
       return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} flight requires start and end` }] };
@@ -303,11 +475,60 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget.allocations has invalid keys: ${invalidKeys.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
       }
     }
+
+    // Auto-flip human_review_required from triggering policy_categories, policy_ids,
+    // custom_policies, brand industries. This is the MUST rule from the obligations doc.
+    const resolvedTriggers = resolveHumanReviewTriggers(plan);
+    const effectiveHumanReview = plan.human_review_required === true || resolvedTriggers.length > 0;
+
+    // Cross-field schema invariant: if policy_categories contains a regulated vertical,
+    // human_review_required MUST be true. Reject explicit false.
+    if (plan.human_review_required === false && resolvedTriggers.length > 0) {
+      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} declares ${resolvedTriggers.join(', ')} which require human_review_required=true; cannot set false` }] };
+    }
+
+    // Revision safety: prior plan with humanReviewRequired=true cannot be downgraded
+    // to false on re-sync unless the caller provides a verified human_override artifact.
+    const existing = session.governancePlans.get(plan.plan_id);
+    if (existing?.humanReviewRequired && !effectiveHumanReview) {
+      if (!plan.human_override) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} previously had human_review_required=true; downgrading requires a human_override artifact` }] };
+      }
+      const override = plan.human_override;
+      if (!override.reason || override.reason.length < 20) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.reason must be at least 20 characters describing the rationale for downgrade` }] };
+      }
+      if (!override.approver || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(override.approver)) {
+        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approver must be a valid email address. Production governance agents SHOULD bind this to an authenticated identity.` }] };
+      }
+      if (override.approved_at) {
+        const approvedAt = new Date(override.approved_at);
+        if (isNaN(approvedAt.getTime())) {
+          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at must be a valid ISO 8601 timestamp` }] };
+        }
+        const ageMs = Date.now() - approvedAt.getTime();
+        if (ageMs > 24 * 60 * 60 * 1000) {
+          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at is older than 24 hours; fresh approval required for each downgrade` }] };
+        }
+        if (ageMs < -60 * 1000) {
+          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at is in the future` }] };
+        }
+      }
+    }
   }
 
   for (const plan of input.plans) {
     const existing = session.governancePlans.get(plan.plan_id);
     const version = existing ? existing.version + 1 : 1;
+
+    const resolvedTriggers = resolveHumanReviewTriggers(plan);
+    const effectiveHumanReview = plan.human_review_required === true || resolvedTriggers.length > 0;
+    const hasUnlimited = plan.budget.reallocation_unlimited === true;
+    const reallocationThreshold = hasUnlimited
+      ? plan.budget.total
+      : (plan.budget.reallocation_threshold as number);
+
+    const syncedAt = new Date().toISOString();
 
     const planState: GovernancePlanState = {
       planId: plan.plan_id,
@@ -318,13 +539,26 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       budget: {
         total: plan.budget.total,
         currency: plan.budget.currency,
-        authorityLevel: plan.budget.authority_level,
+        reallocationThreshold,
+        reallocationUnlimited: hasUnlimited,
         perSellerMaxPct: plan.budget.per_seller_max_pct,
-        reallocationThreshold: plan.budget.reallocation_threshold,
         allocations: plan.budget.allocations ? Object.fromEntries(
           Object.entries(plan.budget.allocations).map(([k, v]) => [k, { amount: v.amount, maxPct: v.max_pct }]),
         ) : undefined,
       },
+      humanReviewRequired: effectiveHumanReview,
+      // Union new triggers with prior triggers so re-sync doesn't lose audit history.
+      // If caller clears triggers but keeps humanReviewRequired=true (or override blocks
+      // the downgrade), we preserve the original reasons for the flip.
+      humanReviewAutoFlippedBy: Array.from(new Set([
+        ...(existing?.humanReviewAutoFlippedBy ?? []),
+        ...resolvedTriggers,
+      ])),
+      humanOverride: plan.human_override ? {
+        reason: plan.human_override.reason,
+        approver: plan.human_override.approver,
+        approvedAt: plan.human_override.approved_at || syncedAt,
+      } : existing?.humanOverride,
       channels: plan.channels ? {
         required: plan.channels.required,
         allowed: plan.channels.allowed,
@@ -345,11 +579,15 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       })),
       approvedSellers: plan.approved_sellers,
       policyIds: plan.policy_ids,
+      policyCategories: plan.policy_categories,
       customPolicies: plan.custom_policies,
       mode: plan.mode || 'enforce',
       committedBudget: existing?.committedBudget ?? 0,
       committedByType: existing?.committedByType ?? {},
-      syncedAt: new Date().toISOString(),
+      syncedAt,
+      revisionHistory: existing
+        ? [...existing.revisionHistory, snapshotRevision(existing)]
+        : [],
     };
 
     session.governancePlans.set(plan.plan_id, planState);
@@ -417,7 +655,45 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const findings: GovernanceFinding[] = [];
   const conditions: GovernanceCondition[] = [];
   const categoriesEvaluated: string[] = [];
-  let shouldEscalate = false;
+  // When a human must approve before the action can proceed, the training agent
+  // records a critical human_review finding and denies the check. Human approval
+  // is resolved off-protocol; the buyer then calls check_governance again with
+  // human_approval in the request, which clears this branch.
+  let humanReviewRequired = false;
+  let humanReviewReason: string | null = null;
+
+  // Annex III / Art 22 contestation-endpoint check.
+  // When human review is required, the brand MUST expose data_subject_contestation
+  // (on brand.json or inline on the plan's brand ref). Missing = critical finding.
+  if (plan.humanReviewRequired) {
+    categoriesEvaluated.push('data_subject_contestation');
+    const brand = plan.brand as BrandReference & { data_subject_contestation?: { url?: string; email?: string } };
+    const contestation = brand?.data_subject_contestation;
+    if (!contestation || (!contestation.url && !contestation.email)) {
+      findings.push({
+        categoryId: 'data_subject_contestation',
+        severity: 'critical',
+        explanation: 'Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Art 22(3) requires a discoverable contact point for the data subject to request human intervention, express their view, and contest the decision. Set brand.data_subject_contestation in brand.json.',
+      });
+    }
+  }
+
+  // Advisory finding when brand.industries suggest Annex III but the plan did not
+  // declare a triggering policy_category / policy_id. Buyers running a corporate
+  // branding campaign on a regulated-industry brand see this and decide whether
+  // to set policy_categories explicitly.
+  if (!plan.humanReviewRequired) {
+    const industryPlan = { brand: plan.brand } as SyncPlanInput;
+    const signals = annexIIIIndustrySignals(industryPlan);
+    if (signals.length > 0) {
+      categoriesEvaluated.push('annex_iii_industry_advisory');
+      findings.push({
+        categoryId: 'annex_iii_industry_advisory',
+        severity: 'warning',
+        explanation: `brand.industries includes ${signals.join(', ')} — sectors commonly regulated under GDPR Art 22 / EU AI Act Annex III. If this campaign makes targeting decisions affecting credit, insurance pricing, recruitment, or housing access, set plan.policy_categories explicitly to trigger human_review_required. This is informational; the plan proceeds.`,
+      });
+    }
+  }
 
   // Delegation authority check
   categoriesEvaluated.push('delegation_authority');
@@ -503,10 +779,19 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         }
       }
 
-      // Escalation for human_required authority
-      if (plan.budget.authorityLevel === 'human_required' && payloadBudget > plan.budget.total * 0.5) {
-        shouldEscalate = true;
+      // Commitment exceeds the reallocation threshold — requires human approval.
+      if (payloadBudget > plan.budget.reallocationThreshold) {
+        humanReviewRequired = true;
+        humanReviewReason =
+          `Budget commitment exceeds reallocation_threshold of $${plan.budget.reallocationThreshold}.`;
       }
+    }
+
+    // Plan-level human review (Annex III / Art 22) — every action needs human approval regardless of spend.
+    if (plan.humanReviewRequired) {
+      humanReviewRequired = true;
+      humanReviewReason =
+        'Plan has human_review_required = true; every action requires human approval.';
     }
 
     // Seller concentration
@@ -697,13 +982,25 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
 
-  // Determine status
+  // Human review required → add a critical finding so the derived status is 'denied'.
+  // AdCP v3 has three terminal statuses (approved|denied|conditions). Human review is
+  // signalled via a critical finding that the buyer resolves off-protocol, then retries
+  // the check with the human's approval.
+  if (humanReviewRequired) {
+    categoriesEvaluated.push('human_review');
+    findings.push({
+      categoryId: 'human_review',
+      severity: 'critical',
+      explanation:
+        (humanReviewReason ?? 'Action requires human approval.') +
+        ' Resolve off-protocol and re-call check_governance with human_approval.',
+    });
+  }
+
   const criticalFindings = findings.filter(f => f.severity === 'critical');
   let status: GovernanceCheckState['status'];
 
-  if (shouldEscalate) {
-    status = 'escalated';
-  } else if (criticalFindings.length > 0) {
+  if (criticalFindings.length > 0) {
     status = 'denied';
   } else if (conditions.length > 0) {
     status = 'conditions';
@@ -711,12 +1008,23 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     status = 'approved';
   }
 
-  // Apply governance mode
+  // Apply governance mode — but mode CANNOT neuter human_review_required.
+  // Annex III / Art 22 obligations override advisory/audit downgrades.
   const mode = plan.mode;
-  if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
-    status = 'approved';
-  } else if (mode === 'audit') {
-    status = 'approved';
+  if (!plan.humanReviewRequired) {
+    if (mode === 'advisory' && (status === 'denied' || status === 'conditions')) {
+      status = 'approved';
+    } else if (mode === 'audit') {
+      status = 'approved';
+    }
+  } else if (mode !== 'enforce') {
+    // In advisory/audit mode on a human-review plan, note that mode downgrade was suppressed.
+    categoriesEvaluated.push('human_review_override');
+    findings.push({
+      categoryId: 'human_review_override',
+      severity: 'info',
+      explanation: `plan.mode is '${mode}' but plan.human_review_required=true — mode downgrades are disabled for Annex III / Art 22 plans. Action remains '${status}'.`,
+    });
   }
 
   const now = new Date();
@@ -724,7 +1032,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     ? new Date(now.getTime() + 60 * 60 * 1000).toISOString()
     : undefined;
 
-  const explanation = buildExplanation(status, findings, conditions, shouldEscalate);
+  const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
   // Generate or reuse governance_context for lifecycle correlation
@@ -743,10 +1051,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     phase,
     findings,
     conditions: conditions.length > 0 ? conditions : undefined,
-    escalation: shouldEscalate ? {
-      reason: `Budget commitment exceeds 50% of plan total and authority_level is human_required.`,
-      action: 'require_human_approval',
-    } : undefined,
     explanation,
     mode,
     categoriesEvaluated: [...new Set(categoriesEvaluated)],
@@ -954,14 +1258,25 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
       ...(data.seller_reference && { seller_reference: data.seller_reference }),
     }));
 
-    // Summary statistics
-    const statusCounts = { approved: 0, denied: 0, conditions: 0, escalated: 0 };
+    // Summary statistics. v3 governance has three terminal statuses (approved|denied|conditions);
+    // human review is tracked via a supplementary `human_reviewed` count (same checks as
+    // denied/approved but flagged as having gone through review). We identify them by the
+    // `human_review` finding category the handler attaches when a plan demands human approval.
+    const statusCounts: { approved: number; denied: number; conditions: number; human_reviewed: number } = {
+      approved: 0,
+      denied: 0,
+      conditions: 0,
+      human_reviewed: 0,
+    };
     for (const check of checks) {
       statusCounts[check.status]++;
+      if (check.findings.some(f => f.categoryId === 'human_review')) {
+        statusCounts.human_reviewed++;
+      }
     }
 
     const totalChecks = checks.length;
-    const escalationRate = totalChecks > 0 ? statusCounts.escalated / totalChecks : 0;
+    const escalationRate = totalChecks > 0 ? statusCounts.human_reviewed / totalChecks : 0;
     const autoApprovalRate = totalChecks > 0 ? statusCounts.approved / totalChecks : 0;
 
     const allFindings = [
@@ -974,11 +1289,14 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
       : undefined;
 
     const escalations = checks
-      .filter(c => c.status === 'escalated')
-      .map(c => ({
-        check_id: c.checkId,
-        reason: c.escalation?.reason as string ?? 'Escalated per policy',
-      }));
+      .filter(c => c.findings.some(f => f.categoryId === 'human_review'))
+      .map(c => {
+        const humanReviewFinding = c.findings.find(f => f.categoryId === 'human_review');
+        return {
+          check_id: c.checkId,
+          reason: humanReviewFinding?.explanation ?? 'Escalated per policy',
+        };
+      });
 
     const summary = {
       checks_performed: totalChecks,
@@ -1129,11 +1447,8 @@ function buildExplanation(
   status: string,
   findings: GovernanceFinding[],
   conditions: GovernanceCondition[],
-  escalated: boolean,
+  humanReviewRequired: boolean,
 ): string {
-  if (escalated) {
-    return 'Action escalated for human review — budget commitment exceeds threshold for human_required authority level.';
-  }
   if (status === 'approved' && findings.length === 0) {
     return 'All governance checks passed.';
   }
@@ -1145,7 +1460,8 @@ function buildExplanation(
   }
   if (status === 'denied') {
     const reasons = findings.filter(f => f.severity === 'critical').map(f => f.explanation);
-    return `Denied: ${reasons.join('; ')}`;
+    const prefix = humanReviewRequired ? 'Denied pending human review' : 'Denied';
+    return `${prefix}: ${reasons.join('; ')}`;
   }
   return `Governance check completed with status: ${status}.`;
 }
@@ -1177,7 +1493,6 @@ function buildCheckResponse(check: GovernanceCheckState) {
         reason: c.reason,
       })),
     }),
-    ...(check.escalation && { escalation: check.escalation }),
     ...(check.expiresAt && { expires_at: check.expiresAt }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

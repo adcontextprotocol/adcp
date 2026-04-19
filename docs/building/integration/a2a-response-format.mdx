@@ -643,15 +643,11 @@ A2A's `taskId` enables retry detection. Agents SHOULD:
         "data": {
           "media_buy_id": "mb_pending_456",
           "packages": [
-            {
-              "package_id": "pkg_pending_001",
-              "status": "pending_approval"
-            },
-            {
-              "package_id": "pkg_pending_002",
-              "status": "pending_approval"
-            }
+            { "package_id": "pkg_pending_001" },
+            { "package_id": "pkg_pending_002" }
           ],
+          "total_budget": 150000,
+          "currency": "USD",
           "creative_deadline": "2025-02-01T23:59:59Z"
         }
       }

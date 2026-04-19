@@ -315,11 +315,20 @@ The data type of a signal's values: `binary` (user matches or doesn't), `categor
 **Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.
 
+**Specialism**
+A specific capability claim an agent declares in `get_adcp_capabilities.specialisms`. Each specialism has a wire ID in `kebab-case` (e.g. `sales-guaranteed`, `property-lists`) and a matching storyboard bundle published at `/compliance/{version}/specialisms/{id}/`. The AAO compliance runner executes the matching storyboards to verify the claim. See [Compliance Catalog](/docs/building/compliance-catalog) for the list of specialism IDs; claim one by adding it to your `get_adcp_capabilities.specialisms` array, then run [Validate Your Agent](/docs/building/validate-your-agent) to see how the runner maps it to storyboards.
+
 **Sponsored Intelligence (SI)**
 An open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints. SI handles the engagement; the Agentic Commerce Protocol (ACP) handles transactions. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) for details.
 
 **SSP (Supply-Side Platform)**
 A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.
+
+**Storyboard**
+A compliance test bundle that verifies a protocol baseline or [specialism](#specialism) claim. Each storyboard is a YAML file under `/compliance/{version}/` that declares an `id`, phases of test steps, sample requests, and validations the agent must pass. Storyboards live in three buckets: `universal/` (applies to every agent), `protocols/{protocol}/` (one baseline per supported protocol), and `specialisms/{id}/` (one per specialism claim).
+
+**Storyboard Category**
+The `snake_case` identifier in a storyboard's `category:` frontmatter field. For specialisms, the category is the specialism's kebab-case wire ID with hyphens swapped to underscores — e.g. specialism ID `sales-streaming-tv` has category `sales_streaming_tv`. Variant scenarios within a specialism use `{category}/{variant}` form (e.g. `governance_spend_authority/denied`). The kebab↔snake split is deliberate: specialism IDs are URL path segments, storyboard categories are wire enums.
 
 ## T
 

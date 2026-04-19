@@ -177,33 +177,196 @@ CREATE POLICY principal_isolation ON media_buys
 ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
 ```
 
-## Financial Transaction Safety
+## Request Safety
 
 ### Idempotency
 
-All state-changing operations must support idempotency:
+`idempotency_key` is **required** on every mutating AdCP task request (`create_media_buy`, `update_media_buy`, `sync_creatives`, `activate_signal`, `acquire_rights`, `creative_approval`, `update_rights`, `build_creative`, `calibrate_content`, `create_content_standards`, `update_content_standards`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `log_event`, `provide_performance_feedback`, `report_usage`, `report_plan_outcome`, `si_initiate_session`, `si_send_message`, and the `sync_*` tasks). Sellers MUST reject any mutating request that omits it with `INVALID_REQUEST`. Keys are scoped per authenticated principal — they have no meaning across principals on the same seller, or across sellers.
+
+This section applies only to AdCP task requests. OpenRTB bid streams have their own semantics (`BidRequest.id` is a transaction ID, not an idempotency key) and are out of scope.
+
+#### Normative seller behavior
+
+1. **Schema validation runs first.** Sellers MUST validate the request against its schema (including presence and format of `idempotency_key`) BEFORE consulting the idempotency cache. A malformed request returns `INVALID_REQUEST` without ever touching the cache — otherwise cache misses become a timing side channel that leaks whether schema validation accepted the key format. Validation errors are never cached (per rule 2).
+2. **First call is canonical.** On **task success** (`status: completed` or `status: submitted` for async operations), the seller stores the inner response payload (not the protocol envelope) keyed by `(authenticated_principal, idempotency_key)` along with a hash of the canonical request payload. For async tasks, the cached response is the `submitted` result containing `task_id`. **The cache entry is immutable** — even if the async task subsequently completes, fails, or is canceled, a replay within the TTL MUST return the originally-cached `submitted` response (with `replayed: true`), NOT the current terminal state. The buyer uses the returned `task_id` to observe current state via `tasks/get` or webhook, exactly as it would have on the first call. This preserves the byte-stable cache property and keeps the idempotency layer decoupled from async task lifecycle — sellers don't need to update cache entries when task state changes.
+3. **Only successful responses are cached.** On any error — validation, governance denial, transport failure, internal error — the key is **not** stored. A retry re-executes. This matches buyer intent: a retry after a 5xx should try again, not replay a failure. It also prevents a buyer's malformed request from being locked into a key for its full TTL.
+4. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND an equivalent canonical-form payload (see "Payload equivalence" below) MUST return the stored inner response without re-executing side effects. The seller injects `replayed: true` onto the outgoing protocol envelope at response time — `replayed` is an envelope-level field produced by the idempotency layer, NOT part of the cached inner response. Injection at replay time keeps the cached payload byte-stable across replays regardless of envelope changes (new `timestamp`, rotated `governance_context`, etc.). Transport-specific note for MCP: MCP tool responses do not have a separate envelope slot; servers MAY expose `replayed` inside the tool result object itself (e.g., at the top of the structured return) or via a response metadata field. REST and A2A responses use the envelope field directly.
+5. **Key reuse with a different canonical payload is a conflict.** Same key, different canonical hash within the replay window MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
+6. **Expired keys are rejected explicitly.** After `replay_ttl_seconds` elapses the seller MAY evict the cache entry. A request arriving after eviction with a key the seller has seen SHOULD be rejected with `IDEMPOTENCY_EXPIRED` rather than silently treated as new — silent re-execution is exactly the double-booking footgun the key was meant to prevent. Sellers SHOULD allow a ±60s clock-skew window at the TTL boundary (the same tolerance applied to JWS `exp` elsewhere in this document) so that a retry arriving seconds after nominal expiry is still replayed from cache rather than treated as fresh. Sellers that cannot distinguish "never seen" from "evicted" (e.g., memory-only stores after restart) MAY return a success path, but buyers MUST assume at-most-once only inside the declared TTL.
+7. **Replay window is declared, not inferred.** Sellers MUST declare `capabilities.idempotency.replay_ttl_seconds` on `get_adcp_capabilities` (minimum 3600s / 1h, recommended 86400s / 24h, maximum 604800s / 7d). Clients MUST NOT fall back to an assumed default — a seller with no declaration is non-compliant and MUST be treated as unsafe for retry-sensitive operations.
+8. **Cache-growth defense.** Sellers SHOULD apply per-principal rate limits on idempotency cache inserts separately from request rate limits. A natural bound: `inserts_per_hour × replay_ttl_hours ≤ max_cache_rows_per_principal`. When that bound is crossed, sellers SHOULD return `RATE_LIMITED` rather than let the cache grow unbounded — a buyer submitting N fresh keys per second on a cheap success-path operation (e.g., `log_event`) could otherwise force unbounded storage.
+
+#### Payload equivalence
+
+"Equivalent" means **identical canonical JSON form**, not field-by-field semantic comparison. Sellers MUST determine equivalence by hashing the canonical form and comparing hashes. The canonical form is [RFC 8785 JSON Canonicalization Scheme (JCS)](https://www.rfc-editor.org/rfc/rfc8785) — number serialization, key ordering, and escaping all follow JCS §3 normatively.
+
+**Fields excluded from the hash** (closed list — sellers MUST NOT extend it):
+
+- `idempotency_key` — the key itself
+- `context` — buyer-opaque echo data (trace IDs, correlation IDs) changes on retry by design
+- `governance_context` — on the envelope; may be a refreshed signed token on retry
+- `push_notification_config.authentication.credentials` — may be a rotated bearer token. The URL and scheme remain in the hash; only the credential value is excluded.
+
+Everything else in the request body — including `ext` — is included, and "missing optional field" is NOT equivalent to "field explicitly set to null" (JCS preserves the distinction, and so does the hash). **Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext`.** `ext` is part of the canonical payload; a value that changes between retries will trigger `IDEMPOTENCY_CONFLICT` even when the buyer's intent is unchanged. Rotating credentials belong in the exclusion-list fields above; buyer-side trace data belongs in `context`. Sellers MUST NOT extend the exclusion list via capabilities, config, or extension — the list is fixed by this spec, and drift there silently weakens retry-safety guarantees across the ecosystem. **Any future addition to the exclusion list is a breaking change to payload equivalence** (buyers who put a now-excluded value in `ext` would see previously-distinct retries start deduping against each other), so the list will only grow via a major-version bump with migration notes. New PRs proposing an addition MUST demonstrate why the field is semantically outside the retry contract — not just that a particular buyer happened to rotate it.
+
+**Reference implementation**: `SHA-256(JCS(payload - excluded_fields))`.
+
+- TypeScript / JavaScript: [`@truestamp/canonify`](https://www.npmjs.com/package/@truestamp/canonify) or [`canonicalize`](https://www.npmjs.com/package/canonicalize)
+- Python: [`pyjcs`](https://pypi.org/project/pyjcs/) or the reference implementation from [RFC 8785 appendix](https://www.rfc-editor.org/rfc/rfc8785)
+- Go: [`gowebpki/jcs`](https://github.com/gowebpki/jcs)
+- Rust: [`serde_jcs`](https://crates.io/crates/serde_jcs)
+
+AdCP SDK middleware ships JCS canonicalization so sellers don't roll their own. Rolling your own canonical form is a common source of "works on my machine" idempotency bugs — JCS is precisely specified to avoid that.
+
+#### Response-level replay indicator
+
+The protocol envelope carries a top-level `replayed` boolean on responses to mutating requests:
+
+```json
+{
+  "status": "completed",
+  "replayed": true,
+  "timestamp": "2026-04-18T14:35:00Z",
+  "payload": {
+    "media_buy_id": "mb_01HW7J8K9P0Q1R2S3T4U5V6W7X"
+  }
+}
+```
+
+`replayed` is produced by the seller's idempotency layer at response time, not stored in the cache. On a fresh execution it is `false` (or omitted — buyers MUST treat omission as `false`). On a cached replay it is `true`; the inner `payload` is byte-for-byte what was stored on the original successful execution. Envelope fields (`timestamp`, `context_id`, etc.) may differ — they describe the current response, not the cached one.
+
+Buyers use `replayed` for:
+
+- **Agent side-effect suppression** — an agent that acts on response data before a human sees it (notifications, downstream tool calls, memory writes) MUST check `replayed` to avoid re-emitting on retry. "Campaign created!" notifications, LLM memory inserts, and downstream agent calls are exactly what silent replay breaks.
+- **Side-effect invariants** — downstream systems expecting exactly-once event semantics read `replayed` before treating the response as a new event.
+- **Billing reconciliation** — "we processed N buys this month" counts `replayed: false` only.
+- **Logging** — distinguishing "retry succeeded by returning cache" from "retry triggered a new execution" (the latter usually signals a bug in the replay window or key management).
+
+#### IDEMPOTENCY_CONFLICT response shape
+
+Standard AdCP error envelope. The error body:
+
+- MUST include `code: "IDEMPOTENCY_CONFLICT"` and a human-readable `message`
+- MUST NOT include the cached response, the original payload, a canonical-form diff, or any fingerprint derived from them. A `field` json-pointer hint seems harmless but reveals schema shape (e.g., `/packages/0/budget` tells an attacker the victim's payload had a budget in the first package). Sellers MUST NOT emit one. A legitimate buyer debugging a retry can diff their own two payloads — they have both.
+
+```json
+{
+  "errors": [
+    {
+      "code": "IDEMPOTENCY_CONFLICT",
+      "message": "idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.",
+      "recovery": "correctable"
+    }
+  ],
+  "context": { "correlation_id": "..." }
+}
+```
+
+Leaking cached state turns key-reuse into a read oracle. An attacker who guesses or steals a victim's key could otherwise probe it to infer payload structure. The error body exposes only the code.
+
+#### SI send_message idempotency model
+
+`si_send_message` needs a narrower scope than other mutations because conversational turns advance session state. The key is scoped `(authenticated_principal, session_id, idempotency_key)`.
+
+- **Retry of turn N within the TTL returns the cached response for turn N**, even if turn N+1 has since been accepted. Idempotency returns what you did, not rewinds what the session is. The buyer's retry is asking "did my message get through" — the answer is still "yes, here's what came back."
+- **A new `si_send_message` with a fresh `idempotency_key` is a new turn**, processed against the current session state. Buyers MUST generate a fresh key per logical turn, not per HTTP attempt.
+- **If the seller has advanced session state past turn N and cannot reproduce the cached response byte-for-byte** (e.g., the session was pruned for storage), the seller MAY return `SESSION_NOT_FOUND` or `IDEMPOTENCY_EXPIRED` rather than reconstruct. Buyers retrying far past a session timeout should expect this.
+
+#### Buyer obligations
+
+Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request. On retry after a network error, buyers MUST resend the exact same payload with the same key — changing either side breaks at-most-once semantics. In particular, buyers MUST NOT change `push_notification_config.url` between retries with the same key; URL is part of the canonical hash and rotating it triggers `IDEMPOTENCY_CONFLICT`. Rotate the key when changing webhook configuration.
+
+**Agent retry vs. network retry.** Two cases that look similar but need opposite handling:
+
+- **Network retry** — socket timeout, 5xx, transient failure. The buyer has the *same intent* and sent the *same bytes* — and MUST resend them with the *same key*. This is what idempotency_key exists for.
+- **Agent re-plan** — the buyer is an agent whose planner re-ran (prompt re-executed, tool output changed, policy re-evaluated) and produced a *different payload*. The intent has changed. The agent MUST mint a *new key* and treat the prior request as abandoned. Reusing the prior key with a different canonical payload returns `IDEMPOTENCY_CONFLICT`, which is the seller correctly telling the agent "you're not retrying, you're doing something new."
+
+When in doubt, ask whether the serialized request bytes are the same. If yes, reuse the key. If no, the intent changed — mint a new key. Agentic clients that loop through an LLM to build the request SHOULD freeze and cache the serialized bytes alongside the key on first send, so retries send the identical payload even if the planner would produce something slightly different on re-execution.
+
+**When the seller's capability declaration is missing.** A seller that omits `adcp.idempotency.replay_ttl_seconds` from `get_adcp_capabilities` is non-compliant. Client SDKs MUST fail closed on retry-sensitive operations against that seller — raise an error, don't assume a default — so the buyer learns about the non-compliance immediately rather than after a silent double-booking. Read-only operations (`get_products`, `list_accounts`, etc.) are safe to issue against such a seller; only mutating requests require the declaration.
+
+**TTL boundary for persisted keys.** Some buyers persist `idempotency_key` alongside their own object (e.g., `campaign.pending_idempotency_key` in the buyer's DB) so that retries after a process restart or overnight reconcile still dedup. This works **only within the seller's declared `replay_ttl_seconds`**. Beyond the TTL, the seller will either reject the retry with `IDEMPOTENCY_EXPIRED` (good) or, if the cache was evicted, treat it as a new request (silent double-booking — the failure mode this field exists to prevent). Buyers retrying past the TTL MUST fall back to a natural-key check (e.g., query `get_media_buys` by `context.internal_campaign_id`) before resending. The `idempotency_key` guarantees at-most-once execution within the replay window, not forever. Queue-based retry systems and workflow engines with retry horizons longer than the seller's TTL MUST be designed around this — don't put a key into a dead-letter queue that replays days later without a natural-key re-check.
+
+**Keys are security-sensitive.** An `idempotency_key` is a secret capability token within its TTL — anyone who holds one and knows the original payload can replay it and read the cached response. Treat keys the way you treat session tokens: do not log them in full, do not embed them in URLs, do not share them across principals. Log prefix-only (first 8 chars of the UUID) if you need correlation. Buyers persisting `pending_idempotency_key` at rest (e.g., alongside a campaign row in the buyer's DB) MUST encrypt it with the same controls used for bearer tokens, and SHOULD purge the key after success confirmation to minimize the exposure window.
+
+**Keys MUST be unguessable.** Schema enforces `^[A-Za-z0-9_.:-]{16,255}$` and buyers MUST use UUID v4 (~122 bits of entropy) or an equivalent CSPRNG-generated value. Low-entropy keys like `retry-001` or monotonic counters turn the cache into an enumerable surface: an attacker can walk the key space and test each one against a target principal. Sellers SHOULD reject keys that fail a basic entropy check (e.g., all-zeros, repeated characters, short ASCII words) with `INVALID_REQUEST` when the authenticated principal is not individually trusted.
+
+**The three-state response (`success` / `IDEMPOTENCY_CONFLICT` / `IDEMPOTENCY_EXPIRED`) is an existence oracle for idempotency keys.** An attacker who holds a candidate key can probe it: `success` means never seen, `IDEMPOTENCY_CONFLICT` means live with a different payload, `IDEMPOTENCY_EXPIRED` means previously used. The per-principal scoping above is the primary defense — an attacker authenticated as principal A cannot probe principal B's keys. Unguessable keys are the secondary defense — an attacker who cannot guess a victim's key cannot probe the oracle usefully. Sellers MUST NOT surface `IDEMPOTENCY_EXPIRED` across principal boundaries or to unauthenticated callers. Sellers SHOULD also avoid distinguishable timing between "key exists" and "key does not exist" lookups in the idempotency layer; a constant-time floor on the negative path closes a side channel that persists even without an error-code oracle.
+
+**SI session scope.** For `si_send_message` the key is scoped `(authenticated_principal, session_id, idempotency_key)`. `session_id` is therefore part of the oracle surface: if session IDs are guessable, an attacker who steals one key can probe it against many sessions. SI sellers MUST generate `session_id` server-side using a CSPRNG with ≥122 bits of entropy (UUID v4 or equivalent) and MUST NOT derive it from anything observable to another principal (request sequence number, user handle, timestamps). The same idempotency_key sent with a different `session_id` is a different scope tuple — always a new request, never a conflict.
 
 ```javascript
-async function createMediaBuy(request) {
-  const { idempotency_key } = request;
+import { canonicalize } from "@truestamp/canonify"; // RFC 8785 JCS
+import { createHash } from "node:crypto";
 
-  // Check if this idempotency key was already processed
-  const existing = await db.findByIdempotencyKey(idempotency_key);
-  if (existing) {
-    // Return existing result, don't charge again
-    return existing;
+const EXCLUDED_FROM_HASH = new Set([
+  "idempotency_key",
+  "context",
+  "governance_context",
+]);
+
+function payloadHash(request) {
+  const filtered = Object.fromEntries(
+    Object.entries(request).filter(([k]) => !EXCLUDED_FROM_HASH.has(k)),
+  );
+  // If push_notification_config.authentication.credentials rotates, exclude it too
+  if (filtered.push_notification_config?.authentication) {
+    const { credentials, ...auth } = filtered.push_notification_config.authentication;
+    filtered.push_notification_config = {
+      ...filtered.push_notification_config,
+      authentication: auth,
+    };
+  }
+  return createHash("sha256").update(canonicalize(filtered)).digest("hex");
+}
+
+async function createMediaBuy(request, envelope) {
+  if (!request.idempotency_key) {
+    throw new InvalidRequestError("idempotency_key is required");
   }
 
-  // Process new request atomically
+  const requestHash = payloadHash(request);
+
+  const existing = await db.findByIdempotencyKey({
+    principal_id: currentPrincipal.id,
+    idempotency_key: request.idempotency_key,
+  });
+
+  if (existing) {
+    if (existing.expires_at < new Date()) {
+      throw new IdempotencyExpiredError("idempotency_key is past replay window");
+    }
+    if (existing.request_hash !== requestHash) {
+      throw new IdempotencyConflictError("idempotency_key reused with a different payload");
+    }
+    // Return the stored INNER payload; replayed: true is injected by the envelope layer
+    envelope.replayed = true;
+    return existing.response;
+  }
+
   return db.transaction(async (tx) => {
-    const result = await processMediaBuy(tx, request);
-    await tx.idempotencyKeys.insert({ key: idempotency_key, result });
-    return result;
+    const response = await processMediaBuy(tx, request);
+    // Cache ONLY on success, and cache only the inner response payload
+    await tx.idempotencyKeys.insert({
+      principal_id: currentPrincipal.id,
+      key: request.idempotency_key,
+      request_hash: requestHash,
+      response,
+      expires_at: new Date(Date.now() + TTL_SECONDS * 1000),
+    });
+    envelope.replayed = false;
+    return response;
   });
 }
 ```
 
-Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request.
+#### Natural-key idempotency is not a substitute
+
+Upsert-style tasks (`sync_accounts`, `sync_audiences`, `sync_catalogs`, `sync_event_sources`, `sync_governance`, `sync_plans`) already dedup at the resource level — two calls with the same `account_id` or `audience_id` produce one row, not two. That's **resource idempotency**.
+
+`idempotency_key` guarantees something stricter: **envelope idempotency**. The entire request — including its side effects — executes at most once. Retrying the same sync envelope without a key can still fire onboarding webhooks twice, emit duplicate audit log entries, or double-provision pixel endpoints, even though the resource rows end up identical. The key is what makes a retry truly safe.
+
+The one exception in the spec is `si_terminate_session`: `session_id` plus the "terminate" verb is fully idempotent — a second call on an already-terminated session returns the same terminal state with no new side effects — so that schema doesn't require `idempotency_key`.
 
 ### Signed Governance Context
 
@@ -490,6 +653,424 @@ function handleGovernanceContext(value: string, ctx) {
 - **3.1**: all sellers MUST verify per the checklist above. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end.
 
 The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue forwarding; sellers that want the accountability properties opt in by implementing the verification checklist.
+
+### Signed Requests (Transport Layer)
+
+[Signed Governance Context](#signed-governance-context) signs an authorization artifact. Request signing signs the request itself — method, target URI, headers, and (by default) body bytes — establishing cryptographically that a specific agent issued the request, with replay and tampering protection. A valid signature proves only one thing: **the request came from the agent whose key signed it.** Whether that agent is *authorized* to act for the brand named in the request body is a separate concern, governed by the target house's `authorized_operator[]` in brand.json. This section defines authentication only; authorization lookup is specified by the brand.json schema and happens whether requests are signed or not.
+
+AdCP 3.0 defines this profile as **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`. AdCP 4.0 — the next breaking-changes accumulation window — will require it for spend-committing operations. The substrate ships in 3.0 so early adopters can surface canonicalization and proxy interop bugs before enforcement. See [Transport migration timeline](#transport-migration-timeline).
+
+**Roles:**
+- **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
+- **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
+- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller's `adagents.json` agent entries. This applies only to seller→agent AdCP protocol calls. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) continue to use the HMAC-SHA256 scheme in [Webhook Security](#webhook-security) above and are out of scope for this profile.
+
+**Dependencies:**
+- Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
+- Resolves the identity-bootstrapping dependency in [Buyer identity resolution](#buyer-identity-resolution) for governance: a seller that verifies a request signature has a cryptographically established signing agent identity and MAY use the signing agent's operator domain as the brand.json resolution input for the governance verification step.
+
+#### Transport scope
+
+| Class | 3.0 | 4.0 |
+|---|---|---|
+| Spend-committing (`create_media_buy`, `update_media_buy`, `acquire_*`, `activate_signal`) | Optional, capability-advertised | Required |
+| Reversible state changes (`sync_creatives`, `update_creative_status`) | Optional | Recommended |
+| Read / discovery (`get_products`, `get_media_buy_delivery`, `list_*`) | Not in scope | Not in scope |
+| TMP `provider_endpoint_url` requests | Out of scope (TMP has its own envelope) | Out of scope |
+
+Read calls remain bearer-authenticated. Signing read traffic adds verification cost without proportionate benefit; signing's purpose is integrity of state-changing operations.
+
+#### Quickstart: opt into request signing in 3.0
+
+For implementers who want to pilot signing in 3.0 before the 4.0 flip:
+
+**As an agent that signs requests:**
+
+0. Call `get_adcp_capabilities` on the target seller. Read `request_signing.supported_for` and `required_for` to see which operations the seller expects you to sign. Read `covers_content_digest` (`"required"` / `"forbidden"` / `"either"`) to see whether you must, must not, or may cover `content-digest`.
+1. Generate an Ed25519 keypair: `openssl genpkey -algorithm ed25519 -out signing-key.pem`.
+2. Export the public key as a JWK. Add `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"`.
+3. Publish the JWK at your agent's `jwks_uri` (the URL declared on your `agents[]` entry in brand.json; defaults to `/.well-known/jwks.json` at your agent URL's origin).
+4. Configure your AdCP client with the private key and agent URL. Your SDK signs requests automatically for any operation listed in the seller's `supported_for` or `required_for` capability, honoring the seller's `covers_content_digest` policy.
+5. Validate end-to-end with the conformance vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/) (published per AdCP version; source lives at `static/compliance/source/test-vectors/request-signing/`) — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
+
+**As a verifier (seller):**
+
+1. Advertise `request_signing.supported: true` in `get_adcp_capabilities`. Leave `required_for: []` during the pilot; add operations incrementally per counterparty.
+2. Enable signature verification middleware on mutating routes. Implement the [verifier checklist](#verifier-checklist-requests) — all 14 checks (13 numbered steps plus sub-step 9a), short-circuit on first failure.
+3. Start in shadow mode (verify and log; do not reject on failure) for a pilot counterparty before populating `required_for`. Surface verification failures in monitoring rather than operations for the first few weeks.
+4. Run the conformance negative vectors against your verifier — each rejection MUST produce the vector's stated `error_code`. The vector's `failed_step` is informational; an implementation that rejects with the correct error code is conformant even if its internal step numbering differs.
+
+**Minimum viable verifier (3.0 shadow mode):** steps 1–9, 9a, and 10 of the checklist, in-memory replay cache, one-minute revocation polling with a lightweight `kid`-membership check (full grace semantics deferred). This is acceptable for log-and-observe shadow mode because no request is being rejected on replay or digest failure. **Before adding any operation to `required_for`, implement steps 11–13** — digest recompute (step 11), replay insert after success (step 13), and the full revocation-stale grace window (part of step 9). Flipping to enforce with an incomplete verifier surfaces replay and body-integrity gaps on live production traffic rather than in shadow logs. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
+
+#### AdCP RFC 9421 profile
+
+This profile constrains RFC 9421 to a single canonical shape so cross-implementation interop is tractable.
+
+**Covered components (REQUIRED on every signed request):**
+
+| Component | Notes |
+|---|---|
+| `@method` | Uppercase. |
+| `@target-uri` | Canonicalized per the algorithm below. Signer MUST apply canonicalization before computing the signature base; verifier MUST apply the same canonicalization to the received request before verifying. |
+| `@authority` | Lowercased `host[:port]`, default ports (`443` for https, `80` for http) stripped. |
+| `content-type` | Required on requests with bodies. |
+| `content-digest` | Governed by the verifier's `request_signing.covers_content_digest` capability — see [Content-digest and proxy compatibility](#content-digest-and-proxy-compatibility). |
+
+**`@target-uri` canonicalization** applies RFC 3986 §6.2.2 (syntax-based normalization) and §6.2.3 (scheme-based normalization), in this order:
+
+1. Lowercase the scheme (`HTTPS` → `https`).
+2. Lowercase the host. For IDN labels, convert to Punycode A-labels (ACE form) using **UTS-46 Nontransitional processing with `CheckHyphens=true`, `CheckBidi=true`, `UseSTD3ASCIIRules=true`, `Transitional_Processing=false`** (`bücher.example` → `xn--bcher-kva.example`). The processing-mode pin matters: ASCII-lowercasing non-ASCII input before ToASCII produces a different A-label than UTS-46-correct processing, and TypeScript (`url.domainToASCII`), Go (`golang.org/x/net/idna`), and Python (the `idna` package — *not* `str.encode('idna')`, which is IDNA2003) legitimately diverge on mode defaults. A host containing raw non-ASCII bytes that has not been ToASCII-normalized by the signer MUST be rejected by the verifier; verifiers do not silently re-normalize. For IPv6 literals, preserve the `[` and `]` brackets and lowercase the hex digits inside them (`[2001:DB8::1]` → `[2001:db8::1]`). **IPv6 zone identifiers (RFC 6874) MUST be rejected.** RFC 6874 §1 defines zone-ids as node-local — they have no meaning outside the signing host, and a verifier on a different node cannot interpret them. Signers MUST NOT sign URLs containing a zone identifier; verifiers MUST reject `@target-uri` values containing `%25` inside `[...]` with `request_target_uri_malformed`.
+3. Strip userinfo (`user:pass@host` → `host`). If the authority has userinfo but no host (`https://user@/p`), no host at all (`https://:443/p` or `https:///p`), a bracketed host missing a closing bracket (`https://[::1/p`), or a bare IPv6 address outside brackets (`https://fe80::1/p`), the URL is malformed; signers MUST NOT sign it and verifiers MUST reject with `request_target_uri_malformed`.
+4. Strip default ports (`:443` for https, `:80` for http). Preserve all other ports (`:8443`).
+5. Apply `remove_dot_segments` (RFC 3986 §5.2.4) to the path. **Preserve consecutive slashes byte-for-byte** (`/a//b` stays `/a//b`) — RFC 3986 does not mandate collapsing them. Preserving closes a path-confusion attack surface: if the signer collapses `/admin//foo` → `/admin/foo` and the server dispatches `/admin//foo` to a different (potentially less-guarded) handler, an attacker can sign one URL and execute another. Servers deploying verification on signed routes MUST disable slash-folding on those routes (`nginx: merge_slashes off;`, Express: do not pre-normalize, Go 1.22+ `http.ServeMux`: use an explicit `http.Handler` that preserves the incoming path). If the path is empty AND an authority is present, substitute `/` (RFC 3986 §6.2.3; `https://host?x=1` → `https://host/?x=1`).
+6. Normalize percent-encoding: uppercase hex digits (`%2f` → `%2F`); decode percent-encoded unreserved characters (`ALPHA / DIGIT / "-" / "." / "_" / "~"` per RFC 3986 §2.3, so `%7E` → `~`, `%2Dfoo` → `-foo`, `%41` → `A`); leave reserved characters percent-encoded (`%3A` stays `%3A`, `%2F` stays `%2F`). Percent-encoding normalization applies to path and query **but not** to an IPv6 zone identifier — moot under this profile, since zone identifiers are rejected at step 2.
+7. **Preserve the query string byte-for-byte** as received. Do not reorder parameters, do not re-encode, do not interpret `+` as space. A trailing `?` with empty query is preserved (`https://host/p?` canonicalizes to `https://host/p?`, distinct from `https://host/p`). A URL with no `?` stays with no `?`.
+8. Strip the fragment (fragments are not sent on the wire per RFC 9421 §2.2.2).
+
+**`@authority` canonicalization** produces `host[:port]` from the URL's authority after steps 2–4 above (lowercase host / IDN → ACE / IPv6 bracketing preserved; userinfo stripped; default port stripped). IPv6 hosts retain their brackets in `@authority` (`[::1]:8443`). Verifiers MUST derive `@authority` from the as-received HTTP `Host` header (or HTTP/2+ `:authority` pseudo-header), not from reverse-proxy routing state, and MUST reject with `request_target_uri_malformed` if that value canonicalized does not byte-for-byte match the authority component of the canonical `@target-uri`. This closes a cross-vhost replay vector: an attacker who intercepts a TLS-terminated request and replays it to a second vhost on the same verifier pool (same cert SAN, different `Host`) will fail the authority-match check even though the signature covers `@authority`.
+
+Signers that canonicalize and verifiers that canonicalize MUST produce identical bytes for the same logical request. If your 9421 library applies different rules, either configure it to match this profile or normalize before handing the URL to the library.
+
+The [`canonicalization.json`](https://adcontextprotocol.org/test-vectors/request-signing/canonicalization.json) conformance set exercises every rule above with fixed inputs and expected outputs, plus malformed-authority rejection cases. SDKs SHOULD run this set on every commit — canonicalization divergence between signers is silent until it isn't, and then it's a production interop bug that's painful to diagnose.
+
+Verifiers MUST reject signatures whose covered-component list omits any required component for the request type. Signers MUST NOT cover additional headers without coordination — extra components silently invalidate signatures across implementations that don't include them.
+
+**Signature parameters (`Signature-Input` parameters, all REQUIRED):**
+
+| Parameter | Notes |
+|---|---|
+| `created` | Unix seconds. Reject if more than 60 s in the future. |
+| `expires` | Unix seconds. MUST satisfy `expires > created` and `expires − created ≤ 300` (5-minute max validity). Reject if past, with ±60 s skew tolerance. |
+| `nonce` | Base64url-encoded, unpadded (no trailing `=`). Verifiers MUST reject if the decoded byte length is less than 16 bytes, or if the value includes padding. This is how the "≥ 128 bits of entropy" requirement is enforced in practice. |
+| `keyid` | Matches a `kid` in the signer's published JWKS. |
+| `alg` | MUST be `ed25519` or `ecdsa-p256-sha256`. Verifiers MUST enforce the allowlist independently of library defaults. |
+| `tag` | MUST be exactly `adcp/request-signing/v1` — byte-for-byte match, no prefix matching, no case-folding. The `tag` sig-param MUST appear exactly once in `Signature-Input`; verifiers MUST reject duplicates. The tag namespace is how the profile versions; future versions bump the tag rather than mutating parameter semantics, and `adcp/request-signing/v2` verifiers will reject `v1` signatures and vice versa. |
+
+All six parameters are REQUIRED. Verifiers MUST reject (`request_signature_params_incomplete`) if any is absent.
+
+**Algorithm naming — JWK vs RFC 9421.** The two names for each algorithm differ by source spec. Implementations mix these up often enough to warrant a table:
+
+| Algorithm | JWK `alg` (in JWKS) | RFC 9421 `alg` (in `Signature-Input`) |
+|---|---|---|
+| Ed25519 | `EdDSA` | `ed25519` |
+| ECDSA P-256 with SHA-256 | `ES256` | `ecdsa-p256-sha256` |
+
+When the verifier resolves a `keyid` and finds `"alg": "EdDSA"` on the JWK, the matching sig-param value is `ed25519`. Implementations should validate that the two match (JWK alg matches the sig-param alg by mapping table) in addition to verifying the allowlist on each independently. Edge-runtime rationale from the governance profile applies — `ES256` is the edge-friendly alternative where `EdDSA` requires runtime configuration.
+
+**One signature per request.** Verifiers MUST process exactly one `Signature-Input` label (conventionally `sig1`) and MUST ignore any additional labels present in the request. Intermediaries that need to re-sign a relayed request MUST replace the upstream labels rather than append to them. Full relay-chaining semantics (when a relay wants to preserve the originator's signature) are tracked in [#2324](https://github.com/adcontextprotocol/adcp/issues/2324) and out of scope for 3.0.
+
+**Binary value encoding (`Signature`, `Content-Digest`).** RFC 9421 §3.1 and §2.1.3 emit binary values as the RFC 8941 Structured Field `sf-binary` token (`:<base64>:`), and RFC 8941 §3.3.5 specifies the standard base64 alphabet (RFC 4648 §4) with `+`/`/` and `=` padding. The AdCP profile OVERRIDES this: `Signature` and `Content-Digest` sf-binary values MUST be encoded with **base64url without padding** (RFC 4648 §5), producing tokens whose inner bytes draw from `[A-Za-z0-9_-]` with no trailing `=`.
+
+Rationale: URL-safe, pad-free, and symmetric with the `nonce` sig-param which is already specified base64url-unpadded. It avoids the two interop hazards of standard base64 in HTTP header values — `/` that some proxies rewrite and `=` that some header parsers treat as a structured-field parameter delimiter.
+
+Verifier requirements:
+
+1. Signers MUST emit base64url-no-padding only. A signer that emits a `Signature` or `Content-Digest` value containing `+`, `/`, or `=` is non-conformant.
+2. Verifiers MUST accept base64url-no-padding. Verifiers SHOULD ALSO lenient-decode pure standard-base64 tokens (translate `+`→`-` then `/`→`_`, then strip any trailing `=`, then base64url-decode) for interop with counterparties that predate this clarification. This lenience is a compatibility affordance scheduled for removal in **AdCP 3.2** — signers relying on it MUST migrate to base64url-no-padding before then.
+3. Verifiers MUST reject any token that mixes alphabets (any character in `[+/=]` AND any character in `[-_]` within the same token value) with `request_signature_header_malformed`. Mixed-alphabet tokens are ambiguous: `A+B-` could decode to different bytes depending on the order of "translate standard-base64 chars" and "base64url-decode" steps, and differing `Content-Digest` bytes across verifiers let an attacker stage a digest mismatch that one verifier accepts and another rejects.
+4. The `expected_signature_base` field in the conformance vectors is independent of binary-value encoding — it contains the canonical signature base bytes, not any header-field encoding. Only the emitted `Signature` token itself is encoded.
+
+**Note on `Content-Digest` from non-AdCP upstreams.** RFC 9530 §2 defines `Content-Digest` and defers sf-binary to RFC 8941 (standard base64), so a conformant 9530 emitter from another ecosystem (a CDN, a non-AdCP framework) may populate `Content-Digest` on an inbound request using the RFC 8941 default. The AdCP override above applies to **signed AdCP requests**; verifiers processing such a request MUST use the override rules. Verifiers handling unsigned traffic or `Content-Digest` from non-AdCP upstreams MAY accept either encoding — this is outside the signing profile's scope.
+
+**Operation names in `required_for` / `supported_for` are AdCP protocol operation names** (`create_media_buy`, `update_media_buy`, `acquire_rights`, etc.) — not MCP tool names, A2A skill names, or any transport-specific rename. Verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. This is how cross-transport verifiers agree on what "signed for `create_media_buy`" means.
+
+#### Agent key publication
+
+Request-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry (or the `adagents.json` equivalent for seller-side agents publishing keys for webhook callbacks). Every agent that signs — of any `type` — uses the same publication pattern.
+
+Each request-signing JWK entry MUST declare:
+
+| Member | Value | Notes |
+|---|---|---|
+| `use` | `"sig"` | Standard JWK signing use. |
+| `key_ops` | `["verify"]` | Verifier-visible JWKS declares verify-only. Publishers hold the corresponding private key locally with `["sign"]` per JWK spec. |
+| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile) and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. |
+| `kid` | distinct | Unique within the JWKS. MUST NOT collide with any other entry's `kid` regardless of `adcp_use`. |
+| `alg` | `"EdDSA"` or `"ES256"` | Must match the signature's `alg` parameter (JWK `alg` uses JWS names; `alg` in `Signature-Input` uses RFC 9421 names). |
+
+Cross-purpose key reuse is forbidden and **locally enforceable** via `adcp_use`: a single JWK entry can only declare one `adcp_use` value, so a publisher cannot accidentally (or deliberately) present a governance-signing key as a valid request-signing key. Verifiers check `adcp_use` on the JWK they fetched, not across other JWKS endpoints — no cross-endpoint lookup is required or permitted.
+
+**Implementer note:** `adcp_use` is a custom JWK member. Major JOSE libraries (`jose`, `node-jose`, `python-jose`, `go-jose`) preserve unknown members on parse. Strict JWK validators (some modes of `PyJWT`, and Web Crypto API's `SubtleCrypto.importKey`) may reject unknown members. When handing a JWK to `SubtleCrypto.importKey` or equivalent strict consumers, strip `adcp_use` from the JWK object but retain it for the step-8 policy check. The field is for AdCP verifier policy, not for cryptographic libraries.
+
+**JWKS discovery for a signed request** — given a `keyid` on an incoming signature:
+
+1. The verifier has, at onboarding or via prior discovery, a mapping from the signing agent's URL to its brand.json `agents[]` entry.
+2. Fetch the agent's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of the agent's `url`) with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). JWKS cache TTL bounded above by the revocation-list polling interval.
+3. If the `kid` is absent from the cached JWKS, refetch the JWKS **immediately** (step 2's first fetch may have been cached). If a refetch was already performed in the last 30 seconds for the same `jwks_uri`, the cooldown applies: the verifier MUST NOT refetch again and MUST reject with `request_signature_key_unknown`. The cooldown is between refetches, not before the first.
+
+Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a specific `agents[]` entry — anonymous signatures provide no accountability.
+
+#### Agent identity
+
+A valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent.
+
+Authorization — whether this operator is permitted to act for the brand named in the request body — is a separate protocol-level check governed by the target house's brand.json `authorized_operator[]` entries. It happens whether the request is signed or not, and is outside the scope of this profile. Verifiers MUST perform both checks; this section specifies only the first.
+
+Verifiers MUST NOT derive signer identity from request body fields (e.g., a `principal_id` in the payload). The signature → JWKS → agent entry chain is the only authoritative identity path.
+
+brand.json discovery follows one redirect (`authoritative_location`) and stops.
+
+#### Verifier checklist (requests)
+
+**Before applying the checklist, verifiers MUST determine whether the operation requires a signature:**
+
+- If the operation is in the verifier's `required_for` capability AND no `Signature-Input` header is present, reject with `request_signature_required`. Unsigned requests to required operations never enter the checklist.
+- If either `Signature` or `Signature-Input` is present without the other, reject with `request_signature_header_malformed`. The two headers are a bound pair; one without the other is malformed, not "signed with a missing piece we can guess at." This rule closes a downgrade vector where a proxy strips `Signature-Input` but leaves `Signature`.
+- If a `Signature-Input` header is present but malformed, reject with `request_signature_header_malformed`. Verifiers MUST NOT fall back to bearer-only authentication when a malformed signature is present, **even for operations not in `required_for`** — a present-but-broken signature signals signer intent; silent fallback enables downgrade attacks.
+
+Otherwise, verifiers MUST perform these checks in order, short-circuiting on the first failure. This checklist establishes agent identity only — brand-operator authorization is a separate, subsequent check governed by the target house's brand.json.
+
+1. Parse `Signature-Input` and `Signature` headers per RFC 9421 §4. Reject if malformed.
+2. Reject if any of `created`, `expires`, `nonce`, `keyid`, `alg`, or `tag` is absent from the `Signature-Input` parameters (`request_signature_params_incomplete`).
+3. Reject if `tag` is not exactly `adcp/request-signing/v1` (`request_signature_tag_invalid`).
+4. Reject if `alg` is not in the allowlist (`ed25519`, `ecdsa-p256-sha256`). Library defaults MUST NOT be relied upon (`request_signature_alg_not_allowed`).
+5. Reject if `expires ≤ created`, `created > now + 60 s`, `expires < now − 60 s`, or `expires − created > 300 s` (`request_signature_window_invalid`).
+6. Reject (`request_signature_components_incomplete`) if covered components do not include all of: `@method`, `@target-uri`, `@authority`. If a body is present, reject if `content-type` is not covered. If the verifier's `covers_content_digest` capability is `"required"`, reject if `content-digest` is not covered. If the verifier's `covers_content_digest` capability is `"forbidden"` and `content-digest` IS covered, reject with `request_signature_components_unexpected`.
+7. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `request_signature_key_unknown`. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
+8. Verify the JWK's `use` is `"sig"`, `key_ops` includes `"verify"`, and `adcp_use` equals `"request-signing"`. Reject (`request_signature_key_purpose_invalid`) on any mismatch — including absent `adcp_use`, which MUST be treated as non-conforming.
+9. Check the [Transport revocation](#transport-revocation) list. Reject if `keyid` ∈ `revoked_kids` (`request_signature_key_revoked`). Reject with `request_signature_revocation_stale` if the verifier has not refreshed the revocation list within grace.
+
+    **9a. Per-keyid cap check.** Check the [per-keyid replay-cache cap](#transport-replay-dedup). Reject with `request_signature_rate_abuse` if the cap has been reached for this `keyid`. Runs before cryptographic verify (step 10) — same rationale as step 9: a compromised or misconfigured signer exhausting its cap MUST NOT force amplified Ed25519/ECDSA work on the verifier. Runs *after* `keyid` resolution (step 7) so the cap-state oracle only responds for keys the verifier has already committed to recognizing — running 9a earlier would let an attacker probe verifier-internal rate-limit state across the full keyid space, including keyids not published in JWKS.
+
+10. Compute the canonical signature base per RFC 9421 §2.5 using the covered components (after applying `@target-uri` canonicalization). Verify the signature against the JWK (`request_signature_invalid` on failure).
+11. If `content-digest` is covered, recompute the digest from the received body bytes and compare (`request_signature_digest_mismatch` on mismatch).
+12. Check the nonce against the replay cache (see [Transport replay dedup](#transport-replay-dedup)). Reject if `(keyid, nonce)` has been seen within the replay-cache TTL (`request_signature_replayed`).
+13. **Only after steps 1–9, 9a, and 10–12 have all passed**, insert `(keyid, nonce)` into the replay cache with TTL = `(expires − now) + 60 s` (the +60 s matches the skew tolerance applied at step 5).
+
+Only after all 14 checks pass does the verifier treat the request as cryptographically authenticated. Verifiers SHOULD record `verified_signer: { keyid, agent_url, verified_at }` on the request context so downstream code — including the subsequent brand-operator authorization check — can log and audit by signed agent identity.
+
+**Cheap rejections before crypto verify (steps 9 and 9a before step 10) are deliberate.** If a verifier checks crypto first, an attacker replaying a revoked-key signature — or a signer hammering a verifier whose per-keyid cap is full — forces an Ed25519 or ECDSA verification on every rejection, cheap amplification. Moving revocation and the per-keyid cap ahead closes that O(verify) → O(1) gap. Step 9's revocation state is already published externally on the signer's origin; step 9a's cap state is verifier-internal but is observable via traffic-pattern analysis by any sustained attacker. The spec intentionally pairs the distinct `request_signature_rate_abuse` error code with the `SHOULD alert operators` requirement (see [Transport replay dedup](#transport-replay-dedup)) so cap observations surface as incident signal rather than silent oracles — a compromised-key event should be loud for the operator even if it is also legible to the attacker who caused it.
+
+**A load-bearing invariant for the cap.** External traffic without the private key cannot grow the cap: the replay-cache insert happens at step 13, *after* crypto verify (step 10), so any request that fails at step 10 never consumes a cap entry. This is why 9a is a *reader* of cap state, not a writer — only the legitimate key holder (or anyone who has compromised the key, the case the cap exists to detect) can grow the set. Future edits to the checklist MUST preserve this ordering: moving the insert earlier would let any external party flood the cap using forged structurally-valid signatures.
+
+Step 12's `(keyid, nonce)` dedup, by contrast, runs *after* crypto verify so the replay cache is not consumed by invalid signatures.
+
+#### Content-digest and proxy compatibility
+
+Covering `content-digest` binds the request body bytes to the signature. For spend-committing operations, this is the whole point: the body specifies the money, and a signature that doesn't commit to the body is not protecting the attack surface that matters. In server-to-server AdCP deployments — which is most of them — body-modifying intermediaries are rare and usually the result of a specific deliberate configuration. Default position: **cover `content-digest` for spend-committing operations; treat transports that prevent body preservation as bugs to fix rather than constraints to accommodate.**
+
+<Warning>
+**Known body-modifying transport patterns.** These configurations break body-binding signatures and are the single biggest source of 9421 interop bugs in production:
+
+- CDN configurations that recompress or buffer-modify POST bodies (uncommon, but specific Cloudflare Workers, Fastly VCL, and CloudFront Lambda@Edge setups can introduce byte changes).
+- WAFs that "sanitize" JSON request bodies (whitespace normalization, key reordering, unknown field stripping). Most WAFs inspect without modifying; some do modify.
+- Reverse proxies or API gateways that re-serialize JSON between client and origin for logging, validation, or transformation.
+- HTTP/2 → HTTP/1.1 bridges where chunked-encoding framing assumptions differ.
+
+**If you control the transport**, preserve bodies byte-for-byte end-to-end and cover `content-digest`. **If you don't control the transport**, fix it rather than degrade the security guarantee. Validate end-to-end with a `POST` echo test against a test endpoint before sending real traffic.
+</Warning>
+
+Verifiers that genuinely cannot preserve body bytes due to legacy infrastructure MAY advertise `covers_content_digest: "forbidden"`; this is an opt-out for the narrow case where the infrastructure cannot be fixed. `"required"` is recommended for all spend-committing operations. `"either"` is the default — signers choose per-request, and the verifier accepts both covered and uncovered forms.
+
+**`"required"` is strict.** When a verifier advertises `covers_content_digest: "required"`, a signed request with a body that does not cover `content-digest` is a hard reject with `request_signature_components_incomplete`. Verifiers MUST NOT accept it as a "soft" signed-but-body-unbound request; there is no soft mode. Signers that don't want to cover `content-digest` for a given call MUST route to a verifier whose policy is `"either"` or `"forbidden"`, or not sign the call at all.
+
+#### Transport replay dedup
+
+Step 12 of the [verifier checklist](#verifier-checklist-requests) requires per-`(keyid, nonce)` deduplication. Unbounded sets are a memory and DoS risk.
+
+- TTL on each entry = `(expires − now) + 60 s` to match the symmetric clock-skew tolerance applied at window validation. Typical TTL ≤ 360 s (5 min + 60 s skew).
+- In-memory LRU keyed on `(keyid, nonce)` with TTL eviction, sized to expected request rate × max signature validity.
+- Above ~10K req/s per signer: Redis `SETNX` with `EX = remaining_validity_seconds + 60`.
+- Distributed verifiers (multi-region): per-region replay cache is acceptable. The only attack this enables is a single replay within (expires − now + 60 s) across regions, bounded by ~6 min and only effective if the attacker controls intermediate routing.
+
+Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)` value as the replay key — those produce false positives that reject legitimate agent traffic.
+
+**Per-keyid cap.** To prevent an abusive or compromised signer from exhausting verifier memory with unique nonces, verifiers MUST enforce a per-keyid entry cap on the replay cache. Recommended ceiling: 1,000,000 entries per `keyid`. On cap exceeded, verifiers MUST reject new signatures from that `keyid` with `request_signature_rate_abuse` — NOT silently evict — and SHOULD alert operators, because hitting the cap indicates either a compromised key or a grossly misconfigured signer. Silent eviction is the dangerous mode: it creates replay windows exactly when the verifier is under attack. The per-keyid cap is distinct from the total cache ceiling; a verifier may legitimately hit its total ceiling via many well-behaved signers, but per-keyid exhaustion is unambiguously an attack signal. The cap check is step 9a of the [verifier checklist](#verifier-checklist-requests) — evaluated **before** crypto verify so an abusive signer cannot force amplified Ed25519/ECDSA work on the verifier.
+
+**Single-process vs. distributed enforcement.** In a single-process verifier, step 9a (read) and step 13 (insert) are sequential in one execution and the cap is exact. In a distributed verifier sharing a Redis-backed replay cache, step 9a is a cheap fast-path amplification guard but is not authoritative: two verifiers can both observe `size == cap − 1`, both pass 9a, both pass steps 10–12, and both insert at step 13. To avoid cap drift, the step 13 insert SHOULD be atomic with a cap check (e.g., a Lua script or `SETNX` pattern that returns an over-cap sentinel) — step 9a remains the cheap amplification guard, step 13 is the authoritative enforcement point. A verifier whose atomic insert returns over-cap MUST reject the request with `request_signature_rate_abuse` rather than let it succeed; a cap that is advisory at step 13 is not a cap.
+
+#### Transport revocation
+
+Operators SHOULD serve a single combined revocation list at the brand.json origin covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
+
+- `revoked_kids` invalidates every request ever signed under that `kid` (before or after the revocation timestamp).
+- `revoked_jtis` is not used (request signatures don't have a `jti`; nonce uniqueness is per-key).
+
+Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 15 min). The fetch-failure safe-default applies: verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations with `request_signature_revocation_stale` until the list is refreshed.
+
+#### Transport capability advertisement
+
+Verifiers advertise signing support and per-call requirements via the `request_signing` block on `get_adcp_capabilities`:
+
+```json
+{
+  "request_signing": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [],
+    "warn_for": ["create_media_buy"],
+    "supported_for": [
+      "create_media_buy",
+      "update_media_buy",
+      "sync_creatives",
+      "activate_signal"
+    ]
+  }
+}
+```
+
+- `supported`: when true, the verifier validates signatures when present. When false or absent, signatures are ignored.
+- `covers_content_digest`: one of `"required"`, `"forbidden"`, or `"either"` (default). `"required"`: signers MUST cover `content-digest`; unsigned-body signatures are rejected. `"forbidden"`: signers MUST NOT cover `content-digest`; body-bound signatures are rejected. `"either"`: signer chooses; verifier accepts both.
+- `required_for`: AdCP protocol operation names (not transport-specific) for which unsigned requests are rejected with `request_signature_required`. Empty in 3.0 by default. Signers MUST sign any listed operation.
+- `warn_for`: operations for which the verifier verifies signatures when present, logs failures in monitoring, but **does NOT reject**. Used as a shadow-mode bridge from `supported_for` to `required_for`. Enables per-counterparty pilots where the seller watches real-traffic failure rates before enforcing. Precedence: `required_for > warn_for > supported_for`. Signers SHOULD sign operations in `warn_for`; verifiers MUST NOT reject unsigned or failed-verify requests to these operations.
+- `supported_for`: operations for which signatures are verified when present but not required. Signers SHOULD sign these. Typically a superset of `required_for` and `warn_for`.
+
+**Rollout pattern:**
+1. Announce signing readiness: add the operation to `supported_for`. Counterparties can begin signing but nothing changes if they don't.
+2. Promote to shadow mode: move the operation to `warn_for`. The verifier logs verification failures; traffic is unaffected. Operators monitor the failure rate and debug.
+3. Enforce: when the failure rate drops below the operator's threshold, move to `required_for`. Unsigned or invalid-signature requests to that operation are now rejected.
+
+In 3.0, verifiers ship with `required_for: []` and populate it selectively. `warn_for` is the recommended pre-production stop before flipping to enforce. In 4.0 the protocol normatively requires `required_for` to include all spend-committing operations the verifier supports, and `covers_content_digest: "required"` is recommended for those operations.
+
+#### Transport error taxonomy
+
+Stable codes returned in `WWW-Authenticate: Signature error="<code>"` on 401, and surfaced by SDK verifiers as typed errors. Naming pattern matches the [governance taxonomy](#verification-error-taxonomy) so SDK error handling is symmetric.
+
+| Failure | Retry? | Code |
+|---|---|---|
+| Operation in `required_for` but request is unsigned | No | `request_signature_required` |
+| Request `@target-uri` is syntactically malformed (e.g., empty authority, bare IPv6, IPv6 zone identifier, raw non-ASCII host) | No | `request_target_uri_malformed` |
+| `Signature` or `Signature-Input` header present but malformed | No | `request_signature_header_malformed` |
+| Required sig-param absent (`created`, `expires`, `nonce`, `keyid`, `alg`, or `tag`) | No | `request_signature_params_incomplete` |
+| `tag` not `adcp/request-signing/v1` | No | `request_signature_tag_invalid` |
+| `alg` not in allowlist | No | `request_signature_alg_not_allowed` |
+| Signature window invalid (`expires ≤ created`, skew, expired, > 5 min validity) | No | `request_signature_window_invalid` |
+| Required covered components missing | No | `request_signature_components_incomplete` |
+| Covered components include `content-digest` when capability is `"forbidden"` | No | `request_signature_components_unexpected` |
+| `keyid` not in signer JWKS after one refetch | No | `request_signature_key_unknown` |
+| JWK `key_ops` lacks `verify`, `use` ≠ `sig`, or `adcp_use` ≠ `request-signing` | No | `request_signature_key_purpose_invalid` |
+| `keyid` ∈ `revoked_kids` | No | `request_signature_key_revoked` |
+| Revocation list not refreshed within grace | No (block new) | `request_signature_revocation_stale` |
+| Cryptographic verification failed | No | `request_signature_invalid` |
+| `content-digest` mismatch with recomputed digest | No | `request_signature_digest_mismatch` |
+| Nonce already seen within window | No | `request_signature_replayed` |
+| Per-keyid replay cache exceeded its entry cap | No (block new) | `request_signature_rate_abuse` |
+| JWKS fetch transient failure | Yes (with backoff) | `request_signature_jwks_unavailable` |
+| JWKS fetch fails SSRF validation | No | `request_signature_jwks_untrusted` |
+
+Servers MUST NOT echo internal verification details beyond the stable code; log the detail server-side.
+
+**`WWW-Authenticate` format.** AdCP does NOT define a realm value for request-signing challenges. Verifiers MUST emit `WWW-Authenticate: Signature error="<code>"` with no `realm` parameter and no other parameters. Clients parsing the header MUST tolerate other parameters (RFC 7235 permits implementations to include extras) but SHOULD NOT depend on them.
+
+#### TMP cross-reference
+
+**Webhooks are out of scope for this profile.** Server→client webhook callbacks (push-notification POSTs to the `push_notification_config.url` a buyer registers, and similar seller-initiated callbacks) continue to use the HMAC-SHA256 scheme defined in [Webhook Security](#webhook-security) above. That profile's 32-byte shared secret, timestamp-bound signing, and replay-window enforcement are adequate for the one-way asynchronous notification case. Do not apply this RFC 9421 profile to webhook callbacks; it would add complexity (JWKS discovery, revocation, replay dedup on signer-chosen nonces) without addressing a threat the HMAC scheme doesn't already cover.
+
+**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing keys is permitted and encouraged — one publication pattern, three signing systems (governance JWS `adcp_use: "governance-signing"`, request-signing 9421 `adcp_use: "request-signing"`, TMP envelope with its own future `adcp_use` value), each `kid`-scoped. Cross-purpose reuse is prevented automatically because step 8 rejects any `adcp_use` that isn't `"request-signing"`.
+
+Trusted Match Protocol signs match-time requests with its own Ed25519 envelope. TMP's per-request budget (sample-verify at ~5%) is too tight for full RFC 9421 verification on every call. **TMP signing is out of scope for this section**; this profile only constrains how TMP keys are published alongside request-signing keys on the same JWKS.
+
+#### Transport migration timeline
+
+AdCP 4.0 is the next breaking-changes accumulation window. Mandatory request signing for spend-committing operations is one of its floor requirements — the minimum security bar for AdCP 4.0 spend traffic — not the sole headline feature. Other v4.0 changes will accumulate on the [roadmap](../../reference/roadmap#v40-planned).
+
+| Phase | Status | Behavior |
+|---|---|---|
+| 3.0 GA | Optional, capability-advertised | Verifiers MAY validate; `required_for: []` by default. Signers MAY sign. Reference vectors ship; reference SDK pilots begin. |
+| 3.x | Reference SDKs ship; pilots surface bugs | Conformance test vectors drive cross-SDK interop. Early adopters turn on `required_for` with named counterparties, incrementally. |
+| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and any spend-committing operation the verifier supports. Signers MUST sign. `covers_content_digest: "required"` recommended for those operations. |
+
+Implementations that ship signing in 3.x SHOULD enable verifier-side `required_for` selectively (per-counterparty pilot, then broader rollout) before 4.0 to validate end-to-end paths against real traffic — this is what makes the 4.0 transition feasible without ecosystem-wide breakage.
+
+#### Request verifier reference (TypeScript)
+
+Illustrative only. The `verify9421` and `parseSignatureInput` callbacks encapsulate protocol-specific canonicalization and signature verification; implementations should pin a specific RFC 9421 library that has been validated against the AdCP conformance test vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/).
+
+```ts
+import { createRemoteJWKSet } from "jose";
+
+class RequestSignatureError extends Error {
+  constructor(public code: string) { super(code); }
+}
+
+const ALLOWED_ALGS = new Set(["ed25519", "ecdsa-p256-sha256"]);
+const REQUIRED_TAG = "adcp/request-signing/v1";
+const REQUIRED_COMPONENTS = new Set(["@method", "@target-uri", "@authority"]);
+const REQUIRED_PARAMS = ["created", "expires", "nonce", "keyid", "alg", "tag"] as const;
+
+export async function verifyAdcpRequestSignature(req: Request, ctx: {
+  operationName: string;
+  requiredFor: Set<string>;
+  contentDigestPolicy: "required" | "forbidden" | "either";
+  resolveJwk: (keyid: string) => Promise<{ jwk: unknown; agentUrl: string }>; // throws _key_unknown after refetch
+  isKeyRevoked: (keyid: string) => Promise<boolean>;
+  isRevocationStale: () => Promise<boolean>;
+  isKeyidAtCapacity: (keyid: string) => Promise<boolean>;
+  isReplayed: (keyid: string, nonce: string) => Promise<boolean>;
+  recordNonce: (keyid: string, nonce: string, ttlSeconds: number) => Promise<void>;
+  verify9421: (req: Request, jwk: unknown, covered: string[]) => Promise<void>; // throws on signature or digest failure
+  parseSignatureInput: (header: string) => {
+    keyid?: string; alg?: string; created?: number; expires?: number;
+    nonce?: string; tag?: string; components: string[];
+  };
+}) {
+  const sigInput = req.headers.get("signature-input");
+
+  // Pre-check: required_for / downgrade protection.
+  if (!sigInput) {
+    if (ctx.requiredFor.has(ctx.operationName)) throw new RequestSignatureError("request_signature_required");
+    return; // operation doesn't require a signature; verify nothing.
+  }
+
+  let parsed;
+  try { parsed = ctx.parseSignatureInput(sigInput); }
+  catch { throw new RequestSignatureError("request_signature_header_malformed"); }
+
+  // 2: presence
+  for (const p of REQUIRED_PARAMS) {
+    if ((parsed as any)[p] == null) throw new RequestSignatureError("request_signature_params_incomplete");
+  }
+  // 3: tag
+  if (parsed.tag !== REQUIRED_TAG) throw new RequestSignatureError("request_signature_tag_invalid");
+  // 4: alg
+  if (!ALLOWED_ALGS.has(parsed.alg!)) throw new RequestSignatureError("request_signature_alg_not_allowed");
+  // 5: window (including expires > created)
+  const now = Math.floor(Date.now() / 1000);
+  if (parsed.expires! <= parsed.created! ||
+      parsed.created! > now + 60 ||
+      parsed.expires! < now - 60 ||
+      parsed.expires! - parsed.created! > 300) {
+    throw new RequestSignatureError("request_signature_window_invalid");
+  }
+  // 6: components
+  for (const c of REQUIRED_COMPONENTS) {
+    if (!parsed.components.includes(c)) throw new RequestSignatureError("request_signature_components_incomplete");
+  }
+  const coversCd = parsed.components.includes("content-digest");
+  if (ctx.contentDigestPolicy === "required" && !coversCd) {
+    throw new RequestSignatureError("request_signature_components_incomplete");
+  }
+  if (ctx.contentDigestPolicy === "forbidden" && coversCd) {
+    throw new RequestSignatureError("request_signature_components_unexpected");
+  }
+  // 7: JWK resolution
+  const { jwk } = await ctx.resolveJwk(parsed.keyid!); // throws _key_unknown
+  // 8: key purpose
+  const j = jwk as any;
+  if (j.use !== "sig" || !Array.isArray(j.key_ops) || !j.key_ops.includes("verify") || j.adcp_use !== "request-signing") {
+    throw new RequestSignatureError("request_signature_key_purpose_invalid");
+  }
+  // 9: revocation (BEFORE crypto verify)
+  if (await ctx.isRevocationStale()) throw new RequestSignatureError("request_signature_revocation_stale");
+  if (await ctx.isKeyRevoked(parsed.keyid!)) throw new RequestSignatureError("request_signature_key_revoked");
+  // 9a: per-keyid cap (BEFORE crypto verify) — prevents amplified crypto work by abusive/misconfigured signer.
+  if (await ctx.isKeyidAtCapacity(parsed.keyid!)) {
+    throw new RequestSignatureError("request_signature_rate_abuse");
+  }
+  // 10 + 11: crypto verify, content-digest recompute — both inside verify9421.
+  try { await ctx.verify9421(req, jwk, parsed.components); }
+  catch (e: any) {
+    if (e?.code === "digest_mismatch") throw new RequestSignatureError("request_signature_digest_mismatch");
+    throw new RequestSignatureError("request_signature_invalid");
+  }
+  // 12: replay check
+  if (await ctx.isReplayed(parsed.keyid!, parsed.nonce!)) {
+    throw new RequestSignatureError("request_signature_replayed");
+  }
+  // 13: replay insert (only after all checks pass)
+  await ctx.recordNonce(parsed.keyid!, parsed.nonce!, (parsed.expires! - now) + 60);
+}
+```
 
 ### Budget Validation
 

@@ -44,7 +44,10 @@ Sales agents MUST declare Media Buy Protocol support via `get_adcp_capabilities`
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [2] },
+  "adcp": {
+    "major_versions": [2],
+    "idempotency": { "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["media_buy"]
 }
 ```
@@ -83,7 +86,7 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 
 - **Synchronous responses**: Sales agents MAY return completed results immediately
 - **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
-- **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
+- **Human-in-the-loop**: Sales agents MAY require internal human review (e.g. IO signing) by keeping the task in `status: "submitted"` until the reviewer acts. Sales agents MAY also use `status: "input-required"` when the buyer must respond (e.g. confirm a budget). Human approval is modelled at the task layer — there is no `pending_approval` MediaBuy status (that value exists only on Account.status for account onboarding review)
 - **Rejection**: Sales agents MAY reject a media buy in `pending_creatives` or `pending_start` status when platform setup reveals the order cannot be fulfilled (e.g., inventory sold out, policy issue discovered during ad server setup). Orchestrators MUST treat `rejected` as a terminal state. If the seller does not want to accept the order at create time, it SHOULD fail `create_media_buy` with an error rather than creating a media buy in `rejected` status.
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
@@ -459,7 +462,7 @@ A conformant Media Buy Protocol orchestrator MUST:
 
 1. Authenticate with sales agents
 2. Include required fields as defined in request schemas
-3. Handle asynchronous responses (submitted, working, pending_approval)
+3. Handle asynchronous task-level responses (`submitted`, `working`, `input-required`) including webhook delivery of completion artifacts
 4. Use `media_buy_id` to reference media buys in subsequent operations
 5. Respect `creative_deadline` for creative uploads
 
@@ -487,11 +490,14 @@ For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY inc
 
 ### Human-in-the-Loop
 
-Sales agents MAY require human approval for any operation. When approval is required:
+Sales agents MAY require human approval for any operation. Approval is modelled at the **task layer**:
 
-- Sales agents MUST return `status: "pending_approval"`
-- Sales agents SHOULD provide an estimated approval timeline
-- Orchestrators SHOULD implement webhook handlers for status updates
+- When the seller is waiting on an **internal** human (e.g. IO signing, traffic-manager review), sales agents MUST keep the task in `status: "submitted"` until the reviewer acts. On completion, the task transitions to `completed` with the final artifact carrying `media_buy_id` and the full success payload.
+- When the seller needs the **buyer** to respond (e.g. confirm a budget that exceeds a pre-approved limit), sales agents MUST return `status: "input-required"` with a message describing what is needed. The buyer responds within the same A2A context.
+- Sales agents SHOULD provide an estimated approval timeline in the task message.
+- Orchestrators SHOULD implement webhook handlers (via `push_notification_config`) for completion notifications rather than polling.
+
+`pending_approval` is not a valid MediaBuy or Task status — that value exists only on `Account.status` (for account onboarding review). Do not repurpose it for media-buy or task-level approval.
 
 ## Schema Reference
 

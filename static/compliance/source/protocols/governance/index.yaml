@@ -185,8 +185,8 @@ phases:
         title: "Register a governance plan with agent-limited authority"
         narrative: |
           The buyer's governance agent registers a plan with spending authority limits.
-          The authority_level is agent_limited with a per-transaction threshold of $20K.
-          Any media buy above this amount requires human approval.
+          The plan sets a per-transaction threshold of $20K via reallocation_threshold
+          on the budget. Any media buy above this amount requires human approval.
         task: sync_plans
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
@@ -196,22 +196,31 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_limited
-          - per_transaction_threshold: the spending limit before escalation
-          - escalation_path: how over-limit transactions are handled
+          - budget.reallocation_threshold: spending limit before re-evaluation
+          - human_review_required: set when the plan mandates escalation
 
         sample_request:
+          idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
           plans:
-            - plan_name: "Acme Outdoor Q2 Governance"
+            - plan_id: "gov_acme_q2_2027"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
-              per_transaction_threshold: 20000
-              escalation_path: "human_review"
-              conditions:
-                - "Weekly reporting required for buys over $10K"
-                - "No single-seller concentration above 60% of total budget"
+              objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+              budget:
+                total: 50000
+                currency: "USD"
+                reallocation_threshold: 20000
+              flight:
+                start: "2027-04-01T00:00:00Z"
+                end: "2027-06-30T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "weekly_reporting_over_10k"
+                  enforcement: "must"
+                  policy: "Weekly reporting required for buys over $10K."
+                - policy_id: "seller_concentration_cap"
+                  enforcement: "must"
+                  policy: "No single-seller concentration above 60% of total budget."
 
           context:
             correlation_id: "media_buy_governance_escalation--sync_plans"
@@ -584,7 +593,7 @@ phases:
           Return the complete audit trail for the governance plan:
           - plan_id: the governance plan
           - entries: ordered list of governance events, including:
-            1. Plan registered with agent_limited authority and $20K threshold
+            1. Plan registered with $20K per-transaction threshold
             2. Governance check denied — spending authority exceeded ($50K > $20K)
             3. Human escalation initiated
             4. Human approved with conditions (weekly reporting, budget increase review)

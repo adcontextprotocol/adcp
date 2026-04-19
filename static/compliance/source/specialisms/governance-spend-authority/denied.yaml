@@ -95,18 +95,23 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_limited
-          - per_transaction_threshold: $10K spending limit
+          - budget.total: $10K cap that any single buy above will exceed
 
         sample_request:
+          idempotency_key: "governance-spend-authority-denied-sync-plans-v1"
           plans:
-            - plan_name: "Acme Outdoor strict governance"
+            - plan_id: "gov_acme_strict"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_limited"
-              per_transaction_threshold: 10000
-              escalation_path: "none"
+              objectives: "Acme Outdoor low-budget validation flight"
+              budget:
+                total: 10000
+                currency: "USD"
+                reallocation_threshold: 0
+              flight:
+                start: "2027-01-01T00:00:00Z"
+                end: "2027-12-31T23:59:59Z"
+              countries: ["US"]
 
           context:
             correlation_id: "governance_spend_authority--denied--sync_plans"

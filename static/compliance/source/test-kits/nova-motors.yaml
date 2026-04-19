@@ -16,6 +16,18 @@ description: |
   configurations for testing signal agent storyboards.
 sandbox: true
 
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+#
+# probe_task is `get_signals` because this kit's primary consumers are
+# signal agents (specialisms/signal-owned, specialisms/signal-marketplace)
+# where list_creatives is not implemented. Non-signal storyboards that
+# reuse this kit (collection-lists, sales-broadcast-tv, sponsored-
+# intelligence) should select acme-outdoor for security_baseline, or
+# override probe_task at the storyboard layer.
+auth:
+  api_key: "demo-nova-motors-v1"
+  probe_task: get_signals
+
 brand:
   house:
     domain: "novamotors.example"

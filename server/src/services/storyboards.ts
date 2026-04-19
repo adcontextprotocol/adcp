@@ -31,12 +31,21 @@ export type {
 
 // ── Test Kit types & loading ────────────────────────────────────
 
+// Test kits are of two kinds:
+//   - Brand-identity kits (acme_outdoor, bistro_oranje, ...) — brand + assets
+//     + description used by creative/sales storyboards.
+//   - Harness-contract kits (signed_requests_runner, ...) — coordination
+//     contract between a runner and an agent under test; shape is
+//     specialism-specific.
+// Only `id` is required on load. Everything else is kit-kind-specific and read
+// by callers that know which kind they asked for.
 export interface TestKit {
   id: string;
-  name: string;
-  description: string;
+  name?: string;
+  description?: string;
   brand?: Record<string, unknown>;
   assets?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface StoryboardSummary {

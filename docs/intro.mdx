@@ -91,6 +91,7 @@ AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
+  "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
   "accounts": [
     {
       "brand": { "domain": "acmeoutdoor.com" },
@@ -210,6 +211,7 @@ Then Maya briefs the creative agent. One brief produces all formats:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
+  "idempotency_key": "c1d2e3f4-a5b6-4789-c012-789012345678",
   "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
   "brand": { "domain": "acmeoutdoor.com" },
   "target_format_ids": [
@@ -228,6 +230,7 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "creatives": [
     {
@@ -257,6 +260,7 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
+  "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "brand": { "domain": "acmeoutdoor.com" },
   "start_time": "2026-04-01T00:00:00Z",
@@ -298,6 +302,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
+  "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "audiences": [
     {
@@ -323,6 +328,7 @@ Kai's Meridian Geo returns matching signal segments with pricing, coverage, and 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
   "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
   "destinations": [
     { "type": "platform", "platform": "streamhaus" }
@@ -427,6 +433,7 @@ For deeper performance tracking, AdCP provides two more tools:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
+  "idempotency_key": "a5b6c7d8-e9f0-4123-a456-123456789012",
   "event_source_id": "acme_website_pixel",
   "events": [
     {
@@ -445,6 +452,7 @@ For deeper performance tracking, AdCP provides two more tools:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
+  "idempotency_key": "b6c7d8e9-f0a1-4234-b567-234567890123",
   "media_buy_id": "mb_acme_q2_001",
   "measurement_period": {
     "start": "2026-04-01T00:00:00Z",
@@ -467,6 +475,7 @@ Acme Outdoor has a Shopify store with 200 products. They want their catalog avai
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "catalogs": [
     {

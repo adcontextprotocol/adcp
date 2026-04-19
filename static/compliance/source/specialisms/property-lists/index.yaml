@@ -1,9 +1,9 @@
-id: inventory_lists
+id: property_lists
 version: "1.0.0"
-title: "Inventory lists"
+title: "Property lists"
 protocol: governance
-category: inventory_lists
-summary: "Curated property and collection lists for inventory grouping, targeting governance, and delivery compliance — create, query, update, delete, and validate."
+category: property_lists
+summary: "Curated property lists for inventory grouping, targeting governance, and delivery compliance — create, query, update, delete, and validate."
 track: governance
 required_tools:
   - create_property_list
@@ -24,7 +24,7 @@ narrative: |
 agent:
   interaction_model: governance_agent
   capabilities:
-    - inventory_lists
+    - property_lists
     - brand_safety
   examples:
     - "IAS"
@@ -64,7 +64,7 @@ phases:
           Return capabilities declaring governance in supported_protocols, confirming the agent provides governance services.
         sample_request:
           context:
-            correlation_id: "inventory_lists--get_capabilities"
+            correlation_id: "property_lists--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -77,7 +77,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--get_capabilities"
+            value: "property_lists--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: create_list
     title: "Create property lists"
@@ -105,6 +105,10 @@ phases:
           - Status: active
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           brand:
             domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
@@ -119,7 +123,7 @@ phases:
                   value: "campinggear.example"
 
           context:
-            correlation_id: "inventory_lists--create_inclusion_list"
+            correlation_id: "property_lists--create_inclusion_list"
         context_outputs:
           - path: "list.list_id"
             key: "property_list_id"
@@ -133,7 +137,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--create_inclusion_list"
+            value: "property_lists--create_inclusion_list"
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "list.list_id"
@@ -162,11 +166,14 @@ phases:
           - Includes both inclusion and exclusion lists
 
         sample_request:
-          principal: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           name_contains: "Acme Outdoor"
 
           context:
-            correlation_id: "inventory_lists--list_property_lists"
+            correlation_id: "property_lists--list_property_lists"
         validations:
           - check: response_schema
             description: "Response matches list-property-lists-response.json schema"
@@ -176,7 +183,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--list_property_lists"
+            value: "property_lists--list_property_lists"
             description: "Context correlation_id returned unchanged"
       - id: get_property_list
         title: "Get a specific property list"
@@ -196,11 +203,13 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
 
           context:
-            correlation_id: "inventory_lists--get_property_list"
+            correlation_id: "property_lists--get_property_list"
         validations:
           - check: response_schema
             description: "Response matches get-property-list-response.json schema"
@@ -210,7 +219,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--get_property_list"
+            value: "property_lists--get_property_list"
             description: "Context correlation_id returned unchanged"
   - id: update_list
     title: "Update property lists"
@@ -236,8 +245,10 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           base_properties:
             - selection_type: "identifiers"
               identifiers:
@@ -249,7 +260,7 @@ phases:
                   value: "mountaineering.example"
 
           context:
-            correlation_id: "inventory_lists--update_property_list"
+            correlation_id: "property_lists--update_property_list"
         validations:
           - check: response_schema
             description: "Response matches update-property-list-response.json schema"
@@ -259,7 +270,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--update_property_list"
+            value: "property_lists--update_property_list"
             description: "Context correlation_id returned unchanged"
   - id: delivery_validation
     title: "Validate delivery compliance"
@@ -288,8 +299,10 @@ phases:
           - Violations with details (property, list, severity)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -304,7 +317,7 @@ phases:
               impressions: 200
 
           context:
-            correlation_id: "inventory_lists--validate_property_delivery"
+            correlation_id: "property_lists--validate_property_delivery"
         validations:
           - check: response_schema
             description: "Response matches validate-property-delivery-response.json schema"
@@ -319,7 +332,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--validate_property_delivery"
+            value: "property_lists--validate_property_delivery"
             description: "Context correlation_id returned unchanged"
 
   - id: enforcement
@@ -347,8 +360,10 @@ phases:
           - No failed or warning features
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -389,8 +404,10 @@ phases:
           - feature entry references the inclusion list that was breached (via policy_id or code)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
@@ -432,11 +449,13 @@ phases:
 
         sample_request:
           list_id: "$context.property_list_id"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
 
           context:
-            correlation_id: "inventory_lists--delete_property_list"
+            correlation_id: "property_lists--delete_property_list"
         validations:
           - check: response_schema
             description: "Response matches delete-property-list-response.json schema"
@@ -446,5 +465,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "inventory_lists--delete_property_list"
+            value: "property_lists--delete_property_list"
             description: "Context correlation_id returned unchanged"

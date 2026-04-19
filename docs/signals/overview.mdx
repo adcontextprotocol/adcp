@@ -130,6 +130,7 @@ Each activation call specifies the destination platform and account:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "idempotency_key": "c3d4e5f6-a7b8-4901-c234-901234567890",
   "signal_agent_segment_id": "shopgrid_new_to_brand",
   "pricing_option_id": "po_shopgrid_retail_cpm",
   "destinations": [
@@ -151,6 +152,7 @@ Sam also wants to run a sponsored article campaign through Wonderstruck, a premi
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "idempotency_key": "d4e5f6a7-b8c9-4012-d345-012345678901",
   "signal_agent_segment_id": "shopgrid_new_to_brand",
   "pricing_option_id": "po_shopgrid_retail_cpm",
   "destinations": [
@@ -182,6 +184,7 @@ The campaign runs. Two weeks in, display CPAs are running 40% above target while
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "idempotency_key": "e5f6a7b8-c9d0-4123-e456-123456789012",
   "signal_agent_segment_id": "meridian_competitor_visitors",
   "action": "deactivate",
   "destinations": [

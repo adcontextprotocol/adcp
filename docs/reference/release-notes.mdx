@@ -82,6 +82,69 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0-rc.4
+
+**Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3) | [Annex III obligations](/docs/governance/annex-iii-obligations)
+
+### What's New
+
+1. **GDPR Art 22 / EU AI Act Annex III as schema invariants** — Regulated verticals (credit, insurance pricing, recruitment, housing) now enforce mandatory human review at the protocol layer rather than in deployer policy documents. Resolves #2310.
+
+2. **Two-axis autonomy model** — `budget.authority_level` is removed; two orthogonal fields replace it:
+   - `budget.reallocation_threshold` (number ≥ 0) governs budget reallocation autonomy. Denominated in `budget.currency`. Mutually exclusive with `reallocation_unlimited: true` (explicit full-autonomy sentinel).
+   - `plan.human_review_required` (boolean) governs per-decision human review under Art 22 / Annex III. Every plan action escalates regardless of spend when true.
+
+3. **Automatic Art 22 cascade** — Governance agents MUST set `human_review_required: true` when any of: `policy_categories` contains `fair_housing | fair_lending | fair_employment | pharmaceutical_advertising`; any resolved policy has `requires_human_review: true`; or `policy_ids` includes `eu_ai_act_annex_iii`. Enforced at the JSON Schema layer via cross-field `if/then`. Buyers cannot opt out by omitting the flag.
+
+4. **Append-only revisions with human override** — `GovernancePlanState.revisionHistory` retains prior plan configurations. Downgrading `human_review_required` from true requires a `human_override` artifact with ≥20-char reason, email-format approver, and optional 24h-fresh `approved_at`. Mode `advisory | audit` MUST NOT neuter `human_review_required`.
+
+5. **`eu_ai_act_annex_iii` registry policy** — Seeded as a regulation (enforcement: must, EU jurisdictions, `requires_human_review: true`) with §1(b) recruitment, §5(b) credit, §5(c) insurance references. Guidance documents AdCP's Art 25 data-governance-provider role.
+
+6. **`requires_human_review` on policies and categories** — New boolean on `policy-entry.json` and `policy-category-definition.json`. Effective immediately on resolution — NOT gated by `effective_date`. Art 22 GDPR predates AI Act effective dates. Seeded true on four categories (`fair_housing`, `fair_lending`, `fair_employment`, `pharmaceutical_advertising`).
+
+7. **`data_subject_contestation` on brand and house** — New optional contact reference (URL / email / languages) on `brand.json` at both brand and house levels (resolution order: brand → house → missing). Also available as inline override on `brand-ref.json` for operators who do not control the brand's canonical brand.json. Satisfies Art 22(3) discovery — AdCP provides the pointer; the deployer operates the workflow.
+
+8. **Expanded restricted attributes** — `age` and `familial_status` added to the `restricted-attribute` enum. `fair_housing` and `fair_employment` categories updated to include them (closes the HUD v. Facebook gap).
+
+9. **Prompt-injection bounds** — `objectives` bounded at 2000 chars; `policy-entry.policy` at 5000; `policy-entry.description` at 500. Governance agents MUST pin registry-sourced policy text as system-level instructions; `custom_policies` evaluated as additional restrictions only — cannot relax or override registry.
+
+10. **Annex III obligations doc** — New `/docs/governance/annex-iii-obligations` page covers deployer obligations (Art 14 oversight, Art 12 logging, Art 13 transparency, Art 10 data governance, Art 22(3) contestation), AdCP's Art 25 role, the jurisdictional-scoping limitations of `plan.countries`, and the `reallocation_threshold` vs. `human_review_required` distinction.
+
+### Breaking Changes
+
+| Change | rc.3 | rc.4 |
+|--------|------|------|
+| Budget autonomy | `authority_level: agent_full \| agent_limited \| human_required` enum on `budget` | Removed. Use `reallocation_threshold` (number) or `reallocation_unlimited: true` (sentinel) |
+| Spend-authority enum file | `budget-authority-level.json` | Deleted |
+| Human review | Implicit via enum | Explicit `plan.human_review_required` (boolean) |
+| Annex III verticals | Policy-document concern | Schema invariant — `if/then` rejects `human_review_required: false` when `policy_categories` ∋ regulated set |
+| Plan revisions | Overwritten | Append-only `revisionHistory` |
+| Mode override | `advisory \| audit` downgrades all findings | Cannot downgrade when `human_review_required: true` |
+
+### Migration Notes For rc.3 Adopters
+
+**Budget rewrite (required):**
+- `authority_level: 'agent_full'` → `reallocation_unlimited: true`
+- `authority_level: 'agent_limited'` → `reallocation_threshold: <positive>` (typically your per-change escalation threshold)
+- `authority_level: 'human_required'` → `human_review_required: true` at plan level (and optionally `reallocation_threshold: 0`)
+
+**Regulated-vertical campaigns (required):**
+- Declare `policy_categories` explicitly for credit / insurance / recruitment / housing campaigns
+- Set `human_review_required: true` when those categories are declared (or omit the field and let your governance agent set it — governance agents MUST do so automatically)
+- Populate `brand.data_subject_contestation` on `brand.json` with a URL or email contact point — or use the inline `brand-ref` override when you don't control brand.json
+
+**Governance-agent implementors (required):**
+- Auto-flip `human_review_required` based on resolved policy categories, policy IDs, and custom policies
+- Emit a critical `data_subject_contestation` finding in `check_governance` when `human_review_required` is true and no contestation contact is discoverable
+- Enforce `human_override` validation on downgrades (≥20-char reason, email approver, 24h freshness)
+- Preserve revision history — do not silently replace plan state on re-sync
+- Mode `advisory | audit` MUST NOT downgrade denied/escalated when `human_review_required` is true
+
+**Signal declarations (recommended):**
+- Signals that infer `age` or `familial_status` MUST declare those in `restricted_attributes` — or they will be filtered out of fair_housing / fair_employment / fair_lending campaigns automatically
+
+---
+
 ## Version 3.0.0-rc.3
 
 **Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)

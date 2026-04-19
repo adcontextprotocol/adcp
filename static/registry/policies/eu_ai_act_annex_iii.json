@@ -1,0 +1,43 @@
+{
+  "policy_id": "eu_ai_act_annex_iii",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "EU AI Act — Annex III High-Risk Decisions (Ad Targeting)",
+  "description": "When AdCP agents make automated decisions affecting access to credit, insurance, housing, or employment opportunities, the deployer falls within EU AI Act Annex III high-risk categories. Those decisions require human oversight and cannot be made solely by an agent.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "region_aliases": {
+    "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+  },
+  "policy_categories": ["fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising"],
+  "governance_domains": ["campaign", "content_standards"],
+  "effective_date": "2026-08-02",
+  "source_url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj",
+  "source_name": "European Parliament and Council",
+  "requires_human_review": true,
+  "policy": "When an AdCP deployment makes targeting, creative-selection, or delivery decisions that affect a natural person's access to (a) credit or credit-scoring services [Annex III §5(b)], (b) life or health insurance pricing or risk assessment [Annex III §5(c)], or (c) employment opportunities, including recruitment, shortlisting, and the allocation of job advertisements [Annex III §1(b)], those decisions fall within EU AI Act Annex III high-risk categories (Regulation (EU) 2024/1689). Targeting of housing advertisements is separately regulated under US FHA and EU consumer-protection law; AdCP treats housing as equivalent-risk and the `fair_housing` category carries the same human-review requirement, though the AI Act does not name housing allocation as its own Annex III category.\n\nFor such decisions, the deployer MUST:\n\n1. Ensure human oversight (Art. 14) — a qualified person must be able to review and override the automated decision before it produces effects on the data subject. AdCP agents MUST NOT execute targeting for these verticals without `human_review_required: true` on the plan, regardless of `reallocation_threshold` or any other budget-autonomy setting.\n\n2. Maintain automatic logging of events (Art. 12) — the governance audit log (sync_plans, check_governance, report_plan_outcome) satisfies this when retained for the Annex III retention period.\n\n3. Provide transparency to the data subject (Art. 13) — the brand's data_subject_contestation endpoint (brand.json) MUST be discoverable and reachable.\n\n4. Govern input data (Art. 10) — signals used for targeting MUST declare restricted_attributes in accordance with GDPR Art. 9, and the governance agent MUST reject any audience criterion touching restricted attributes for this campaign.\n\n5. Preserve the data subject's right to contest (GDPR Art. 22(3)) — the deployer MUST provide a human point of contact. AdCP surfaces this via brand.data_subject_contestation.\n\nThe monetary value of the decision is irrelevant. A €20 autonomous targeting decision in a regulated vertical engages Annex III identically to a €2M one.",
+  "guidance": "AdCP's role is Article 25 (deployer / provider of data-governance capabilities): the protocol exposes the structured fields (policy_categories, restricted_attributes, human_review_required, data_subject_contestation) that let the deployer discharge its Annex III obligations. Conformity assessment, DPIA, and human-oversight workflow are the deployer's responsibility — AdCP does not itself perform the assessment.\n\nGovernance agents MUST set plan.human_review_required = true automatically when any of the following are true for the plan:\n- policy_categories includes fair_housing, fair_lending, fair_employment, or pharmaceutical_advertising\n- Any resolved registry policy or custom_policy has requires_human_review: true\n- The brand's declared industries include sectors covered by Annex III (e.g., consumer finance, insurance underwriting, recruitment services, housing operators)\n\nThe Annex III categories used here are a stable subset relevant to ad targeting — recruitment/selection (Annex III §1(b)), creditworthiness evaluation (§5(b)), and life/health insurance risk assessment and pricing (§5(c)). Housing allocation is not a named Annex III category in the same way but is treated as equivalent-risk under US FHA and EU consumer-protection law; AdCP groups it here for operational consistency.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "An EU bank runs a credit-card acquisition campaign in Germany. The governance plan declares policy_categories: ['fair_lending'] and the governance agent automatically sets human_review_required: true. Every check_governance decision is escalated to a compliance officer for approval before creatives are launched.",
+        "explanation": "Annex III §5(b) applies (creditworthiness). The deployer maintains human oversight via mandatory escalation. `reallocation_threshold` may be set to any operational value — that's a budget-ops question, not an Art 22 question."
+      },
+      {
+        "scenario": "An EU insurer advertises travel insurance (not Annex III — short-term, non-health) with contextual targeting only. policy_categories is empty, human_review_required is false, and the agent proceeds autonomously.",
+        "explanation": "Travel insurance is outside Annex III §5(c) (which covers life/health risk assessment). Contextual targeting without profiling avoids Art 22. No human-review mandate applies."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An employment platform runs a recruiting campaign across the EU with policy_categories: ['fair_employment'] but sets human_review_required: false. The agent launches targeting autonomously.",
+        "explanation": "Annex III §1(b) (recruitment/selection) and GDPR Art 22 prohibit solely automated decisions. The deployer has not provided human oversight. The governance agent MUST reject this plan."
+      },
+      {
+        "scenario": "A consumer lender runs a €20 autonomous display-ad test in France with policy_categories: ['fair_lending'] and human_review_required: false, arguing the spend is too small to matter.",
+        "explanation": "Art 22 has no monetary threshold. The vertical — not the budget — triggers the mandate. The governance agent MUST reject this plan."
+      }
+    ]
+  }
+}

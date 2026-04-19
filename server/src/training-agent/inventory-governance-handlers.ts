@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, CollectionListState } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
+import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -23,11 +24,12 @@ export const COLLECTION_LIST_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: ACCOUNT_REF_SCHEMA,
         name: { type: 'string' },
         description: { type: 'string' },
         base_collections: { type: 'array' },
         filters: { type: 'object' },
-        brand: { type: 'object', properties: { domain: { type: 'string' } } },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for automatic rule application (campaign metadata, not identity)' },
       },
       required: ['name'],
     },
@@ -41,6 +43,7 @@ export const COLLECTION_LIST_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string' },
+        account: ACCOUNT_REF_SCHEMA,
         resolve: { type: 'boolean' },
       },
       required: ['list_id'],
@@ -55,23 +58,26 @@ export const COLLECTION_LIST_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string' },
+        account: ACCOUNT_REF_SCHEMA,
         name: { type: 'string' },
         description: { type: 'string' },
         base_collections: { type: 'array' },
         filters: { type: 'object' },
         webhook_url: { type: 'string' },
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Update brand reference (campaign metadata)' },
       },
       required: ['list_id'],
     },
   },
   {
     name: 'list_collection_lists',
-    description: 'List collection lists for the authenticated principal.',
+    description: 'List collection lists owned by the given account (or all accessible accounts when account is omitted).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: ACCOUNT_REF_SCHEMA,
         name_contains: { type: 'string' },
       },
     },
@@ -85,6 +91,7 @@ export const COLLECTION_LIST_TOOLS = [
       type: 'object' as const,
       properties: {
         list_id: { type: 'string' },
+        account: ACCOUNT_REF_SCHEMA,
       },
       required: ['list_id'],
     },
@@ -113,6 +120,7 @@ interface UpdateCollectionListInput extends ToolArgs {
   base_collections?: unknown[];
   filters?: Record<string, unknown>;
   webhook_url?: string;
+  brand?: { domain: string };
 }
 
 interface ListInput extends ToolArgs {
@@ -152,6 +160,7 @@ export async function handleCreateCollectionList(args: ToolArgs, ctx: TrainingCo
     base_collections: baseColls,
     filters: input.filters,
     brand: input.brand,
+    account: args.account,
     collection_count: baseColls.length ? countSources(baseColls) : 0,
     created_at: now,
     updated_at: now,
@@ -204,6 +213,7 @@ export async function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingCo
   }
   if (input.filters !== undefined) list.filters = input.filters;
   if (input.webhook_url !== undefined) list.webhook_url = input.webhook_url === '' ? undefined : input.webhook_url;
+  if (input.brand !== undefined) list.brand = input.brand;
   list.updated_at = new Date().toISOString();
 
   return { list };

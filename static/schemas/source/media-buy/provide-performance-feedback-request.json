@@ -20,7 +20,8 @@
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate feedback submissions on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "measurement_period": {
       "$ref": "/schemas/core/datetime-range.json",
@@ -59,6 +60,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "media_buy_id",
     "measurement_period",
     "performance_index"

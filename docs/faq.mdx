@@ -90,13 +90,9 @@ Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/l
 </Accordion>
 
 <Accordion title="How mature is the protocol?">
-AdCP is currently at version 3.0 release candidate 2 (v3.0-rc.2). This means:
+AdCP is in the 3.0 release-candidate cycle, with 3.0 GA targeted for April 2026. The protocol design is stable and suitable for pilot implementations; schemas may still receive minor refinements based on implementer feedback before GA.
 
-- The protocol design is stable and suitable for pilot implementations
-- Schemas and task definitions may still receive minor refinements based on implementer feedback
-- Breaking changes are possible before the final 3.0 release, but are tracked through semantic versioning
-
-See the [release notes](/docs/reference/release-notes) for version history.
+The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. For production use prior to 3.0 GA, we recommend implementing against [v2.5](/docs/reference/v2-sunset).
 </Accordion>
 
 <Accordion title="I built against AdCP 2.5 — what changed?">
@@ -124,6 +120,50 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 
 <Accordion title="What is AdCP's relationship to IAB Tech Lab?">
 AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+</Accordion>
+
+<Accordion title="Why isn't AdCP an auction protocol?">
+AdCP is built for agentic workflows — direct-sold inventory, guaranteed deals, and commerce media — not the impression-level auction where OpenRTB already works. Buyers and sellers transact directly through their agents, with pricing surfaced via `pricing_options`, `price_guidance`, and (when the transaction warrants it) `price_breakdown`.
+
+The supply-path-optimization concerns that drove SPO disclosure in programmatic auctions look different in direct-sold transactions, where buyer and seller are authenticated counterparties rather than anonymous bidders. Buyers that want SPO-grade fee disclosure can require it through `buy_terms` as a condition of the purchase — the protocol supports it; it's not imposed as a protocol-wide mandate.
+</Accordion>
+
+<Accordion title="How does adagents.json relate to ads.txt and sellers.json?">
+`adagents.json` extends the authorization model for agentic buying while preserving the ads.txt/sellers.json relationship semantics. A publisher's `adagents.json` with `delegation_type` carries the same signal as an ads.txt `DIRECT` or `RESELLER` row, and `brand.json` properties with a `relationship` field carry the same signal as a sellers.json entry.
+
+The full crosswalk is in [Why adagents.json instead of ads.txt](/docs/governance/property/adagents#why-adagents-json-instead-of-ads-txt).
+</Accordion>
+
+<Accordion title="Can an AI agent autonomously buy credit, insurance, housing, or employment ads?">
+These verticals fall under GDPR Art 22, EU AI Act Annex III, and US FHA / ECOA / EEOC. The policy-category mechanism already ships with `fair_housing`, `fair_lending`, and `fair_employment` entries in the registry.
+
+AdCP 3.0 GA will require campaigns declaring a regulated policy category to run with human review — `authority_level: agent_full` will not be accepted — with an Annex III category taxonomy and a data-subject contestation path added at the same time. Tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310). Until that ships, enforcement depends on the governance agent implementation, not a schema invariant. See the [governance overview](/docs/governance/overview) for the full model.
+</Accordion>
+
+<Accordion title="Who governs AdCP?">
+AdCP is governed by AgenticAdvertising.Org, a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+
+The Foundation has four voting member classes with equal representation on the Board — Brands, Agencies, Publishers, and Technology Providers — targeting ten seats per class at the first elected board, replacing the current interim board at the 2026 Annual General Meeting. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
+</Accordion>
+
+<Accordion title="Is Scope3 getting preferential treatment?">
+Scope3 contributed foundational IP and early funding to AgenticAdvertising.Org. Specifically:
+
+- **CSBS (Common Sense Brand Standards)** — formerly "Scope3 Common Sense" — was donated to AAO and is now governed by AAO. The formal donation and rename are tracked in [#2305](https://github.com/adcontextprotocol/adcp/issues/2305).
+- **Property registry seed data** — the initial property universe and ad-infrastructure knowledge graph seeding the AAO property catalog was donated by Scope3.
+- **Seed funding loan** — Scope3 provided a seed funding loan to AAO, which is in the process of being repaid.
+
+The interim board has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). Two of four interim directors are Scope3-affiliated; this composition transitions to an elected board at the 2026 Annual General Meeting, targeting equal representation across four voting classes. Brian co-founded both Scope3 and AAO and serves as AdCP lead architect; he does not hold executive authority at AAO, and Scope3 holds no voting rights, veto, or protocol-control privileges beyond those of any other member. Because of the dual role, he recuses from AAO decisions where Scope3 has a direct commercial interest — including any change to the default brand-safety framework, property-catalog data governance, and the terms of the seed-loan repayment.
+
+See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) for the governance framework and [agenticadvertising.org/governance](https://agenticadvertising.org/governance) for the authoritative board list, funding disclosures, and recusal rules.
+</Accordion>
+
+<Accordion title="What if my buyer agent is compromised?">
+AdCP today uses bearer-token authentication between agents — see [authentication](/docs/building/integration/authentication) for the shipped model.
+
+AdCP 3.0 GA will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
+
+Governance decisions will also be signed so that a seller or regulator can verify a `governance_context` token genuinely came from the issuing governance agent. Tracked in [#2306](https://github.com/adcontextprotocol/adcp/issues/2306). Until those land, implementers should treat bearer auth as an interim floor, not the long-term contract.
 </Accordion>
 
 <Accordion title="Does AdCP support AI platforms and AI ad networks?">

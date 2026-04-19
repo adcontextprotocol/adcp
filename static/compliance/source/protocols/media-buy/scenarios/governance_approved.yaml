@@ -55,6 +55,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
+          idempotency_key: "comply-gov-approved-sync-plans-v1"
           plans:
             - plan_id: "comply-gov-approved-plan"
               brand:
@@ -63,7 +64,7 @@ phases:
               budget:
                 total: 100000
                 currency: "USD"
-                authority_level: "agent_full"
+                reallocation_threshold: 100000
               flight:
                 start: "2026-04-01T00:00:00Z"
                 end: "2026-06-30T23:59:59Z"

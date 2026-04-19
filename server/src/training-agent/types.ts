@@ -20,6 +20,10 @@ export interface TrainingContext {
   moduleId?: string;
   trackId?: string;
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
+  /** Authenticated principal for idempotency cache scoping.
+   *  Derived from the bearer token in the MCP route; defaults to `anonymous`
+   *  when no auth is configured (dev / test). */
+  principal?: string;
 }
 
 export interface ShowSpecial {
@@ -159,6 +163,26 @@ export interface RightsGrantState {
   createdAt: string;
 }
 
+export interface ComplyDeliveryAccumulator {
+  impressions: number;
+  clicks: number;
+  reportedSpend: { amount: number; currency: string };
+  conversions: number;
+}
+
+export interface ComplyBudgetSimulation {
+  spendPercentage: number;
+  computedSpend: { amount: number; currency: string };
+  budget: { amount: number; currency: string };
+}
+
+export interface ComplyExtensions {
+  accountStatuses: Map<string, string>;
+  siSessions: Map<string, { status: string; terminationReason?: string }>;
+  deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
+  budgetSimulations: Map<string, ComplyBudgetSimulation>;
+}
+
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
@@ -171,6 +195,10 @@ export interface SessionState {
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
   usageRecords: UsageRecord[];
+  /** Data set by comply_test_controller. Persisted so scenarios survive the
+   * serialize/deserialize round trip that every request does, even in the
+   * single-request case with the InMemoryStateStore. */
+  complyExtensions: ComplyExtensions;
   lastGetProductsContext?: {
     /** Products are deterministic from the catalog — not persisted across requests.
      * After a cross-machine rehydration, this is undefined and callers must re-derive. */
@@ -188,6 +216,7 @@ export interface CollectionListState {
   base_collections?: unknown[];
   filters?: Record<string, unknown>;
   brand?: { domain: string };
+  account?: AccountRef;
   webhook_url?: string;
   collection_count: number;
   created_at: string;
@@ -337,11 +366,27 @@ export interface GovernancePlanState {
   budget: {
     total: number;
     currency: string;
-    authorityLevel: string;
+    reallocationThreshold: number;
+    reallocationUnlimited: boolean;
     perSellerMaxPct?: number;
-    reallocationThreshold?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
+  humanReviewRequired: boolean;
+  humanReviewAutoFlippedBy: string[];
+  humanOverride?: { reason: string; approver: string; approvedAt: string };
+  policyCategories?: string[];
+  revisionHistory: Array<{
+    version: number;
+    syncedAt: string;
+    humanReviewRequired: boolean;
+    humanReviewAutoFlippedBy: string[];
+    humanOverride?: { reason: string; approver: string; approvedAt: string };
+    mode: GovernancePlanState['mode'];
+    reallocationThreshold: number;
+    reallocationUnlimited: boolean;
+    policyCategories?: string[];
+    policyIds?: string[];
+  }>;
   channels?: {
     required?: string[];
     allowed?: string[];
@@ -353,7 +398,13 @@ export interface GovernancePlanState {
   delegations?: GovernanceDelegation[];
   approvedSellers?: string[] | null;
   policyIds?: string[];
-  customPolicies?: string[];
+  customPolicies?: Array<{
+    policy_id?: string;
+    policy: string;
+    description?: string;
+    enforcement?: 'must' | 'should' | 'may';
+    requires_human_review?: boolean;
+  }>;
   mode: 'enforce' | 'advisory' | 'audit';
   committedBudget: number;
   committedByType?: Record<string, number>;
@@ -365,14 +416,13 @@ export interface GovernanceCheckState {
   planId: string;
   governanceContext?: string;
   binding: 'proposed' | 'committed';
-  status: 'approved' | 'denied' | 'conditions' | 'escalated';
+  status: 'approved' | 'denied' | 'conditions';
   caller: string;
   tool?: string;
   purchaseType?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
-  escalation?: { reason: string; action?: string };
   explanation: string;
   mode: string;
   categoriesEvaluated: string[];
@@ -416,7 +466,7 @@ export interface PropertyListState {
   name: string;
   description?: string;
   listType?: string;
-  principal?: string;
+  account?: AccountRef;
   baseProperties: unknown[];
   filters?: unknown;
   brand?: unknown;

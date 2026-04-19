@@ -98,19 +98,27 @@ phases:
         expected: |
           Acknowledge the governance plan:
           - plan_id: identifier for this governance plan
-          - authority_level: agent_full
-          - reallocation_threshold: 0.20 (20% drift triggers re-evaluation)
+          - budget.reallocation_threshold: amount above which reallocation requires re-evaluation
 
         sample_request:
+          idempotency_key: "governance-delivery-monitor-sync-plans-v1"
           plans:
-            - plan_name: "Acme Outdoor delivery governance"
+            - plan_id: "gov_acme_delivery_monitor"
               brand:
                 domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
-              authority_level: "agent_full"
-              reallocation_threshold: 0.20
-              conditions:
-                - "Re-evaluate governance if any line item drifts >20% from plan"
+              objectives: "Delivery-phase governance with drift detection and rebalancing"
+              budget:
+                total: 40000
+                currency: "USD"
+                reallocation_threshold: 8000
+              flight:
+                start: "2027-01-01T00:00:00Z"
+                end: "2027-12-31T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "drift_reevaluation"
+                  enforcement: "must"
+                  policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
 
           context:
             correlation_id: "governance_delivery_monitor--sync_plans"

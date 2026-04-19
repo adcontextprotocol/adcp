@@ -15,6 +15,11 @@ name: "Osei Natural"
 description: "Natural skincare brand for small-business advertiser storyboard testing"
 sandbox: true
 
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-osei-natural-v1"
+  probe_task: list_creatives
+
 brand:
   house:
     domain: "oseinatural.example"

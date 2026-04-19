@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   listStoryboards,
   getStoryboard,
+  getAllStoryboards,
   getTestKit,
   getTestKitForStoryboard,
   type Storyboard,
@@ -53,8 +54,10 @@ describe('listStoryboards', () => {
   });
 
   it('step counts match actual phase steps', () => {
-    for (const summary of listStoryboards()) {
-      const full = getStoryboard(summary.id);
+    const summaries = listStoryboards();
+    const byId = new Map(getAllStoryboards().map((sb) => [sb.id, sb] as const));
+    for (const summary of summaries) {
+      const full = byId.get(summary.id);
       expect(full).toBeDefined();
       const actualSteps = full!.phases.reduce((sum, p) => sum + p.steps.length, 0);
       expect(summary.step_count).toBe(actualSteps);
@@ -77,8 +80,7 @@ describe('getStoryboard', () => {
   });
 
   it('every step has required fields', () => {
-    for (const summary of listStoryboards()) {
-      const sb = getStoryboard(summary.id)!;
+    for (const sb of getAllStoryboards()) {
       for (const phase of sb.phases) {
         expect(phase.id).toBeTruthy();
         expect(phase.title).toBeTruthy();
