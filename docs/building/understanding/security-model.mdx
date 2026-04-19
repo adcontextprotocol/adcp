@@ -127,7 +127,7 @@ Key properties:
 
 - **Revocation.** Governance agents publish a signed revocation list at a well-known path. Compromised keys and rescinded plans can be invalidated without trusting the CDN serving the list.
 - **Retention.** Revoked public keys remain discoverable for 7+ years so historical tokens remain verifiable after rotation.
-- **Non-repudiation.** Because the governance attestation is signed and public-key-verifiable, a buyer cannot later claim a plan was never approved, and a seller cannot later claim an approval was never received.
+- **Approval provenance.** Because the governance attestation is signed and public-key-verifiable, any party holding the artifact can verify it was approved by the holder of the signing key at the stated time. This approaches non-repudiation — but only conditionally. The buyer cannot later claim the plan was *never approved* so long as (a) the signing key was not compromised at time-of-signing (revocation lists bound this — a post-hoc claim of "the key was already stolen when I signed" is falsifiable against the revocation timeline) and (b) the signer retains ordinary custody of its signing key. The seller side is *weaker*: an attestation proves the plan existed, not that it was delivered or acknowledged. For full bilateral non-repudiation, the seller should return a signed `plan_receipt` binding `{plan_id, received_at, plan_sha256}`. Absent a signed receipt, "never received" remains deniable.
 
 **What this defends against.** After-the-fact tampering. Claim drift between parties in a dispute. Regulatory inquiries that arrive long after the credentials have rotated.
 
