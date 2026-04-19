@@ -103,4 +103,4 @@ Within a single `(brand, account)` context, implementations MUST support read-yo
 
 **Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/docs/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
 
-Compliance tooling exercises this invariant by running the same storyboard against two or more agent instances in rotation (multi-instance mode). See [Validate your agent — Production readiness](/docs/building/validate-your-agent#production-readiness).
+Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/docs/building/validate-your-agent#verifying-cross-instance-state).

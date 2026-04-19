@@ -156,19 +156,20 @@ When a request references a sandbox account, your agent MUST NOT persist product
 
 See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
 
-## Production readiness
+## Verifying cross-instance state
 
-Single-instance storyboard success is not sufficient for compliance. Any agent that persists `(brand, account)`-scoped state — sellers, governance agents, signal agents, brand-rights agents — must run its storyboards against at least two independent instances behind round-robin routing before claiming conformance.
+The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/docs/protocol/architecture#state-persistence-and-horizontal-scaling) — a media buy created on one replica must be readable from any other. Single-instance storyboard success does not by itself prove that invariant. Choose a verification approach that fits your deployment.
 
-The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/docs/protocol/architecture#state-persistence-and-horizontal-scaling). A media buy created on replica A must be readable from replica B. A storyboard that passes single-instance but fails multi-instance is a direct signal that your agent is storing state in process memory.
+**Verify by architecture.** If you run on a managed serverless platform with a shared datastore — Lambda + DynamoDB, Cloudflare Workers + D1, Cloud Run + Firestore, Vercel + Neon — the invariant holds by construction. Storyboards that pass against your deployed endpoint are sufficient. Document your storage pattern so it's discoverable.
 
-Run multi-instance validation as:
+**Verify by multi-instance testing.** If you deploy long-running processes (containers, VMs, a classic app server behind a load balancer), put ≥2 replicas behind round-robin routing and run storyboards against the shared endpoint:
 
-1. Start two instances of your agent on different ports, or put a round-robin load balancer in front of a replicated deployment.
-2. Point the CLI alias at the shared endpoint (`npx @adcp/client --save-auth my-agent https://my-agent.example/mcp`).
-3. Run the same storyboard set (`npx @adcp/client storyboard run my-agent`). The runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences that fail on in-process-only implementations.
+```bash
+npx @adcp/client --save-auth my-agent https://my-agent.example/mcp
+npx @adcp/client storyboard run my-agent
+```
 
-Storyboards that are purely stateless probes — capability discovery, auth rejection, schema validation — are unaffected by multi-instance routing. Storyboards with any stateful step (create → get → update → delete, sync_governance → check_governance, idempotency replay, etc.) exercise cross-instance persistence and will fail under multi-instance validation when state is kept in process memory.
+The compliance runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences most likely to catch in-process state. Stateless probes (capability discovery, auth rejection, schema validation) are unaffected.
 
 A typical failure looks like:
 
@@ -179,7 +180,9 @@ A typical failure looks like:
   → Brand-scoped state is not shared across replicas.
 ```
 
-Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. If any state you write can be read back by a later call, it must live in a shared store — not a per-process `Map` or module-level variable.
+**Verify by your own testing.** Property-based tests against a real datastore, chaos fault injection between replicas, or production observability that correlates writes and reads across instances are all valid. The protocol cares about the invariant, not the methodology.
+
+Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. Any state you write that a later call can read back must live in a shared store — not a per-process `Map` or module-level variable.
 
 ## The build-validate-fix loop
 
