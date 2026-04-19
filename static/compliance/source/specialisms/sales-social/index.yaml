@@ -143,7 +143,7 @@ phases:
           Return accounts matching the query:
           - accounts array with status, account_id, brand, operator
           - Active accounts ready for ad operations
-          - Pending accounts with setup URLs if verification needed
+          - Pending accounts with accounts[].setup.url populated if verification is needed
 
         sample_request:
           brand:

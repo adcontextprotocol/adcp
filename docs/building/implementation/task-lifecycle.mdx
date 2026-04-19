@@ -115,7 +115,9 @@ if (response.status === 'input-required') {
 
 ### Approval Flow
 
-Human approval is a special case of `input-required`. The `pending_approval` and `input-required` statuses implement the [Embedded Human Judgment](/docs/governance/embedded-human-judgment) principle that judgment cannot be delegated to software — when an action exceeds autonomous authority, the system halts for human review rather than proceeding.
+Human approval at the task layer is modelled as `input-required` (when the buyer must respond, e.g. confirm a budget) or `submitted` (when the seller is waiting on an internal human, e.g. IO signing). These implement the [Embedded Human Judgment](/docs/governance/embedded-human-judgment) principle that judgment cannot be delegated to software — when an action exceeds autonomous authority, the system halts for human review rather than proceeding.
+
+> `pending_approval` is an Account status, not a task status and not a MediaBuy status. It indicates the seller is reviewing an account (credit, contracts) before it can be used. Don't reuse the name for task-level approval.
 
 ```json
 {
