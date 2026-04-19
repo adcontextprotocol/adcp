@@ -90,7 +90,15 @@ Buyers integrating against AdCP sellers SHOULD:
 - **Design retry and error handling to tolerate new error codes** added to experimental surfaces between releases.
 - **Treat experimental surfaces as unsuitable for regulated workflows** without additional vendor assurance. Experimental is not a claim of compliance-grade stability.
 
-Buyers MAY choose to refuse traffic on experimental surfaces by filtering `experimental_features` at negotiation time.
+### Buyer-side refusal
+
+Buyers that do not want to interact with experimental surfaces — typically for regulated workflows, compliance-sensitive deployments, or procurement policies that forbid non-frozen features — enforce this client-side. The pattern:
+
+1. **At capability discovery**, read `experimental_features` from the seller's `get_adcp_capabilities` response.
+2. **Filter before invocation.** Do not call tasks that belong to experimental feature ids your policy rejects. The list of tasks per feature id is published in the canonical experimental-surfaces list below.
+3. **Short-circuit upstream.** When an orchestrator or upstream caller requests behavior that would require an experimental surface, return a policy-level error (e.g., the caller's own `POLICY_EXPERIMENTAL_REFUSED`) rather than attempting the call. The refusal is the buyer's concern, not the seller's — sellers MUST NOT be expected to infer buyer policy.
+
+There is no wire-level refusal field in 3.0. Buyer-side filtering is sufficient and keeps the contract asymmetric (sellers declare; buyers decide). A reciprocal wire mechanism may be revisited in a future release if multi-party refusal handoff patterns emerge from real integrations.
 
 ## Current experimental surfaces
 
@@ -98,7 +106,7 @@ Schemas marked with `x-status: experimental` are the authoritative source. The c
 
 | Feature id | Surface | Why experimental |
 |---|---|---|
-| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights); plus the `brand.rights`, `brand.right_types`, `brand.available_uses`, and `brand.generation_providers` capability fields on `get_adcp_capabilities` | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
+| `brand.rights_lifecycle` | [`get_rights`](/docs/brand-protocol/tasks/get_rights), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`update_rights`](/docs/brand-protocol/tasks/update_rights); the `brand.rights`, `brand.right_types`, `brand.available_uses`, and `brand.generation_providers` capability fields on `get_adcp_capabilities`; and the `right-use` and `right-type` enums that these surfaces reference | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. The two enums are marked experimental because their values are expected to evolve as new licensable-use categories surface (e.g. embodiment, hologram, generative-music-style). |
 | `governance.campaign` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Multi-party governance semantics (buyer vs seller approval conflicts, audit provenance verification, tie-breaking under Embedded Human Judgment) are not yet settled. |
 | `trusted_match.core` | [TMP](/docs/trusted-match/) | Privacy architecture is thinly specified relative to what a regulator deep-dive will demand. Exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
 
