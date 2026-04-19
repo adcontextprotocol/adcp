@@ -24,6 +24,30 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(data.vectors.length > 0, 'must have at least one vector');
   });
 
+  it('ships a WARNING that the test secret is not for production', () => {
+    // Red-team finding W-3: prior test vectors used a human-readable ASCII
+    // secret that was trivially copyable into production. This guard ensures
+    // the WARNING field remains loud and unambiguous.
+    assert.equal(typeof data.WARNING, 'string', 'top-level WARNING field MUST be present');
+    assert.ok(/production/i.test(data.WARNING), 'WARNING must reference production explicitly');
+    assert.ok(data.secret.length === 64, 'test secret MUST be a 64-hex-char (256-bit) value');
+    assert.ok(/^[0-9a-f]{64}$/.test(data.secret), 'test secret MUST be lowercase hex');
+  });
+
+  it('includes secret-rejection vectors for weak configurations', () => {
+    // Red-team finding W-3: the prior vectors had no negative case for
+    // sub-32-byte or zero-entropy secrets, so implementations could ship
+    // without a weak-secret check and still pass conformance.
+    assert.ok(Array.isArray(data.secret_rejection_vectors),
+      'secret_rejection_vectors must be present');
+    assert.ok(data.secret_rejection_vectors.length >= 2,
+      'must cover at least length-below-minimum and zero-entropy cases');
+    const shortSecret = data.secret_rejection_vectors.find(
+      v => typeof v.secret === 'string' && v.secret.length < 32,
+    );
+    assert.ok(shortSecret, 'must include a sub-32-byte secret rejection vector');
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
