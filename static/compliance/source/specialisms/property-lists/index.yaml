@@ -122,6 +122,7 @@ phases:
                 - type: "domain"
                   value: "campinggear.example"
 
+          idempotency_key: "$generate:uuid_v4#property_lists_create_list_create_inclusion_list"
           context:
             correlation_id: "property_lists--create_inclusion_list"
         context_outputs:
@@ -259,6 +260,7 @@ phases:
                 - type: "domain"
                   value: "mountaineering.example"
 
+          idempotency_key: "$generate:uuid_v4#property_lists_update_list_update_property_list"
           context:
             correlation_id: "property_lists--update_property_list"
         validations:
@@ -454,6 +456,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "acmeoutdoor.example"
 
+          idempotency_key: "$generate:uuid_v4#property_lists_delete_list_delete_property_list"
           context:
             correlation_id: "property_lists--delete_property_list"
         validations:

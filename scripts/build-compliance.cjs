@@ -39,6 +39,7 @@ const DIST_DIR = path.join(__dirname, '../dist/compliance');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SPECIALISM_ENUM = path.join(__dirname, '../static/schemas/source/enums/specialism.json');
 const PROTOCOL_ENUM = path.join(__dirname, '../static/schemas/source/enums/adcp-protocol.json');
+const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
 
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
@@ -158,6 +159,114 @@ function discoverProtocols(sourceDir, specialisms) {
   return items.sort((a, b) => a.id.localeCompare(b.id));
 }
 
+// ── Idempotency lint ────────────────────────────────────────────────
+//
+// Every mutating request in AdCP (any task whose request schema lists
+// `idempotency_key` in its top-level `required` array) MUST carry an
+// idempotency_key. Normative anchors:
+//   - docs/reference/migration/v3-readiness.mdx §"idempotency_key required
+//     on all mutating requests"
+//   - docs/reference/release-notes.mdx 3.0 entry, idempotency rollout
+//   - adcontextprotocol/adcp#2315 (the PR that made it required)
+// Storyboard sample_requests are spec artifacts — when they omit it, the
+// published example is non-conforming even if the runner auto-injects at
+// runtime. This lint reads the request schemas (source of truth) rather
+// than hardcoding a task list, so new mutating tasks are covered on
+// arrival. The one documented exception (si-terminate-session: naturally
+// idempotent by session_id) carries a `$comment` on its request schema
+// and is correctly absent from the required-key set.
+
+function loadMutatingSchemaRefs(schemasDir) {
+  const refs = new Set();
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) { walk(p); continue; }
+      if (!entry.name.endsWith('-request.json')) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (required.includes('idempotency_key')) {
+        refs.add(path.relative(schemasDir, p));
+      }
+    }
+  }
+  walk(schemasDir);
+  return refs;
+}
+
+function lintStoryboardIdempotency(sourceDir, schemasDir) {
+  const mutatingRefs = loadMutatingSchemaRefs(schemasDir);
+  const violations = [];
+
+  function lintFile(p) {
+    const rel = path.relative(sourceDir, p);
+    // Not storyboards: test-kit fixtures and the schema doc itself.
+    if (rel.startsWith('test-kits/')) return;
+    if (rel.endsWith('storyboard-schema.yaml')) return;
+
+    let doc;
+    try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
+    catch { return; }
+    if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) return;
+
+    for (const phase of doc.phases) {
+      if (!phase || !Array.isArray(phase.steps)) continue;
+      for (const step of phase.steps) {
+        if (!step || typeof step !== 'object' || !step.task) continue;
+        // expect_error steps intentionally exercise invalid-request paths,
+        // including the "missing idempotency_key" test in universal/idempotency.yaml.
+        if (step.expect_error === true) continue;
+        // Steps without schema_ref are HTTP probes, controller calls, or
+        // synthetic invocations (e.g., comply_test_controller's
+        // simulate_budget scenarios, universal/security.yaml's probe steps)
+        // that don't send a task request schema. They're out of scope for
+        // this lint.
+        const schemaRef = step.schema_ref;
+        if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
+        const hasKey =
+          step.sample_request &&
+          typeof step.sample_request === 'object' &&
+          step.sample_request.idempotency_key !== undefined;
+        if (hasKey) continue;
+        violations.push({
+          file: rel,
+          phase: phase.id,
+          step: step.id,
+          task: step.task,
+          schema: schemaRef,
+        });
+      }
+    }
+  }
+
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) { walk(p); continue; }
+      if (entry.name.endsWith('.yaml')) lintFile(p);
+    }
+  }
+  walk(sourceDir);
+
+  if (violations.length > 0) {
+    const lines = violations.map(v =>
+      `  ${v.file} phase=${v.phase} step=${v.step}: task "${v.task}" is mutating (schema ${v.schema} requires idempotency_key) but sample_request omits it.`
+    );
+    throw new Error(
+      `Storyboard idempotency_key lint: ${violations.length} step(s) invoke a mutating task without declaring idempotency_key in sample_request.\n\n` +
+      lines.join('\n') +
+      `\n\nAdd \`idempotency_key: "$generate:uuid_v4#<storyboard>_<phase>_<step>"\` ` +
+      `to each sample_request (lowercase, hyphens → underscores; the alias is ` +
+      `resolved to a stable UUID per run by the storyboard runner). See ` +
+      `static/compliance/source/universal/idempotency.yaml for the convention, ` +
+      `and note the deliberate alias-reuse pattern there when two steps must ` +
+      `share a key (replay tests).`
+    );
+  }
+}
+
 function verifyEnumParity(specialisms, protocols) {
   const fsSpecialisms = new Set(specialisms.map(s => s.id));
   const fsProtocols = new Set(protocols.map(d => d.id));
@@ -200,6 +309,7 @@ function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
   verifyEnumParity(specialisms, protocols);
+  lintStoryboardIdempotency(sourceDir, SCHEMAS_DIR);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
     ? fs.readdirSync(universalDir)

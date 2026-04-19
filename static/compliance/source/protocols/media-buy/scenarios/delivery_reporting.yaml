@@ -58,6 +58,7 @@ phases:
               operator: "pinnacle-agency.com"
               billing: "operator"
               payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
@@ -117,6 +118,7 @@ phases:
             - product_id: "outdoor_video_q2"
               budget: 10000
               pricing_option_id: "cpm_standard"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"

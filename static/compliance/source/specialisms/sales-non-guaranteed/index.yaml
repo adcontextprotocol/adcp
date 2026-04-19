@@ -219,6 +219,7 @@ phases:
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
 
+          idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_create_media_buy"
           context:
             correlation_id: "sales_non_guaranteed--create_media_buy"
         validations:
@@ -327,6 +328,7 @@ phases:
               bid_price: 20.00
               budget: 13000
 
+          idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_adjust_bids_update_media_buy"
           context:
             correlation_id: "sales_non_guaranteed--update_media_buy"
         validations:

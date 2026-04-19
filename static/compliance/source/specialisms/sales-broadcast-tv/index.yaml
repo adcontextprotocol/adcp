@@ -271,6 +271,7 @@ phases:
             authentication:
               scheme: "HMAC-SHA256"
 
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_create_buy_create_media_buy"
           context:
             correlation_id: "sales_broadcast_tv--create_media_buy"
         validations:
@@ -449,6 +450,7 @@ phases:
                   container_format: "mp4"
                   video_codec: "h264"
 
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_creative_sync_sync_creatives"
           context:
             correlation_id: "sales_broadcast_tv--sync_creatives"
         validations:

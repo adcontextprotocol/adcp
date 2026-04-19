@@ -125,6 +125,7 @@ phases:
               billing: "operator"
               payment_terms: "net_30"
 
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_account_setup_sync_accounts"
           context:
             correlation_id: "sales_proposal_mode--sync_accounts"
         validations:
@@ -331,6 +332,7 @@ phases:
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
 
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_accept_proposal_create_media_buy"
           context:
             correlation_id: "sales_proposal_mode--create_media_buy"
         validations:
@@ -438,6 +440,7 @@ phases:
                   url: "https://cdn.pinnacle-agency.example/trail-pro-15s.mp4"
                   mime_type: "video/mp4"
 
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_creative_sync_sync_creatives"
           context:
             correlation_id: "sales_proposal_mode--sync_creatives"
         validations:

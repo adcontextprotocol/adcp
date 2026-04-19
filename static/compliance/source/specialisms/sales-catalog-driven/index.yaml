@@ -123,6 +123,7 @@ phases:
               billing: "operator"
               sandbox: true
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_account_setup_sync_accounts"
           context:
             correlation_id: "sales_catalog_driven--sync_accounts"
         validations:
@@ -254,6 +255,7 @@ phases:
                     amount: 195.00
                     currency: "USD"
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_catalog_sync_sync_catalogs"
           context:
             correlation_id: "sales_catalog_driven--sync_catalogs"
         validations:
@@ -377,6 +379,7 @@ phases:
                 - catalog_id: "menu_spring_2026"
                   catalog_type: "product"
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_create_buy_create_media_buy"
           context:
             correlation_id: "sales_catalog_driven--create_media_buy"
         validations:
@@ -430,6 +433,7 @@ phases:
               event_types: ["purchase", "add_to_cart", "page_view", "lead"]
               allowed_domains: ["amsterdam-steakhouse.com", "book.amsterdam-steakhouse.com"]
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_event_setup_sync_event_sources"
           context:
             correlation_id: "sales_catalog_driven--sync_event_sources"
           ext:
@@ -497,6 +501,7 @@ phases:
               timestamp: "2026-04-15T20:45:00Z"
               content_ids: ["seafood_tower"]
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_conversion_tracking_log_events"
           context:
             correlation_id: "sales_catalog_driven--log_events"
         validations:
@@ -550,6 +555,7 @@ phases:
           metric_type: "conversion_rate"
           feedback_source: "buyer_attribution"
 
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_optimization_loop_provide_feedback"
           context:
             correlation_id: "sales_catalog_driven--provide_feedback"
           ext:

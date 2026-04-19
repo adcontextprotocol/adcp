@@ -113,6 +113,7 @@ phases:
               operator: "pinnacle-agency.example"
               billing: "operator"
 
+          idempotency_key: "$generate:uuid_v4#sales_social_account_setup_sync_accounts"
           context:
             correlation_id: "sales_social--sync_accounts"
         validations:
@@ -201,6 +202,7 @@ phases:
               name: "Outdoor enthusiasts 25-54"
               description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
 
+          idempotency_key: "$generate:uuid_v4#sales_social_audience_sync_sync_audiences"
           context:
             correlation_id: "sales_social--sync_audiences"
         validations:
@@ -259,6 +261,7 @@ phases:
                   asset_type: "text"
                   content: "Trail Pro 3000 — Built for the Summit"
 
+          idempotency_key: "$generate:uuid_v4#sales_social_creative_push_sync_creatives"
           context:
             correlation_id: "sales_social--sync_creatives"
         validations:
@@ -308,6 +311,7 @@ phases:
               value: 149.99
               currency: "USD"
 
+          idempotency_key: "$generate:uuid_v4#sales_social_event_logging_log_event"
           context:
             correlation_id: "sales_social--log_event"
         validations:

@@ -59,6 +59,7 @@ phases:
               billing: "operator"
               payment_terms: "net_30"
 
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_products_setup_sync_accounts"
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"

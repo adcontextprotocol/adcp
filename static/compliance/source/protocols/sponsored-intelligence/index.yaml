@@ -158,6 +158,7 @@ phases:
             domain: "novamotors.example"
           campaign_context: "Nova EV launch — targeting environmentally conscious drivers interested in electric vehicles"
 
+          idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_initiate_session"
           context:
             correlation_id: "si_session--si_initiate_session"
         context_outputs:
@@ -199,6 +200,7 @@ phases:
           session_id: "$context.session_id"
           message: "What are the best electric vehicles for long road trips?"
 
+          idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_send_message"
           context:
             correlation_id: "si_session--si_send_message"
         validations:

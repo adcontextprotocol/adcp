@@ -135,6 +135,7 @@ phases:
               billing: "operator"
               payment_terms: "net_30"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_account_setup_sync_accounts"
           context:
             correlation_id: "creative_generative--seller--sync_accounts"
         validations:
@@ -343,6 +344,7 @@ phases:
             authentication:
               scheme: "HMAC-SHA256"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_create_buy_create_media_buy"
           context:
             correlation_id: "creative_generative--seller--create_media_buy"
         validations:
@@ -455,6 +457,7 @@ phases:
             - creative_id: "gen_video_summer_sale"
               package_id: "outdoor_video_q2"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_creative_brief_sync_sync_creatives_brief"
           context:
             correlation_id: "creative_generative--seller--sync_creatives_brief"
         validations:
@@ -509,6 +512,7 @@ phases:
                   width: 300
                   height: 250
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_creative_brief_sync_sync_creatives_standard"
           context:
             correlation_id: "creative_generative--seller--sync_creatives_standard"
         validations:
@@ -563,6 +567,7 @@ phases:
                     headline: "Test"
                     cta: "Click"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_creative_brief_sync_sync_creatives_invalid_brand"
           context:
             correlation_id: "creative_generative--seller--sync_creatives_invalid_brand"
         validations:
@@ -645,6 +650,7 @@ phases:
                     headline: "Your Next Adventure Starts Here"
                     cta: "Shop the Sale"
 
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_creative_generation_lifecycle_check_creative_status"
           context:
             correlation_id: "creative_generative--seller--check_creative_status"
         validations:

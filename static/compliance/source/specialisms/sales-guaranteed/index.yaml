@@ -134,6 +134,7 @@ phases:
               billing: "operator"
               payment_terms: "net_30"
 
+          idempotency_key: "$generate:uuid_v4#sales_guaranteed_account_setup_sync_accounts"
           context:
             correlation_id: "sales_guaranteed--sync_accounts"
         validations:
@@ -284,6 +285,7 @@ phases:
             authentication:
               scheme: "HMAC-SHA256"
 
+          idempotency_key: "$generate:uuid_v4#sales_guaranteed_create_buy_submitted_create_media_buy"
           context:
             correlation_id: "sales_guaranteed--create_media_buy"
         validations:
@@ -399,6 +401,7 @@ phases:
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
                   mime_type: "video/mp4"
 
+          idempotency_key: "$generate:uuid_v4#sales_guaranteed_creative_sync_sync_creatives"
           context:
             correlation_id: "sales_guaranteed--sync_creatives"
         validations:
