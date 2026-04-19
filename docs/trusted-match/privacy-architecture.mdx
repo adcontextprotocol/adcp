@@ -8,7 +8,7 @@ description: How TMP separates user identity from page context, what each party 
 
 TMP's privacy model is structural, not policy-based. The protocol separates user identity from page context so that buyers never receive both together. Without TEE, this separation is enforced by code: the context code path never accesses identity data and vice versa. The code is open-source and auditable. With TEE, attestation proves the expected code is running unmodified, upgrading the guarantee from "auditable" to "independently verifiable."
 
-This page explains what the separation is, what it prevents, and where the guarantees come from.
+This page explains what the separation is, what it prevents, and where the guarantees come from. TMP is the only AdCP domain that enforces privacy structurally — see [Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains) for how this compares to other protocols.
 
 ## The Separation Principle
 

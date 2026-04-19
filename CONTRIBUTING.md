@@ -14,6 +14,9 @@ Before contributing please see:
 - [RELEASING.md](https://github.com/adcontextprotocol/adcp/blob/main/RELEASING.md)
 - [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md)
 
+## Schema conventions
+Before adding or modifying schemas, read the [Specification Guidelines](https://github.com/adcontextprotocol/adcp/blob/main/docs/spec-guidelines.md). In particular, normative (non-`ext`) schema fields must not reference specific platforms or vendors by name — platform-specific fields belong in the `ext.{vendor}` namespace. Reviewers will flag violations.
+
 ## Issues
 [adcontextprotocol.org](http://adcontextprotocol.org/) contains documentation that may help answer questions you have about using AdCP.
 If you can't find the answer there, try searching for a similar issue on the [issues page](https://github.com/adcontextprotocol/adcp/issues).
