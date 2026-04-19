@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-pricing.json",
   "title": "Vendor Pricing",
-  "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), or 'per_unit' (fixed price per unit of work).",
+  "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), 'per_unit' (fixed price per unit of work), or 'custom' (escape hatch for models not covered by the enumerated forms — requires a description and structured metadata).",
   "type": "object",
   "oneOf": [
     {
@@ -122,6 +122,38 @@
         }
       },
       "required": ["model", "unit", "unit_price", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "CustomPricing",
+      "description": "Escape hatch for pricing constructs that do not fit cpm, percent_of_media, flat_fee, or per_unit. Use when a vendor prices via performance kickers, tiered volume, hybrid formulas, outcome-sharing, or any other model the standard forms cannot express. Requires a human-readable description and a structured metadata object that captures the parameters a buyer needs to reason about the charge. Buyers SHOULD route custom pricing through operator review before commitment — automatic selection is not recommended.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "custom"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Structured parameters for the custom model. Keys follow lowercase_snake_case. Values may be primitives, arrays, or nested objects. Must be sufficient for a human to understand the pricing basis and for a downstream system to reconstruct the charge.",
+          "additionalProperties": true,
+          "minProperties": 1
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "description", "metadata"],
       "additionalProperties": true
     }
   ]
