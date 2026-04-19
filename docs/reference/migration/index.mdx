@@ -51,6 +51,11 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
 | Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
 | Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
+| Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/implementation/security) |
+| Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/implementation/security) |
+| Governance | `governance_context` is a signed JWS verified via governance agent JWKS | Restructure | [Governance](/docs/governance/campaign) |
+| IO approval | `MediaBuy.pending_approval` removed — approval is a task-layer object | Restructure | [Media buy lifecycle](/docs/media-buy/media-buys) |
+| Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/docs/governance/annex-iii-obligations) |
 
 <Warning>
 `buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.

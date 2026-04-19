@@ -15,6 +15,12 @@ If you adopted a prerelease version, review the relevant section below before up
 
 | Area | rc.3 | 3.0 | What to do |
 |---|---|---|---|
+| `idempotency_key` on mutating requests | Optional | **Required** — UUID v4 in envelope | Generate fresh UUID v4 per logical operation. Persist keys across agent instances. Handle `IDEMPOTENCY_CONFLICT` and `IDEMPOTENCY_EXPIRED`. See [Security § Idempotency](/docs/building/implementation/security). |
+| `MediaBuy.pending_approval` status | Present | Removed — approvals are explicit approval tasks | Remove `pending_approval` from media-buy state filters. Consume approval tasks from the task surface. |
+| Budget autonomy | `budget.authority_level` enum (`agent_full \| agent_limited \| human_required`) | Removed. Split into `budget.reallocation_threshold` (number) + `plan.human_review_required` (boolean) | Rewrite: `agent_full` → `reallocation_unlimited: true`; `agent_limited` → `reallocation_threshold: <positive>`; `human_required` → `human_review_required: true`. Regulated verticals (fair housing, lending, employment, pharmaceutical) enforce `human_review_required: true` via schema `if/then`. |
+| `inventory-lists` specialism | Present | Renamed to `property-lists`; `collection-lists` split out as separate specialism | Update specialism claims. Agents that governed collection lists should now claim both `property-lists` and `collection-lists`. |
+| Compliance path taxonomy | `/compliance/{v}/domains/` | `/compliance/{v}/protocols/` | Update any internal references to compliance paths. Runner and catalog use `protocols/` exclusively. |
+| `governance_context` carrier | Opaque string | Signed JWS | Switch to JWS format. Verify signature via governance agent JWKS (resolved via `sync_governance`). Bind to `sub`, `aud`, `phase`, `exp`. |
 | Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. Schema: `enums/media-buy-status.json`. See details below. |
 | Capabilities model | Redundant boolean gates (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.) | Removed — object presence is the signal | Remove boolean capability checks. Test for object presence instead. Schema: `protocol/get-adcp-capabilities-response.json`. See [capabilities migration](#capabilities-model-simplification) below. |
 | `reporting_capabilities` | Optional on products | Required on every product | Ensure all products returned from `get_products` include `reporting_capabilities`. Schema: `core/product.json`. |
@@ -148,6 +154,15 @@ All request and response schemas across governance, collection, property, sponso
 
 ### Additive changes in 3.0
 
+- **RFC 9421 request signing profile (optional in 3.0, mandatory under AdCP Verified)** — Ed25519 HTTP Message Signatures with canonicalized covered-component list. Published test vectors at `static/compliance/source/test-vectors/request-signing/`. sf-binary encoding and URL canonicalization pinned for bit-identical canonical inputs. 15-step verification checklist with `keyid` cap-before-crypto.
+- **Signed JWS `governance_context`** — Governance decisions are now cryptographically verifiable. Sellers resolve the governance agent's JWKS via `sync_governance` and verify `sub` / `aud` / `phase` / `exp` before honoring the decision.
+- **Universal security storyboard** — Every agent runs `/compliance/{version}/universal/security.yaml` (unauth rejection, API key, OAuth/RFC 9728, audience binding). Agents declaring signing also run the `signed_requests` harness.
+- **Cross-instance state persistence** — Architecture spec requires persistent state (tasks, media buys, plans, signed artifacts, idempotency keys) across horizontally-scaled instances.
+- **Security implementation guide** — New `docs/building/implementation/security.mdx` documents threat model, three-principal model (brand / operator / agent), and verification paths. Retires ambiguous "principal" terminology.
+- **GDPR Art 22 / EU AI Act Annex III as schema invariants** — New registry policy `eu_ai_act_annex_iii`. `requires_human_review` on policies and categories. Schema-level enforcement of `human_review_required: true` for regulated verticals.
+- **Operating an Agent guide** — New doc for publishers without engineering teams — three paths: partner, self-host, build.
+- **Release cadence policy** — Named cadence: patch monthly, minor quarterly, major annual if needed. v2 EOL August 1, 2026.
+- **CHARTER.md** — Formal governance charter published.
 - **Collection lists** — Program-level brand safety using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching. New targeting overlay fields (`collection_list`, `collection_list_exclude`). New genre taxonomy enum.
 - **Broadcast TV support** — Ad-ID identifiers, broadcast spot formats (:15, :30, :60), Agency Estimate Number, measurement windows (Live, C3, C7), delivery data completeness (`is_final`, `measurement_window`).
 - **Offline reporting delivery** — `reporting_delivery_methods` on capabilities, `reporting_bucket` on accounts, `supports_offline_delivery` on product `reporting_capabilities`. Avro and ORC added as file format options.
