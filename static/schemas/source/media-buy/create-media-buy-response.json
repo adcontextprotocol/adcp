@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-response.json",
   "title": "Create Media Buy Response",
-  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line; (2) failure — an errors array with no media-buy artifact; (3) submitted task envelope — the task is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch is used for async create_media_buy flows where the buy cannot be confirmed before the response is returned.",
+  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active); (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id, the media buy is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "oneOf": [
     {
@@ -122,6 +122,16 @@
             "required": [
               "sandbox"
             ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
           }
         ]
       }
@@ -138,17 +148,18 @@
         },
         "task_id": {
           "type": "string",
-          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here.",
-          "minLength": 1
-        },
-        "taskId": {
-          "type": "string",
-          "description": "camelCase alias for task_id, permitted for A2A interoperability. Agents SHOULD emit task_id (snake_case is the AdCP convention); buyers SHOULD accept either. When both are present they MUST hold the same value.",
-          "minLength": 1
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id."
         },
         "message": {
           "type": "string",
           "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting IO signature from sales team; typical turnaround 2–4 hours.' Suitable for display to buyer-side humans or agent reasoning."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -172,11 +183,6 @@
           {
             "required": [
               "packages"
-            ]
-          },
-          {
-            "required": [
-              "errors"
             ]
           }
         ]
