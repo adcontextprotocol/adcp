@@ -35,6 +35,24 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     });
   });
 
+  it('ships a WARNING that the test secret is not for production', () => {
+    assert.equal(typeof data.WARNING, 'string', 'top-level WARNING field MUST be present');
+    assert.ok(/production/i.test(data.WARNING), 'WARNING must reference production explicitly');
+    assert.equal(data.secret.length, 64, 'test secret MUST be a 64-hex-char (256-bit) value');
+    assert.ok(/^[0-9a-f]{64}$/.test(data.secret), 'test secret MUST be lowercase hex');
+  });
+
+  it('includes secret-rejection vectors for weak configurations', () => {
+    assert.ok(Array.isArray(data.secret_rejection_vectors),
+      'secret_rejection_vectors must be present');
+    assert.ok(data.secret_rejection_vectors.length >= 2,
+      'must cover at least length-below-minimum and zero-entropy cases');
+    const shortSecret = data.secret_rejection_vectors.find(
+      v => typeof v.secret === 'string' && v.secret.length < 32,
+    );
+    assert.ok(shortSecret, 'must include a sub-32-byte secret rejection vector');
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
