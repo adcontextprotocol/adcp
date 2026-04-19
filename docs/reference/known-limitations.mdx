@@ -1,0 +1,61 @@
+---
+title: Known Limitations
+sidebarTitle: Known Limitations
+description: "Explicit non-goals and deferred items in AdCP 3.0 — what the protocol does not do, so implementers and reviewers can plan accordingly."
+"og:title": "AdCP — Known Limitations"
+---
+
+Knowing what a protocol doesn't do is part of evaluating it. This page consolidates the explicit non-goals and deferred items in AdCP 3.0 — things the protocol intentionally does not handle, things that have been scoped out for this cycle, and things that exist as mechanisms but aren't enforced at the protocol layer.
+
+Each limitation below is either a visible edge of the specification or a tracked follow-up. None is hidden.
+
+## Security and privacy
+
+- **No end-user authentication.** AdCP authenticates agents, not the humans they act for. User-level identity, consent capture, and data-subject rights are handled upstream in the buyer's stack and are outside the protocol's scope.
+- **No protocol-level breach-notification SLA.** AdCP does not specify "seller MUST notify buyer within N hours of suspected key compromise." Notification commitments live in DPAs between parties. A future major version may tighten this.
+- **No coordinated vulnerability disclosure baked into the protocol.** Individual agent operators should publish `/.well-known/security.txt`; there is no normative AdCP requirement yet.
+- **No protocol-level PII transport.** The `hashed_email` and `hashed_phone` fields in `sync_audiences` require SHA-256 hashing on the buyer side — the schemas do not accept cleartext for those fields. Other identifier types exist for non-PII spaces. If you need cleartext PII on the wire, AdCP is not the right carrier.
+- **No protocol-level data-residency mechanism.** Residency is a configuration and contract property of individual agents; the protocol does not carry a normative residency tag.
+- **No protocol guarantee about LLM prompt-injection defense.** That is an operator concern on every LLM-powered agent in the loop. See the [Security Model — threats specific to agentic advertising](/docs/building/understanding/security-model#threats-specific-to-agentic-advertising).
+- **Structural privacy applies only to TMP.** The Trusted Match Protocol enforces privacy structurally (separated code paths, schema prohibitions). Every other domain relies on contractual confidentiality or per-session consent. See [Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains).
+
+## Commerce and settlement
+
+- **No in-protocol payment or settlement.** `report_usage` provides the consumption data that feeds invoicing, but invoicing and settlement happen out-of-band through the buyer/seller commercial relationship.
+- **No cross-currency media buy.** Each media buy uses a single ISO 4217 currency (see `core/price.json`). If the buyer's budget currency differs from the seller's pricing currency, the buy either uses a matching currency or is rejected. FX rate pinning, risk attribution, and cross-currency reporting are deferred to a future version.
+- **No protocol-level delivery-dispute flow.** When buyer and seller delivery numbers disagree, reconciliation happens out-of-band through the commercial relationship (backed by the audit trail on both sides). A structured dispute task is a candidate for future work.
+
+## Authentication and identity
+
+- **No OAuth 2.1 + resource-indicators normative requirement.** AdCP authenticates agents using mTLS, pre-provisioned API keys, and RFC 9421 signed HTTP requests (the last normative in 3.1). These are deliberately chosen for mutual authentication between autonomous agents rather than delegated human-user authorization. OAuth 2.1 with resource indicators is an acceptable transport where an operator's infrastructure already standardizes on it, but it is not a protocol requirement and does not substitute for the three mechanisms above.
+- **Signed requests for mutating calls are normative in 3.1, not 3.0.** AdCP 3.0 allows bearer-token auth on mutating calls; 3.1 will require RFC 9421 signing or JWS-signed bodies. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
+
+## Governance
+
+- **Regulated-category human review is enforced by governance agents, not by a schema invariant.** 3.0 GA will reject `authority_level: agent_full` on campaigns that declare `fair_housing`, `fair_lending`, or `fair_employment` — before GA, enforcement depends on the governance-agent implementation, not a schema rule. A schema-level invariant is tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310).
+- **No protocol-mandated HITL on `sync_catalogs` or `sync_creatives`.** The universal task-lifecycle mechanism is available; no normative rule requires a human gate. `acquire_rights` is governed via the campaign-governance path ([purchase phase](/docs/governance/campaign/specification#governance-phases)) when the buyer's plan is configured for it. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol) for the two channels and the EHJ register for the normative rules on `check_governance`, `TERMS_REJECTED`, and lifecycle tasks.
+
+## Conformance and testing
+
+- **No canonical conformance specification yet.** The compliance suite tests behavior; the formal spec naming every MUST that an "AdCP-compliant" implementation must satisfy is tracked in [#2380](https://github.com/adcontextprotocol/adcp/issues/2380). Reference test vectors are tracked in [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
+- **No automated enforcement of platform agnosticism** beyond the `check:platform-agnostic` lint scanning property names. A richer check covering schema semantics is future work.
+
+## What is outside the protocol
+
+AdCP specifies the wire. It does not specify — and cannot substitute for — any of the following:
+
+- **Secret storage.** Use KMS, Vault, Secrets Manager, or equivalent.
+- **Endpoint hardening.** WAF, rate limiting, DDoS protection, TLS configuration, OS patching, dependency scanning.
+- **Monitoring and incident response.** The protocol emits the signals worth watching (idempotency conflicts, governance failures, SSRF rejections). Detecting and responding to them is the operator's job.
+- **Human controls.** Approval thresholds, spend caps, pause authority — these are policy configurations inside the operator's agent or governance platform, not the protocol.
+- **Physical and personnel security.** The usual controls over who can touch production, who holds break-glass credentials, and who can push to main.
+
+Think of AdCP as specifying the locks on the doors. The operator still owns the building.
+
+## Related
+
+- [Security Model](/docs/building/understanding/security-model) — the threat model and layered defense
+- [Privacy Considerations](/docs/reference/privacy-considerations) — cross-protocol privacy entry point
+- [Experimental Status](/docs/reference/experimental-status) — surfaces shipped in 3.x but not yet frozen
+- [Versioning & Governance](/docs/reference/versioning) — cadence, support windows, and how limitations become follow-ups
+- [Roadmap](/docs/reference/roadmap) — what's coming next

@@ -31,3 +31,6 @@ jobs:
 
     - name: Check policy registry publication completeness
       run: npm run check:registry
+
+    - name: Check platform-agnosticism (no vendor tokens in normative field names)
+      run: npm run test:platform-agnostic
