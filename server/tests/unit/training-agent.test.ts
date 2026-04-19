@@ -19,6 +19,11 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
+import {
+  MUTATING_TOOLS,
+  clearIdempotencyCache,
+} from '../../src/training-agent/idempotency.js';
+import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import {
@@ -56,6 +61,21 @@ async function simulateListTools(server: ReturnType<typeof createTrainingAgentSe
 }
 
 /**
+ * Auto-inject a fresh UUID v4 `idempotency_key` on mutating tools when the
+ * test doesn't provide one. The idempotency middleware requires the key per
+ * #2315; most tests in this file predate that requirement and don't care
+ * about replay semantics — they just want the tool to run once.
+ *
+ * Tests that DO care (conflict / replay / expired / missing-key coverage)
+ * pass an explicit `idempotency_key`, which this helper preserves.
+ */
+function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!MUTATING_TOOLS.has(toolName)) return args;
+  if (args.idempotency_key !== undefined) return args;
+  return { ...args, idempotency_key: `test-${randomUUID()}` };
+}
+
+/**
  * Simulate CallTool request on an MCP server.
  */
 async function simulateCallTool(
@@ -69,7 +89,7 @@ async function simulateCallTool(
     throw new Error('CallTool handler not found');
   }
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
@@ -100,7 +120,7 @@ async function simulateCallToolAsTask(
     throw new Error('CallTool handler not found');
   }
   return handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args, task: taskParams } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args), task: taskParams } },
     {},
   );
 }
@@ -6175,7 +6195,7 @@ async function simulateCallToolRaw(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
@@ -6247,7 +6267,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-neg-budget',
+      idempotency_key: 'ctx-neg-budget-01',
       start_time: '2026-05-01T00:00:00Z',
       end_time: '2026-05-31T23:59:59Z',
       packages: [{ product_id: 'test-product', budget: -500, pricing_option_id: 'test-pricing' }],
@@ -6261,7 +6281,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-nonexistent',
+      idempotency_key: 'ctx-nonexistent-01',
       start_time: '2026-05-01T00:00:00Z',
       end_time: '2026-05-31T23:59:59Z',
       packages: [{ product_id: 'NONEXISTENT_PRODUCT_ID_12345', budget: 1000, pricing_option_id: 'nonexistent-pricing' }],
@@ -6275,7 +6295,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-reversed',
+      idempotency_key: 'ctx-reversed-key-01',
       start_time: '2026-12-31T00:00:00Z',
       end_time: '2026-01-01T00:00:00Z',
       packages: [{ product_id: 'test-product', budget: 1000, pricing_option_id: 'test-pricing' }],

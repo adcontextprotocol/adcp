@@ -50,6 +50,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     // No tokens configured and no WorkOS = dev mode, allow all
+    res.locals.trainingPrincipal = 'anonymous';
     return next();
   }
   const auth = req.headers.authorization;
@@ -63,9 +64,15 @@ async function requireToken(req: Request, res: Response, next: NextFunction): Pr
   }
   const token = auth.slice(7);
 
-  // Accept static tokens (primary or public test agent)
-  if ((TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) ||
-      (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN))) {
+  // Accept static tokens (primary or public test agent).
+  // Principal for idempotency scoping: distinct per token tier but shared
+  // across all callers using that tier. Prefix-stable, no tenant bleed.
+  if (TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) {
+    res.locals.trainingPrincipal = 'static:primary';
+    return next();
+  }
+  if (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN)) {
+    res.locals.trainingPrincipal = 'static:public';
     return next();
   }
 
@@ -74,7 +81,9 @@ async function requireToken(req: Request, res: Response, next: NextFunction): Pr
     try {
       const result = await workos.apiKeys.validateApiKey({ value: token });
       if (result.apiKey) {
-        logger.info({ orgId: result.apiKey.owner.id }, 'Training agent: authenticated via AAO API key');
+        const orgId = result.apiKey.owner.id;
+        logger.info({ orgId }, 'Training agent: authenticated via AAO API key');
+        res.locals.trainingPrincipal = `workos:${orgId}`;
         return next();
       }
       res.status(401).json({
@@ -199,8 +208,11 @@ export function createTrainingAgentRouter(): Router {
 
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
     try {
-      // Build training context (open mode for now; training mode in Stage 2)
-      const ctx: TrainingContext = { mode: 'open' };
+      // Build training context (open mode for now; training mode in Stage 2).
+      // Principal is set by requireToken; defaults to 'anonymous' in dev mode
+      // when no tokens are configured.
+      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
+      const ctx: TrainingContext = { mode: 'open', principal };
 
       server = createTrainingAgentServer(ctx);
       const transport = new StreamableHTTPServerTransport({
@@ -284,7 +296,8 @@ export function createTrainingAgentRouter(): Router {
 
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
     try {
-      const ctx: TrainingContext = { mode: 'open' };
+      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
+      const ctx: TrainingContext = { mode: 'open', principal };
       server = createTrainingAgentServer(ctx);
 
       // The endpoint path is relative to the router mount point
