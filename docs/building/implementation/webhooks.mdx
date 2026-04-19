@@ -353,28 +353,36 @@ Every webhook payload — MCP task envelope, governance list-change webhooks (`c
 - Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the credential binding from the verified HMAC secret or Bearer token — never a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple publishers MUST NOT collapse them.
 - Dedup state SHOULD persist for at least 24h. Publishers SHOULD NOT retry beyond that window; retries arriving after the receiver's TTL will be reprocessed as fresh events.
 - Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile publisher emitting high-volume fresh keys is otherwise a storage-amplification vector.
+- **Duplicates MUST be answered with `2xx`** (typically `200 OK`), not `409 Conflict`. At-least-once senders interpret any non-2xx response as "delivery failed" and retry with exponential back-off; returning `4xx` on a successfully-deduped event turns correct receiver behavior into a retry storm. A duplicate is a no-op, not an error.
 - Webhook receivers do **not** verify payload equivalence across key reuse. If a sender reuses a key with a changed payload (a sender bug), the receiver's cached first copy wins and the second is silently deduped. This differs from the request-side `IDEMPOTENCY_CONFLICT` behavior — senders are solely responsible for generating a fresh key on every distinct event.
 
 ```javascript
-async function processWebhook(req, payload) {
+app.post('/webhooks/adcp', async (req, res) => {
+  const payload = req.body;
   const { idempotency_key, task_id, status, timestamp, result } = payload;
 
   // Scope dedup to the authenticated sender — never trust a payload field for identity.
   const sender = req.verifiedSenderId; // set by HMAC/Bearer middleware
 
-  // Dedup: same (sender, idempotency_key) within the replay window → already processed
-  if (await db.webhookAlreadyProcessed(sender, idempotency_key)) return;
+  // Dedup: same (sender, idempotency_key) within the replay window → already processed.
+  // Return 200 (not 409) so the sender stops retrying.
+  if (await db.webhookAlreadyProcessed(sender, idempotency_key)) {
+    return res.status(200).end();
+  }
   await db.markWebhookProcessed(sender, idempotency_key); // before side effects — fail-closed on crash
 
   // Ordering: separately, don't apply a stale status on top of a newer one.
   // Ordering state is keyed on task_id, not idempotency_key — two distinct events
-  // (different keys) can still arrive out of order.
+  // (different keys) can still arrive out of order. Still a 200: we received it cleanly.
   const task = await db.getTask(task_id);
-  if (task?.updated_at >= timestamp) return;
+  if (task?.updated_at >= timestamp) {
+    return res.status(200).end();
+  }
 
   await db.updateTask(task_id, { status, updated_at: timestamp, result });
   await triggerBusinessLogic(task_id, status);
-}
+  res.status(200).end();
+});
 ```
 
 **Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
@@ -383,7 +391,8 @@ async function processWebhook(req, payload) {
 
 1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
 2. **Dedupe by `idempotency_key`** — every payload carries a required key stable across retries; track processed keys for at least 24h
-3. **Verify signatures** — always validate `X-ADCP-Signature` before processing
+3. **Return 2xx on duplicates** — a successfully-deduped event is a no-op, not an error; returning non-2xx triggers the sender's retry back-off and creates retry storms
+4. **Verify signatures** — always validate `X-ADCP-Signature` before processing
 4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
 5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
 6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
