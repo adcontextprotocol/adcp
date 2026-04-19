@@ -29,5 +29,7 @@
     "error_code": "request_signature_replayed",
     "failed_step": 12
   },
-  "$comment": "This vector is identical to positive/001-basic-post.json but is submitted after the replay cache has already recorded the (keyid, nonce) pair. The Signature field should be populated with the exact signature from positive/001 before running (test harness responsibility). Verifier MUST reject at step 12 with request_signature_replayed without reaching step 13's cache insert."
+  "requires_contract": "replay_window",
+  "side_effects": "mutating",
+  "$comment": "This vector is identical to positive/001-basic-post.json but is submitted after the replay cache has already recorded the (keyid, nonce) pair. White-box harnesses MAY inject the cache entry directly (see test_harness_state). Black-box runners SHOULD send the request twice in sequence per test-kits/signed-requests-runner.yaml → stateful_vector_contract.replay_window; the first submission is accepted as a real create_media_buy and MUST be sent against a sandbox endpoint only (see endpoint_scope in the test-kit), the second MUST be rejected at step 12 with request_signature_replayed without reaching step 13's cache insert. The side_effects: mutating marker is a belt-and-suspenders signal for consumers that read vectors outside the storyboard runner: the black-box path for this vector has a first-request side effect by design."
 }
