@@ -37,11 +37,41 @@ Governance gating (via campaign governance) operates independently of privacy po
 
 AdCP minimizes the data that crosses protocol boundaries where it can:
 
-- When using `hashed_email` or `hashed_phone` in `sync_audiences`, buyers MUST SHA-256 hash normalized values before transport — the schemas for those fields do not accept cleartext. Non-hashed identifier types exist for other spaces; implementers MUST choose a hashed type when transporting email or phone.
+- When using `hashed_email` or `hashed_phone` in `sync_audiences`, buyers MUST hash normalized values before transport — the schemas for those fields do not accept cleartext. Non-hashed identifier types exist for other spaces; implementers MUST choose a hashed type when transporting email or phone. See [PII Hashing](#pii-hashing) below for the specific hashing scheme and its honest limitations.
 - TMP Context Match carries no user identity; TMP Identity Match carries no page context. Both are enforced at the schema level.
 - `governance_context` tokens can use `policy_decision_hash` instead of inline decisions when the buyer's compliance posture is sensitive.
 
 Implementers SHOULD review whether any fields they add to `ext` or `context` re-introduce data that the protocol minimized out.
+
+### PII Hashing
+
+The `hashed_email` and `hashed_phone` fields in audience-member payloads are pseudonymous identifiers, not anonymous ones. This section names the specific scheme and its honest limitations so compliance reviewers can classify the data correctly.
+
+**Normative scheme selection.** Sellers declare accepted schemes via the `privacy.audience_hash_schemes` capability on `get_adcp_capabilities`. Two schemes are defined in 3.x:
+
+- **`hmac_sha256`** (privacy-hardened). The value MUST be `HMAC-SHA-256(key=per-seller-onboarding-key, msg=normalized_identifier)`, hex-encoded lowercase. The per-seller key MUST be ≥256 bits of CSPRNG output, exchanged out-of-band at onboarding, and rotated at least annually. The same cleartext identifier produces a different hash value for each seller, which prevents cross-seller correlation of the same person.
+- **`sha256_plain`** (legacy 3.x default). The value MUST be `SHA-256(normalized_identifier)`, hex-encoded lowercase. Provided for backward compatibility only.
+
+Buyers MUST use the scheme the counterparty declares. When a seller declares both, buyers SHOULD prefer `hmac_sha256`. 4.0 will MUST require `hmac_sha256` and MUST remove `sha256_plain` from the accepted set.
+
+**What this does and does not give you.** Hashing provides:
+
+- **Wire-level opacity.** A passive observer of the payload cannot directly read the cleartext email or phone.
+- **(HMAC only) Cross-seller-correlation resistance.** A given identifier produces a different hash per seller, so a leak or side-channel from Seller A does not let Seller B link their data to A's.
+
+Hashing does NOT provide:
+
+- **Anonymization.** The email universe is approximately 5 billion addresses. Plain SHA-256 of a normalized email is invertible by a rainbow table built from any breach dump or address-generation tool — treat `sha256_plain` as a lightly-obfuscated identifier, not a privacy control. HMAC raises the cost (the attacker must also hold the per-seller key) but does not defeat the same attack for a party that holds the key.
+- **Protection against membership queries.** Any party that knows the keying material and a candidate identifier can confirm membership. Sellers receiving audiences are that party; they can always recover whether a specific person is on the list.
+- **Unlinkability against the seller.** The seller still sees the same pseudonym for the same person across uploads, which is the whole point of the matching operation and is not a property hashing can remove.
+
+**Data-protection classification.** Under GDPR Article 4(5), a hashed identifier where the controller holds or can obtain the keying material is "pseudonymized personal data," not anonymized data — it remains personal data for purposes of the regulation. Classify accordingly in your RoPA and your DPA with each counterparty.
+
+**Operator obligations.**
+
+- The per-seller HMAC key is a secret credential. Store it in the same tier as bearer tokens and signing keys (KMS / Vault / Secrets Manager) and log the key-version, never the key itself.
+- Rotate the key at least annually. Coordinate rotation with counterparties — a rotation without re-upload invalidates the seller's index until the next sync.
+- Do not reuse the per-seller HMAC key for any other purpose (webhook HMAC fallback, request signing, bulk encryption). Key reuse collapses the threat model.
 
 ### Separation
 

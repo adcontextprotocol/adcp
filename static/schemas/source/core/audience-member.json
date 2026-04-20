@@ -11,12 +11,12 @@
     },
     "hashed_email": {
       "type": "string",
-      "description": "SHA-256 hash of lowercase, trimmed email address.",
+      "description": "Hashed email identifier, hex-encoded lowercase, 64 hex chars. The hash scheme is negotiated via the seller's `privacy.audience_hash_schemes` capability (see get_adcp_capabilities). For `hmac_sha256` (required in 4.0, opt-in in 3.x), the value MUST be HMAC-SHA-256(key=per-seller-onboarding-key, msg=normalized_email), where the key is a ≥256-bit CSPRNG secret exchanged out-of-band at onboarding and rotated at least annually. For `sha256_plain` (legacy 3.x default), the value MUST be SHA-256(normalized_email). Email is normalized to lowercase+trim before hashing. NOTE: hashing provides cross-seller-correlation resistance (a given identifier produces a different value per seller when HMAC is used) — it is NOT anonymization. Any party that knows the cleartext identifier and the applicable keying material can reproduce the hash. See docs/building/implementation/security.mdx §PII hashing.",
       "pattern": "^[a-f0-9]{64}$"
     },
     "hashed_phone": {
       "type": "string",
-      "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234).",
+      "description": "Hashed phone identifier, hex-encoded lowercase, 64 hex chars. The hash scheme is negotiated via the seller's `privacy.audience_hash_schemes` capability (see get_adcp_capabilities). For `hmac_sha256` (required in 4.0, opt-in in 3.x), the value MUST be HMAC-SHA-256(key=per-seller-onboarding-key, msg=normalized_phone), where the key is a ≥256-bit CSPRNG secret exchanged out-of-band at onboarding and rotated at least annually. For `sha256_plain` (legacy 3.x default), the value MUST be SHA-256(normalized_phone). Phone is normalized to E.164 (e.g. +12065551234) before hashing. NOTE: hashing provides cross-seller-correlation resistance (a given identifier produces a different value per seller when HMAC is used) — it is NOT anonymization. Any party that knows the cleartext identifier and the applicable keying material can reproduce the hash. See docs/building/implementation/security.mdx §PII hashing.",
       "pattern": "^[a-f0-9]{64}$"
     },
     "uids": {
@@ -49,5 +49,5 @@
     { "required": ["hashed_phone"] },
     { "required": ["uids"] }
   ],
-  "additionalProperties": true
+  "additionalProperties": false
 }

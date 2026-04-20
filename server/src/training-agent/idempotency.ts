@@ -146,39 +146,6 @@ export function validateKeyFormat(key: unknown): key is string {
 }
 
 /**
- * Entropy-floor check for idempotency keys. Library primitive referenced by
- * the MUST-upgrade in docs/building/implementation/security.mdx — guards
- * against trivially-guessable keys (repeats, counters) that would let a
- * second caller collide a first caller's key and observe the three-state
- * response oracle. Wiring into middleware is deliberately left to callers.
- * TODO: unit tests (no colocated *.test.ts file yet).
- */
-export function validateKeyEntropy(key: string): { valid: boolean; reason?: string } {
-  if (key.length === 0) return { valid: false, reason: 'empty key' };
-  const counts = new Map<string, number>();
-  for (const ch of key) counts.set(ch, (counts.get(ch) ?? 0) + 1);
-  const len = key.length;
-  let entropy = 0;
-  for (const c of counts.values()) {
-    const p = c / len;
-    entropy -= p * Math.log2(p);
-  }
-  if (entropy < 3.5) {
-    return { valid: false, reason: `shannon entropy ${entropy.toFixed(2)} bits/char < 3.5` };
-  }
-  const uniqueRatio = counts.size / len;
-  if (uniqueRatio < 0.25) {
-    return { valid: false, reason: `unique-char ratio ${uniqueRatio.toFixed(2)} < 0.25 (repeating pattern)` };
-  }
-  // Monotonic / long-digit-run detector: any run of ≥8 digits suggests a
-  // counter (e.g. retry-00000000001). A UUID v4 has no digit run that long.
-  if (/\d{8,}/.test(key)) {
-    return { valid: false, reason: 'contains digit run ≥8 (looks like a counter)' };
-  }
-  return { valid: true };
-}
-
-/**
  * Constant-time comparison of two hex SHA-256 digests. The attacker-control
  * surface here is low — an attacker who sees a timing leak still needs to
  * iterate payloads, not hash prefixes — but the secure posture is cheap.

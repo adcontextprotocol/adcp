@@ -87,7 +87,7 @@
         "required": [
           "audience_id"
         ],
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "delete_missing": {
@@ -121,5 +121,5 @@
       "audiences"
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

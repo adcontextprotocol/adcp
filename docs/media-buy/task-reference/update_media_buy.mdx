@@ -664,6 +664,8 @@ Common errors and resolutions:
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
+| `UPDATE_REQUIRES_GOVERNANCE` | Price-affecting update (`bid_price`, `budget`, `daily_cap`, flight extension, targeting broadening) without a fresh `modification`-phase `governance_context` whose `plan_hash` covers the post-update plan state | Call `check_governance` with `phase: "modification"` against the proposed post-update plan, then retry with the new token |
+| `PLAN_HASH_MISMATCH` | SHA-256 of the JCS-canonicalized plan bytes does not match the `plan_hash` claim on the `governance_context` token (e.g., the plan was mutated via `sync_plans` between approval and this call) | Re-run `check_governance` against the current plan revision to obtain a fresh token and retry |
 
 Example error response:
 
@@ -812,6 +814,30 @@ Always check response status and `implementation_date` for approval requirements
 **6. Validate Package State**
 Check `affected_packages` in response to confirm changes were applied correctly.
 
+## Governance re-check on price-affecting updates
+
+When a buyer's account has governance agents configured, an `update_media_buy` that changes any **price-affecting field** MUST carry a fresh `modification`-phase `governance_context` token whose `plan_hash` claim covers the post-update plan state. This closes the post-approval pricing-unlock gap: without the re-check, a buyer could obtain governance approval for a benign plan, then PATCH `bid_price` or `budget` upward under the original intent token with no governance visibility into the new spend.
+
+**Price-affecting fields (MUST trigger re-check when present in the update)**:
+
+- `bid_price` (any change)
+- `budget` (any change — media-buy-level or package-level)
+- `daily_cap`
+- `flight_dates` / `start_time` / `end_time` when the change **extends** flight duration
+- `targeting` / `targeting_overlay` when the change **broadens** the addressable audience (adding geos, removing exclusions, adding inventory, widening demographic filters)
+
+**Seller enforcement (MUST)**: a seller receiving an `update_media_buy` that touches any of the fields above MUST reject with `UPDATE_REQUIRES_GOVERNANCE` unless the request carries a `modification`-phase `governance_context` token that:
+
+1. Verifies per the [seller verification checklist](/docs/building/implementation/security#seller-verification-checklist) (all 16 steps), and
+2. Has a `plan_hash` claim equal to SHA-256 of the JCS-canonicalized plan bytes **as they exist after the update is applied** (not the pre-update state), and
+3. Was issued after the last governance approval on the media buy — a stale `modification` token reused across price-affecting updates fails the `plan_hash` check when the plan body has since moved.
+
+Non-price-affecting updates (pause, resume, creative swap without spend change, reporting-webhook changes) do not require a fresh `modification` token — the original `governance_context` persisted with the media buy is sufficient.
+
+**Buyer workflow**: before submitting a price-affecting update, the buyer calls `check_governance` with `phase: "modification"`, the proposed post-update plan state, and the existing `governance_context`. The governance agent returns a new token bound to the post-update `plan_hash`. The buyer attaches the new token to `update_media_buy` on the protocol envelope.
+
+Sellers MUST NOT treat `bid_price` changes as "within previously-approved envelope" heuristically — the governance agent, not the seller, decides whether a price change is within plan authority. Any plan-level reallocation-threshold logic lives inside the governance agent's evaluation of the re-check.
+
 ## Usage Notes
 
 - Updates are atomic - either all changes apply or none do
@@ -824,7 +850,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 <Note>
 **Campaign Governance — Modification Phase**
 
-When a buyer's account has governance agents configured, sellers MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `media_buy_id`, `planned_delivery`, and `phase: "modification"` before confirming an update. The governance agent validates change magnitude, budget reallocation, and new parameters against the campaign plan.
+When a buyer's account has governance agents configured, sellers MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `media_buy_id`, `planned_delivery`, and `phase: "modification"` before confirming an update. The governance agent validates change magnitude, budget reallocation, and new parameters against the campaign plan. For **price-affecting updates** (`bid_price`, `budget`, `daily_cap`, flight extension, targeting broadening), the update MUST carry a fresh `modification`-phase `governance_context` whose `plan_hash` covers the post-update plan state — see [Governance re-check on price-affecting updates](#governance-re-check-on-price-affecting-updates).
 
 See the [seller integration guide](/docs/building/implementation/seller-integration#execution-checks) for the full execution check workflow and code example.
 </Note>

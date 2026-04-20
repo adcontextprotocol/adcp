@@ -79,6 +79,7 @@
     "file-type": "^22.0.1",
     "free-email-domains": "^1.2.26",
     "googleapis": "^171.4.0",
+    "http-message-signatures": "^1.0.5",
     "isomorphic-dompurify": "^3.9.0",
     "jose": "^6.2.2",
     "jsonwebtoken": "^9.0.3",

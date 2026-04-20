@@ -23,7 +23,7 @@
           "type": "array",
           "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit `authentication` and use the RFC 9421 webhook profile.",
           "items": {
-            "enum": ["Bearer", "HMAC-SHA256"]
+            "$ref": "/schemas/enums/auth-scheme.json"
           },
           "minItems": 1,
           "maxItems": 1

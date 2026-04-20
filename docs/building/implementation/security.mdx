@@ -587,6 +587,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 | `caller` | Yes | URL of the party that requested the governance check that produced this token. In intent phase, this is the orchestrator/buyer; in execution phases, this is typically the seller itself (as callbacks arrive with the seller as caller). |
 | `check_id` | Yes | Governance agent's `check_id` for this decision; correlates to `report_plan_outcome` and `get_plan_audit_logs`. |
 | `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `purchase`, `modification`, and `delivery` phase tokens. MUST be null or absent on `intent` phase tokens. |
+| `plan_hash` | Yes | SHA-256 hash (hex-encoded, lowercase) of the JCS-canonicalized (RFC 8785) plan bytes that the governance agent evaluated when issuing this token. Binds the authorization to a specific plan revision so a buyer cannot swap in a different plan body between approval and execution. Sellers MUST compute SHA-256 over the JCS-canonicalized plan document referenced by the request (by `plan_id`, at the plan revision the seller will execute against) and reject with `PLAN_HASH_MISMATCH` if it does not byte-for-byte equal the token's `plan_hash`. A `sync_plans` mutation that changes the plan body invalidates every outstanding token for that plan. For `modification`-phase tokens, `plan_hash` covers the post-update plan state the governance agent approved; see [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for the re-check requirement on price-affecting changes. |
 | `policy_decisions` | No | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). Visible to the seller. Governance agents SHOULD omit this in privacy-sensitive deployments (see [Privacy considerations](#privacy-considerations)) and use `policy_decision_hash` instead. |
 | `policy_decision_hash` | No | SHA-256 hash of the canonicalized decision log, hex-encoded. When present, sellers treat it as an opaque integrity anchor; full log is retrievable by auditors via `audit_log_pointer`. Governance agents MUST include either `policy_decisions` or `policy_decision_hash` (both is permitted). |
 | `audit_log_pointer` | No | HTTPS URL consumable by `get_plan_audit_logs` for the full decision evidence. When present, auditors can fetch the full log using the pointer; access control is governed by the governance agent. |
@@ -598,13 +599,13 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 
 #### Buyer identity resolution
 
-The brand.json cross-check (step 13 of the verification checklist) is the anti-spoofing control. It requires sellers to know *which buyer's brand.json to consult* — the authenticated agent proves who is calling, and the resolution chain maps that agent to the buyer domain whose brand.json the seller should fetch. In 3.0 sellers MUST establish the buyer domain via one of:
+The brand.json cross-check (step 14 of the verification checklist) is the anti-spoofing control. It requires sellers to know *which buyer's brand.json to consult* — the authenticated agent proves who is calling, and the resolution chain maps that agent to the buyer domain whose brand.json the seller should fetch. In 3.0 sellers MUST establish the buyer domain via one of:
 
 1. **mTLS**: buyer presents a client certificate; the certificate Subject/SAN resolves to the buyer's registered domain; the seller fetches `https://{domain}/.well-known/brand.json`.
 2. **Pre-provisioned buyer identity**: an API key or OAuth client identifier issued by the seller at onboarding, mapped to the buyer's domain in the seller's records.
 3. **Signed requests per #2307** (3.1 normative): RFC 9421 HTTP Signatures with `keyid` resolving to a buyer-declared public key in the buyer's adagents-style agent registry.
 
-Sellers MUST NOT derive the buyer identity from an unauthenticated field in the request (including the token's `iss`, `caller`, or any client-supplied header). Doing so creates a circular trust chain: the attacker proves "I am the buyer" by presenting a token signed by an attacker-controlled governance agent declared in an attacker-controlled brand.json. In particular, **the token's `iss` is untrusted input until step 13 of the verification checklist confirms it appears as a governance-typed entry in the *authenticated* buyer's brand.json** — the authentication mechanism (mTLS, API key, or signed request) establishes the buyer domain first, and only the brand.json fetched from *that* domain is trusted to attest which governance agent (`iss`) may sign for this buyer.
+Sellers MUST NOT derive the buyer identity from an unauthenticated field in the request (including the token's `iss`, `caller`, or any client-supplied header). Doing so creates a circular trust chain: the attacker proves "I am the buyer" by presenting a token signed by an attacker-controlled governance agent declared in an attacker-controlled brand.json. In particular, **the token's `iss` is untrusted input until step 14 of the verification checklist confirms it appears as a governance-typed entry in the *authenticated* buyer's brand.json** — the authentication mechanism (mTLS, API key, or signed request) establishes the buyer domain first, and only the brand.json fetched from *that* domain is trusted to attest which governance agent (`iss`) may sign for this buyer.
 
 brand.json resolution follows one redirect (`authoritative_location` or `house` redirect variant) and stops. Sellers MUST NOT follow redirect chains.
 
@@ -646,15 +647,16 @@ Before treating a request as governance-approved, sellers MUST perform these che
 10. Reject if `sub` does not equal the `plan_id` in the governance call this token is attached to (prevents plan swap).
 11. Reject if `phase` does not match the operation: `purchase` for `create_media_buy`; `modification` for `update_media_buy`; `delivery` for delivery-reporting callbacks; `intent` only for pre-seller buyer-side evaluation.
 12. For non-intent tokens, reject if `media_buy_id` does not equal the media buy ID in the request.
-13. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current brand.json (established via [Buyer identity resolution](#buyer-identity-resolution)). Sellers SHOULD cache brand.json with reasonable TTLs (recommend 1 hour) and refresh on verification failure.
-14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
-15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
+13. Compute SHA-256 over the JCS-canonicalized plan document (resolved by the request's `plan_id` at the plan revision the seller will execute against) and reject with `PLAN_HASH_MISMATCH` if it does not byte-for-byte equal the token's `plan_hash` claim. This closes the plan-mutation race: a buyer who approves plan P1, mutates via `sync_plans` to P2, and then presents the P1-bound token against P2 fails this check. For `update_media_buy`, the plan bytes used for this hash are the post-update plan state — see [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy#governance-re-check-on-price-affecting-updates).
+14. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current brand.json (established via [Buyer identity resolution](#buyer-identity-resolution)). Sellers SHOULD cache brand.json with reasonable TTLs (recommend 1 hour) and refresh on verification failure.
+15. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
+16. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved.
+Only after all 16 checks pass does the seller treat the request as governance-approved.
 
 #### Replay dedup
 
-Step 15 requires tracking `jti` values to prevent replay. The naive implementation — an unbounded set — is both a memory risk and a DoS vector (attacker floods the seller with unique tokens to exhaust storage).
+Step 16 requires tracking `jti` values to prevent replay. The naive implementation — an unbounded set — is both a memory risk and a DoS vector (attacker floods the seller with unique tokens to exhaust storage).
 
 **Scaling recommendations**:
 - Cap execution-token `exp` at 30 days (enforced by governance agents; sellers reject anything longer). This bounds the dedup window.
@@ -1608,6 +1610,27 @@ The "replay-proof audit trail" property that governance decisions and spend-muta
 - **Optional: inclusion-proof API.** Operators MAY expose a `get_audit_inclusion_proof(log_id)` endpoint that returns a Merkle inclusion proof rooted at the latest published tip hash. This lets auditors and counterparties verify that a specific log entry is present in the authoritative log without receiving the full log. Not defined in this profile; tracked as a follow-up.
 
 The "replay-proof audit trail" claim for a specific operator is conditional on meeting the two MUSTs above. An operator running without append-only storage or a verifiable hash chain is running an audit log that narrates history; it is not one that proves it.
+
+### Retention and right-to-erasure on the audit chain
+
+The append-only + `prev_hash` requirement above is in tension with a data subject's right to erasure under GDPR Article 17 (and equivalent provisions in CCPA/CPRA and other regimes): a right-to-delete request cannot be honored by physically removing an audit entry without breaking the chain for every entry that follows it. Operators MUST resolve this tension structurally, not by choosing one obligation over the other. The normative pattern is **crypto-erasure with tombstoning**:
+
+- **MUST: encrypted envelope per PII-carrying entry.** Audit log entries whose payload carries PII (viewer identifiers, hashed PII, subject-linkable event metadata) MUST be stored as encrypted envelopes. Each entry's cleartext payload is encrypted under a per-entry data-encryption-key (DEK) using an AEAD construction (recommend AES-256-GCM or ChaCha20-Poly1305). The envelope written to the append-only tier is `{ciphertext, nonce, aad, dek_ref}` — not the cleartext.
+- **MUST: per-subject KEK scope.** Each DEK is itself encrypted (wrapped) under a key-encryption-key (KEK) held in the operator's KMS, and the KEK MUST be scoped per data subject — one KEK per subject, not per account, per tenant, or global. The `dek_ref` on the envelope names the KEK (and thereby the subject) but does not expose the subject identifier directly. Operators MUST document the per-subject KEK scope and the key-derivation hierarchy in their data-processing addendum with each counterparty.
+- **MUST: hash-chain covers ciphertext, not cleartext.** The `prev_hash` SHA-256 MUST be computed over the canonicalized envelope (ciphertext + metadata), not over the cleartext payload. This is the property that makes erasure compatible with tamper-evidence: destroying the KEK leaves the envelope bit-identical to what the chain committed to, so every downstream `prev_hash` still validates.
+- **MUST: erasure by KEK destruction.** On a valid erasure request, the operator destroys the per-subject KEK (and any wrapped DEKs derived from it) in KMS. The encrypted envelopes remain in the append-only tier — the chain is untouched — but the payloads are now cryptographically unrecoverable. This is "crypto-erasure" in the NIST SP 800-88 sense and is the accepted mechanism for honoring erasure over immutable storage. Operators MUST NOT attempt to physically remove, rewrite, or null out the envelope — that re-creates the chain-break problem the pattern exists to avoid.
+- **SHOULD: emit `audit.erasure_applied`.** When erasure has been applied, operators SHOULD emit an `audit.erasure_applied` event to the same audit chain carrying `{subject_reference, kek_id, applied_at, request_id}` and NO PII. The event itself is an ordinary audit entry (encrypt under a tenant-scoped KEK, not the just-destroyed subject KEK). This gives auditors and counterparties a positive record that an erasure was honored at a specific wall-clock time, without re-introducing the cleartext the erasure was meant to remove.
+- **SHOULD: document legal-hold exceptions.** Where a legal hold or a conflicting financial-retention obligation blocks erasure (audit entries classified as Financial retain for 7 years per [Log Retention](#log-retention)), the operator MUST respond to the erasure request within the regulatory window with the lawful basis for the exception and the scope of data withheld. The operator SHOULD record the decision as an `audit.erasure_denied` entry with `{subject_reference, lawful_basis, applied_at}` — no PII, but auditable.
+
+#### PII hashing
+
+The `hashed_email` and `hashed_phone` fields in audience-member payloads (`sync_audiences`, `log_event`) are pseudonymous identifiers, not anonymous ones. The normative scheme, keying requirements, and honest limitations are documented in [Privacy Considerations §PII Hashing](/docs/reference/privacy-considerations#pii-hashing). Summary for implementers:
+
+- **Scheme negotiation.** Sellers declare accepted schemes via `privacy.audience_hash_schemes` on `get_adcp_capabilities`. `hmac_sha256` (HMAC-SHA-256 with a per-seller onboarding key, ≥256-bit CSPRNG, rotated ≥annually) is the privacy-hardened scheme and the 4.0 MUST. `sha256_plain` (plain SHA-256 of the normalized identifier) is the 3.x legacy default.
+- **Keying material.** The per-seller HMAC key is a secret credential. Store it in the same tier as bearer tokens and signing keys (KMS / Vault / Secrets Manager), log only the key version, and never reuse it for other cryptographic purposes.
+- **Limits.** Hashing does NOT anonymize. The email universe is small enough that `sha256_plain` is invertible by rainbow table; any party that holds the HMAC key and a candidate identifier can confirm membership. Classify hashed PII as pseudonymized personal data under GDPR Article 4(5).
+
+Implementers whose audit tier cannot support per-subject KEK scoping (e.g., an operator relying on a hosted audit product without KMS-level key separation) are not compliant with both Article 17 and the tamper-evidence MUSTs simultaneously. That is a deployment gap to fix, not a policy choice to rationalize.
 
 ### Required Log Events
 

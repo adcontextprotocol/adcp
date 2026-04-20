@@ -43,7 +43,13 @@
     "PROPOSAL_NOT_COMMITTED",
     "IO_REQUIRED",
     "TERMS_REJECTED",
-    "VERSION_UNSUPPORTED"
+    "VERSION_UNSUPPORTED",
+    "MODE_MISMATCH",
+    "CAMPAIGN_SUSPENDED",
+    "GOVERNANCE_UNAVAILABLE",
+    "PERMISSION_DENIED",
+    "PLAN_HASH_MISMATCH",
+    "UPDATE_REQUIRES_GOVERNANCE"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -84,6 +90,12 @@
     "PROPOSAL_NOT_COMMITTED": "The referenced proposal has proposal_status 'draft' and cannot be used to create a media buy. Recovery: correctable (finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize').",
     "IO_REQUIRED": "The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy).",
     "TERMS_REJECTED": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors. Recovery: correctable (adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults).",
-    "VERSION_UNSUPPORTED": "The declared adcp_major_version is not supported by this seller. Recovery: correctable (call get_adcp_capabilities without adcp_major_version to discover supported major_versions, then retry with a supported version)."
+    "VERSION_UNSUPPORTED": "The declared adcp_major_version is not supported by this seller. Recovery: correctable (call get_adcp_capabilities without adcp_major_version to discover supported major_versions, then retry with a supported version).",
+    "MODE_MISMATCH": "The webhook request's authentication mode does not match the scheme negotiated for this push_notification_config. Emitted by receivers when the `authentication` block was stripped or injected in transit, or when a signature was presented under a mode the receiver is not configured to accept for this sender. Recovery: terminal for the in-flight request (reject and alarm); the sender MUST NOT retry until the configured mode is re-confirmed out-of-band.",
+    "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
+    "GOVERNANCE_UNAVAILABLE": "A registered governance agent is unreachable (timeout, network error, or repeated failure) and the seller cannot obtain a governance decision for the spend-commit. Distinct from `GOVERNANCE_DENIED` (agent reachable and explicitly denied). Recovery: transient (retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator — the seller MUST NOT proceed with the media buy without a valid decision).",
+    "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented) and `GOVERNANCE_DENIED` (governance agent denied). Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission).",
+    "PLAN_HASH_MISMATCH": "SHA-256 of the JCS-canonicalized plan bytes referenced by the request does not match the `plan_hash` claim on the accompanying `governance_context` token. Emitted by sellers enforcing the plan-binding rule in the AdCP JWS profile: a buyer cannot mutate a plan via `sync_plans` after approval and reuse the pre-mutation intent token against the new plan body. Distinct from `GOVERNANCE_DENIED` (governance agent denied) and `PERMISSION_DENIED` (token fails non-hash verification). Recovery: correctable (re-run `check_governance` against the current plan revision to obtain a fresh token whose `plan_hash` matches the plan body the seller will execute against).",
+    "UPDATE_REQUIRES_GOVERNANCE": "An `update_media_buy` changed a price-affecting field (`bid_price`, `budget`, `daily_cap`, a `flight_dates` extension that lengthens flight duration, or a `targeting` change that broadens the audience) without carrying a fresh `modification`-phase `governance_context` whose `plan_hash` covers the post-update plan state. Sellers MUST reject such updates to prevent post-approval pricing unlock. Distinct from `PLAN_HASH_MISMATCH` (stale hash on an otherwise present token) — here the token is absent or a pre-update intent token. Recovery: correctable (call `check_governance` with `phase: \"modification\"` against the post-update plan, then retry `update_media_buy` with the new token)."
   }
 }
