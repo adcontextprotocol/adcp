@@ -3,11 +3,18 @@ name: Build Check
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: build-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     name: TypeScript Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -27,3 +34,6 @@ jobs:
 
       - name: Server unit tests
         run: npm run test:server-unit
+
+      - name: Repo unit tests
+        run: npm run test:unit
