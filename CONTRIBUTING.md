@@ -14,6 +14,9 @@ Before contributing please see:
 - [RELEASING.md](https://github.com/adcontextprotocol/adcp/blob/main/RELEASING.md)
 - [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md)
 
+## Writing compliance storyboards
+Storyboards under `static/compliance/source/` drive the compliance test runner. Authoring conventions — tenant scoping, `sample_request` identity shapes, and the `scoping: global` opt-out for cross-tenant probes — are documented in [docs/contributing/storyboard-authoring.md](docs/contributing/storyboard-authoring.md). A scoping lint enforces the invariants on every `npm run build:compliance`.
+
 ## Issues
 [adcontextprotocol.org](http://adcontextprotocol.org/) contains documentation that may help answer questions you have about using AdCP.
 If you can't find the answer there, try searching for a similar issue on the [issues page](https://github.com/adcontextprotocol/adcp/issues).

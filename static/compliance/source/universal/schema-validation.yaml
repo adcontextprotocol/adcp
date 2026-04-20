@@ -292,6 +292,7 @@ phases:
 
     steps:
       - id: reversed_dates
+        scoping: global
         title: "Reject reversed flight dates"
         narrative: |
           Send a create_media_buy request where end_time is before start_time. The agent
@@ -331,6 +332,7 @@ phases:
             value: "schema_validation--reversed_dates"
             description: "Context correlation_id returned unchanged"
       - id: past_start_date
+        scoping: global
         title: "Handle past start date"
         narrative: |
           Send a create_media_buy request with a start_time in the past. The agent

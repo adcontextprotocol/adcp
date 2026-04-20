@@ -258,6 +258,8 @@ phases:
           - Media buy context (which buys each creative was active on)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_ids:
             - "mb_summer_campaign_001"
 
@@ -308,6 +310,8 @@ phases:
           - errors array (empty if all records pass validation)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
           reporting_period:
             start: "2026-03-01T00:00:00Z"

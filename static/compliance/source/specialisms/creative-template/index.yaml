@@ -218,6 +218,8 @@ phases:
           not a placeholder or empty template.
 
         sample_request:
+          brand:
+            domain: "acme-outdoor.example.com"
           request_type: "single"
           creative_manifest:
             format_id:
