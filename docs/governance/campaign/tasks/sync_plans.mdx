@@ -118,6 +118,10 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
 
+## Plan-hash preimage
+
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` claim carried in every [signed `governance_context`](/docs/building/implementation/security#signed-governance-context) — the binding that closes the plan-mutation replay window. The canonicalization is `base64url_no_pad(SHA-256(JCS(plan_item)))` with a closed exclusion list for governance-agent bookkeeping; see [Plan-state binding](/docs/building/implementation/security#plan-state-binding) for the full rules. Governance-agent implementers hashing their persisted plan state MUST strip the closed exclusion list before canonicalizing. Ten reference vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) pin the canonicalization bit-exactly — implementers SHOULD run their hashing code against these before shipping.
+
 ## Fields
 
 ### Request

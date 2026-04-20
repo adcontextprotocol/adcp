@@ -473,6 +473,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
 | `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
+| `plan_hash` | Yes | `base64url_no_pad(SHA-256(JCS(plan_payload)))` — binds the attestation to the exact plan state the governance agent evaluated. Prevents plan-mutation replay where an Annex III flag or regulated `policy_categories` are altered post-signature but the token still verifies. See [Plan-state binding](#plan-state-binding). |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
@@ -490,6 +491,53 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 **Unknown-claim handling**: verifiers MUST ignore claims whose names they do not recognize *unless* those claim names appear in the token's `crit` header, in which case the token MUST be rejected. This asymmetric rule — ignore unknown, but reject unknown-and-critical — is how future versions of the profile add semantically meaningful claims without breaking backward compatibility for verifiers that haven't updated yet.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+#### Plan-state binding
+
+`plan_hash` cryptographically binds the signed attestation to the exact plan state the governance agent evaluated. Without it, a governance agent could attest to a plan — e.g., toggling `human_review_required` from `true` to `false`, or removing a regulated entry from `policy_categories` — that is then mutated post-signature, and the original JWS still verifies because nothing in the payload ties it to plan state. `plan_hash` complements `policy_decision_hash`: `policy_decision_hash` proves the governance agent's reasoning was internally consistent; `plan_hash` proves which plan state that reasoning was over.
+
+**Canonicalization**: `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` where:
+
+- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](#payload-equivalence). Governance agents and verifiers SHOULD use the same library implementations listed there. Because JCS sorts object keys lexicographically by code point, caller key order in the `sync_plans` request does not affect the hash. JCS preserves the distinction between an omitted optional field and a field explicitly set to `null` — these produce different hashes. Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls.
+- `plan_payload` is **one element of the `plans[]` array as supplied on `sync_plans`** — a single plan object, not the `sync_plans` request envelope and not the `plans` wrapper array. The preimage is the current plan-revision state at the time of attestation, i.e., the plan object the governance agent just evaluated. Implementations constructing the preimage start from the plan-revision object and remove the closed set of bookkeeping fields listed below.
+- `base64url_no_pad` follows RFC 4648 §5 with trailing `=` padding stripped — consistent with `jti` and other base64url values in this profile. Governance agents MUST emit the unpadded form. Verifiers (3.1) MUST compare by base64url-decoding both sides to the raw 32-byte SHA-256 digest and comparing bytes — NOT by string equality of the encoded form — so padding, case, or alphabet variation is rejected as a decode failure rather than producing a false non-match. A `plan_hash` that does not decode to exactly 32 bytes MUST be rejected.
+
+**Excluded fields** (closed list — governance agents MUST NOT extend or shrink it; any addition is a breaking change requiring a profile version bump, same rule as [Payload equivalence](#payload-equivalence)):
+
+- `version` — governance-agent revision counter, set by the agent on each re-sync
+- `status` — plan lifecycle status managed by the agent
+- `syncedAt` — timestamp written on each re-sync
+- `revisionHistory` — agent-internal append-only revision log (MUST be append-only archival; implementations MUST NOT read revisionHistory entries back into the active plan-object shape used for hashing)
+- `committedBudget` — derived from downstream `check_governance` / `report_plan_outcome` activity
+- `committedByType` — derived from the same activity
+
+None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields.
+
+All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
+
+- **`ext` is part of the preimage.** Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext` on a plan; a value that changes between re-syncs invalidates every outstanding governance_context token for the plan even when the buyer's declared intent is unchanged (consistent with idempotency's treatment of `ext`).
+- **`delegations[].expires_at`** is declared intent and SHOULD be stable across re-syncs of the same plan; regenerating it from "now + N days" on every sync causes hash churn.
+- **Array order** in `policy_ids`, `policy_categories`, `custom_policies`, `approved_sellers`, `delegations`, `countries`, `regions`, `channels.required`, `channels.allowed` is not semantically meaningful, but JCS preserves it. Buyers SHOULD emit these in stable order across re-syncs (sorted lexicographically is the easy choice).
+
+**Governance-agent obligation**: compute `plan_hash` over the current plan state on every `check_governance` call and include it in the signed payload. The hash MUST be over the plan the agent just evaluated; stale attestations over mutated plans MUST NOT be produced. Governance agents MUST NOT cache and re-emit a previously-signed `governance_context` token across plan revisions: each `check_governance` invocation produces a fresh signature bound to the current `plan_hash`. Envelope idempotency response caching (see [Response-level replay indicator](#response-level-replay-indicator)) is a separate regime — `governance_context` is on the closed exclusion list in [Payload equivalence](#payload-equivalence) precisely so it can rotate on replay.
+
+**Historical verification**: governance agents SHOULD retain, alongside each internal plan-revision record, the `plan_hash` that was current at the time of the revision, so auditors can reconstruct which token attested to which revision long after the live plan has moved on. Governance agents that expose `audit_log_pointer` MUST retain the corresponding `plan_hash` — an audit log that cannot be joined back to the attested plan state is half an audit trail. Retained `plan_hash` values are never exposed on the wire; they exist only for auditor reconstruction. Consumers fetching `audit_log_pointer` MUST apply the same SSRF controls specified for `jwks_uri` in [Key discovery](#key-discovery-jwks) — `audit_log_pointer` is counterparty-supplied and shares the same metadata-exfiltration risk class.
+
+**Seller verification** (3.1 normative): a new step 16 of the verification checklist adds recompute-and-compare against the plan state the seller observes. The plan-retrieval mechanism by which sellers obtain the plan payload is finalized in 3.1. **In 3.0 sellers persist and forward the token verbatim per the existing forwarding rule; they do not separately parse or verify `plan_hash`.** The verifying parties in 3.0 are auditors (with access to the governance agent's retained revision-and-hash records) and the governance agent itself on the next `check_governance`.
+
+**3.0 race-window bounds**:
+
+- **Intent and purchase phases**: the window is bounded by the seller's next `check_governance` call per [#2403](https://github.com/adcontextprotocol/adcp/issues/2403)'s spend-commit invocation rule — the governance agent re-evaluates current plan state when the seller's execution check runs, which is sub-second in the happy path and bounded by intent-token `exp` (≤15 minutes per the profile).
+- **Modification and delivery phases**: a plan mutation that happens after the execution-phase token issues but before the next seller-initiated `check_governance` fires is undetected until that next check. Delivery-phase checks are often on weekly cadence; the worst case is bounded only by the token's `exp` (≤30 days for execution tokens).
+- **Receipt-only surfaces**: any party that consumes a persisted `governance_context` without calling `check_governance` (auditors reading a retained token outside the recompute-and-compare path, downstream analytics, any tooling that treats the token as a receipt rather than an authorization trigger) has no recomputation path in 3.0 and sees a cryptographically valid JWS that may attest to a plan state no longer matching reality.
+
+3.1 closes the modification/delivery and receipt-only gaps via seller-side recomputation at every token use, independent of buyer invocation cadence. 3.0 is spend-commit-safe but not post-hoc-audit-complete for the full 3.x family until then.
+
+**Why `plan_hash` is not in `crit` in 3.0**: marking it `crit` means verifiers MUST reject tokens they cannot recognize the claim on (RFC 7515 §4.1.11). In 3.0 sellers have no plan-retrieval mechanism to recompute against — `crit`-listing would force sellers to reject tokens they have no basis to reject. Promotion to `crit` in 3.1 happens together with the retrieval mechanism, so both sides of the verification contract land simultaneously. Until then, governance agents MUST emit the claim but MUST NOT list it in `crit`; 3.0 verifiers ignore the unknown claim safely (per [Unknown-claim handling](#adcp-jws-profile)), and 3.1 verifiers enforce it. 3.0 verifiers that have pre-emptively implemented recomputation MUST NOT reject on mismatch, because the governance agent does not list `plan_hash` in `crit` yet — a non-`crit` claim is advisory, and eager fail-closed behavior creates interop breakage while preimage constructions stabilize.
+
+See the changeset `plan-hash-jws-binding.md` for the full reasoning on why this lands in 3.0 rather than being deferred to 3.1.
+
+**Reference test vectors**: ten vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) pin the canonicalization bit-exactly. They cover a minimal plan, a plan exercising every optional field, a bookkeeping-stripped case (GA-internal fields present on the stored plan but stripped before hashing, yielding the same hash as the bookkeeping-absent equivalent), paired vectors proving that omitted-vs-explicit-null, array order in `policy_categories`, and rotating `ext.trace_id` all produce distinct hashes, and a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5. Each vector records the preimage, the canonical JCS bytes, the SHA-256 hex digest, and the final `plan_hash` claim value. Governance agents and 3.1 verifiers MUST reproduce these hashes bit-exactly.
 
 #### Buyer identity resolution
 
@@ -536,8 +584,9 @@ Before treating a request as governance-approved, sellers MUST perform these che
 13. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current brand.json (established via [Buyer identity resolution](#buyer-identity-resolution)). Sellers SHOULD cache brand.json with reasonable TTLs (recommend 1 hour) and refresh on verification failure.
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
+16. **(3.1)** Recompute `plan_hash = base64url_no_pad(SHA-256(JCS(observed_plan_payload)))` per [Plan-state binding](#plan-state-binding) and reject if the decoded 32-byte digest does not equal the claim's decoded digest. The plan-retrieval mechanism that gives sellers `observed_plan_payload` is finalized in 3.1; 3.0 verifiers MUST skip this step.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved.
+Only after all applicable checks pass does the seller treat the request as governance-approved.
 
 #### Replay dedup
 
@@ -640,6 +689,7 @@ Payload:
 {
   "iss": "https://gov.scope3.com",
   "sub": "plan_q1_2026_launch",
+  "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
   "aud": "https://seller.example.com/adcp",
   "iat": 1744934400,
   "exp": 1744935300,
@@ -718,8 +768,8 @@ function handleGovernanceContext(value: string, ctx) {
 
 #### Migration (3.0 → 3.1)
 
-- **3.0**: governance agents MUST emit compact JWS per this profile. Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
-- **3.1**: all sellers MUST verify per the checklist above. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end.
+- **3.0**: governance agents MUST emit compact JWS per this profile, including a required `plan_hash` claim. Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. `plan_hash` is opaque to sellers in 3.0 and MUST NOT appear in `crit`. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
+- **3.1**: all sellers MUST verify per the checklist above, including a new step 16 that recomputes `plan_hash` from the observed plan state and rejects on mismatch. Governance agents MUST list `plan_hash` in `crit` so 3.1 verifiers cannot silently downgrade a token by ignoring the claim. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end.
 
 The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue forwarding; sellers that want the accountability properties opt in by implementing the verification checklist.
 

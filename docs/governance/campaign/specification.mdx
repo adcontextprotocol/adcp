@@ -643,6 +643,8 @@ On the first `check_governance` call (before any context exists), the governance
 
 Governance agents SHOULD treat `governance_context` as a lookup key into server-side state or a signed token, not as a plain-text encoding of governance state. If state is encoded directly, it MUST be signed (e.g., HMAC) so tampering by intermediaries is detectable.
 
+In AdCP 3.0 the encoded value is a compact JWS signed per the [AdCP JWS profile](/docs/building/implementation/security#adcp-jws-profile). The token carries a required `plan_hash` claim that binds the attestation to the exact plan state the governance agent evaluated — see [Plan-state binding](/docs/building/implementation/security#plan-state-binding). Callers still treat the value as opaque for correlation; sellers that opt into verification follow the [seller verification checklist](/docs/building/implementation/security#seller-verification-checklist).
+
 ### Governance phases
 
 Governance checks cover the full media buy lifecycle through three phases:
