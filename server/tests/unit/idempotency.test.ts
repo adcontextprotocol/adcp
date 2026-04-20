@@ -5,6 +5,9 @@
  * (clock-skew arithmetic, per-principal cache cap, payload-exclusion list).
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   MUTATING_TOOLS,
@@ -19,50 +22,62 @@ import {
   REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 describe('idempotency primitives', () => {
   beforeEach(() => clearIdempotencyCache());
 
   describe('MUTATING_TOOLS', () => {
-    it('covers every mutating task whose schema requires idempotency_key', () => {
-      // Smoke test: the set must contain the 26 mutating tools the training
-      // agent actually dispatches. If a new mutating tool is added without
-      // being listed here, callers can bypass the middleware.
-      const expected = [
-        'create_media_buy',
-        'update_media_buy',
-        'sync_creatives',
-        'build_creative',
-        'activate_signal',
-        'sync_accounts',
-        'sync_governance',
-        'sync_catalogs',
-        'sync_event_sources',
-        'log_event',
-        'provide_performance_feedback',
-        'sync_plans',
-        'report_plan_outcome',
-        'acquire_rights',
-        'update_rights',
-        'creative_approval',
-        'create_property_list',
-        'update_property_list',
-        'delete_property_list',
-        'create_collection_list',
-        'update_collection_list',
-        'delete_collection_list',
-        'create_content_standards',
-        'update_content_standards',
-        'calibrate_content',
-        'report_usage',
-      ];
-      for (const name of expected) {
+    it('matches the set derived from request schemas', () => {
+      // Source of truth: static/schemas/source/**\/*-request.json. Every
+      // schema whose top-level `required` contains `idempotency_key` names a
+      // mutating tool. This re-derives the set at test time so MUTATING_TOOLS
+      // drift against the schemas fails CI (see red-team finding I-1, which
+      // caught si_initiate_session, si_send_message, and sync_audiences
+      // silently bypassing replay enforcement).
+      const schemasDir = path.resolve(__dirname, '../../../static/schemas/source');
+      const derived = new Set<string>();
+      const walk = (d: string) => {
+        for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+          const p = path.join(d, entry.name);
+          if (entry.isDirectory()) { walk(p); continue; }
+          if (!entry.name.endsWith('-request.json')) continue;
+          let schema: { required?: unknown };
+          try { schema = JSON.parse(fs.readFileSync(p, 'utf8')) as { required?: unknown }; }
+          catch { continue; }
+          const req = Array.isArray(schema.required) ? schema.required : [];
+          if (req.includes('idempotency_key')) {
+            derived.add(entry.name.replace(/-request\.json$/, '').replace(/-/g, '_'));
+          }
+        }
+      };
+      walk(schemasDir);
+
+      const actual = new Set(MUTATING_TOOLS);
+      const missing = [...derived].filter((t) => !actual.has(t)).sort();
+      const extra = [...actual].filter((t) => !derived.has(t)).sort();
+      expect({ missing, extra }).toEqual({ missing: [], extra: [] });
+    });
+
+    it('covers specific mutating tools explicitly', () => {
+      for (const name of [
+        'create_media_buy', 'update_media_buy', 'sync_audiences',
+        'si_initiate_session', 'si_send_message',
+        'acquire_rights', 'update_rights', 'creative_approval',
+      ]) {
         expect(isMutatingTool(name), `${name} should be mutating`).toBe(true);
       }
-      expect(MUTATING_TOOLS.size).toBe(expected.length);
     });
 
     it('excludes read-only and discovery tools', () => {
-      for (const name of ['get_products', 'get_media_buys', 'get_adcp_capabilities', 'check_governance']) {
+      for (const name of [
+        'get_products',
+        'get_media_buys',
+        'get_adcp_capabilities',
+        'check_governance',
+        'si_terminate_session',
+      ]) {
         expect(isMutatingTool(name)).toBe(false);
       }
     });

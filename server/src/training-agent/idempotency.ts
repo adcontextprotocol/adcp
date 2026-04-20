@@ -33,35 +33,41 @@ const MAX_ENTRIES_PER_PRINCIPAL = 10_000;
 /**
  * Tasks whose request schemas require `idempotency_key`.
  * Derived from static/schemas/source/**\/*-request.json — every schema whose
- * `required` list includes `idempotency_key` maps to the corresponding tool.
+ * top-level `required` list includes `idempotency_key` maps to the
+ * corresponding tool. The regression test in idempotency.test.ts re-derives
+ * this set from the schemas at test time and asserts equality, so drift
+ * between this list and the schemas will fail CI.
  */
 export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
-  'create_media_buy',
-  'update_media_buy',
-  'sync_creatives',
-  'build_creative',
+  'acquire_rights',
   'activate_signal',
-  'sync_accounts',
-  'sync_governance',
-  'sync_catalogs',
-  'sync_event_sources',
+  'build_creative',
+  'calibrate_content',
+  'create_collection_list',
+  'create_content_standards',
+  'create_media_buy',
+  'create_property_list',
+  'creative_approval',
+  'delete_collection_list',
+  'delete_property_list',
   'log_event',
   'provide_performance_feedback',
-  'sync_plans',
   'report_plan_outcome',
-  'acquire_rights',
-  'update_rights',
-  'creative_approval',
-  'create_property_list',
-  'update_property_list',
-  'delete_property_list',
-  'create_collection_list',
-  'update_collection_list',
-  'delete_collection_list',
-  'create_content_standards',
-  'update_content_standards',
-  'calibrate_content',
   'report_usage',
+  'si_initiate_session',
+  'si_send_message',
+  'sync_accounts',
+  'sync_audiences',
+  'sync_catalogs',
+  'sync_creatives',
+  'sync_event_sources',
+  'sync_governance',
+  'sync_plans',
+  'update_collection_list',
+  'update_content_standards',
+  'update_media_buy',
+  'update_property_list',
+  'update_rights',
 ]);
 
 export function isMutatingTool(name: string): boolean {
