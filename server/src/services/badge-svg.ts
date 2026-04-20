@@ -5,7 +5,7 @@
  * with the AAO teal color scheme.
  */
 
-import { ADCP_DOMAINS } from './adcp-taxonomy.js';
+import { ADCP_PROTOCOLS } from './adcp-taxonomy.js';
 
 const AAO_TEAL = '#076D63'; // WCAG AA contrast ≥ 4.5:1 against white
 const LABEL_BG = '#555';
@@ -14,8 +14,8 @@ const FONT_SIZE = 11;
 const PADDING = 8;
 const BADGE_HEIGHT = 20;
 
-// Badge roles = AdCP domains. Sourced from enums/adcp-domain.json via adcp-taxonomy.
-export const VALID_BADGE_ROLES = ADCP_DOMAINS;
+// Badge roles = AdCP protocols. Sourced from enums/adcp-protocol.json via adcp-taxonomy.
+export const VALID_BADGE_ROLES = ADCP_PROTOCOLS;
 
 const ROLE_LABELS: Record<string, string> = {
   'media-buy': 'Media Buy Agent',

@@ -71,7 +71,7 @@ export interface AgentComplianceStatus {
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
 const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
 
-// Badge roles map to AdCP domains (enums/adcp-domain.json via adcp-taxonomy).
+// Badge roles map to AdCP protocols (enums/adcp-protocol.json via adcp-taxonomy).
 // Re-exported here as BadgeRole to avoid circular imports.
 export type BadgeRole = 'media-buy' | 'creative' | 'signals' | 'governance' | 'brand' | 'sponsored-intelligence';
 export type BadgeStatus = 'active' | 'degraded' | 'revoked';

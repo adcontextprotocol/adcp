@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS agent_verification_badges (
 
   PRIMARY KEY (agent_url, role),
 
-  -- Badge roles correspond to AdCP domains (see static/schemas/source/enums/adcp-domain.json)
+  -- Badge roles correspond to AdCP protocols (see static/schemas/source/enums/adcp-protocol.json)
   CONSTRAINT valid_badge_role CHECK (
     role IN ('media-buy', 'creative', 'signals', 'governance', 'brand', 'sponsored-intelligence')
   ),

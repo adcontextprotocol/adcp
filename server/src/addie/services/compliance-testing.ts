@@ -135,16 +135,16 @@ export function deriveStoryboardStatuses(
 
 // ── Verification Status Derivation ───────────────────────────────
 
-import { isStableSpecialism, type AdcpDomain } from '../../services/adcp-taxonomy.js';
+import { isStableSpecialism, type AdcpProtocol } from '../../services/adcp-taxonomy.js';
 
 /**
- * AAO Verified badge roles map to AdCP domains (enums/adcp-domain.json).
- * Each declared specialism rolls up to exactly one domain.
+ * AAO Verified badge roles map to AdCP protocols (enums/adcp-protocol.json).
+ * Each declared specialism rolls up to exactly one protocol.
  */
-export type BadgeRole = AdcpDomain;
+export type BadgeRole = AdcpProtocol;
 
 /**
- * Specialism metadata: which domain it rolls up to, plus its root storyboard ID
+ * Specialism metadata: parent protocol + root storyboard ID
  * (the `id:` field in static/compliance/source/specialisms/{specialism}/index.yaml).
  *
  * The agent declares specialisms in get_adcp_capabilities; the compliance runner
@@ -154,37 +154,39 @@ export type BadgeRole = AdcpDomain;
  * drop the storyboard_id lookup and trust the runner output.
  */
 interface SpecialismInfo {
-  domain: BadgeRole;
+  protocol: BadgeRole;
   storyboard_id: string;
 }
 
 const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   // media-buy
-  'sales-broadcast-tv': { domain: 'media-buy', storyboard_id: 'media_buy_broadcast_seller' },
-  'sales-catalog-driven': { domain: 'media-buy', storyboard_id: 'media_buy_catalog_creative' },
-  'sales-exchange': { domain: 'media-buy', storyboard_id: 'sales_exchange' },
-  'sales-guaranteed': { domain: 'media-buy', storyboard_id: 'media_buy_guaranteed_approval' },
-  'sales-non-guaranteed': { domain: 'media-buy', storyboard_id: 'media_buy_non_guaranteed' },
-  'sales-proposal-mode': { domain: 'media-buy', storyboard_id: 'media_buy_proposal_mode' },
-  'sales-retail-media': { domain: 'media-buy', storyboard_id: 'sales_retail_media' },
-  'sales-social': { domain: 'media-buy', storyboard_id: 'social_platform' },
-  'sales-streaming-tv': { domain: 'media-buy', storyboard_id: 'sales_streaming_tv' },
+  'audience-sync': { protocol: 'media-buy', storyboard_id: 'audience_sync' },
+  'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
+  'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
+  'sales-exchange': { protocol: 'media-buy', storyboard_id: 'sales_exchange' },
+  'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
+  'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
+  'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },
+  'sales-retail-media': { protocol: 'media-buy', storyboard_id: 'sales_retail_media' },
+  'sales-social': { protocol: 'media-buy', storyboard_id: 'sales_social' },
+  'sales-streaming-tv': { protocol: 'media-buy', storyboard_id: 'sales_streaming_tv' },
+  'signed-requests': { protocol: 'media-buy', storyboard_id: 'signed_requests' },
   // creative
-  'creative-ad-server': { domain: 'creative', storyboard_id: 'creative_ad_server' },
-  'creative-generative': { domain: 'creative', storyboard_id: 'creative_generative' },
-  'creative-template': { domain: 'creative', storyboard_id: 'creative_template' },
+  'creative-ad-server': { protocol: 'creative', storyboard_id: 'creative_ad_server' },
+  'creative-generative': { protocol: 'creative', storyboard_id: 'creative_generative' },
+  'creative-template': { protocol: 'creative', storyboard_id: 'creative_template' },
   // signals
-  'audience-sync': { domain: 'signals', storyboard_id: 'audience_sync' },
-  'signal-marketplace': { domain: 'signals', storyboard_id: 'signal_marketplace' },
-  'signal-owned': { domain: 'signals', storyboard_id: 'signal_owned' },
+  'signal-marketplace': { protocol: 'signals', storyboard_id: 'signal_marketplace' },
+  'signal-owned': { protocol: 'signals', storyboard_id: 'signal_owned' },
   // governance
-  'content-standards': { domain: 'governance', storyboard_id: 'content_standards' },
-  'governance-delivery-monitor': { domain: 'governance', storyboard_id: 'campaign_governance_delivery' },
-  'governance-spend-authority': { domain: 'governance', storyboard_id: 'campaign_governance_conditions' },
-  'inventory-lists': { domain: 'governance', storyboard_id: 'inventory_lists' },
-  'measurement-verification': { domain: 'governance', storyboard_id: 'measurement_verification' },
+  'collection-lists': { protocol: 'governance', storyboard_id: 'collection_lists' },
+  'content-standards': { protocol: 'governance', storyboard_id: 'content_standards' },
+  'governance-delivery-monitor': { protocol: 'governance', storyboard_id: 'governance_delivery_monitor' },
+  'governance-spend-authority': { protocol: 'governance', storyboard_id: 'governance_spend_authority' },
+  'measurement-verification': { protocol: 'governance', storyboard_id: 'measurement_verification' },
+  'property-lists': { protocol: 'governance', storyboard_id: 'property_lists' },
   // brand
-  'brand-rights': { domain: 'brand', storyboard_id: 'brand_rights' },
+  'brand-rights': { protocol: 'brand', storyboard_id: 'brand_rights' },
 };
 
 export interface VerificationResult {
@@ -223,18 +225,18 @@ export function deriveVerificationStatus(
   // They'll be reported separately once the compliance runner emits preview results.
   const stableSpecialisms = declaredSpecialisms.filter(isStableSpecialism);
 
-  // Group declared specialisms by the domain they roll up to
-  const domainSpecialisms = new Map<BadgeRole, string[]>();
+  // Group declared specialisms by the protocol they roll up to
+  const protocolSpecialisms = new Map<BadgeRole, string[]>();
   for (const specialism of stableSpecialisms) {
     const info = SPECIALISM_CATALOG[specialism];
     if (!info) continue;
-    const existing = domainSpecialisms.get(info.domain) || [];
+    const existing = protocolSpecialisms.get(info.protocol) || [];
     existing.push(specialism);
-    domainSpecialisms.set(info.domain, existing);
+    protocolSpecialisms.set(info.protocol, existing);
   }
 
   const roles: VerificationResult['roles'] = [];
-  for (const [role, specialisms] of domainSpecialisms) {
+  for (const [role, specialisms] of protocolSpecialisms) {
     const passing: string[] = [];
     const failing: string[] = [];
     for (const specialism of specialisms) {

@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { ADCP_DOMAINS, ADCP_SPECIALISMS } from "../services/adcp-taxonomy.js";
+import { ADCP_PROTOCOLS, ADCP_SPECIALISMS } from "../services/adcp-taxonomy.js";
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
@@ -227,15 +227,15 @@ export const AgentComplianceSchema = z
     monitoring_paused: z.boolean().optional(),
     check_interval_hours: z.number().int().optional(),
     verified: z.boolean().optional(),
-    verified_roles: z.array(z.enum(ADCP_DOMAINS as [string, ...string[]])).optional()
-      .openapi({ description: "AdCP domains the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-domain.json." }),
+    verified_roles: z.array(z.enum(ADCP_PROTOCOLS as [string, ...string[]])).optional()
+      .openapi({ description: "AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json." }),
   })
   .openapi("AgentCompliance");
 
 export const VerificationBadgeSchema = z
   .object({
-    role: z.enum(ADCP_DOMAINS as [string, ...string[]])
-      .openapi({ description: "AdCP domain this badge covers (enums/adcp-domain.json)." }),
+    role: z.enum(ADCP_PROTOCOLS as [string, ...string[]])
+      .openapi({ description: "AdCP protocol this badge covers (enums/adcp-protocol.json)." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),

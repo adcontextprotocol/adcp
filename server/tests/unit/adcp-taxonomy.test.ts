@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  ADCP_DOMAINS,
+  ADCP_PROTOCOLS,
   ADCP_SPECIALISMS,
   isStableSpecialism,
   getSpecialismStatus,
@@ -19,9 +19,9 @@ function loadJsonEnum(relPath: string): string[] {
 }
 
 describe('adcp-taxonomy enum sync', () => {
-  it('ADCP_DOMAINS matches enums/adcp-domain.json', () => {
-    const canonical = loadJsonEnum('static/schemas/source/enums/adcp-domain.json');
-    expect([...ADCP_DOMAINS].sort()).toEqual([...canonical].sort());
+  it('ADCP_PROTOCOLS matches enums/adcp-protocol.json', () => {
+    const canonical = loadJsonEnum('static/schemas/source/enums/adcp-protocol.json');
+    expect([...ADCP_PROTOCOLS].sort()).toEqual([...canonical].sort());
   });
 
   it('ADCP_SPECIALISMS matches enums/specialism.json', () => {
@@ -38,6 +38,7 @@ describe('specialism status', () => {
       'sales-exchange',
       'sales-retail-media',
       'sales-streaming-tv',
+      'signed-requests',
     ];
     for (const s of previewSpecialisms) {
       expect(getSpecialismStatus(s)).toBe('preview');
@@ -48,6 +49,8 @@ describe('specialism status', () => {
   it('treats unmarked specialisms as stable', () => {
     expect(isStableSpecialism('sales-broadcast-tv')).toBe(true);
     expect(isStableSpecialism('creative-template')).toBe(true);
+    expect(isStableSpecialism('property-lists')).toBe(true);
+    expect(isStableSpecialism('collection-lists')).toBe(true);
   });
 
   it('treats unknown specialisms as stable (safe default)', () => {

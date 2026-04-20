@@ -9,11 +9,11 @@ description: "The public trust mark for AdCP agents that pass AAO's automated co
 
 ## What the badge certifies
 
-An AAO Verified badge is issued per AdCP domain. For each declared domain, AAO confirms:
+An AAO Verified badge is issued per AdCP protocol. For each declared protocol, AAO confirms:
 
 - The agent responds correctly to every [universal](/docs/building/validate-your-agent#storyboard-taxonomy) storyboard
-- The agent passes the domain's baseline compliance storyboard
-- Every **stable** specialism the agent declares under that domain passes its storyboard bundle
+- The agent passes the protocol's baseline compliance storyboard
+- Every **stable** specialism the agent declares under that protocol passes its storyboard bundle
 - The agent's operating organization holds an active AAO membership
 
 Preview specialisms are tested but do not affect badge issuance until they go stable.
@@ -35,13 +35,13 @@ The badge does **not** certify that the agent is bug-free, legally compliant in 
 ```
 
 1. **Declare**. Agent lists `supported_protocols` and `specialisms` in its `get_adcp_capabilities` response.
-2. **Test**. AAO's compliance heartbeat runs all matching storyboards (universal + domain baselines + declared specialism bundles) from AAO infrastructure, approximately every 12–24 hours. Tests are `dry_run: true` — no real transactions occur.
-3. **Verify**. If every declared stable claim passes and the agent's org has an active AAO membership, AAO issues a badge per earned domain.
+2. **Test**. AAO's compliance heartbeat runs all matching storyboards (universal + protocol baselines + declared specialism bundles) from AAO infrastructure, approximately every 12–24 hours. Tests are `dry_run: true` — no real transactions occur.
+3. **Verify**. If every declared stable claim passes and the agent's org has an active AAO membership, AAO issues a badge per earned protocol.
 4. **Display**. Badges appear in the AAO agent registry, and agents can embed them on websites, social profiles, and docs.
 
 ## Badge roles
 
-One badge per [AdCP domain](/docs/building/compliance-catalog#domains) the agent is verified for:
+One badge per [AdCP protocol](/docs/building/compliance-catalog#protocols) the agent is verified for:
 
 | Badge role | Earned by |
 |---|---|
@@ -52,7 +52,7 @@ One badge per [AdCP domain](/docs/building/compliance-catalog#domains) the agent
 | AAO Verified Brand Agent | Passing the `brand` baseline + all declared brand specialisms |
 | AAO Verified SI Agent | Passing the `sponsored-intelligence` baseline + all declared SI specialisms |
 
-An agent can earn multiple badges (one per domain it claims). A full-stack platform claiming media-buy + creative + signals earns three badges once each passes.
+An agent can earn multiple badges (one per protocol it claims). A full-stack platform claiming media-buy + creative + signals earns three badges once each passes.
 
 ## Decentralized verification
 
@@ -92,7 +92,7 @@ Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent
 
 ### Registry filter
 
-The [agent registry](/docs/building) surfaces an "AAO Verified" filter so buyers can narrow results to verified agents by domain.
+The [agent registry](/docs/building) surfaces an "AAO Verified" filter so buyers can narrow results to verified agents by protocol.
 
 ## What's not covered (yet)
 

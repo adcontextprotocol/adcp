@@ -15,7 +15,7 @@ describe('deriveVerificationStatus', () => {
 
   it('verifies media-buy role when the declared sales specialism passes', () => {
     const declared = ['sales-non-guaranteed'];
-    const statuses = [makeStatus('media_buy_non_guaranteed', 'passing')];
+    const statuses = [makeStatus('sales_non_guaranteed', 'passing')];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(true);
@@ -29,8 +29,8 @@ describe('deriveVerificationStatus', () => {
   it('does not verify when a declared specialism is failing', () => {
     const declared = ['sales-non-guaranteed', 'sales-guaranteed'];
     const statuses = [
-      makeStatus('media_buy_non_guaranteed', 'passing'),
-      makeStatus('media_buy_guaranteed_approval', 'failing'),
+      makeStatus('sales_non_guaranteed', 'passing'),
+      makeStatus('sales_guaranteed', 'failing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
@@ -50,10 +50,10 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].failing).toEqual(['sales-non-guaranteed']);
   });
 
-  it('handles multiple domains when specialisms from different domains all pass', () => {
+  it('handles multiple protocols when specialisms from different protocols all pass', () => {
     const declared = ['sales-non-guaranteed', 'creative-template'];
     const statuses = [
-      makeStatus('media_buy_non_guaranteed', 'passing'),
+      makeStatus('sales_non_guaranteed', 'passing'),
       makeStatus('creative_template', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
@@ -67,10 +67,10 @@ describe('deriveVerificationStatus', () => {
     expect(creative?.verified).toBe(true);
   });
 
-  it('can verify one domain while another fails', () => {
+  it('can verify one protocol while another fails', () => {
     const declared = ['sales-non-guaranteed', 'creative-template'];
     const statuses = [
-      makeStatus('media_buy_non_guaranteed', 'passing'),
+      makeStatus('sales_non_guaranteed', 'passing'),
       makeStatus('creative_template', 'failing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
@@ -94,7 +94,7 @@ describe('deriveVerificationStatus', () => {
 
   it('handles partial storyboard status as not verified', () => {
     const declared = ['sales-non-guaranteed'];
-    const statuses = [makeStatus('media_buy_non_guaranteed', 'partial')];
+    const statuses = [makeStatus('sales_non_guaranteed', 'partial')];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(false);
@@ -106,7 +106,7 @@ describe('deriveVerificationStatus', () => {
     const declared = ['sales-exchange', 'sales-broadcast-tv'];
     const statuses = [
       makeStatus('sales_exchange', 'passing'),
-      makeStatus('media_buy_broadcast_seller', 'passing'),
+      makeStatus('sales_broadcast_tv', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
@@ -131,11 +131,11 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles).toHaveLength(0);
   });
 
-  it('groups multiple governance specialisms under the governance domain', () => {
-    const declared = ['inventory-lists', 'governance-spend-authority'];
+  it('groups multiple governance specialisms under the governance protocol', () => {
+    const declared = ['property-lists', 'governance-spend-authority'];
     const statuses = [
-      makeStatus('inventory_lists', 'passing'),
-      makeStatus('campaign_governance_conditions', 'passing'),
+      makeStatus('property_lists', 'passing'),
+      makeStatus('governance_spend_authority', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
 
@@ -144,5 +144,15 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].role).toBe('governance');
     expect(result.roles[0].verified).toBe(true);
     expect(result.roles[0].specialisms).toHaveLength(2);
+  });
+
+  it('puts audience-sync under media-buy protocol', () => {
+    const declared = ['audience-sync'];
+    const statuses = [makeStatus('audience_sync', 'passing')];
+    const result = deriveVerificationStatus(declared, statuses);
+
+    expect(result.verified).toBe(true);
+    expect(result.roles).toHaveLength(1);
+    expect(result.roles[0].role).toBe('media-buy');
   });
 });

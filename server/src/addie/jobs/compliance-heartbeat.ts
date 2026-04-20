@@ -108,11 +108,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
 
       // Process AAO Verified badges
-      const agentProfile = complianceResult.agent_profile as unknown as Record<string, unknown> | undefined;
-      const rawSpecialisms = agentProfile?.specialisms;
-      const declaredSpecialisms = Array.isArray(rawSpecialisms)
-        ? rawSpecialisms.filter((s): s is string => typeof s === 'string')
-        : [];
+      const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
 
       if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
         try {

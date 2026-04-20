@@ -1,9 +1,9 @@
 /**
- * Single source of truth for AdCP domain and specialism taxonomy.
+ * Single source of truth for AdCP protocol and specialism taxonomy.
  *
- * Keeps badge system types in sync with enums/adcp-domain.json and
+ * Keeps badge system types in sync with enums/adcp-protocol.json and
  * enums/specialism.json. A test enforces that these lists match the JSON
- * at runtime (see verification-status.test.ts).
+ * at runtime (see adcp-taxonomy.test.ts).
  *
  * Per-specialism status (stable vs preview) is read from the compliance
  * catalog at static/compliance/source/specialisms/{id}/index.yaml so that
@@ -13,8 +13,8 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-/** AdCP domain enum — must match enums/adcp-domain.json. */
-export type AdcpDomain =
+/** AdCP protocol enum — must match enums/adcp-protocol.json. */
+export type AdcpProtocol =
   | 'media-buy'
   | 'signals'
   | 'governance'
@@ -22,7 +22,7 @@ export type AdcpDomain =
   | 'brand'
   | 'sponsored-intelligence';
 
-export const ADCP_DOMAINS: readonly AdcpDomain[] = [
+export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
   'media-buy',
   'signals',
   'governance',
@@ -35,14 +35,15 @@ export const ADCP_DOMAINS: readonly AdcpDomain[] = [
 export type AdcpSpecialism =
   | 'audience-sync'
   | 'brand-rights'
+  | 'collection-lists'
   | 'content-standards'
   | 'creative-ad-server'
   | 'creative-generative'
   | 'creative-template'
   | 'governance-delivery-monitor'
   | 'governance-spend-authority'
-  | 'inventory-lists'
   | 'measurement-verification'
+  | 'property-lists'
   | 'sales-broadcast-tv'
   | 'sales-catalog-driven'
   | 'sales-exchange'
@@ -53,19 +54,21 @@ export type AdcpSpecialism =
   | 'sales-social'
   | 'sales-streaming-tv'
   | 'signal-marketplace'
-  | 'signal-owned';
+  | 'signal-owned'
+  | 'signed-requests';
 
 export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'audience-sync',
   'brand-rights',
+  'collection-lists',
   'content-standards',
   'creative-ad-server',
   'creative-generative',
   'creative-template',
   'governance-delivery-monitor',
   'governance-spend-authority',
-  'inventory-lists',
   'measurement-verification',
+  'property-lists',
   'sales-broadcast-tv',
   'sales-catalog-driven',
   'sales-exchange',
@@ -77,6 +80,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'sales-streaming-tv',
   'signal-marketplace',
   'signal-owned',
+  'signed-requests',
 ];
 
 /** Per-specialism status derived from compliance catalog frontmatter. */
