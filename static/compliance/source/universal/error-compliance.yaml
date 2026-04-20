@@ -110,6 +110,8 @@ phases:
           - field: packages[0].budget (optional but recommended)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "error-test-negative-budget"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -151,6 +153,8 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "error-test-nonexistent-product"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -225,6 +229,8 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "error-test-reversed-dates"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -274,6 +280,8 @@ phases:
           - recovery: correctable, transient, or fatal (optional)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "error-structure-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -407,6 +415,8 @@ phases:
           - content containing adcp_error (L2: JSON text, L3: structuredContent)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           idempotency_key: "error-transport-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"

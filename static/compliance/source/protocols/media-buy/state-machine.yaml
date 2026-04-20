@@ -206,6 +206,8 @@ phases:
           Media buy status transitions to paused.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           paused: true
 
@@ -238,6 +240,8 @@ phases:
           Media buy status transitions back to active.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           paused: false
 
@@ -271,6 +275,8 @@ phases:
           Media buy status transitions to canceled. This is terminal.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
@@ -312,6 +318,8 @@ phases:
           Reject with INVALID_STATE_TRANSITION — cannot pause a canceled buy.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           paused: true
 
@@ -345,6 +353,8 @@ phases:
           Reject with INVALID_STATE_TRANSITION — cannot resume a canceled buy.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           paused: false
 
@@ -380,6 +390,8 @@ phases:
           Both behaviors are valid.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           canceled: true
 

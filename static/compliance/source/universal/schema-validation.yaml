@@ -311,6 +311,8 @@ phases:
           - Message indicating the date constraint violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
           packages:
@@ -367,6 +369,8 @@ phases:
           - Message indicating the past start_time violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           start_time: "2020-01-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
           packages:
@@ -425,6 +429,8 @@ phases:
           - context.correlation_id echoed
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           start_time: "2020-01-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
           packages:

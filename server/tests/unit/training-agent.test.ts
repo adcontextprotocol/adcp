@@ -950,6 +950,33 @@ describe('session state', () => {
       expect(key).toBe('open:default');
     });
 
+    it('falls back to plans[0].brand.domain for sync_plans-style requests', () => {
+      const key = sessionKeyFromArgs(
+        { plans: [{ plan_id: 'p1', brand: { domain: 'acme.example' } }] },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('prefers top-level brand over plans[0].brand.domain', () => {
+      const key = sessionKeyFromArgs(
+        {
+          brand: { domain: 'acme.example' },
+          plans: [{ plan_id: 'p1', brand: { domain: 'other.example' } }],
+        },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('returns open:default when plans is empty or brand is malformed', () => {
+      expect(sessionKeyFromArgs({ plans: [] }, 'open')).toBe('open:default');
+      expect(sessionKeyFromArgs({ plans: [{}] }, 'open')).toBe('open:default');
+      expect(
+        sessionKeyFromArgs({ plans: [{ brand: { domain: 'bad domain!' } }] }, 'open'),
+      ).toBe('open:default');
+    });
+
     it('falls back to open mode when training mode has no userId', () => {
       const key = sessionKeyFromArgs(
         { account: { brand: { domain: 'test.example' }, operator: 'test.example' } },

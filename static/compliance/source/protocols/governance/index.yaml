@@ -338,6 +338,8 @@ phases:
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           plan_id: "$context.plan_id"
           binding:
             type: "media_buy"
@@ -405,6 +407,8 @@ phases:
           - approved_at: timestamp of approval
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_escalated"
           binding:
@@ -546,6 +550,8 @@ phases:
           - status: recorded
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
@@ -606,6 +612,8 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           plan_id: "$context.plan_id"
 
           context:
