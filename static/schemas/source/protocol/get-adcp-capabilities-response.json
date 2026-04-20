@@ -35,6 +35,11 @@
                   "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
                   "minimum": 3600,
                   "maximum": 604800
+                },
+                "account_id_is_opaque": {
+                  "type": "boolean",
+                  "description": "When true, the seller derives `account_id` via an HKDF-based one-way transform of the buyer's natural account key rather than echoing the natural key on the wire. Buyers MUST NOT attempt to invert the opaque id and MUST treat it as a blind handle scoped to this seller. Absent or false, callers should assume account_id is the natural key (or a server-assigned but non-opaque id). Advisory capability — does not change the wire shape.",
+                  "default": false
                 }
               },
               "required": [
@@ -854,6 +859,92 @@
         }
       },
       "required": ["supported"]
+    },
+    "webhook_signing": {
+      "type": "object",
+      "description": "RFC 9421 webhook-signature support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, and whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421. See docs/building/implementation/webhooks.mdx.",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header."
+        },
+        "profile": {
+          "type": "string",
+          "description": "Identifier of the webhook-signing profile version the agent emits. The 3.0 profile id is 'adcp-webhook-9421-v1'. Receivers use this to select a parser compatible with any future profile revisions."
+        },
+        "algorithms": {
+          "type": "array",
+          "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp-webhook-9421-v1.",
+          "items": {
+            "type": "string",
+            "enum": ["ed25519", "ecdsa-p256-sha256"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "legacy_hmac_fallback": {
+          "type": "boolean",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication path for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "default": false
+        }
+      },
+      "required": ["supported"]
+    },
+    "identity": {
+      "type": "object",
+      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident.",
+      "properties": {
+        "per_principal_key_isolation": {
+          "type": "boolean",
+          "description": "When true, this multi-principal operator scopes signing keys per-principal via the `{operator}:{principal}:{key_version}` keyid convention so a single principal's key compromise does not silently re-scope across principals served by the same operator. See docs/building/understanding/security-model.mdx.",
+          "default": false
+        },
+        "key_origins": {
+          "type": "object",
+          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. See docs/building/implementation/security.mdx §Origin separation.",
+          "properties": {
+            "governance_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the governance-signing JWKS."
+            },
+            "request_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the request-signing JWKS."
+            },
+            "webhook_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the webhook-signing JWKS."
+            },
+            "tmp_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
+            }
+          },
+          "additionalProperties": false
+        },
+        "compromise_notification": {
+          "type": "object",
+          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/implementation/webhooks.mdx §identity.compromise_notification.",
+          "properties": {
+            "emits": {
+              "type": "boolean",
+              "description": "Whether this agent emits `identity.compromise_notification` events.",
+              "default": false
+            },
+            "accepts": {
+              "type": "boolean",
+              "description": "Whether this agent subscribes to `identity.compromise_notification` events from counterparties it verifies signatures from.",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "compliance_testing": {
       "type": "object",
