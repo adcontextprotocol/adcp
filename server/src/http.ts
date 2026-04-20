@@ -6173,17 +6173,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (memberships.data.length > 0) {
           const primaryOrgId = memberships.data[0].organizationId;
           const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-          // Ensure the org exists locally first — startup sync can miss orgs
-          // created in WorkOS after boot, and org_activities FKs to organizations.
-          orgDb.ensureOrganizationExists(workos!, primaryOrgId)
-            .then(() => orgDb.recordUserLogin({
-              workos_user_id: user.id,
-              workos_organization_id: primaryOrgId,
-              user_name: userName,
-            }))
-            .catch((err) => {
-              logger.error({ error: err, userId: user.id }, 'Failed to record user login');
-            });
+          orgDb.recordUserLogin({
+            workos_user_id: user.id,
+            workos_organization_id: primaryOrgId,
+            user_name: userName,
+          }).catch((err) => {
+            logger.error({ error: err, userId: user.id }, 'Failed to record user login');
+          });
 
           // Update relationship model from web login (fire and forget)
           relationshipDb.resolvePersonId({ workos_user_id: user.id, email: user.email })
