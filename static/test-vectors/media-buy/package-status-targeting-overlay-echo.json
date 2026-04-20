@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "schema": "/schemas/media-buy/get-media-buys-response.json",
+  "description": "Positive wire-level vectors for PackageStatus.targeting_overlay echo in get_media_buys responses. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields (all sellers) and the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms. See get-media-buys-response.json → packages.items.targeting_overlay.",
+  "vectors": [
+    {
+      "id": "property-and-collection-list-echo",
+      "description": "Specialism MUST — seller echoes persisted PropertyListReference and CollectionListReference under packages[0].targeting_overlay. Mirrors the create/get/update cycle in the inventory_list_targeting storyboard.",
+      "payload": {
+        "media_buys": [
+          {
+            "media_buy_id": "mb_acme_outdoor_001",
+            "status": "pending_start",
+            "currency": "USD",
+            "total_budget": 20000,
+            "start_time": "2026-07-01T00:00:00Z",
+            "end_time": "2026-09-30T23:59:59Z",
+            "created_at": "2026-06-25T12:00:00Z",
+            "updated_at": "2026-06-25T12:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_acme_outdoor_video",
+                "product_id": "prod_ctv_outdoor_lifestyle",
+                "budget": 20000,
+                "currency": "USD",
+                "start_time": "2026-07-01T00:00:00Z",
+                "end_time": "2026-09-30T23:59:59Z",
+                "targeting_overlay": {
+                  "property_list": {
+                    "agent_url": "https://governance.pinnacle-agency.example",
+                    "list_id": "acme_outdoor_allowlist_v1"
+                  },
+                  "collection_list": {
+                    "agent_url": "https://governance.pinnacle-agency.example",
+                    "list_id": "acme_outdoor_collections_v1"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.property_list.list_id",
+          "value": "acme_outdoor_allowlist_v1"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.property_list.agent_url",
+          "value": "https://governance.pinnacle-agency.example"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.collection_list.list_id",
+          "value": "acme_outdoor_collections_v1"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.collection_list.agent_url",
+          "value": "https://governance.pinnacle-agency.example"
+        }
+      ]
+    },
+    {
+      "id": "plain-overlay-fields-echo",
+      "description": "General SHOULD — seller echoes persisted plain overlay fields (geo_countries, frequency_cap, device_type) under packages[0].targeting_overlay. Exercises the non-specialism path that the inventory_list_targeting storyboard does not cover.",
+      "payload": {
+        "media_buys": [
+          {
+            "media_buy_id": "mb_beverage_summer_042",
+            "status": "active",
+            "currency": "USD",
+            "total_budget": 75000,
+            "start_time": "2026-06-01T00:00:00Z",
+            "end_time": "2026-08-31T23:59:59Z",
+            "created_at": "2026-05-20T09:15:00Z",
+            "updated_at": "2026-06-02T14:22:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_beverage_ctv",
+                "product_id": "prod_ctv_run_of_network",
+                "budget": 75000,
+                "currency": "USD",
+                "start_time": "2026-06-01T00:00:00Z",
+                "end_time": "2026-08-31T23:59:59Z",
+                "targeting_overlay": {
+                  "geo_countries": ["US", "CA"],
+                  "device_type": ["ctv"],
+                  "frequency_cap": {
+                    "max_impressions": 3,
+                    "per": "households",
+                    "window": {
+                      "interval": 7,
+                      "unit": "days"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_countries",
+          "value": ["US", "CA"]
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.device_type",
+          "value": ["ctv"]
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions",
+          "value": 3
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.per",
+          "value": "households"
+        }
+      ]
+    }
+  ]
+}
