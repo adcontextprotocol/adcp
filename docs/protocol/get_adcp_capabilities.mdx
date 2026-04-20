@@ -447,6 +447,32 @@ Agents that implement `comply_test_controller` SHOULD include the `compliance_te
 Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
 :::
 
+### webhook_signing
+
+Declares a seller's webhook-signing posture. Any seller that emits webhooks MUST include this block — buyers read it at onboarding to determine whether the seller will sign outbound webhooks per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks) and which algorithms to expect. A buyer integrating with a seller that omits the block or advertises `supported: false` MUST fail onboarding with a user-actionable error; silent integration with a non-signing seller is unsafe for any mutating-webhook use case.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** `true` iff the seller signs outbound webhooks. `false` means webhooks are unsigned; buyers MUST fail onboarding. |
+| `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
+| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256", "rsa-pss-sha512"]` — the algorithms this seller will sign webhooks with. Buyers MUST be prepared to verify any algorithm listed. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+
+**Example:**
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
+
 ### extensions_supported
 
 Array of extension namespaces this agent supports. Buyers can expect meaningful data in `ext.{namespace}` fields on responses from this agent.

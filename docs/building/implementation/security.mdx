@@ -896,6 +896,13 @@ Each request-signing JWK entry MUST declare:
 
 Cross-purpose key reuse is forbidden and **locally enforceable** via `adcp_use`: a single JWK entry can only declare one `adcp_use` value, so a publisher cannot accidentally (or deliberately) present a governance-signing key as a valid request-signing key. Verifiers check `adcp_use` on the JWK they fetched, not across other JWKS endpoints — no cross-endpoint lookup is required or permitted.
 
+**Origin separation (MUST for governance, SHOULD for others).** `adcp_use` is an in-band discriminator — it prevents cross-purpose verification, but it does not defend the publishing origin. An origin compromise on a shared JWKS endpoint simultaneously compromises every signing purpose it publishes. Because a governance-signing key is the highest blast-radius key in the system (its compromise is a multi-tenant breach), governance signing keys MUST be served from a separate origin than transport-signing and webhook-signing keys. The canonical pattern is:
+
+- `governance-keys.{org}.example/.well-known/jwks.json` — governance-signing JWKs only
+- `keys.{org}.example/.well-known/jwks.json` — request-signing, webhook-signing, TMP keys
+
+Operators SHOULD go further and serve each signing purpose from a distinct subdomain (up to four origins). Defense-in-depth: governance keys SHOULD be on offline-rotation (HSM/KMS with manual rotation and human approval), while transport and webhook keys MAY use automated rotation. Operators advertise their separation scheme by publishing an `identity.key_origins` map in `get_adcp_capabilities` (doc-only for 3.x — no schema change in this release; implementers SHOULD include the field and verifiers SHOULD honor it when present) so buyers can verify origin separation at onboarding rather than discovering co-tenancy after a compromise.
+
 **Implementer note:** `adcp_use` is a custom JWK member. Major JOSE libraries (`jose`, `node-jose`, `python-jose`, `go-jose`) preserve unknown members on parse. Strict JWK validators (some modes of `PyJWT`, and Web Crypto API's `SubtleCrypto.importKey`) may reject unknown members. When handing a JWK to `SubtleCrypto.importKey` or equivalent strict consumers, strip `adcp_use` from the JWK object but retain it for the step-8 policy check. The field is for AdCP verifier policy, not for cryptographic libraries.
 
 **JWKS discovery for a signed request** — given a `keyid` on an incoming signature:
@@ -1063,7 +1070,25 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 
 Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer registers, and similar asynchronous seller-initiated callbacks) are signed under a symmetric variant of this profile. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. 9421 webhook signing is baseline-required for any 3.0 seller that emits webhooks, with a deprecated HMAC fallback described in [Webhook Security](#webhook-security).
 
-**Baseline, not capability-advertised.** There is no `webhook_signing` block on `get_adcp_capabilities`. Sellers that emit webhooks MUST sign. Buyers that register a `push_notification_config` MUST verify. The buyer opts into the legacy HMAC-SHA256 scheme instead by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme.
+**Baseline with programmatic advertisement.** 9421 webhook signing is baseline-required for any seller that emits webhooks — the default is signed, not a negotiated option. The `webhook_signing` capability block on `get_adcp_capabilities` exists so buyers can detect a non-signing seller *at onboarding* rather than discovering it by traffic inspection (which is how the asymmetry with `request_signing` manifested before this block was restored). Buyers that integrate with a seller whose block advertises `supported: false` or omits the block entirely MUST fail onboarding with a user-actionable error — a seller that doesn't sign webhooks is unsafe to integrate with for any mutating-webhook use case.
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+- `supported`: MUST be `true` for any seller that emits webhooks. Buyers reject onboarding on `false` or missing.
+- `profile`: MUST be exactly `adcp/webhook-signing/v1` for this profile version. Future profile versions bump the string.
+- `algorithms`: subset of `["ed25519", "ecdsa-p256-sha256", "rsa-pss-sha512"]` — the algorithm set this seller will sign with.
+- `legacy_hmac_fallback`: `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x.
+
+The buyer opts into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme — see the `legacy_hmac_fallback` flag above.
 
 **Mode selection is a switch, not both.** The presence of `push_notification_config.authentication` selects exactly one signing mode for every webhook delivered to that URL: `authentication` present → legacy HMAC-SHA256 (or Bearer); `authentication` absent → 9421. Sellers MUST NOT sign the same webhook both ways. Buyers MUST NOT attempt "try 9421 first, fall back to HMAC" verification — that pattern creates downgrade oracle behavior and accepts signatures the buyer did not ask for. Verifiers key the verification path strictly off whether the receiver has a configured HMAC secret for the `push_notification_config` registration.
 
