@@ -53,13 +53,22 @@ if (!result.success) {
 // Validate response against schema
 const validated = SyncCreativesResponseSchema.parse(result.data);
 
-// Check for operation-level errors first (discriminated union)
-if ("errors" in validated && validated.errors) {
+// Three-shape discriminated union: errors | submitted | creatives
+if ("errors" in validated && validated.errors && !("creatives" in validated) && !("status" in validated)) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
 }
 
-if ("creatives" in validated) {
+if ("status" in validated && validated.status === "submitted") {
+  // Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+  console.log(`Sync queued as task ${validated.task_id}: ${validated.message ?? ""}`);
+} else if ("creatives" in validated) {
   console.log(`Synced ${validated.creatives.length} creatives`);
+  for (const c of validated.creatives) {
+    // c.status carries review state: approved, pending_review, rejected, processing, archived
+    if (c.status === "pending_review" || c.status === "processing") {
+      console.log(`  ${c.creative_id}: awaiting review (${c.status})`);
+    }
+  }
 }
 ```
 
@@ -87,18 +96,27 @@ async def main():
         }]
     )
 
-    # Check for operation-level errors first
-    if hasattr(result, 'errors') and result.errors:
+    # Three-shape discriminated union: errors | submitted | creatives
+    if getattr(result, 'status', None) == 'submitted':
+        # Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+        print(f"Sync queued as task {result.task_id}: {getattr(result, 'message', '') or ''}")
+        return
+
+    if getattr(result, 'errors', None) and not getattr(result, 'creatives', None):
         raise Exception(f"Operation failed: {result.errors}")
 
     print(f"Synced {len(result.creatives)} creatives")
+    for c in result.creatives:
+        # c.status carries review state: approved, pending_review, rejected, processing, archived
+        if getattr(c, 'status', None) in ('pending_review', 'processing'):
+            print(f"  {c.creative_id}: awaiting review ({c.status})")
 
 asyncio.run(main())
 ```
 
 </CodeGroup>
 
-**Note:** When creatives require approval, the response returns `status: "submitted"` with a `task_id`. See [Async approval workflow](#async-approval-workflow) for handling these cases.
+**Note:** Per-creative async review is surfaced via `creatives[].status` (e.g., `pending_review`) on the synchronous success response. When the *whole* operation is queued (batch ingestion, governance review gating the sync), the response is a submitted envelope with top-level `status: "submitted"` and a `task_id`. See [Async approval workflow](#async-approval-workflow).
 
 ## Request parameters
 
@@ -160,22 +178,31 @@ Assignments are at the request level, mapping creative IDs to package IDs. Stand
 
 ## Response
 
-**Success Response:**
+Responses use discriminated unions — a response has exactly one of three shapes, never mixed:
+
+**1. Synchronous success** — per-creative results:
 
 - `creatives` - Results for each creative processed (includes both successful and failed items)
 - `dry_run` - Boolean indicating if this was a dry run (optional)
 
-**Error Response:**
+**2. Terminal error** — no creatives processed:
 
 - `errors` - Array of operation-level errors (auth failure, service unavailable)
 
-**Note:** Responses use discriminated unions - you get either success fields OR errors, never both. Per-creative errors appear in the `errors` array of individual creative objects when `action: "failed"`.
+**3. Submitted task envelope** — whole operation queued asynchronously (batch ingestion, governance review gating the sync):
 
-**Each creative in success response includes**:
+- `status` - Always `"submitted"`
+- `task_id` - Handle for polling via `tasks/get` or receiving a webhook on completion
+- `message` - Optional human-readable explanation of the queue state
+
+The final per-creative `creatives` array lands on the task completion artifact, not on the submitted envelope. Per-item async review (one creative in `pending_review` while the rest of the sync resolves synchronously) belongs on the synchronous success branch with `status: "pending_review"` on that item, not here.
+
+**Each creative in the success response includes:**
 
 - All request fields
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
-- `action` - What happened: `created`, `updated`, `unchanged`, `failed`, `deleted`
+- `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`). **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 
@@ -618,16 +645,17 @@ asyncio.run(main())
 
 ## Async approval workflow
 
-When creatives require review (brand safety, policy compliance), the initial response is `status: "submitted"`. Use webhooks or polling to get the outcome.
+Two distinct async patterns — match the right one to the agent's behavior:
 
-**Final response has `status: "completed"` with per-creative results:**
+**Per-creative async review** (common): the sync operation itself resolves synchronously, but one or more creatives require downstream review (brand safety, policy compliance). Items in review come back on the synchronous success response with `status: "pending_review"` (or `processing` during ingestion). The buyer reconciles terminal state via `list_creatives` or a webhook.
 
-- **Approved creatives**: `action: "created"` with `platform_id`
-- **Rejected creatives**: `action: "failed"` with error details in `errors` array
+**Operation-level async** (less common): the whole sync is queued — the seller cannot return any per-item results before responding, because ingestion is batched or governance review gates the entire sync. The response is a submitted envelope:
 
-The operation status (`completed`) means the review process finished. Individual creative outcomes are in the `action` field.
+- Top-level `status: "submitted"` with `task_id`
+- `message` — optional human-readable explanation
+- No `creatives` array on this envelope
 
-**Operation-level failures** (auth error, service unavailable) return `status: "failed"` with no `creatives` array.
+Poll `tasks/get` or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
 
 **See:** [Webhooks](/docs/building/implementation/webhooks) for webhook configuration.
 
