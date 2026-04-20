@@ -282,6 +282,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_create_buy_submitted_create_media_buy"
           context:
             correlation_id: "sales_guaranteed--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -332,7 +335,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_guaranteed"
+            - "$context.media_buy_id"
 
           context:
             correlation_id: "sales_guaranteed--get_media_buys_active"
@@ -447,7 +450,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_guaranteed"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

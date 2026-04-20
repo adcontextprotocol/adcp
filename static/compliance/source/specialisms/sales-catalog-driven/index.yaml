@@ -376,6 +376,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_create_buy_create_media_buy"
           context:
             correlation_id: "sales_catalog_driven--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -549,7 +552,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          media_buy_id: "mb_amsterdam_spring_2026"
+          media_buy_id: "$context.media_buy_id"
           measurement_period:
             start: "2026-04-07T00:00:00Z"
             end: "2026-04-14T23:59:59Z"
@@ -599,7 +602,7 @@ phases:
               domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_amsterdam_spring_2026"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

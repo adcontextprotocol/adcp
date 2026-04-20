@@ -327,6 +327,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_proposal_mode_accept_proposal_create_media_buy"
           context:
             correlation_id: "sales_proposal_mode--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -487,7 +490,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_proposal"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:
