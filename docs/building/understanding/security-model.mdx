@@ -210,6 +210,44 @@ Knowing what a protocol doesn't do is part of evaluating it. The canonical, main
 
 None of these are hidden. Each is a visible edge of the specification and a candidate for future work.
 
+## Trust anchors and the key-discovery gap
+
+The identity, governance, and pointer-file layers above all rest on the same hidden assumption: that the public keys verifying signatures can be discovered honestly. In 3.0, that discovery path is counterparty-rooted in every case:
+
+- **RFC 9421 buyer keys** — JWKS fetched from the buyer agent's own domain or `.well-known` path.
+- **Governance JWS keys** — JWKS fetched from the governance agent's own domain.
+- **Agent signing keys** — publisher-attested in `brand.json` `agents[].signing_keys[]`, fetched from the publisher's own `/.well-known`.
+- **`adagents.json` authoritative pointers** — fetched from the publisher's own `/.well-known`, with the pointer-swap threat documented in [managed-networks security](/docs/governance/property/managed-networks#security-considerations).
+
+Every one of those steps trusts the counterparty's own infrastructure as the root of trust. TLS does not close this — the certificate is issued to the hostname the attacker has compromised, so it verifies clean. An attacker who controls a counterparty's CDN, DNS, or `/.well-known` path can therefore serve attacker-controlled keys, and every signature made with those keys will verify against them.
+
+What 3.0 actually delivers is **trust-on-first-use with continuity**: verifiers cache the first-seen keys, pin rotations against the prior key set, and alert on unexpected changes. This raises the bar — an attacker must either control the counterparty origin for long enough to look routine, or swap keys at onboarding before the victim has cached anything — but it does not close the gap. It is an honest description of the 3.x posture, not a claimed cryptographic root of trust.
+
+### What raises the bar in 3.x
+
+Implementers SHOULD layer independent attestation sources rather than rely on any single origin. Each control below converts a silent key-swap into a detectable event within a bounded window:
+
+- **Multi-source cross-check.** When a signing key appears in `brand.json`, verify it matches the key used on signed agent responses *and* a DNS-based attestation (a TXT record at the publisher's apex binding the key fingerprint to the domain, rotated in lock-step with the key material). Compromise of the HTTPS origin alone does not also forge DNS; an attacker must break both surfaces simultaneously.
+- **Publication-delay / continuity windows.** Treat a never-before-seen key as provisional for a declared period (24–72 h) during which high-value operations continue to be verified against the previously cached key, and alerts fire on the rotation. A legitimate rotation survives this with operator acknowledgement; an attacker-injected key surfaces before any spend moves.
+- **Out-of-band key-change signalling.** Publishers, governance agents, and buyer agents SHOULD announce key rotations through channels the counterparty origin cannot forge — vendor status pages, ads.txt cross-references, partner announcement lists, direct operator notification. The protocol does not prescribe the channel; the requirement is that a channel exists and the verifier watches it.
+- **Rotation-validity discipline.** Keys past their declared rotation window are an attack surface, not a preference signal. Verifiers SHOULD reject signatures made with a key past its declared validity rather than silently falling back to older cached material, and SHOULD refuse to accept a rotation that sets `not_after` in the past as a legitimate rollover.
+
+These controls do not substitute for a root of trust. They make a key-swap attack detectable and costly rather than silent and cheap — which is the security posture 3.x can honestly deliver.
+
+### What AdCP 4.0 needs: a centralized publisher-key registry
+
+The permanent fix is a centralized registry analogous in spirit to Certificate Transparency for TLS or `sellers.json` for the ad-tech identity layer. The minimal protocol-relevant properties:
+
+1. **Publisher enrollment.** Each publisher, governance agent, and sales-agent domain registers a root verification key under its domain identity. The registry binds `{domain, root_key_fingerprint, enrolled_at}` and attests domain control through a documented challenge (DNS, HTTPS, or equivalent).
+2. **Append-only rotation log.** Rotations are appended, not overwritten. The registry publishes a transparency log so a key rotation cannot be backdated, withdrawn, or selectively served to different verifiers.
+3. **Public queryability.** Buyers, sellers, and validators query the registry by domain and receive the current root-key set plus the rotation history. The registry is a discovery index, not a signing authority — it never holds private keys and cannot issue signatures on any party's behalf.
+4. **Governance-neutral operation.** The registry is operated by an industry body with published governance, documented key-ceremony transparency for the registry's own signing keys, and a succession plan independent of any single vendor.
+5. **Backwards-compatible wire format.** Keys in the registry surface through the same JWKS format that verifiers already consume. A 3.x verifier's switch to registry-anchored trust is a configuration change (point JWKS discovery at the registry-index URL), not a new protocol surface.
+
+This is **explicitly not a 3.x requirement.** It is logged as a 4.0 track so implementers who build the in-protocol attestation surfaces today — `brand.json` `agents[].signing_keys[]`, `authoritative_location`, signed governance JWS — can shape their data so a later registry lookup can anchor it without protocol breakage. Specifically, implementers SHOULD keep key declarations at stable single-purpose URIs, SHOULD carry key fingerprints alongside full key material (the registry can only anchor what it can unambiguously identify), and SHOULD NOT conflate signing keys with transport keys.
+
+Until the registry exists, the multi-source controls above are the 3.x normative baseline. They are the difference between "an attacker who compromises one counterparty origin gets silent authority" and "the compromise produces a detectable signal within a bounded window." 3.x promises the second; it does not promise the first.
+
 ## What is outside the protocol
 
 AdCP specifies the wire. It does not specify — and cannot substitute for — any of the following:
