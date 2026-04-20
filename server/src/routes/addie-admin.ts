@@ -1045,6 +1045,59 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // =========================================================================
+  // LISTING BACKLOG API
+  // =========================================================================
+
+  // GET /api/admin/addie/listings/unpublished-backlog
+  // Orgs with an active membership whose directory listing is missing or not
+  // public. Use for cleanup of the pre-autopublish backlog.
+  apiRouter.get("/listings/unpublished-backlog", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const result = await query<{
+        workos_organization_id: string;
+        name: string;
+        subscription_status: string;
+        subscription_current_period_end: Date | null;
+        membership_tier: string | null;
+        profile_id: string | null;
+        slug: string | null;
+        display_name: string | null;
+      }>(
+        `SELECT
+           o.workos_organization_id,
+           o.name,
+           o.subscription_status,
+           o.subscription_current_period_end,
+           o.membership_tier,
+           mp.id AS profile_id,
+           mp.slug,
+           mp.display_name
+         FROM organizations o
+         LEFT JOIN member_profiles mp
+           ON mp.workos_organization_id = o.workos_organization_id
+         WHERE o.subscription_status IN ('active', 'trialing', 'past_due')
+           AND (mp.id IS NULL OR mp.is_public = FALSE)
+         ORDER BY o.subscription_current_period_end DESC NULLS LAST,
+                  o.name ASC`
+      );
+
+      res.json({
+        backlog: result.rows.map(row => ({
+          ...row,
+          has_profile: row.profile_id !== null,
+        })),
+        total: result.rows.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching unpublished-listing backlog");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch unpublished listing backlog",
+      });
+    }
+  });
+
+  // =========================================================================
   // CONFIG VERSION API (mounted at /api/admin/addie/config)
   // =========================================================================
 
