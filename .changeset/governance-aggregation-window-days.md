@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
 spec(governance): fragmentation-defense aggregation window
