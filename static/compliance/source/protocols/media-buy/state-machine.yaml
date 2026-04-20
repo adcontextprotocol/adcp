@@ -312,7 +312,7 @@ phases:
         title: "Reject pause on canceled buy"
         narrative: |
           Attempt to pause a canceled media buy. The agent must reject this with
-          INVALID_STATE_TRANSITION.
+          INVALID_STATE.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -321,7 +321,7 @@ phases:
         expect_error: true
         stateful: true
         expected: |
-          Reject with INVALID_STATE_TRANSITION — cannot pause a canceled buy.
+          Reject with INVALID_STATE — cannot pause a canceled buy.
 
         sample_request:
           account:
@@ -349,7 +349,7 @@ phases:
         title: "Reject resume on canceled buy"
         narrative: |
           Attempt to resume a canceled media buy. The agent must reject this with
-          INVALID_STATE_TRANSITION.
+          INVALID_STATE.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -358,7 +358,7 @@ phases:
         expect_error: true
         stateful: true
         expected: |
-          Reject with INVALID_STATE_TRANSITION — cannot resume a canceled buy.
+          Reject with INVALID_STATE — cannot resume a canceled buy.
 
         sample_request:
           account:
@@ -396,7 +396,7 @@ phases:
         comply_scenario: terminal_state_enforcement
         stateful: true
         expected: |
-          Either reject with INVALID_STATE_TRANSITION or accept idempotently.
+          Either reject with INVALID_STATE or accept idempotently.
           Both behaviors are valid.
 
         sample_request:

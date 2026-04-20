@@ -108,7 +108,17 @@ validations:
 
 Every code used in `value:` or `allowed_values:` MUST exist in the canonical error-code enum at `static/schemas/source/enums/error-code.json`. The `lint:error-codes` script (wired into `npm run test`) walks every storyboard and rejects references to codes that aren't in the enum — a build failure before any test runs.
 
-When a rename is required, register the old code as a deprecation alias in `static/schemas/source/enums/error-code-aliases.json` (added lazily when the first rename lands). Aliased codes validate against the lint during the deprecation window, then fail once the alias is removed. This is how renames like `INVALID_TRANSITION` → `INVALID_STATE` land without breaking storyboard authorship across versions.
+When a rename is required, register the old code in `scripts/error-code-aliases.json`. The file is pure data (it lives next to the lint script that reads it, not in the schema tree) and ships with an empty `aliases` map by default:
+
+```json
+{
+  "aliases": {
+    "OLD_CODE": "NEW_CODE"
+  }
+}
+```
+
+Aliased codes pass the lint as **warnings** during the deprecation window, giving authors time to migrate storyboards. Once the alias is removed from the file, references to the old code become lint errors. This is how renames land without breaking storyboard authorship across versions.
 
 ## Running the lint locally
 
