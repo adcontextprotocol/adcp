@@ -284,7 +284,7 @@ Adds (or upserts) a pricing option on an existing seeded product. Use this when 
 |-------|------|----------|-------------|
 | `product_id` | string | Yes | Parent product (must already exist — seed it first) |
 | `pricing_option_id` | string | Yes | Stable identifier for the pricing option |
-| `fixture` | object | No | Pricing option shape (pricing_model, currency, rate, floor_price, etc.) |
+| `fixture` | object | No | Pricing option shape per the [`PricingOption`](https://adcontextprotocol.org/schemas/v3/media-buy/product.json) schema (`pricing_model`, `currency`, `floor_price` for auction-based, `fixed_price` for fixed, etc.) |
 
 **Example:**
 
@@ -296,7 +296,7 @@ Adds (or upserts) a pricing option on an existing seeded product. Use this when 
     "pricing_option_id": "default",
     "fixture": {
       "pricing_model": "cpm",
-      "rate": 5.0,
+      "floor_price": 5.0,
       "currency": "USD"
     }
   }
@@ -512,6 +512,8 @@ A seller may implement the test controller without supporting every scenario. Th
   ]
 }
 ```
+
+Sellers that implement `list_scenarios` MUST respond with scenario names that appear verbatim in the `scenario` enum of [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json). Custom seller-specific scenario names are not part of the compliance contract; storyboard runners will not dispatch to scenarios outside the canonical enum, so listing them serves no purpose. A seller that supports `seed_product` MUST respond with the string `"seed_product"` — not `"create_test_product"` or any other variant.
 
 Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. When this happens, the runner tries each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — the runner discovers supported scenarios through trial.
 
