@@ -58,13 +58,18 @@ Sellers that implement compliance test controller MUST:
           "force_media_buy_status",
           "force_session_status",
           "simulate_delivery",
-          "simulate_budget_spend"
+          "simulate_budget_spend",
+          "seed_product",
+          "seed_pricing_option",
+          "seed_creative",
+          "seed_plan",
+          "seed_media_buy"
         ],
-        "description": "The seller-side transition to trigger."
+        "description": "The seller-side transition or fixture-seed to trigger."
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
       }
     },
     "required": ["scenario"]
@@ -236,6 +241,154 @@ At least one of `account_id` or `media_buy_id` is required. The target entity MU
   }
 }
 ```
+
+### `seed_product`
+
+Creates (or upserts) a product fixture with a caller-supplied `product_id` so subsequent storyboard steps can reference the product by stable ID. The controller MUST make the seeded product discoverable via `get_products` under the authenticated account unless the fixture explicitly marks it hidden.
+
+**Why this scenario exists.** Storyboards hardcode fixture IDs like `"test-product"` and expect the seller to have a matching product. Without a seed scenario, every implementer rediscovers which IDs the conformance suite expects and has to alias them by hand. `seed_product` replaces that discovery with an explicit, storyboard-authored contract.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `product_id` | string | Yes | Stable identifier the storyboard will reference |
+| `fixture` | object | No | Product shape. Minimum useful fields: `delivery_type`, `channels`, `pricing_options[]`, `format_ids[]`. Sellers MAY fill in defaults for omitted fields. |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_product",
+  "params": {
+    "product_id": "test-product",
+    "fixture": {
+      "delivery_type": "non_guaranteed",
+      "channels": ["display"],
+      "pricing_options": [
+        { "pricing_option_id": "test-pricing", "pricing_model": "cpm", "currency": "USD", "floor_price": 1.0 }
+      ],
+      "format_ids": [{ "id": "display_300x250" }]
+    }
+  }
+}
+```
+
+### `seed_pricing_option`
+
+Adds (or upserts) a pricing option on an existing seeded product. Use this when a storyboard needs a specific pricing option that wasn't included in the initial `seed_product` call, or when the option's attributes need to diverge from the seller's default.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `product_id` | string | Yes | Parent product (must already exist — seed it first) |
+| `pricing_option_id` | string | Yes | Stable identifier for the pricing option |
+| `fixture` | object | No | Pricing option shape (pricing_model, currency, rate, floor_price, etc.) |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_pricing_option",
+  "params": {
+    "product_id": "test-product",
+    "pricing_option_id": "default",
+    "fixture": {
+      "pricing_model": "cpm",
+      "rate": 5.0,
+      "currency": "USD"
+    }
+  }
+}
+```
+
+### `seed_creative`
+
+Creates a creative fixture at a specific lifecycle status. Lets governance and delivery storyboards reference a pre-approved creative without round-tripping `sync_creatives` first.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_id` | string | Yes | Stable identifier |
+| `fixture` | object | No | Creative shape. Typical fields: `status`, `format_id`, `assets`, `click_through_url`. |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_creative",
+  "params": {
+    "creative_id": "campaign_hero_video",
+    "fixture": {
+      "status": "approved",
+      "format_id": { "id": "video_30s" },
+      "assets": [{ "type": "video", "url": "https://example.com/hero.mp4" }]
+    }
+  }
+}
+```
+
+### `seed_plan`
+
+Creates a media plan fixture. Used by governance storyboards that assert against a specific plan without running the full briefing + proposal flow first.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_id` | string | Yes | Stable identifier |
+| `fixture` | object | No | Plan shape. Typical fields: `budget`, `brand`, `flight`, `line_items[]`. |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_plan",
+  "params": {
+    "plan_id": "gov_acme_q2_2027",
+    "fixture": {
+      "budget": { "total": 30000, "currency": "USD" },
+      "brand": { "domain": "acmeoutdoor.example" },
+      "flight": { "start": "2027-04-01", "end": "2027-06-30" }
+    }
+  }
+}
+```
+
+### `seed_media_buy`
+
+Creates a media buy fixture at a specified lifecycle state, bypassing the `create_media_buy` flow. Used by storyboards that need to assert governance or delivery behavior against a pre-existing buy.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Stable identifier |
+| `fixture` | object | No | Media buy shape. Typical fields: `status`, `packages[]`, `budget`, `flight`. |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_media_buy",
+  "params": {
+    "media_buy_id": "mb_acme_q2_2026_auction",
+    "fixture": {
+      "status": "active",
+      "packages": [{ "package_id": "pkg_001", "product_id": "test-product" }]
+    }
+  }
+}
+```
+
+### Seeding semantics and ordering
+
+- **Upsert on collision.** Seed scenarios are idempotent: a second call with the same primary ID and equivalent `fixture` SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a diverging `fixture` MAY return `INVALID_TRANSITION` (if the change violates the state machine) or MAY merge, at the seller's discretion — storyboard authors SHOULD NOT rely on merge behavior.
+- **Foreign-key ordering.** Storyboards that reference a `pricing_option_id` MUST seed the parent `product_id` first. Storyboards that seed a `media_buy` referencing a `product_id` MUST seed the product first. The runner enforces ordering via the phase sequence; sellers that receive a `seed_pricing_option` for a product that does not exist MUST return `INVALID_PARAMS` rather than auto-create the parent.
+- **Sandbox scope.** Seeded fixtures exist only for the authenticated sandbox account. `NOT_FOUND` applies the same way as for `force_*` — a seller that cannot see the parent product for the caller's account MUST return `NOT_FOUND`, not silently fall back to another tenant.
+- **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return `UNKNOWN_SCENARIO` for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed.
 
 ## Response shape
 
