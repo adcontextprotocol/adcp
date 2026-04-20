@@ -191,6 +191,8 @@ phases:
           Bids below floor_price should be rejected with a clear error.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

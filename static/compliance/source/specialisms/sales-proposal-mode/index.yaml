@@ -313,6 +313,8 @@ phases:
           - valid_actions: creative sync, pause, get_delivery
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

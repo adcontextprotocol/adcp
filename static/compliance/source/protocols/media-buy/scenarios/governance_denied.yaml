@@ -165,6 +165,8 @@ phases:
           The buy is rejected because governance denied — the $50K buy exceeds
           the plan's $10K budget. The seller propagates the denial with findings.
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

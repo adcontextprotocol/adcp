@@ -357,6 +357,8 @@ phases:
           - packages with catalog references preserved
 
         sample_request:
+          brand:
+            domain: "amsterdam-steakhouse.example"
           account:
             brand:
               domain: "amsterdam-steakhouse.example"

@@ -98,6 +98,8 @@ phases:
           - message indicating which terms are unworkable (vendor, window, or variance)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -153,6 +155,8 @@ phases:
           normalized by the seller).
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

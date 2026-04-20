@@ -319,6 +319,8 @@ phases:
           - input-required: need more information
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

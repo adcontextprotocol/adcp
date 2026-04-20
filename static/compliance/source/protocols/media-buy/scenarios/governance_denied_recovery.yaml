@@ -171,6 +171,8 @@ phases:
           from the governance agent explaining which constraint was exceeded.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -211,6 +213,8 @@ phases:
           budget. The seller returns a media_buy_id.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

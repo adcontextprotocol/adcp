@@ -110,6 +110,8 @@ phases:
           numbers, or a crash / non-AdCP error shape.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

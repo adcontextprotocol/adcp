@@ -146,7 +146,7 @@ phases:
           brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
 
           context:
@@ -228,9 +228,11 @@ phases:
           MediaBuy.status enum. IO / traffic-manager review is modelled at the task layer.
 
         sample_request:
+          brand:
+            domain: "novamotors.example"
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "2026-10-01T00:00:00Z"
@@ -244,7 +246,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.com"
+                    domain: "videoamp.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
             - product_id: "late_fringe_15s_mf"
@@ -255,7 +257,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.com"
+                    domain: "videoamp.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
           push_notification_config:
@@ -305,7 +307,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"
@@ -408,7 +410,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "volta_ev_launch_30s"
@@ -559,7 +561,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"
@@ -627,7 +629,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
+              domain: "novamotors.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"

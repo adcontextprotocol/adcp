@@ -257,6 +257,8 @@ phases:
           value is not in MediaBuy.status — IO review is modelled at the task layer only.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

@@ -132,6 +132,8 @@ phases:
           Media buy created with media_buy_id and at least one package.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

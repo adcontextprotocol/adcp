@@ -223,6 +223,8 @@ phases:
           - proposal_id: echoed back to confirm which proposal was accepted
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

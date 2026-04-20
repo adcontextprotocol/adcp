@@ -97,6 +97,8 @@ phases:
           - valid_actions including sync_creatives
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

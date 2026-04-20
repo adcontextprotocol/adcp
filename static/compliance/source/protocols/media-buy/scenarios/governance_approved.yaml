@@ -162,6 +162,8 @@ phases:
           The buy succeeds — governance approved because the $25K buy is within
           the plan's $100K budget.
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

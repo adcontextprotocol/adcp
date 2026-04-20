@@ -371,6 +371,8 @@ phases:
           - Used only when the seller needs the buyer to respond (e.g., confirm a budget). If the blocker is account-level (credit application, funding), the resolution path is list_accounts / sync_accounts, where account.setup.url surfaces on the pending_approval account
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

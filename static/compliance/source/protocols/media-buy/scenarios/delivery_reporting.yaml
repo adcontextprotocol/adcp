@@ -101,6 +101,8 @@ phases:
         expected: |
           Create the media buy. We need a media_buy_id to simulate delivery against.
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
