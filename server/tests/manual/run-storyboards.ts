@@ -40,7 +40,7 @@ process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 
 const args = process.argv.slice(2);
@@ -160,6 +160,13 @@ async function main() {
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
 
   for (const sb of all) {
+    // Isolate storyboards from each other: a previous storyboard may have
+    // seeded governance plans, media buys, creatives, etc. into a session
+    // keyed by the same brand domain. Without this reset the next
+    // storyboard inherits that state and e.g. a $10K governance plan
+    // from `media_buy_seller/governance_denied` silently intercepts a
+    // $50K buy in `sales_guaranteed`.
+    await clearSessions();
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
       const brand = brandForStoryboard(sb);
