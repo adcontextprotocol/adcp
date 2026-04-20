@@ -112,7 +112,7 @@ phases:
                   measurement_window: "c30"
                   max_variance_percent: 0
                 makegood_policy:
-                  remedy_types: ["cash_refund_only"]
+                  available_remedies: ["credit"]
 
           context:
             correlation_id: "measurement_terms_rejected--aggressive"
@@ -165,7 +165,7 @@ phases:
                   measurement_window: "c7"
                   max_variance_percent: 10
                 makegood_policy:
-                  remedy_types: ["makegood_inventory", "cash_refund"]
+                  available_remedies: ["additional_delivery", "credit"]
 
           context:
             correlation_id: "measurement_terms_rejected--relaxed"

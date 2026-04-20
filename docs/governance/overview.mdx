@@ -20,6 +20,8 @@ This walkthrough follows Jordan as she sets up governance for Sam's \$50K campai
 
 <Note>
 **Regulated verticals.** Campaigns for credit, insurance, employment, or housing fall under GDPR Article 22 and EU AI Act Annex III — automated decisions affecting data subjects require human oversight. See [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations) for what AdCP provides and what the deployer is responsible for.
+
+The AdCP policy registry ships seeded with regulatory policies across US (FHA, ECOA, EEOC, COPPA, FDA, FTC, TTB), EU (DSA, prescription DTC), and platform-specific categories — alongside GDPR Article 9 restricted-attribute definitions that governance agents evaluate programmatically. The seeded registry is a starting point, not an exhaustive list; deployers extend it for their own jurisdictions and brand rules.
 </Note>
 
 ## The three-party model
@@ -167,7 +169,7 @@ The campaign is live. Governance doesn't stop at purchase — it monitors delive
 
 - **Budget tracking**: As `report_plan_outcome` data flows in, the governance agent tracks actual spend against committed budget
 - **Drift detection**: If delivery diverges from the plan — wrong publisher, unexpected creative, budget overrun — governance flags it
-- **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans
+- **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans. Content-standards versions follow a separate rule — pinned-at-buy by default, with a per-policy `evaluation_mode: continuous` opt-in for regulatory policies. See [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
 
 First, the orchestrator reports that the seller accepted the purchase and committed budget:
 

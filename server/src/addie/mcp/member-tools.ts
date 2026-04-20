@@ -3565,18 +3565,49 @@ export function createMemberToolHandlers(
     const sb = getComplianceStoryboardById(storyboardId);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
+    // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.
+    // This is a common LLM confusion because phases and steps both have `id` fields.
+    let resolvedStepId = stepId;
+    let phaseRemap: { phaseId: string; stepId: string } | null = null;
+    const stepMatch = sb.phases.flatMap(p => p.steps).find(s => s.id === stepId);
+    if (!stepMatch) {
+      const phaseMatch = sb.phases.find(p => p.id === stepId);
+      const firstStepOfPhase = phaseMatch?.steps[0];
+      if (phaseMatch && firstStepOfPhase) {
+        resolvedStepId = firstStepOfPhase.id;
+        phaseRemap = { phaseId: phaseMatch.id, stepId: firstStepOfPhase.id };
+      } else {
+        // Not a step, not a phase — return a helpful error that distinguishes the two.
+        const phaseList = sb.phases
+          .map(p => `- phase \`${p.id}\` → first step \`${p.steps[0]?.id ?? '(none)'}\``)
+          .join('\n');
+        const stepList = sb.phases
+          .flatMap(p => p.steps)
+          .map(s => `\`${s.id}\``)
+          .join(', ');
+        return (
+          `**Error:** Step "${stepId}" not found in storyboard "${storyboardId}".\n\n` +
+          `Valid steps: ${stepList}\n\n` +
+          `If you meant a phase, call again with the first step of that phase:\n${phaseList}`
+        );
+      }
+    }
+
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
       const authOption = buildAuthOption(resolved);
-      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, stepId, {
+      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, {
         context,
         ...(authOption && { auth: authOption }),
       });
 
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+      if (phaseRemap) {
+        output += `_Note: "${stepId}" is a phase ID; ran its first step \`${phaseRemap.stepId}\` instead._\n\n`;
+      }
 
       const icon = result.skipped ? 'SKIP' : result.passed ? 'PASS' : 'FAIL';
       output += `## Step: ${result.title} [${icon}]\n\n`;

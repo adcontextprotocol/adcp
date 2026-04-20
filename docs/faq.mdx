@@ -149,6 +149,21 @@ As of April 2026:
 We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
 </Accordion>
 
+<Accordion title="How does AdCP compare to UCP and ACP?">
+Google's Universal Commerce Protocol (UCP) — developed with Shopify, Walmart, Target, and others — and OpenAI and Stripe's Agentic Commerce Protocol (ACP) standardize *commerce* in AI assistants: checkout, payments, and fulfillment. AdCP standardizes *advertising*: how offers get surfaced, how a brand agent engages a user, and how attribution flows back.
+
+These are different layers, not competing specifications.
+
+| Layer | Standard | What it does |
+|---|---|---|
+| Commerce | UCP, ACP | Checkout, payments, fulfillment, order status |
+| Advertising | AdCP | Sponsored discovery, media buying, creative, brand governance, attribution |
+
+The layers meet at the handoff. The [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) runs a conversational brand experience inside an AI assistant; when the user decides to buy, the host hands off to ACP or UCP for checkout, carrying the SI `session_id` through as context so the transaction can be attributed back to the sponsored conversation. The commerce protocol's own session owns the purchase flow. AdCP owns the path up to the handoff; the commerce protocol owns the transaction.
+
+A platform implementing both sees AdCP for "surface the right offer and engage the user" and UCP/ACP for "take the payment." Neither substitutes for the other.
+</Accordion>
+
 <Accordion title="Why not just roll our own protocol?">
 You can, and for some deployments that is the right call — proprietary internal protocols are fine when the scope stays inside a single organization.
 
@@ -187,6 +202,12 @@ AdCP 3.0 GA will require campaigns declaring a regulated policy category to run 
 AdCP is governed by AgenticAdvertising.Org (AAO), a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
 
 The interim board (as of 2026-04-18) has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The elected board — first Annual General Meeting on **May 6, 2026** — has equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers), with a target of ten seats per class. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
+
+**Reference sell-side implementation lives at Prebid.** Development of the sell-side AI agent reference code was handed to the [Prebid community](https://www.prebid.org/) in February 2026, [reported by AdExchanger](https://www.adexchanger.com/ad-exchange-news/the-agentic-advertising-organization-hands-development-of-its-sell-side-agent-to-prebid/). AAO owns the specification; Prebid owns the reference software. Spec governance and reference-implementation development are intentionally separate organizations.
+</Accordion>
+
+<Accordion title="Do AdCP examples use real brand names?">
+No. All examples in docs, storyboards, and test vectors use fictional entities — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names registered in `static/compliance/source/universal/fictional-entities.yaml`. Real brands, agencies, publishers, and vendors do not appear in normative examples. The editorial rule is enforced in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and called out in [CONTRIBUTING.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md). Reviewers flag real-brand usage the same way they flag vendor leakage in schemas. This is a deliberate choice to keep the protocol neutral: the spec shouldn't favor one seller, agency, or vendor by name.
 </Accordion>
 
 <Accordion title="How is AAO related to Scope3?">

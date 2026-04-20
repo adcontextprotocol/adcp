@@ -24,6 +24,35 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(data.vectors.length > 0, 'must have at least one vector');
   });
 
+  it('every vector and rejection_vector has a unique kebab-case id', () => {
+    const allVectors = [...data.vectors, ...data.rejection_vectors];
+    const seen = new Set();
+    allVectors.forEach((v, i) => {
+      assert.equal(typeof v.id, 'string', `vector at index ${i} missing id field`);
+      assert.match(v.id, /^[a-z0-9]+(-[a-z0-9]+)*$/, `id "${v.id}" at index ${i} must be kebab-case`);
+      assert.ok(!seen.has(v.id), `duplicate vector id: ${v.id}`);
+      seen.add(v.id);
+    });
+  });
+
+  it('ships a WARNING that the test secret is not for production', () => {
+    assert.equal(typeof data.WARNING, 'string', 'top-level WARNING field MUST be present');
+    assert.ok(/production/i.test(data.WARNING), 'WARNING must reference production explicitly');
+    assert.equal(data.secret.length, 64, 'test secret MUST be a 64-hex-char (256-bit) value');
+    assert.ok(/^[0-9a-f]{64}$/.test(data.secret), 'test secret MUST be lowercase hex');
+  });
+
+  it('includes secret-rejection vectors for weak configurations', () => {
+    assert.ok(Array.isArray(data.secret_rejection_vectors),
+      'secret_rejection_vectors must be present');
+    assert.ok(data.secret_rejection_vectors.length >= 2,
+      'must cover at least length-below-minimum and zero-entropy cases');
+    const shortSecret = data.secret_rejection_vectors.find(
+      v => typeof v.secret === 'string' && v.secret.length < 32,
+    );
+    assert.ok(shortSecret, 'must include a sub-32-byte secret rejection vector');
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
@@ -55,11 +84,31 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
   }
 
   it('should produce different signatures for compact vs spaced JSON', () => {
-    const compact = data.vectors.find(v => v.description.includes('compact'));
-    const spaced = data.vectors.find(v => v.description.includes('spaced'));
-    assert.ok(compact, 'must have a compact JSON vector');
-    assert.ok(spaced, 'must have a spaced JSON vector');
+    const compact = data.vectors.find(v => v.id === 'compact-js-style');
+    const spaced = data.vectors.find(v => v.id === 'spaced-python-default');
+    assert.ok(compact, 'must have vector id "compact-js-style"');
+    assert.ok(spaced, 'must have vector id "spaced-python-default"');
     assert.notEqual(compact.expected_signature, spaced.expected_signature,
       'compact and spaced JSON must produce different signatures — this is the whole point of raw body signing');
+  });
+
+  describe('rejection vectors', () => {
+    for (const vector of data.rejection_vectors) {
+      it(`should not compute to the claimed signature: ${vector.description}`, () => {
+        // Rejection vectors where `signature` is not a numeric-HMAC value
+        // (e.g., structural-rejection cases like empty/null/"sha256=valid_but_irrelevant")
+        // are not computationally checkable — they're documented for verifier implementers.
+        if (vector.signature == null || vector.signature === '') return;
+        if (!/^sha(256|512)=[0-9a-f]+$/.test(vector.signature)) return;
+        if (typeof vector.timestamp !== 'number') return;
+
+        const message = `${vector.timestamp}.${vector.raw_body}`;
+        const hex = crypto.createHmac('sha256', data.secret).update(message, 'utf8').digest('hex');
+        const computed = `sha256=${hex}`;
+
+        assert.notEqual(computed, vector.signature,
+          `Rejection vector "${vector.description}" must not match a correctly-computed HMAC over the claimed raw_body — otherwise the test vector collapses into a positive case`);
+      });
+    }
   });
 });

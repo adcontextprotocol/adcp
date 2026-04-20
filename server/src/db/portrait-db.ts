@@ -23,11 +23,13 @@ export interface MemberPortrait {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  c2pa_signed_at: string | null;
+  c2pa_manifest_digest: string | null;
 }
 
 type PortraitMetadata = Omit<MemberPortrait, 'portrait_data'>;
 
-const METADATA_COLUMNS = `id, user_id, member_profile_id, image_url, prompt_used, vibe, palette, status, approved_at, created_at, updated_at`;
+const METADATA_COLUMNS = `id, user_id, member_profile_id, image_url, prompt_used, vibe, palette, status, approved_at, created_at, updated_at, c2pa_signed_at, c2pa_manifest_digest`;
 
 /** Get portrait metadata by ID (no binary data) */
 export async function getPortraitById(id: string): Promise<PortraitMetadata | null> {
@@ -81,10 +83,12 @@ export async function createPortrait(data: {
   vibe?: string;
   palette?: string;
   status?: 'pending' | 'generated' | 'approved';
+  c2pa_signed_at?: Date;
+  c2pa_manifest_digest?: string;
 }): Promise<PortraitMetadata> {
   const result = await query<PortraitMetadata>(
-    `INSERT INTO member_portraits (user_id, member_profile_id, image_url, portrait_data, prompt_used, vibe, palette, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO member_portraits (user_id, member_profile_id, image_url, portrait_data, prompt_used, vibe, palette, status, c2pa_signed_at, c2pa_manifest_digest)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING ${METADATA_COLUMNS}`,
     [
       data.user_id,
@@ -95,6 +99,8 @@ export async function createPortrait(data: {
       data.vibe || null,
       data.palette || 'amber',
       data.status || 'generated',
+      data.c2pa_signed_at ?? null,
+      data.c2pa_manifest_digest ?? null,
     ]
   );
   return result.rows[0];

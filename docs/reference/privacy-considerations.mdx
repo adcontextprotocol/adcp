@@ -7,7 +7,7 @@ description: "Cross-protocol privacy entry point for AdCP implementers, complian
 
 This page is the cross-protocol entry point for privacy in AdCP. It names the categories implementers and compliance reviewers need to think about, summarizes what each AdCP protocol carries and does not carry, and links to the deeper references. It does not replace any of them.
 
-If you need the deep architectural picture of a specific domain, follow the links. A Privacy Impact Assessment template for deploying an AdCP agent is a separate deliverable for deployers, not covered on this page.
+If you need the deep architectural picture of a specific domain, follow the links. AdCP does not publish a Privacy Impact Assessment template; see [For DPOs and procurement reviewers](#for-dpos-and-procurement-reviewers) below for the inputs a deployer's DPO needs to assemble their own assessment.
 
 ## What AdCP's privacy posture is — and isn't
 
@@ -98,6 +98,21 @@ The protocol does not enforce these; the operator must:
 - **PII discovery in unstructured fields** (creative metadata, chat logs, brief text). AdCP does not scan `ext`, `context`, brief prose, or creative assets for PII.
 - **Log retention and PII redaction** in logs.
 - **Prompt-injection containment** for LLM-powered agents processing untrusted text.
+
+## For DPOs and procurement reviewers
+
+AdCP does not publish a Privacy Impact Assessment template. A PIA is a deployer artifact owned by the data controller and their counsel — every deployment's purpose, lawful basis, retention, residency, and subprocessor chain differs, and those are the parts that matter for a GDPR Art. 35 assessment. The protocol itself is not the controller and cannot stand in for that analysis.
+
+What AdCP provides instead is the set of protocol-level inputs a DPO needs to describe the AdCP portion of their processing. When assembling a PIA for a deployment that uses AdCP, the relevant inputs are:
+
+- **What each protocol carries and prohibits** — the [Privacy posture by domain](#privacy-posture-by-domain) summary above, plus the deep references linked from each domain.
+- **Controller / processor allocation** — the [Processor / controller roles](#processor--controller-roles) section above. Operators still MUST document their role per data flow and carry a DPA with each counterparty.
+- **Structural separation (TMP only)** — [TMP Privacy Architecture](/docs/trusted-match/privacy-architecture), including TEE attestation when deployed.
+- **Threat model and operational controls** — the [Security Model](/docs/building/understanding/security-model), including the [data handling and subprocessors checklist](/docs/building/understanding/security-model#data-handling-and-subprocessors).
+- **LLM-provider subprocessor considerations** — the [Subprocessors and LLM providers](#subprocessors-and-llm-providers) section above, which covers both confidentiality (retention, training) and integrity (prompt injection).
+- **Explicit non-goals** — [Known Limitations](/docs/reference/known-limitations), which names what the protocol does not do (no protocol-level PII transport, no residency mechanism, no breach-notification SLA, etc.) so the deployer knows which controls they own.
+
+Residency, retention, consent capture, data-subject rights workflows, cross-border transfer mechanisms, and purpose limitation are deployment concerns — AdCP does not enforce them at the protocol layer, and a template could not meaningfully cover them without becoming deployment-specific.
 
 ## Related references
 

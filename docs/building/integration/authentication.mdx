@@ -41,7 +41,19 @@ These operations require valid credentials:
 
 ## Authentication Method
 
-AdCP uses Bearer token authentication, consistent with the MCP specification:
+AdCP supports three authentication mechanisms for authenticated operations. The choice depends on the operation's risk class and the AdCP version in use:
+
+| Mechanism | 3.0 (current) | 3.1+ | Notes |
+|---|---|---|---|
+| **RFC 9421 request signing** | RECOMMENDED for all authenticated operations | **REQUIRED** for mutating / financial operations | Asymmetric, body-bound, replay-resistant. See [RFC 9421 request signing](/docs/building/implementation/security#request-signing). |
+| **Mutual TLS (mTLS)** | Permitted for any operation | Permitted as an alternative to 9421 | Transport-layer identity; recommended when the deployment already terminates mTLS at the edge. |
+| **Bearer tokens** | Permitted; effective baseline for 3.0 | **PROHIBITED for mutating / financial operations**; permitted for read / discovery only | Documented sunset for mutating ops — see the [known limitation](/docs/reference/known-limitations). |
+
+<Warning>
+  **3.0 mutating-operation floor.** Until 3.1 lands, Bearer tokens over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
+</Warning>
+
+### Bearer tokens (3.0 baseline)
 
 ```
 Authorization: Bearer <token>
@@ -50,6 +62,16 @@ Authorization: Bearer <token>
 Tokens may be:
 - **Opaque tokens**: Server-validated strings mapped to agents
 - **JWT tokens**: Self-contained tokens with embedded claims
+
+Implementations MUST enforce TLS 1.2+ on all Bearer-authenticated endpoints. See the [implementation security reference](/docs/building/implementation/security) for transport requirements.
+
+### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
+
+Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/implementation/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing.supported` lets clients detect whether a seller enforces signing before sending a mutating call.
+
+### mTLS
+
+Operators terminating mTLS at the edge MAY use the peer certificate as the primary identity mechanism for AdCP operations. When mTLS is used, operators MUST pin identity to the certificate subject / SAN rather than any header field.
 
 ### JWT Token Claims
 

@@ -73,6 +73,10 @@ Normative rules for the legacy scheme when a seller elects to support it:
 
 - **Algorithm**: HMAC-SHA256 only
 - **Signed message**: `{unix_timestamp}.{raw_http_body_bytes}` — never re-serialize the JSON
+- **Byte-equality invariant**: The HMAC is computed over raw bytes, not over a parsed JSON value. Signers and verifiers MUST compare the bytes on the wire directly; re-parsing and re-serializing a payload — even with matching libraries and compact separators — is not guaranteed to reproduce the signed bytes, because key ordering, unicode-escape policy, and number representation all diverge across serializers (see "Non-canonicalized aspects" below for concrete examples). This scheme does not define a canonical JSON form; the "Canonical on-wire form" and "Verifier input" rules below narrow the most common byte-drift failures on the signer and verifier sides respectively, but do not eliminate byte-level divergence.
+- **Canonical on-wire form**: The `{raw_http_body_bytes}` MUST be byte-identical to the bytes the signer puts on the wire as the HTTP body. When the signer constructs the body by serializing a JSON value, it MUST use the JSON compact separators `","` (item separator) and `":"` (key separator) — no whitespace between tokens. The language-level serializers JavaScript `JSON.stringify`, Go `encoding/json` `json.Marshal`, Ruby `JSON.generate`, and Java Jackson `writeValueAsString` produce compact output by default; HTTP clients that wrap them (axios, Go `net/http` with a `json.Marshal`-ed body, Ruby `Net::HTTP` with `JSON.generate`, Java OkHttp with Jackson) inherit those defaults. In Python, `httpx` serializes with compact separators, but stdlib `json.dumps` defaults to `", "` / `": "` and HTTP clients that hand their payload to `json.dumps` without a `separators` kwarg (`requests(json=...)`, `aiohttp`) emit spaced bodies — signers on those paths MUST pass `separators=(",", ":")` explicitly. This enumeration is non-exhaustive; signers MUST verify their HTTP client's actual on-wire serialization (e.g., capture the request body via a proxy or hook) rather than rely on this list. The signature covers the bytes the receiver sees, not the object the signer serialized.
+- **Non-canonicalized aspects**: Key ordering, unicode-escape policy, and number representation are NOT canonicalized by this scheme. For numbers in particular, language defaults diverge (`JSON.stringify(1.0)` → `1`, Python `json.dumps(1.0)` → `1.0`, Go `json.Marshal(1.0)` → `1`; floats like `0.1` and scientific notation hit similar cliffs), so a signer that serializes with one library and then re-parses / re-serializes with another before sending can produce signer-verifier drift even with compact separators — the byte-equality invariant above is the only thing that holds the scheme together. Signers SHOULD NOT emit duplicate object keys; verifiers MAY reject bodies containing duplicate keys — parser behavior for duplicates is undefined per RFC 8259 §4, so two verifiers can accept the same HMAC-valid bytes and disagree on the parsed value.
+- **Verifier input**: Verifiers MUST use the raw HTTP body bytes as received on the wire, captured before any JSON parse or re-serialize. Every modern HTTP framework exposes a pre-parse raw-body hook (Express `express.raw()`, FastAPI `Request.body()`, aiohttp `Request.read()`, Go `io.ReadAll(r.Body)` before `json.Unmarshal`). The raw-capture hook MUST run before any JSON-parse middleware on the same route; a globally-mounted `express.json()` or FastAPI `BaseModel` body binding that consumes the request body before the verifier runs leaves the verifier operating on a re-stringified payload, not the signed bytes — this is a common deployment mistake. Verifiers SHOULD NOT re-serialize a parsed payload to reconstruct the signed bytes: re-serialization silently fails against signers whose output differs in key order, unicode escapes, or number formatting, and masks signer bugs the verifier should surface. A verifier that genuinely cannot capture raw bytes MUST fail closed and surface the infrastructure gap rather than accept a re-serialized approximation.
 - **Timestamp source**: The `{unix_timestamp}` in the signed message MUST be the exact ASCII integer sent in the `X-ADCP-Timestamp` header. Signers and verifiers MUST NOT derive it from any body field.
 - **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
 - **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
@@ -155,7 +159,13 @@ function validateToken(token, operationType) {
 
 Every piece of state — media buys, creatives, idempotency cache entries, session IDs, governance tokens — is scoped to the [account](/docs/reference/glossary#a) that owns it. Cross-account reads MUST return a generic "not found" rather than leak existence. The authenticated [agent](/docs/reference/glossary#a) is how the seller knows *who is calling*; the `account` on the request is *what billing relationship the call is acting on*. Isolation requires both checks.
 
-See the glossary for the formal definitions of [Account](/docs/reference/glossary#a) and [Agent](/docs/reference/glossary#a).
+Sales agents MUST:
+
+1. **Bind on create** — permanently associate each object (media buy, creative, session, etc.) with the account used on the request that created it.
+2. **Verify on access** — on every subsequent read or modification, verify the authenticated agent has access to the object's bound account.
+3. **Fail closed** — when verification fails, return a generic error (status 403 or 404 is acceptable, but the body MUST NOT distinguish "unauthorized" from "not found" or name the account). Never fall through to the resource query.
+
+See [Accounts & Security — Data Isolation](/docs/media-buy/advanced-topics/accounts-and-security#data-isolation) for the billing-relationship model these rules enforce, and the glossary for the formal definitions of [Account](/docs/reference/glossary#a) and [Agent](/docs/reference/glossary#a).
 
 ### The two-step pattern
 
@@ -196,7 +206,7 @@ Filtering by the *whole* authorized set on a by-ID lookup is a regression: a `ge
 
 ### Row-Level Security
 
-Implement row-level security at the database layer so a bug in one handler cannot punch through the wall:
+The most common isolation failure is **IDOR via joined or nested relations**: a query scopes the primary table by `account_id` but joins or returns fields from a related table (line items, creatives, delivery rows) that was never filtered by the same principal. Defend per-principal at the data layer, not just in handler code, so a bug in one handler cannot punch through the wall:
 
 ```sql
 -- PostgreSQL example
@@ -214,6 +224,23 @@ CREATE POLICY account_isolation_list ON media_buys
   FOR SELECT
   USING (account_id = ANY(current_setting('app.authorized_accounts')::uuid[]));
 ```
+
+### Client-side isolation: cross-principal tool-call confusion
+
+The rules above are server-side enforcement. They protect the seller's data even when a legitimate-but-compromised agent is the caller. The **client-side companion** is the buyer agent's obligation not to let text supplied by principal X drive tool calls that use principal Y's authority.
+
+An LLM-driven buyer agent typically holds credentials for multiple principals at once: several sellers (one credential set per seller) and, inside an agency agent, several brand accounts. Any untrusted string the agent processes — product descriptions returned by a seller, campaign names inherited from a brief, rejection reasons in an error envelope, webhook event bodies — is text sourced from *one* of those principals. If the agent's planning loop can call tools across all of them from a single LLM context, a prompt injected in seller X's text can cause the agent to call `create_media_buy` on seller Y's endpoint, or to spend brand A's budget on brand B's inventory. This is the [confused-deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem) problem at tool-call granularity: the attacker doesn't need to escape the sandbox — the agent's own legitimate authority does the damage.
+
+Operators running LLM-powered AdCP agents MUST apply at least the following controls:
+
+1. **Tag text with its principal of origin.** Every string the LLM context ingests from the network (tool results, webhook bodies, registry documents, creative metadata) MUST be annotated internally with the `{principal_domain, tool_name, response_field}` triple that produced it. Dropping the annotation at ingest time is where this defense dies.
+2. **Restrict tool-call targets to the calling principal.** A tool call whose target principal is not the same as the principal that supplied the string(s) driving the decision MUST either (a) be refused, (b) go through a human approval step, or (c) be mediated by an explicit per-principal policy the operator has declared up front. The default MUST be refuse, not allow.
+3. **Segregate credential scopes by LLM context.** A single LLM planning loop MUST NOT hold live credentials for principals whose interests can conflict (e.g., two brands competing for the same inventory; a buyer credential and a governance agent's signing key in one context). The scope-segregation is enforced at the process / tool-registration layer, not by instructing the LLM — the LLM MUST NOT have the affordance to misuse.
+4. **Log every cross-principal *attempt*, not just successes.** Refusals under rule 2 are the signal operators MUST monitor — a rising refusal rate from a given principal is the earliest detectable sign of an injection campaign targeting your agent.
+
+This threat is distinct from ordinary prompt injection: ordinary injection exfiltrates data or triggers unauthorized tool calls within *one* principal's authority. Cross-principal confusion uses principal X's untrusted text to reach principal Y's authority without the attacker ever holding Y's credentials. The server-side Layer 2 controls above detect the attempt only if principal Y's account isn't already in the buyer agent's authorized set — when it is (the whole point of agency and multi-seller agents), the server sees a legitimate-looking call.
+
+The protocol cannot force this discipline on the client agent. The test for it is operational: every LLM-powered AdCP buyer MUST be able to describe, in writing, which principals can appear together in the same planning context and what gates a cross-principal tool call.
 
 ## Time Semantics
 
@@ -261,7 +288,9 @@ This section applies only to AdCP task requests. OpenRTB bid streams have their 
 3. **Only successful responses are cached.** On any error — validation, governance denial, transport failure, internal error — the key is **not** stored. A retry re-executes. This matches buyer intent: a retry after a 5xx should try again, not replay a failure. It also prevents a buyer's malformed request from being locked into a key for its full TTL.
 4. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND an equivalent canonical-form payload (see "Payload equivalence" below) MUST return the stored inner response without re-executing side effects. The seller injects `replayed: true` onto the outgoing protocol envelope at response time — `replayed` is an envelope-level field produced by the idempotency layer, NOT part of the cached inner response. Injection at replay time keeps the cached payload byte-stable across replays regardless of envelope changes (new `timestamp`, rotated `governance_context`, etc.). Transport-specific note for MCP: MCP tool responses do not have a separate envelope slot; servers MAY expose `replayed` inside the tool result object itself (e.g., at the top of the structured return) or via a response metadata field. REST and A2A responses use the envelope field directly.
 5. **Key reuse with a different canonical payload is a conflict.** Same key, different canonical hash within the replay window MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
-6. **Expired keys are rejected explicitly.** After `replay_ttl_seconds` elapses the seller MAY evict the cache entry. A request arriving after eviction with a key the seller has seen SHOULD be rejected with `IDEMPOTENCY_EXPIRED` rather than silently treated as new — silent re-execution is exactly the double-booking footgun the key was meant to prevent. Sellers SHOULD allow a ±60s clock-skew window at the TTL boundary (the same tolerance applied to JWS `exp` elsewhere in this document) so that a retry arriving seconds after nominal expiry is still replayed from cache rather than treated as fresh. Sellers that cannot distinguish "never seen" from "evicted" (e.g., memory-only stores after restart) MAY return a success path, but buyers MUST assume at-most-once only inside the declared TTL.
+6. **Expired keys are rejected explicitly.** After `replay_ttl_seconds` elapses the seller MAY evict the cache entry. A request arriving after eviction with a key the seller has seen SHOULD be rejected with `IDEMPOTENCY_EXPIRED` rather than silently treated as new — silent re-execution is exactly the double-booking footgun the key was meant to prevent. Sellers SHOULD allow a ±60s clock-skew window at the TTL boundary (the same tolerance applied to JWS `exp` elsewhere in this document) so that a retry arriving seconds after nominal expiry is still replayed from cache rather than treated as fresh.
+
+    **Durability is normative.** The declared `replay_ttl_seconds` is a durability contract, not a best-effort cache hint. Sellers MUST back the idempotency cache with storage that survives process restarts, pod replacements, region failovers, and operator-initiated cache flushes for the declared TTL. In-memory-only stores (plain `Map`, single-process LRU without a backing tier) are non-conformant whenever `replay_ttl_seconds` exceeds process lifetime — which is always true at the 3600 s floor. The consequence of silent eviction below declared TTL is a **displaced-replay window**: the sender legitimately retries with the same `idempotency_key` under a fresh signature nonce (which is how a signed retry is supposed to work — nonces are per-send, not per-event), passes the signature replay check, and finds the app-layer cache empty because the receiver's in-memory state was dropped. The side effect runs twice. Sellers MUST NOT declare a `replay_ttl_seconds` higher than their cache tier can durably honor, and MUST fail-closed (`IDEMPOTENCY_EXPIRED`) rather than fail-open (silent re-execution) when they cannot distinguish "never seen" from "evicted under declared TTL." A seller whose operational reality is "memory-only, lost on pod restart" is required to declare `replay_ttl_seconds` no higher than the shortest guaranteed pod lifetime — in practice, this forces a durable tier.
 7. **Replay window is declared, not inferred.** Sellers MUST declare `capabilities.idempotency.replay_ttl_seconds` on `get_adcp_capabilities` (minimum 3600s / 1h, recommended 86400s / 24h, maximum 604800s / 7d). Clients MUST NOT fall back to an assumed default — a seller with no declaration is non-compliant and MUST be treated as unsafe for retry-sensitive operations.
 8. **Cache-growth defense.** Sellers SHOULD apply per-agent rate limits on idempotency cache inserts separately from request rate limits. A natural bound: `inserts_per_hour × replay_ttl_hours ≤ max_cache_rows_per_agent`. When that bound is crossed, sellers SHOULD return `RATE_LIMITED` rather than let the cache grow unbounded — a buyer submitting N fresh keys per second on a cheap success-path operation (e.g., `log_event`) could otherwise force unbounded storage.
 
@@ -477,6 +506,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
 | `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
+| `plan_hash` | Yes | Audit-layer binding of the attestation to the evaluated plan state. Not part of the seller verification checklist — sellers treat it as opaque cargo. Semantics, canonicalization, and verification paths are defined in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
@@ -494,6 +524,8 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 **Unknown-claim handling**: verifiers MUST ignore claims whose names they do not recognize *unless* those claim names appear in the token's `crit` header, in which case the token MUST be rejected. This asymmetric rule — ignore unknown, but reject unknown-and-critical — is how future versions of the profile add semantically meaningful claims without breaking backward compatibility for verifiers that haven't updated yet.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+**`plan_hash` is audit-layer, not wire-layer**: the `plan_hash` claim is cryptographic cargo the token carries for off-wire verification by the governance agent, auditors, and buyer-side compliance. It is not part of this profile's seller verification contract and is never listed in `crit`. Canonicalization, excluded fields, retention rules, and test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) (governance spec). Sellers persist and forward `governance_context` verbatim and perform the 15-step verification checklist below — authenticity, authorization scope, freshness — without inspecting `plan_hash`.
 
 #### Buyer identity resolution
 
@@ -541,7 +573,7 @@ Before treating a request as governance-approved, sellers MUST perform these che
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved.
+Only after all 15 checks pass does the seller treat the request as governance-approved. Note that sellers do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
 
 #### Replay dedup
 
@@ -622,7 +654,7 @@ Servers MUST NOT echo internal verification details (e.g., which specific claim 
 
 **`policy_decisions` visibility**: the token is a JWS (readable by anyone with the public key), not a JWE (encrypted). If `policy_decisions` contains the full list of policy IDs the governance agent evaluated, every seller who receives the token learns which policies the buyer's governance posture considers — competitive intelligence, and in some cases signaling about sensitive audience characteristics (e.g., a `minors_compliance` policy ID implies targeting of under-18 audiences). Governance agents SHOULD use `policy_decision_hash` in place of `policy_decisions` when the buyer's compliance posture is sensitive; the full log remains available to auditors via `audit_log_pointer` with governance-agent-controlled access.
 
-<a id="intent-phase-disclosure"></a>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
+<span id="intent-phase-disclosure"></span>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
 
 **`caller` URL**: contains the orchestrator's identifier. Sellers and auditors who retain tokens long-term should be aware of the retention policy implied by this.
 
@@ -644,6 +676,7 @@ Payload:
 {
   "iss": "https://gov.scope3.com",
   "sub": "plan_q1_2026_launch",
+  "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
   "aud": "https://seller.example.com/adcp",
   "iat": 1744934400,
   "exp": 1744935300,
@@ -722,8 +755,8 @@ function handleGovernanceContext(value: string, ctx) {
 
 #### Migration (3.0 → 3.1)
 
-- **3.0**: governance agents MUST emit compact JWS per this profile. Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
-- **3.1**: all sellers MUST verify per the checklist above. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end.
+- **3.0**: governance agents MUST emit compact JWS per this profile, including the required `plan_hash` audit-layer claim (see [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) for semantics). Sellers MAY verify the 15-step checklist; sellers that do not verify MUST persist and forward the token unchanged. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
+- **3.1**: all sellers MUST verify per the 15-step checklist. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end. `plan_hash` remains audit-layer (governance-agent / auditor / buyer-compliance verification only — not seller verification).
 
 The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue forwarding; sellers that want the accountability properties opt in by implementing the verification checklist.
 
@@ -851,6 +884,8 @@ Verifier requirements:
 
 Request-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry (or the `adagents.json` equivalent for seller-side agents publishing keys for webhook callbacks). Every agent that signs — of any `type` — uses the same publication pattern.
 
+**Publisher pin precedence.** When a publisher's `adagents.json` entry for an authorized agent carries a `signing_keys` pin (see [`adagents.json` §`signing_keys`](/docs/governance/property/adagents#signing_keys)), that pin is authoritative: verifiers MUST reject any signature whose `keyid` is not in the pinned set, regardless of `jwks_uri` contents. The agent-hosted JWKS is advisory whenever a publisher pin exists. This closes the agent-domain-compromise window — an attacker who takes over the agent's domain cannot silently swap both the endpoint and its advertised keys because the publisher's pin still governs acceptance. Publishers are required to pin for any agent whose delegated scopes include mutating operations; see the adagents.json rule for rotation and cache semantics.
+
 Each request-signing JWK entry MUST declare:
 
 | Member | Value | Notes |
@@ -862,6 +897,13 @@ Each request-signing JWK entry MUST declare:
 | `alg` | `"EdDSA"` or `"ES256"` | Must match the signature's `alg` parameter (JWK `alg` uses JWS names; `alg` in `Signature-Input` uses RFC 9421 names). |
 
 Cross-purpose key reuse is forbidden and **locally enforceable** via `adcp_use`: a single JWK entry can only declare one `adcp_use` value, so a publisher cannot accidentally (or deliberately) present a governance-signing key as a valid request-signing key. Verifiers check `adcp_use` on the JWK they fetched, not across other JWKS endpoints — no cross-endpoint lookup is required or permitted.
+
+**Origin separation (MUST for governance, SHOULD for others).** `adcp_use` is an in-band discriminator — it prevents cross-purpose verification, but it does not defend the publishing origin. An origin compromise on a shared JWKS endpoint simultaneously compromises every signing purpose it publishes. Because a governance-signing key is the highest blast-radius key in the system (its compromise is a multi-tenant breach), governance signing keys MUST be served from a separate origin than transport-signing and webhook-signing keys. The canonical pattern is:
+
+- `governance-keys.{org}.example/.well-known/jwks.json` — governance-signing JWKs only
+- `keys.{org}.example/.well-known/jwks.json` — request-signing, webhook-signing, TMP keys
+
+Operators SHOULD go further and serve each signing purpose from a distinct subdomain (up to four origins). Defense-in-depth: governance keys SHOULD be on offline-rotation (HSM/KMS with manual rotation and human approval), while transport and webhook keys MAY use automated rotation. Operators advertise their separation scheme by publishing an `identity.key_origins` map in `get_adcp_capabilities`; the schema defines `governance_signing`, `request_signing`, `webhook_signing`, and `tmp_signing` origin URIs. Implementers SHOULD populate the field so counterparties can verify origin separation at onboarding. **When the field is present, verifiers MUST check that the declared governance-signing origin differs from the declared transport-signing and webhook-signing origins at onboarding and reject onboarding with a user-actionable error on co-tenancy.** The MUST on origin separation is otherwise unverifiable on the wire — the whole point of publishing the advertisement is to let counterparties enforce it programmatically; accepting a declaration that violates the normative rule would defeat the control. Verifiers MAY additionally fetch each declared JWKS and confirm its `jwks_uri` origin matches the advertised value.
 
 **Implementer note:** `adcp_use` is a custom JWK member. Major JOSE libraries (`jose`, `node-jose`, `python-jose`, `go-jose`) preserve unknown members on parse. Strict JWK validators (some modes of `PyJWT`, and Web Crypto API's `SubtleCrypto.importKey`) may reject unknown members. When handing a JWK to `SubtleCrypto.importKey` or equivalent strict consumers, strip `adcp_use` from the JWK object but retain it for the step-8 policy check. The field is for AdCP verifier policy, not for cryptographic libraries.
 
@@ -929,6 +971,7 @@ Covering `content-digest` binds the request body bytes to the signature. For spe
 - WAFs that "sanitize" JSON request bodies (whitespace normalization, key reordering, unknown field stripping). Most WAFs inspect without modifying; some do modify.
 - Reverse proxies or API gateways that re-serialize JSON between client and origin for logging, validation, or transformation.
 - HTTP/2 → HTTP/1.1 bridges where chunked-encoding framing assumptions differ.
+- **Signer-side serialization mismatch.** A signer that computes `content-digest` over one JSON serialization (e.g., `json.dumps(payload)` with default spaced separators) while its HTTP client writes a different serialization on the wire (e.g., compact separators) produces a digest over bytes the receiver never sees. Every verifier then rejects with `webhook_signature_digest_mismatch` or `request_signature_digest_mismatch`. **Serialize the body once, then use those exact bytes for both the digest input and the HTTP body** — do not compute the digest from the pre-serialized object and trust the client to reproduce the same bytes. This is the same trap the [legacy HMAC scheme pins via compact separators](#legacy-hmac-sha256-fallback-deprecated-removed-in-40); 9421 fails loud rather than silent (digest mismatch is a hard reject) but the signer-side fix is identical.
 
 **If you control the transport**, preserve bodies byte-for-byte end-to-end and cover `content-digest`. **If you don't control the transport**, fix it rather than degrade the security guarantee. Validate end-to-end with a `POST` echo test against a test endpoint before sending real traffic.
 </Warning>
@@ -1029,7 +1072,25 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 
 Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer registers, and similar asynchronous seller-initiated callbacks) are signed under a symmetric variant of this profile. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. 9421 webhook signing is baseline-required for any 3.0 seller that emits webhooks, with a deprecated HMAC fallback described in [Webhook Security](#webhook-security).
 
-**Baseline, not capability-advertised.** There is no `webhook_signing` block on `get_adcp_capabilities`. Sellers that emit webhooks MUST sign. Buyers that register a `push_notification_config` MUST verify. The buyer opts into the legacy HMAC-SHA256 scheme instead by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme.
+**Baseline with programmatic advertisement.** 9421 webhook signing is baseline-required for any seller that emits webhooks — the default is signed, not a negotiated option. The `webhook_signing` capability block on `get_adcp_capabilities` exists so buyers can detect a non-signing seller *at onboarding* rather than discovering it by traffic inspection (which is how the asymmetry with `request_signing` manifested before this block was restored). A seller whose capability surface advertises mutating-webhook emission elsewhere (e.g., `media_buy.reporting_delivery_methods` includes `webhook`, or `media_buy.content_standards.supports_webhook_delivery: true`) MUST include this block with `supported: true`. A seller that emits no webhooks MAY omit the block entirely; `supported: false` is reserved for the unsafe posture of emitting unsigned webhooks and MUST NOT be used to signal absence-of-webhooks. Buyers that integrate with a seller whose surface advertises mutating-webhook emission while the `webhook_signing` block advertises `supported: false` or is omitted MUST fail onboarding with a user-actionable error — a seller that emits but does not sign webhooks is unsafe to integrate with for any mutating-webhook use case.
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+- `supported`: MUST be `true` when the seller advertises mutating-webhook emission elsewhere in its capability surface. Buyers reject onboarding when `supported: false` or the block is missing and the seller's surface advertises webhook emission. Sellers that emit no webhooks SHOULD omit the entire block.
+- `profile`: MUST be exactly `adcp/webhook-signing/v1` for this profile version. Future profile versions bump the string.
+- `algorithms`: subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithm set this seller will sign with. Matches the webhook-signing verifier allowlist (see step 4 of the [verifier checklist](#verifier-checklist-requests), reused for webhooks via the substitutions noted above). Buyers MUST reject onboarding with a user-actionable error if the advertised `algorithms` array contains any value outside this set; an out-of-set algorithm indicates a misconfigured or non-conforming seller and silent acceptance would defeat the allowlist.
+- `legacy_hmac_fallback`: `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x.
+
+The buyer opts into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme — see the `legacy_hmac_fallback` flag above.
 
 **Mode selection is a switch, not both.** The presence of `push_notification_config.authentication` selects exactly one signing mode for every webhook delivered to that URL: `authentication` present → legacy HMAC-SHA256 (or Bearer); `authentication` absent → 9421. Sellers MUST NOT sign the same webhook both ways. Buyers MUST NOT attempt "try 9421 first, fall back to HMAC" verification — that pattern creates downgrade oracle behavior and accepts signatures the buyer did not ask for. Verifiers key the verification path strictly off whether the receiver has a configured HMAC secret for the `push_notification_config` registration.
 
@@ -1102,6 +1163,15 @@ Replay dedup for webhooks reuses the `(keyid, nonce)` key shape and TTL semantic
 - **Per-keyid entry cap**: recommended 100,000 entries (10× lower than the request-side 1,000,000 ceiling). A seller emitting 100K unique webhooks in a 6-minute window is 275/sec sustained from a single signer — plenty of headroom for normal operations and still a strong signal of misconfiguration or key compromise.
 - **Aggregate cache cap**: recommended `min(aggregate_memory_budget, 10,000,000)` entries across all signers. On aggregate-cap exceeded, verifiers MUST reject new signatures with `webhook_signature_rate_abuse` and SHOULD alert operators — silent eviction creates replay windows precisely when the verifier is under attack.
 - **Per-seller budget**: operators SHOULD budget per-seller by integration criticality rather than equal-weighting all sellers at 100K each. A spend-committing seller's webhook fan-in differs from a discovery-only seller's.
+
+**Cross-endpoint scoping (MUST).** A buyer that exposes more than one webhook endpoint (per-integration, per-environment, per-tenant, or per-pod in a horizontally-scaled fleet) MUST either:
+
+1. **Share a single logical replay cache across every endpoint** a given signer can reach (Redis / shared dedup service — not per-process in-memory), so that a `(keyid, nonce)` inserted by endpoint A is visible to endpoint B before step 12 runs; or
+2. **Include the canonical destination URL in the replay key**, scoping dedup to `(keyid, canonical destination URL, nonce)`. The canonical form is the `@target-uri` after normalisation per [the request-signing profile](#adcp-rfc-9421-profile) (scheme lowercased, host IDNA-normalised, default port elided, fragment stripped).
+
+Option 1 is stronger — it rejects cross-endpoint replay outright within the ±360 s window. Option 2 is weaker — the same `(keyid, nonce)` is replayable at each distinct endpoint URL, but because the signed `@target-uri` is covered by the signature, the verifier at endpoint B will reject any payload whose `@target-uri` was signed for endpoint A with `webhook_signature_digest_mismatch` (the canonical signature base fails) or `webhook_signature_invalid`. Option 2 is acceptable only when the signer's canonical `@target-uri` is per-endpoint; a signer that signs the same payload for multiple endpoints defeats option 2 and MUST use option 1.
+
+Per-pod or per-region *in-memory* replay caches without a shared tier are non-conformant for buyers that run more than one endpoint: they leave a cross-endpoint replay window bounded only by ±360 s and the attacker's ability to route to a different pod. Operators MUST either front the webhook fleet with a shared dedup tier or document and enforce the per-endpoint URL scoping above.
 
 All other rules from [Transport replay dedup](#transport-replay-dedup) apply verbatim: in-memory LRU for single-process verifiers, Redis `SETNX` at high volume, atomic insert-with-cap-check at step 13 in distributed deployments.
 
@@ -1293,26 +1363,102 @@ async function validateBudget(request, account) {
 
 ## Transport Security
 
-### HTTPS Requirements
+AdCP's application-layer security primitives (9421 signing, JWS governance, idempotency) assume the transport does not help the attacker. A misconfigured TLS stack breaks that assumption — it downgrades a protocol designed to withstand active on-path adversaries into one that trusts every intermediary.
 
-- All AdCP communications must use HTTPS with TLS 1.3+ (TLS 1.2 minimum)
-- Validate SSL certificates (no self-signed certificates in production)
-- Implement HTTP Strict Transport Security (HSTS) headers
+This section is normative for every AdCP endpoint — inbound (seller and buyer API surfaces) and outbound (JWKS fetch, brand.json fetch, revocation list fetch, webhook delivery). It is deliberately prescriptive so operators do not have to reason from first principles about cipher suites at 3 a.m.
+
+### TLS version policy
+
+- **TLS 1.3 is RECOMMENDED** for every AdCP endpoint.
+- **TLS 1.2 is the minimum.** Endpoints MUST reject TLS 1.1 and below at the handshake.
+- **Client-side verifiers** (e.g., an AdCP server fetching a counterparty's JWKS, brand.json, or revocation list) MUST refuse to negotiate below TLS 1.2. Libraries that still default to TLS 1.0 for "compatibility" MUST be configured explicitly.
+- SSL 2.0, SSL 3.0, TLS 1.0, and TLS 1.1 MUST NOT be enabled — not for any endpoint, not for any legacy partner, not even on a separate port.
+
+### Cipher suites and algorithms
+
+- TLS 1.3: use the IETF-defined suites (`TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256`). All three are AEAD; no other TLS 1.3 suites exist. Do not disable any of them arbitrarily — operators who disable ChaCha20 on "speed" grounds are one client quirk away from broken mobile clients.
+- TLS 1.2: restrict to **AEAD-only** ECDHE suites. The permitted set is `ECDHE-ECDSA-AES128-GCM-SHA256`, `ECDHE-ECDSA-AES256-GCM-SHA384`, `ECDHE-ECDSA-CHACHA20-POLY1305`, `ECDHE-RSA-AES128-GCM-SHA256`, `ECDHE-RSA-AES256-GCM-SHA384`, `ECDHE-RSA-CHACHA20-POLY1305`.
+- CBC-MAC, RC4, 3DES, DES, NULL, EXPORT, anonymous DH, and static RSA key-exchange suites MUST be disabled on TLS 1.2 — their presence silently downgrades the security properties of everything built above the handshake.
+- Server certificates MUST use ECDSA (P-256 or P-384) or RSA ≥ 2048 bits. RSA < 2048 MUST NOT be used.
+- Endpoints MUST prefer server-side cipher ordering (OpenSSL `SSL_OP_CIPHER_SERVER_PREFERENCE`, nginx `ssl_prefer_server_ciphers on`) so a weak client cannot force a weak suite when a strong one is mutually available.
+
+### Certificate validation (outbound fetches)
+
+Every outbound HTTPS request AdCP makes — JWKS, brand.json, revocation list, webhook callback, aggregator proxy — MUST perform full PKIX validation. The specific checks:
+
+- **Trust chain** MUST terminate at a public root the operator has intentionally included. No `--insecure`, no `verify=False`, no `rejectUnauthorized: false` anywhere in production code paths. This is the single most common production compromise — an engineer turns off verification to work around a cert issue in staging, the flag ships.
+- **SAN match** is the authoritative identity check. The certificate MUST have a Subject Alternative Name entry matching the URL host. CN-only fallback MUST NOT be accepted; major HTTP clients still support it for legacy reasons, but AdCP verifiers MUST require SAN.
+- **Expiry** MUST be checked against the current clock. Fetching a JWKS from a domain whose TLS cert expired last week is a governance red flag, not a compatibility problem.
+- **Hostname verification** MUST be enabled in the library config. Several popular HTTP client libraries ship with hostname verification on by default; a surprising number have a flag that disables it. AdCP implementations MUST assert hostname verification is on, not assume it.
+- **OCSP stapling** SHOULD be accepted when offered; OCSP must-staple on operator-controlled certificates is RECOMMENDED. Must-staple turns a missing staple into a hard failure, which closes the soft-fail-on-OCSP loophole.
+- **Certificate Transparency (CT)** SCTs SHOULD be checked on endpoints serving regulated spend. Browsers already enforce CT; AdCP SDKs fetching governance JWKS on a regulated-category workflow SHOULD too, so a hidden mis-issued cert is detectable.
+- **Pinning** is NOT required at the protocol layer and SHOULD be avoided for counterparty-supplied URLs (brand.json, JWKS) because it collides with legitimate operator cert rotation. Pinning to a public-CA chain (intermediate-pin) is acceptable; pinning to a specific leaf cert is discouraged.
+
+### Inbound server-side headers
 
 ```javascript
 app.use((req, res, next) => {
-  // HSTS header
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // HSTS: 1 year, include subdomains, preload-eligible. MUST be on every HTTPS response.
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 
-  // Prevent clickjacking
+  // No framing of AdCP API responses — even though they're JSON, frame isolation
+  // protects any error or debug HTML that could leak through.
   res.setHeader('X-Frame-Options', 'DENY');
 
-  // Prevent MIME sniffing
+  // MIME sniffing off: responses declare their type, clients MUST respect it.
   res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // Prevent referrers leaking to external URLs supplied by counterparties.
+  res.setHeader('Referrer-Policy', 'no-referrer');
+
+  // AdCP endpoints serve no browser-facing HTML — block script-source loading outright.
+  // If your operator reuses the same origin for a dashboard, adjust this per-path.
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
 
   next();
 });
 ```
+
+**HSTS max-age MUST be ≥ 31536000 (1 year)** for any domain serving an AdCP endpoint. `includeSubDomains` MUST be set unless the operator has a documented reason not to. Domains serving spend-committing AdCP endpoints SHOULD be submitted to the HSTS preload list.
+
+### Client / outbound TLS hardening
+
+Outbound-fetch code paths (governance JWKS, brand.json, revocation list, webhook delivery, aggregator proxy) MUST:
+
+- Use a connection pool with a fixed per-host cap and a fixed overall cap. Unbounded pools are a resource-exhaustion surface.
+- Cap TLS handshake time at 10 s and total request time at 30 s by default — counterparty-supplied URLs are a tarpit DoS vector otherwise.
+- Pin the connection to the IP address that passed the [SSRF controls](#webhook-url-validation-ssrf) — DNS re-resolution between the SSRF check and the actual connect is how TOCTOU bypasses land.
+- Refuse redirects on security-sensitive fetches. JWKS, brand.json, revocation list, and webhook-callback fetches MUST NOT follow redirects; the [brand.json resolution rule](#buyer-identity-resolution) already says "one redirect (`authoritative_location` or `house` variant), no chains" — everywhere else, zero.
+- Disable session resumption across trust boundaries. Resuming a TLS session with an attacker-controlled counterparty onto a later verified counterparty (same IP via DNS rebind) is a well-known class of confusion; library defaults are usually fine, but the operator MUST audit.
+
+### TLS renegotiation and downgrade
+
+- TLS 1.2 **secure renegotiation** (RFC 5746) MUST be enabled if renegotiation is supported at all. Insecure-renegotiation-tolerant stacks are a MUST-disable.
+- **TLS compression** (CRIME) MUST be off.
+- **Heartbeat extension** MUST be off on TLS 1.2 endpoints (Heartbleed lineage).
+- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only discovery endpoints (`get_adcp_capabilities`, `list_creative_formats`) MAY use 0-RTT; everything else MUST NOT.
+
+### mTLS transport
+
+When [mTLS](/docs/building/integration/authentication#mtls) is the authentication mechanism:
+
+- The client certificate SAN / Subject MUST match the buyer's registered domain as declared in `adagents.json` or `brand.json`. Relying on any header field (`X-Forwarded-Client-Cert`, `X-Client-DN`, etc.) is [explicitly forbidden](#buyer-identity-resolution) — header fields can be injected across misconfigured proxies.
+- The terminating edge (load balancer, mesh sidecar) MUST forward the verified certificate identity to the AdCP server over an in-cluster channel the server can authenticate. Unauthenticated sidecar headers are a bypass — deploy mTLS end-to-end, or pin the in-cluster channel.
+- Client certificates MUST be checked against a CRL or OCSP responder operated by the operator. "Issued by us" is not the same as "still valid."
+
+### Private-network and metadata protection
+
+This section's transport controls do not substitute for the [SSRF controls](#webhook-url-validation-ssrf) on counterparty-supplied URLs. Every outbound fetch to a counterparty URL MUST apply the SSRF rules — reject non-HTTPS, reject IPs in reserved ranges (including cloud-metadata addresses), refuse redirects, cap size and time. TLS is useless if the URL points at `169.254.169.254`.
+
+### What this section does NOT replace
+
+Transport security is the floor, not the ceiling. Even a flawless TLS stack does not replace:
+
+- **Application-layer body integrity** ([request signing](#request-signing) and [webhook callbacks](#webhook-callbacks)) — TLS protects the wire, not the payload after a compromised intermediary.
+- **Governance attestation** ([signed governance context](#signed-governance-context)) — TLS does not tell the seller whether the buyer's governance agent authorized this spend.
+- **Idempotency** ([request safety](#request-safety)) — TLS does not prevent the sender from retrying after a network timeout.
+
+Operators that confuse "we have a modern TLS configuration" with "our AdCP deployment is secure" are exactly the operators the body-bound signature profile exists to defend against.
 
 ## Input Validation
 

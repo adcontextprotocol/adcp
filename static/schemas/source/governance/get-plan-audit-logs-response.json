@@ -326,6 +326,11 @@
                   "type": "string",
                   "description": "Governance context for this entry (present for check and outcome entries)."
                 },
+                "plan_hash": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "description": "Audit-layer binding to the plan revision this attestation was evaluated over — base64url_no_pad(SHA-256(JCS(plan_payload))) per Plan binding and audit in the campaign-governance specification. Present on check entries. Auditors and buyer-side compliance verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests."
+                },
                 "purchase_type": {
                   "$ref": "/schemas/enums/purchase-type.json",
                   "description": "Purchase type for this entry."

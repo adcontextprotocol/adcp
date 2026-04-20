@@ -50,11 +50,28 @@ You can request human review on any AI-generated surface. Target turnaround is *
 - **Content corrections** — factual errors in Addie's teaching, Sage's protocol explanations, or any AI-authored content can be reported via [GitHub issues](https://github.com/adcontextprotocol/adcp/issues) or [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
 - **Protocol guidance** — Sage is not a substitute for legal or regulatory advice. For compliance-sensitive questions, consult qualified counsel.
 
+## Content provenance (C2PA)
+
+Every AI-generated image AAO publishes carries an embedded [C2PA](https://c2pa.org/) manifest signed by AAO:
+
+- **Member portraits** — also carry a visible "AI" badge in the bottom-right corner (CA SB 942 visible-disclosure path).
+- **Newsletter cover art** — The Prompt and The Build covers, including the copies that ship in subscriber email and render as OpenGraph share cards.
+- **Perspective article hero images** — every editorial illustration attached to a published perspective.
+- **Docs walkthrough and concept illustrations** — the panel PNGs embedded throughout this site's walkthroughs and concept explainers.
+
+The manifest identifies Google Gemini as the generating software agent, marks the asset as `trainedAlgorithmicMedia` per the IPTC digital-source-type vocabulary, and includes a timestamp plus a SHA-256 of the generation prompt (not the prompt itself — portraits are generated from member-provided descriptions we do not want to republish). AAO signs with a self-signed P-256 certificate held in production secrets. CAI trust-list inclusion is a future step; today, public verifiers will show the signature as cryptographically valid but flag *"issuer not on trust list."*
+
+**Verify any AAO image** at [contentcredentials.org/verify](https://contentcredentials.org/verify) by uploading the file or pasting its URL.
+
+For editorial illustrations and docs storyboards where a visible mark would undermine the graphic-novel aesthetic, the C2PA manifest is the sole disclosure surface. CA SB 942's visible-disclosure rule targets upstream generative-AI providers rather than downstream publishers, so this placement is defensible for AAO — but it is a deliberate choice, not an oversight.
+
+If you find an AAO-generated image that does not carry a manifest, please [open an issue](https://github.com/adcontextprotocol/adcp/issues) — we treat missing provenance as a bug.
+
 ## Regulatory posture
 
-This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel. Specific obligations that go beyond what this page provides:
+This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel.
 
-- **EU AI Act Art 50(2)** and **CA SB 942** require machine-readable provenance (e.g., C2PA manifests) on AI-generated images and video. We do not currently apply C2PA manifests to member portraits; adding provenance metadata is on the roadmap.
+- **EU AI Act Art 50(2)** and **CA SB 942** require machine-readable provenance on AI-generated images and video — see the [content provenance](#content-provenance-c2pa) section above for how we satisfy this.
 - **FTC Endorsement Guides** apply to endorsements and testimonials for compensation. They are not activated by general AI authorship; we call them out here for completeness, not because we claim they are satisfied by this page alone.
 
 If you believe a specific AI surface falls short of an applicable standard, let us know.

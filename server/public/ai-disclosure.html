@@ -68,6 +68,7 @@
         <a href="#models">Models</a>
         <a href="#data">Data</a>
         <a href="#review">Human review</a>
+        <a href="#provenance">Provenance</a>
         <a href="#regulatory">Regulatory</a>
         <a href="#conflicts">Conflicts</a>
       </div>
@@ -121,10 +122,23 @@
         <li><strong>Protocol guidance</strong> &mdash; Sage is not a substitute for legal or regulatory advice. For compliance-sensitive questions, consult qualified counsel.</li>
       </ul>
 
-      <h2 id="regulatory">Regulatory posture</h2>
-      <p>This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel. Specific obligations that go beyond what this page provides:</p>
+      <h2 id="provenance">Content provenance (C2PA)</h2>
+      <p>Every AI-generated image AAO publishes carries an embedded <a href="https://c2pa.org/" target="_blank" rel="noopener noreferrer">C2PA</a> manifest signed by AAO:</p>
       <ul>
-        <li><strong>EU AI Act Art 50(2)</strong> and <strong>CA SB 942</strong> require machine-readable provenance (e.g., C2PA manifests) on AI-generated images and video. We do not currently apply C2PA manifests to member portraits; adding provenance metadata is on the roadmap.</li>
+        <li><strong>Member portraits</strong> &mdash; also carry a visible &ldquo;AI&rdquo; badge in the bottom-right corner (CA SB 942 visible-disclosure path).</li>
+        <li><strong>Newsletter cover art</strong> &mdash; The Prompt and The Build covers, including the copies that ship in subscriber email and render as OpenGraph share cards.</li>
+        <li><strong>Perspective article hero images</strong> &mdash; every editorial illustration attached to a published perspective.</li>
+        <li><strong>Docs walkthrough and concept illustrations</strong> &mdash; the panel PNGs embedded throughout the docs site's walkthroughs and concept explainers.</li>
+      </ul>
+      <p>The manifest identifies Google Gemini as the generating software agent, marks the asset as <code>trainedAlgorithmicMedia</code> per the IPTC digital-source-type vocabulary, and includes a timestamp plus a SHA-256 of the generation prompt (not the prompt itself &mdash; portraits are generated from member-provided descriptions we do not want to republish). AAO signs with a self-signed P-256 certificate held in production secrets. CAI trust-list inclusion is a future step; today, public verifiers will show the signature as cryptographically valid but flag <em>&ldquo;issuer not on trust list.&rdquo;</em></p>
+      <p><strong>Verify any AAO image</strong> at <a href="https://contentcredentials.org/verify" target="_blank" rel="noopener noreferrer">contentcredentials.org/verify</a> by uploading the file or pasting its URL.</p>
+      <p>For editorial illustrations and docs storyboards where a visible mark would undermine the graphic-novel aesthetic, the C2PA manifest is the sole disclosure surface. CA SB 942's visible-disclosure rule targets upstream generative-AI providers rather than downstream publishers, so this placement is defensible for AAO &mdash; but it is a deliberate choice, not an oversight.</p>
+      <p>If you find an AAO-generated image that does not carry a manifest, please <a href="https://github.com/adcontextprotocol/adcp/issues" target="_blank" rel="noopener noreferrer">open an issue</a> &mdash; we treat missing provenance as a bug.</p>
+
+      <h2 id="regulatory">Regulatory posture</h2>
+      <p>This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel.</p>
+      <ul>
+        <li><strong>EU AI Act Art 50(2)</strong> and <strong>CA SB 942</strong> require machine-readable provenance on AI-generated images and video &mdash; see the <a href="#provenance">content provenance</a> section above for how we satisfy this.</li>
         <li><strong>FTC Endorsement Guides</strong> apply to endorsements and testimonials for compensation. They are not activated by general AI authorship; we call them out here for completeness, not because we claim they are satisfied by this page alone.</li>
       </ul>
       <p>If you believe a specific AI surface falls short of an applicable standard, let us know.</p>
