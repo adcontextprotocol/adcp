@@ -63,7 +63,7 @@ Status is declared per-specialism in the YAML frontmatter and surfaced in `/comp
 Specialisms are grouped below by parent protocol.
 
 <Note>
-**What changed in 3.0.** `sponsored_intelligence` was promoted from a specialism to a full protocol (declare it in `supported_protocols`, not `specialisms`). `audience-sync` moved from `governance` to `media-buy` to match its tool family. `broadcast-platform` was renamed to `sales-broadcast-tv` and `social-platform` to `sales-social`. `property-governance` + `collection-governance` merged into `inventory-lists`. Four 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`) ship with `status: preview`.
+**What changed in 3.0.** `sponsored_intelligence` was promoted from a specialism to a full protocol (declare it in `supported_protocols`, not `specialisms`). `audience-sync` moved from `governance` to `media-buy` to match its tool family. `broadcast-platform` was renamed to `sales-broadcast-tv` and `social-platform` to `sales-social`. `property-governance` and `collection-governance` split into sibling `property-lists` and `collection-lists` specialisms.
 </Note>
 
 ### media-buy
@@ -75,11 +75,12 @@ Specialisms are grouped below by parent protocol.
 | `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
-| `sales-streaming-tv` | **preview** | Connected TV / streaming with ad-supported video inventory |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
-| `sales-exchange` | **preview** | Programmatic exchange or SSP exposing auction-based inventory |
-| `sales-retail-media` | **preview** | Retail media network seller — onsite, offsite, in-store inventory |
 | `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses `sync_audiences`, `list_accounts`) |
+
+<Note>
+**Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.
+</Note>
 
 <Note>
 `audience-sync` moved from the `governance` protocol to `media-buy` to match its tool family. If your agent claims `audience-sync` but only declares `governance` in `supported_protocols`, add `media_buy` to `supported_protocols` — the runner now expects the media-buy baseline to run alongside the audience-sync storyboard.
@@ -109,7 +110,10 @@ Specialisms are grouped below by parent protocol.
 | `collection-lists` | stable | Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety |
 | `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
-| `measurement-verification` | **preview** | Third-party measurement and verification. Parked under `governance` for 3.1; a dedicated `measurement` protocol is planned once the viewability, attribution, brand-safety, and SI-outcome surfaces split out. |
+
+<Note>
+**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+</Note>
 
 ### brand
 
@@ -144,7 +148,7 @@ Four casings coexist in the taxonomy. Which one applies depends on where the ide
 | Casing | Layer | Example | Where it appears |
 |--------|-------|---------|------------------|
 | `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | `get_adcp_capabilities` response, JSON payloads, generated schemas |
-| `kebab-case` | Specialism IDs and compliance URLs | `sales-streaming-tv`, `property-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
+| `kebab-case` | Specialism IDs and compliance URLs | `sales-broadcast-tv`, `property-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
 | `snake_case` | Storyboard `id:` and `category:` fields | `sales_broadcast_tv`, `audience_sync` | Compliance YAML frontmatter, runner output, test reports |
 | Prose / hyphenated | Titles and narrative | "Streaming TV", "non-guaranteed" | Catalog pages, narrative copy |
 
@@ -152,8 +156,8 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
-| `sales-streaming-tv` | `channels: ['ctv']` | `sales_streaming_tv` | — |
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | `sales_broadcast_tv` | — |
+| `sales-social` | `channels: ['social']` | `sales_social` | — |
 | `audience-sync` | `sync_audiences` tool | `audience_sync` | — |
 | `property-lists` | `property_list` tools | `property_lists` | — |
 | `collection-lists` | `collection_list` tools | `collection_lists` | — |
@@ -169,7 +173,7 @@ The protocol an agent claims does not always match the tool family name a specia
 
 - `audience-sync` lives under the `media-buy` protocol because `sync_audiences` is a media-buy tool.
 - `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family (`create_property_list`, `validate_property_delivery`) and storyboard category `property_lists`.
-- `sales-streaming-tv` declares `channels: ['ctv']` — "Streaming TV" is the prose name; `ctv` is the wire value.
+- `sales-broadcast-tv` declares `channels: ['linear_tv']` — "Broadcast TV" is the prose name; `linear_tv` is the wire value.
 
 `/compliance/{version}/index.json` surfaces each specialism's `required_tools` so agents can discover the tool families without reading the full storyboard YAML.
 

@@ -82,9 +82,7 @@ See the [Security implementation guide](/docs/building/implementation/security) 
 Storyboards — scripted compliance scenarios that agents must pass — now live in the protocol at `/compliance/{version}/`, alongside schemas and task definitions. Agents declare two things in `get_adcp_capabilities`:
 
 - **`supported_protocols`** — broad domain claims (`media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`). Each commits the agent to the domain's baseline storyboard.
-- **`specialisms`** — 21 narrow capability claims across the 6 domains. Examples: `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`, `inventory-lists`, `signal-marketplace`, `brand-rights`. Each rolls up to one parent protocol.
-
-Specialism `status: preview` flags four 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`) whose storyboards are scheduled but not yet authoritative — the runner warns instead of verifying.
+- **`specialisms`** — 19 narrow capability claims across the 6 domains. Examples: `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`, `property-lists`, `signal-marketplace`, `brand-rights`. Each rolls up to one parent protocol.
 
 Compliance runs have three tiers: **universal** storyboards every agent runs (capability discovery, schema validation, error compliance), **domain baselines** for each declared protocol, and **specialism storyboards** for each narrow claim. A per-version protocol tarball at `/protocol/{version}.tgz` lets clients bulk-sync schemas, storyboards, and examples in one request.
 
