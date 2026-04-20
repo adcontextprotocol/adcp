@@ -143,7 +143,7 @@ export function createIllustrationToolHandlers(
       }
 
       // Generate
-      const { imageBuffer, promptUsed } = await generateIllustration({
+      const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
         title: perspective.title,
         category: perspective.category || undefined,
         authorDescription: visualDescription,
@@ -156,6 +156,8 @@ export function createIllustrationToolHandlers(
         prompt_used: promptUsed,
         author_description: visualDescription,
         status: 'generated',
+        c2pa_signed_at: c2pa?.signedAt,
+        c2pa_manifest_digest: c2pa?.manifestDigest,
       });
 
       // Auto-approve (the author generated it, they can see the preview)

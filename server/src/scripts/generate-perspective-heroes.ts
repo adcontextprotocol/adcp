@@ -56,7 +56,7 @@ async function main() {
       console.log(`Generating illustration for: ${perspective.title}`);
 
       try {
-        const { imageBuffer, promptUsed } = await generateIllustration({
+        const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
           title: perspective.title,
           category: perspective.category || undefined,
           excerpt: perspective.excerpt || undefined,
@@ -67,6 +67,8 @@ async function main() {
           image_data: imageBuffer,
           prompt_used: promptUsed,
           status: 'generated',
+          c2pa_signed_at: c2pa?.signedAt,
+          c2pa_manifest_digest: c2pa?.manifestDigest,
         });
 
         await illustrationDb.approveIllustration(illustration.id, perspective.id);

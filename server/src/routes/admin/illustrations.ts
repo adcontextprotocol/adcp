@@ -91,7 +91,7 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
         try {
           logger.info({ slug: perspective.slug }, 'Generating illustration');
 
-          const { imageBuffer, promptUsed } = await generateIllustration({
+          const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
             title: perspective.title,
             category: perspective.category || undefined,
             excerpt: perspective.excerpt || undefined,
@@ -102,6 +102,8 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
             image_data: imageBuffer,
             prompt_used: promptUsed,
             status: 'approved',
+            c2pa_signed_at: c2pa?.signedAt,
+            c2pa_manifest_digest: c2pa?.manifestDigest,
           });
 
           await illustrationDb.approveIllustration(illustration.id, perspective.id);
@@ -156,7 +158,7 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
 
       const perspective = rows[0];
 
-      const { imageBuffer, promptUsed } = await generateIllustration({
+      const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
         title: perspective.title,
         category: perspective.category || undefined,
         excerpt: perspective.excerpt || undefined,
@@ -167,6 +169,8 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
         image_data: imageBuffer,
         prompt_used: promptUsed,
         status: 'approved',
+        c2pa_signed_at: c2pa?.signedAt,
+        c2pa_manifest_digest: c2pa?.manifestDigest,
       });
 
       await illustrationDb.approveIllustration(illustration.id, perspective.id);

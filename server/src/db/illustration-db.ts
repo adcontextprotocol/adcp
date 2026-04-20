@@ -20,11 +20,13 @@ export interface PerspectiveIllustration {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  c2pa_signed_at: string | null;
+  c2pa_manifest_digest: string | null;
 }
 
 type IllustrationMetadata = Omit<PerspectiveIllustration, 'image_data'>;
 
-const METADATA_COLUMNS = `id, perspective_id, prompt_used, author_description, status, approved_at, created_at, updated_at`;
+const METADATA_COLUMNS = `id, perspective_id, prompt_used, author_description, status, approved_at, created_at, updated_at, c2pa_signed_at, c2pa_manifest_digest`;
 
 /** Get illustration metadata by ID (no binary data) */
 export async function getIllustrationById(id: string): Promise<IllustrationMetadata | null> {
@@ -75,17 +77,21 @@ export async function createIllustration(data: {
   prompt_used?: string;
   author_description?: string;
   status?: 'pending' | 'generated' | 'approved';
+  c2pa_signed_at?: Date;
+  c2pa_manifest_digest?: string;
 }): Promise<PerspectiveIllustration> {
   const result = await query<PerspectiveIllustration>(
-    `INSERT INTO perspective_illustrations (perspective_id, image_data, prompt_used, author_description, status)
-     VALUES ($1, decode($2, 'base64'), $3, $4, $5)
-     RETURNING id, perspective_id, prompt_used, author_description, status, approved_at, created_at, updated_at`,
+    `INSERT INTO perspective_illustrations (perspective_id, image_data, prompt_used, author_description, status, c2pa_signed_at, c2pa_manifest_digest)
+     VALUES ($1, decode($2, 'base64'), $3, $4, $5, $6, $7)
+     RETURNING ${METADATA_COLUMNS}`,
     [
       data.perspective_id,
       data.image_data ? data.image_data.toString('base64') : null,
       data.prompt_used || null,
       data.author_description || null,
       data.status || 'generated',
+      data.c2pa_signed_at ?? null,
+      data.c2pa_manifest_digest ?? null,
     ]
   );
   return result.rows[0];

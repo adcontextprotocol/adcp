@@ -57,6 +57,7 @@
     "@adcp/client": "^5.1.0",
     "@anthropic-ai/sdk": "^0.90.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
+    "@contentauth/c2pa-node": "^0.5.4",
     "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@mozilla/readability": "^0.6.0",

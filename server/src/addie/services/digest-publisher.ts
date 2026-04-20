@@ -168,7 +168,7 @@ async function generateCoverImage(
   excerpt: string,
   editionDate?: string,
 ): Promise<void> {
-  const { imageBuffer, promptUsed } = await generateIllustration({
+  const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
     title,
     category: 'The Prompt',
     excerpt,
@@ -180,6 +180,8 @@ async function generateCoverImage(
     image_data: imageBuffer,
     prompt_used: promptUsed,
     status: 'generated',
+    c2pa_signed_at: c2pa?.signedAt,
+    c2pa_manifest_digest: c2pa?.manifestDigest,
   });
 
   await approveIllustration(illustration.id, perspectiveId);
