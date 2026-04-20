@@ -34,7 +34,7 @@
               },
               "status": {
                 "$ref": "/schemas/enums/creative-status.json",
-                "description": "Current approval/lifecycle state of the creative after this sync. Orthogonal to action — action says what this operation did (created, updated, etc.); status says where the creative is in the review lifecycle. Sellers that determine review state synchronously SHOULD return a terminal value (approved, rejected). Sellers with async review return processing or pending_review and the buyer reconciles via list_creatives or a webhook. Omit only when the seller has no review lifecycle at all; authoritative state is always via list_creatives."
+                "description": "Advisory review-lifecycle state of the creative after this sync — a UI hint and polling-scheduling signal, NOT a spend-authorization gate. Orthogonal to action — action says what the sync did (created, updated, ...); status says where the creative sits in review. Values come from CreativeStatus only (processing, pending_review, approved, rejected, archived) — never from CreativeAction. Sellers with async review return processing or pending_review; sellers with synchronous review MAY return a terminal value (approved, rejected). Buyers MUST NOT gate downstream spend or package activation on status: approved from this response — a compromised or buggy seller could declare approved while bypassing content-policy review. Reconcile via list_creatives or a signed review webhook before committing spend. Authoritative state is always via list_creatives. MUST be omitted when action is failed or deleted (the creative has no meaningful review state — failure details belong in the errors array; deleted creatives are gone from the library). Omit entirely when the seller has no review lifecycle at all."
               },
               "platform_id": {
                 "type": "string",
@@ -94,7 +94,31 @@
               "creative_id",
               "action"
             ],
-            "additionalProperties": true
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "failed",
+                        "deleted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "status"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         "sandbox": {
@@ -117,6 +141,11 @@
           {
             "required": [
               "errors"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
             ]
           },
           {
@@ -174,6 +203,11 @@
             ]
           },
           {
+            "required": [
+              "task_id"
+            ]
+          },
+          {
             "properties": {
               "status": {
                 "const": "submitted"
@@ -202,7 +236,8 @@
         },
         "message": {
           "type": "string",
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Suitable for display to buyer-side humans or agent reasoning."
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

@@ -84,7 +84,7 @@ Declares whether this seller honors `idempotency_key` replay protection on mutat
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
 | `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
 
 ```json
@@ -106,6 +106,8 @@ Sellers that do not support replay dedup declare it explicitly:
   }
 }
 ```
+
+**Verifying the declaration.** `idempotency.supported: true` is a trust-bearing claim that enables buyers to safely retry spend-committing operations. A compromised or buggy seller could advertise `true` while silently ignoring keys, causing buyer double-spend on retry. Buyers and conformance runners SHOULD probe the declaration with a deliberate payload-mutation replay: send two requests with the same `idempotency_key` but different canonical payloads — a conformant seller MUST return `IDEMPOTENCY_CONFLICT` on the second. Sellers declaring `supported: true` MUST pass this probe as part of the baseline compliance storyboard before the declaration is considered verified.
 
 ### supported_protocols
 

@@ -53,13 +53,22 @@ if (!result.success) {
 // Validate response against schema
 const validated = SyncCreativesResponseSchema.parse(result.data);
 
-// Check for operation-level errors first (discriminated union)
-if ("errors" in validated && validated.errors) {
+// Three-shape discriminated union: errors | submitted | creatives
+if ("errors" in validated && validated.errors && !("creatives" in validated) && !("status" in validated)) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
 }
 
-if ("creatives" in validated) {
+if ("status" in validated && validated.status === "submitted") {
+  // Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+  console.log(`Sync queued as task ${validated.task_id}: ${validated.message ?? ""}`);
+} else if ("creatives" in validated) {
   console.log(`Synced ${validated.creatives.length} creatives`);
+  for (const c of validated.creatives) {
+    // c.status carries review state: approved, pending_review, rejected, processing, archived
+    if (c.status === "pending_review" || c.status === "processing") {
+      console.log(`  ${c.creative_id}: awaiting review (${c.status})`);
+    }
+  }
 }
 ```
 
@@ -87,11 +96,20 @@ async def main():
         }]
     )
 
-    # Check for operation-level errors first
-    if hasattr(result, 'errors') and result.errors:
+    # Three-shape discriminated union: errors | submitted | creatives
+    if getattr(result, 'status', None) == 'submitted':
+        # Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+        print(f"Sync queued as task {result.task_id}: {getattr(result, 'message', '') or ''}")
+        return
+
+    if getattr(result, 'errors', None) and not getattr(result, 'creatives', None):
         raise Exception(f"Operation failed: {result.errors}")
 
     print(f"Synced {len(result.creatives)} creatives")
+    for c in result.creatives:
+        # c.status carries review state: approved, pending_review, rejected, processing, archived
+        if getattr(c, 'status', None) in ('pending_review', 'processing'):
+            print(f"  {c.creative_id}: awaiting review ({c.status})")
 
 asyncio.run(main())
 ```
@@ -184,7 +202,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - All request fields
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
-- `status` - Current approval/lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Sellers that determine review state synchronously return a terminal value (`approved`/`rejected`); sellers with async review return `processing` or `pending_review` and the buyer reconciles via `list_creatives` or a webhook.
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`). **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 

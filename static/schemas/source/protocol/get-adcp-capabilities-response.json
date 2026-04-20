@@ -24,7 +24,7 @@
           "properties": {
             "supported": {
               "type": "boolean",
-              "description": "Whether this seller honors idempotency_key replay protection on mutating requests. When true, replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence) and replays past the window return IDEMPOTENCY_EXPIRED. When false, the seller does not deduplicate retries — buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations. Mirrors the request_signing.supported pattern: a single positive declaration, decoupled from the window detail."
+              "description": "Whether this seller honors idempotency_key replay protection on mutating requests. When true, replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence) and replays past the window return IDEMPOTENCY_EXPIRED. When false, the seller does not deduplicate retries — sending an idempotency_key is a no-op; the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations. Mirrors the request_signing.supported pattern: a single positive declaration, decoupled from the window detail."
             },
             "replay_ttl_seconds": {
               "type": "integer",
