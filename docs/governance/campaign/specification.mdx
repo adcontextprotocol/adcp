@@ -278,7 +278,7 @@ Governance agents MAY evaluate narrower aggregation scopes additionally (per-bra
 
 #### Governance aggregation capability
 
-Sellers and governance agents declare their aggregation window via `governance.aggregation_window_days` in [`get_adcp_capabilities`](/docs/media-buy/capability-discovery/get_adcp_capabilities). Buyers that depend on a specific window for compliance (e.g., a brand-level weekly cadence review) MUST check this capability before relying on aggregation semantics — a governance agent declaring `aggregation_window_days: 7` does not defend against fragmentation spread across a 30-day quarter-end push. Absent declaration means the agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open).
+Sellers and governance agents declare their aggregation window via `governance.aggregation_window_days` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Buyers that depend on a specific window for compliance (e.g., a brand-level weekly cadence review) MUST check this capability before relying on aggregation semantics — a governance agent declaring `aggregation_window_days: 7` does not defend against fragmentation spread across a 30-day quarter-end push. Absent declaration means the agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open).
 
 ## Brand compliance configuration
 
