@@ -111,6 +111,10 @@ Append-only within a 90-day retention window.
 
 The authorization payload carries the full scoping model from `adagents.json` so `RegistrySync` clients can update their local `AuthorizationIndex` without fetching the full file. TMP routers consume these events to keep their hot-path authorization checks current.
 
+**Advisory identity material.** Any `signing_keys` carried inside a feed event (for example, inside an `authorization.granted` payload) are `"advisory": true, "source": "cached_from_publisher"` — explicitly non-authoritative. Consumers MUST NOT treat feed-delivered `signing_keys` as a trust anchor. Before acting on any identity change (key rotation, agent authorization granted, authorization revoked, pointer target change), verifiers MUST re-fetch the relevant artifact (`adagents.json`, `brand.json`, or the publisher's pinned `signing_keys` entry) from the authoritative operator origin and verify it against the publisher's own published pin. The feed is an optimization for fast change detection, not a source of identity truth.
+
+**Feed-event content signing (4.0 track).** The registry operator SHOULD content-sign every feed event with a long-lived registry signing key so consumers can detect a registry-host compromise that attempts to inject bogus `authorization.granted` or `authorization.revoked` events. This work is tracked alongside the R-1 root-of-trust / key-transparency deliverables for 4.0; until it lands, consumers MUST rely on the authoritative-origin re-fetch rule above as the safety property.
+
 **agent.compliance_changed:**
 ```json
 {

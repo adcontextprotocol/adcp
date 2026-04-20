@@ -206,6 +206,16 @@ Authorization validation checks both sides: the publisher's `adagents.json` (doe
 
 Entries with `editor_name: "system"` were written by automated enrichment. When `is_rollback` is `true`, `rolled_back_to` contains the revision number that was restored. Pagination uses `limit` (max 100) and `offset` query parameters.
 
+## Anti-abuse and anti-homograph controls
+
+Because `/api/brands/save`, `/api/properties/save`, and the `adagents` validation endpoints accept domain strings from authenticated member organizations, the hosted registry applies a layered floor of anti-abuse controls at save time. These are operational behaviors of the AgenticAdvertising.org registry in the 3.x era — not a new wire surface — and exist so that typosquats, confusable lookalikes, and drive-by brand hijacks cannot get written into the index by a single authenticated caller.
+
+- **Domain normalization (IDNA 2008 + confusable detection).** Save endpoints SHOULD apply IDNA 2008 to normalize internationalized domain names to ASCII before persistence, and SHOULD then run Unicode confusable-detection (for example, ICU `uspoof` or equivalent) against already-registered entries. Ambiguous submissions — mixed-script labels, homograph collisions with a registered brand, disallowed Unicode classes — SHOULD be rejected or flagged for human review rather than silently committed.
+- **Ownership proof before commit.** Save endpoints SHOULD require evidence of domain control before a new brand or property entry commits. Accepted proofs SHOULD include either a DNS TXT record at `_adcp-owner.{domain}` matching a server-issued nonce, or an HTTP challenge hosted at `/.well-known/adcp-ownership.txt` on the domain. Revisions to an existing authoritative entry continue to require the `brand.json` / `adagents.json` authoritative path (see the 409 Conflict semantics in [Save brand](#save-brand) and [Save property](#save-property)); community-source saves are the case ownership proof covers.
+- **Per-organization rate limits on saves.** In addition to the per-IP rate limits documented in [Rate Limits](#rate-limits), save endpoints SHOULD apply per-organization limits so that a single compromised API key cannot bulk-register confusable variants. The hosted implementation uses a burst-tolerant cap (indicative: tens of saves per hour per org, low-hundreds per day per org); callers exceeding the per-org bucket receive `429 Too Many Requests`.
+
+These controls are enforced by the hosted AgenticAdvertising.org registry. Self-hosted mirrors consuming the [Change Feed](#change-feed) rely on the hosted registry's save-time checks and do not re-run them; operators running an alternative registry implementation SHOULD apply equivalent controls before accepting community-source writes.
+
 ## Authentication
 
 Public endpoints (resolution, discovery, search) require no authentication. Write endpoints require a Bearer token issued to an AgenticAdvertising.org member organization.
