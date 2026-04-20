@@ -191,6 +191,10 @@
                   "description": "Goal impression count for impression-based packages",
                   "minimum": 0
                 },
+                "targeting_overlay": {
+                  "$ref": "/schemas/core/targeting.json",
+                  "description": "Targeting overlay applied to this package, echoed from the most recent create_media_buy or update_media_buy. Sellers SHOULD echo any persisted targeting so buyers can verify what was stored without replaying their own request. Sellers claiming the property-lists or collection-lists specialisms MUST echo the persisted PropertyListReference / CollectionListReference."
+                },
                 "start_time": {
                   "type": "string",
                   "format": "date-time",
