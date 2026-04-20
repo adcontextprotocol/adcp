@@ -143,7 +143,8 @@ function iterSteps(doc) {
  * or where storyboards legitimately keep identity inside the payload array):
  *   - top-level brand.domain (training-agent routes by it; no-op for schemas
  *     that don't define the field)
- *   - plans[0].{account.brand.domain | brand.domain} for sync_plans
+ *   - plans[0].brand.domain for sync_plans (the sync_plans schema defines
+ *     plan-level `brand` and forbids `account` inside plan items).
  */
 function hasTenantIdentity(task, req) {
   if (!req || typeof req !== 'object') return false;
@@ -155,7 +156,6 @@ function hasTenantIdentity(task, req) {
   if (req.brand?.domain && typeof req.brand.domain === 'string') return true;
   if (task === 'sync_plans' && Array.isArray(req.plans) && req.plans.length > 0) {
     const first = req.plans[0];
-    if (first?.account?.brand?.domain && typeof first.account.brand.domain === 'string') return true;
     if (first?.brand?.domain && typeof first.brand.domain === 'string') return true;
   }
   return false;
@@ -225,7 +225,7 @@ function main() {
   console.error('\nAlternate identity shapes (accepted for back-compat):');
   console.error('  sample_request.account.account_id                     # explicit-account form');
   console.error('  sample_request.brand.domain                           # training-agent routing only — not a spec-canonical identity');
-  console.error('  sample_request.plans[0].account.brand.domain           # sync_plans — canonical');
+  console.error('  sample_request.plans[0].brand.domain                  # sync_plans — canonical per sync-plans-request schema');
   console.error('\nOr add `scoping: global` on the step if the probe is intentionally cross-tenant.');
   console.error('See docs/contributing/storyboard-authoring.md.');
   process.exit(1);

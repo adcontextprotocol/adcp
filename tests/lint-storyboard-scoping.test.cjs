@@ -33,8 +33,12 @@ function parseHandlerMap(source) {
     throw new Error('HANDLER_MAP not found in task-handlers.ts');
   }
   const tasks = [];
-  for (const line of match[1].split('\n')) {
-    const m = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z_][a-zA-Z0-9_]*,?\s*$/);
+  for (const rawLine of match[1].split('\n')) {
+    // Strip trailing // comments so entries like `foo: handleFoo, // TODO` still parse.
+    const line = rawLine.replace(/\/\/.*$/, '');
+    // Tolerate a trailing comma or `}` on the same line; don't anchor on $ so a
+    // future inline type annotation after the handler name won't drop the entry.
+    const m = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z_][a-zA-Z0-9_]*\b/);
     if (m) tasks.push(m[1]);
   }
   return tasks;
@@ -52,7 +56,13 @@ test('TENANT_SCOPED_TASKS and EXEMPT_FROM_LINT are disjoint', () => {
 test('every HANDLER_MAP task is classified in exactly one set', () => {
   const source = fs.readFileSync(TASK_HANDLERS, 'utf8');
   const tasks = parseHandlerMap(source);
-  assert.ok(tasks.length > 0, 'HANDLER_MAP parser returned no tasks — parser is broken');
+  // Canary: the dispatch table has ~40-50 entries in practice. If the parser
+  // silently degrades (e.g. regex chops the body at a nested `{}`), assert
+  // we still captured the bulk of the map — not just the first entry.
+  assert.ok(
+    tasks.length >= 30,
+    `HANDLER_MAP parser returned only ${tasks.length} task(s) — parser likely broken`,
+  );
 
   const unclassified = [];
   for (const task of tasks) {

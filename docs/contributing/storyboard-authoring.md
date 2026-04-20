@@ -26,16 +26,14 @@ sample_request:
   # ...
 ```
 
-For `sync_plans`, identity lives inside each plan entry:
+For `sync_plans`, identity lives inside each plan entry. The `sync-plans-request` schema defines `brand` on each plan item and forbids `account` there — do not use the wrapper form inside `plans[]`:
 
 ```yaml
 sample_request:
   plans:
     - plan_id: "plan-001"
-      account:
-        brand:
-          domain: "acmeoutdoor.example"
-        operator: "pinnacle-agency.example"
+      brand:
+        domain: "acmeoutdoor.example"
       # ...
 ```
 

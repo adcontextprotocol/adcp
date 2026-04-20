@@ -101,10 +101,8 @@ phases:
           idempotency_key: "governance-spend-authority-denied-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_strict"
-              account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
+              brand:
+                domain: "acmeoutdoor.example"
               objectives: "Acme Outdoor low-budget validation flight"
               budget:
                 total: 10000

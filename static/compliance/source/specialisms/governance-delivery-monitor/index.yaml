@@ -104,10 +104,8 @@ phases:
           idempotency_key: "governance-delivery-monitor-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_delivery_monitor"
-              account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
+              brand:
+                domain: "acmeoutdoor.example"
               objectives: "Delivery-phase governance with drift detection and rebalancing"
               budget:
                 total: 40000

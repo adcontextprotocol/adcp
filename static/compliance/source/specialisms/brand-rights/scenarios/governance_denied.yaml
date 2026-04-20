@@ -58,10 +58,8 @@ phases:
         sample_request:
           plans:
             - plan_id: "comply-rights-gov-denied"
-              account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
+              brand:
+                domain: "acmeoutdoor.example"
               objectives: "Restricted plan — rights licensing test"
               budget:
                 total: 50
