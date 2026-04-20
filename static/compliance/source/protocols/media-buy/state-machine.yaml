@@ -334,9 +334,9 @@ phases:
           context:
             correlation_id: "media_buy_state_machine--pause_canceled_buy"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains an error for invalid transition"
+          - check: error_code
+            allowed_values: ["INVALID_STATE"]
+            description: "Invalid transition rejected with INVALID_STATE"
 
           - check: field_present
             path: "context"
@@ -371,9 +371,9 @@ phases:
           context:
             correlation_id: "media_buy_state_machine--resume_canceled_buy"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains an error for invalid transition"
+          - check: error_code
+            allowed_values: ["INVALID_STATE"]
+            description: "Invalid transition rejected with INVALID_STATE"
 
           - check: field_present
             path: "context"
