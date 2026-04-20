@@ -148,8 +148,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
-          brand:
-            domain: "novamotors.com"
           account:
             brand:
               domain: "novamotors.com"
@@ -238,8 +236,6 @@ phases:
             brand:
               domain: "novamotors.com"
             operator: "pinnacle-agency.com"
-          brand:
-            domain: "novamotors.com"
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "2026-10-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"

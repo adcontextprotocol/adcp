@@ -109,8 +109,6 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "acmeoutdoor.example"
-          brand:
-            domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
           base_properties:
             - selection_type: "identifiers"

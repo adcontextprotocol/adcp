@@ -260,8 +260,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -379,8 +377,6 @@ phases:
             brand:
               domain: "acmeoutdoor.com"
             operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

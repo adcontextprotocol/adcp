@@ -58,8 +58,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory with measurement guarantees. Q2 flight, $50K."
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -96,8 +98,10 @@ phases:
           - message indicating which terms are unworkable (vendor, window, or variance)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           idempotency_key: "measurement-terms-probe-aggressive-v1"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -149,8 +153,10 @@ phases:
           normalized by the seller).
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           idempotency_key: "measurement-terms-probe-relaxed-v1"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
