@@ -1,35 +1,49 @@
 ---
 ---
 
-Three follow-ups to PR #2522's duplicate-key MUST-reject tightening, landing the residuals security review flagged before close.
+Follow-ups to PR #2522's duplicate-key MUST-reject tightening, landing the residuals security review flagged plus a round of expert re-review on this PR. Closes #2545, #2546, #2547.
 
-**Admission-pressure baseline anchor** (#2545, `security.mdx` webhook replay dedup sizing):
+**Admission-pressure baseline** (`security.mdx` webhook replay dedup sizing):
 
-The prior rule alerted when new-keyid admission exceeded "3× the 24-hour moving average, floored at 5 distinct new keyids / 5 minutes." A patient attacker staging keys over multi-week ramp-up dragged the 24-hour moving average up with the attack — by the time traffic reached attack-worthy volume, "3× baseline" absorbed the attack into normal. Rule now uses a triple-threshold shape, whichever triggers first:
+Previous rule: 3× 24-hr moving avg OR 2× 30-day P95 OR fixed 50-new-keyids-per-5-min ceiling. Review showed (a) 60–90 day attacker ramps drag the 30-day P95 up with them; (b) the fixed 50 ceiling is too loose for high-volume attackers (500 compromised keys at 10 new/5-min would saturate the 10M aggregate cap in ~3.5 days under the threshold); (c) the absolute ceiling is shape-wrong for operators of different sizes (50 is 0.5% of a 10k-keyid verifier, but 2.5× the entire fleet for a 20-keyid verifier). Rule now uses a quadruple-threshold shape, whichever triggers first:
 
 - `3×` the 24-hour moving average (short-window spike)
-- `2×` the 30-day P95 (long-window ramp-up resistance — dominant tail is baseline, not the attack ramp)
-- fixed ceiling of **50 distinct new keyids per 5-minute window** (sparse-traffic verifier floor — sub-threshold attacks that never trip the ratio rules still trip the ceiling)
+- `2×` the 30-day P95 (multi-week ramp resistance)
+- `1.5×` the 90-day P99 (multi-month ramp resistance — dominant tail over 90 days requires a multi-quarter staged compromise to drift)
+- **`max(20 distinct new keyids, 10% of the 30-day unique-keyid count) per 5-minute window`** — auto-scales proportionally with operator size, so a 10k-keyid verifier gets a floor of 1,000 and a 20-keyid verifier gets a floor of 20
 
-Operators MAY raise the fixed ceiling for high-volume onboarding periods with documented justification and floor-to-baseline afterward. The triple shape is the operational norm for rate-anomaly detection (CloudWatch CWA baseline rules, Loki drift detection).
+Alarm payload MUST name which clause (a/b/c/d) tripped so operator triage responds to the right threat shape. Spec makes explicit these are **defaults** operators SHOULD tune to their own traffic — published normative values themselves would be an attacker oracle.
 
-**Signer-side conformance fixtures** (#2546, `static/test-vectors/webhook-hmac-sha256.json`):
+**Logging discipline at step 14b** (`security.mdx`):
 
-The signer-side MUST ("signers MUST reject duplicate-key input from upstream callers before serialization") was introduced in PR #2522 but had no companion fixture for interop harnesses. Two new vectors in a new `signer_input_rejection_vectors[]` array:
+Previous rule: truncate to 64 bytes, replace non-printables with fixed `<non-printable>` placeholder, cap count at 8. Review found three weaknesses, all tightened:
 
-- `signer-upstream-duplicate-key-rejection` — top-level duplicate (`{"status":"approved","status":"rejected"}`)
-- `signer-upstream-duplicate-key-deep-nested` — nested duplicate (`{...,"result":{"media_buy_id":"mb_001","media_buy_id":"mb_evil"}}`). A signer that only checks top-level keys would silently pass a shallow-check fixture and ship the exact nested parser-differential the rule is meant to prevent — the nested vector catches that gap.
+- **Position leak**: the fixed placeholder preserved position within the key name, letting attackers encode bits via placement. Rule now **truncates at the first non-printable** and logs `<sanitized:N>` where N is the truncation byte length — elides position while preserving the "something was wrong here" signal.
+- **Truncation too loose**: 64 bytes allows 24 attacker-controlled bytes per key name beyond realistic AdCP field names (which top at ~24 characters: `signed_authorized_agents`). Tightened to **32 bytes**, with explicit "truncate at the last complete UTF-8 codepoint boundary at or below 32" so multi-byte sequences are not split mid-codepoint and invalid UTF-8 does not land in logs.
+- **Cap too permissive**: 8 key names × 32 bytes = 256 attacker-controlled bytes per frame, replay-slot-per-frame is meaningful SIEM pressure. Tightened to **4**. Diagnostic value of knowing 4 vs 8 vs 16 colliding keys is near zero.
 
-New top-level `signer_action_values` enum map defines `"reject-input-before-sign"` so downstream harnesses resolve the action token from a single source of truth. Test harness adds five new structural assertions including a byte-level check that the fixture's `signer_input_body` actually contains duplicate keys (prevents a future edit from breaking the fixture's probing power without CI noticing). Security.mdx duplicate-object-keys clause now references both fixtures and mandates interop harnesses exercise both.
+Signer-side clause now normatively requires the same (a)/(b)/(c) sanitization rules on any signer-surfaced key names — the channel shape is identical even though the wire direction is inverted.
 
-**Key-name logging sanitization** (#2547, `security.mdx` step 14b):
+**Signer-side conformance fixtures** (`static/test-vectors/webhook-hmac-sha256.json`):
 
-Step 14b told verifiers to log duplicate key names as diagnostic signal, but did not constrain how. An attacker holding a compromised signer key could construct `{"<arbitrary-bytes>":1,"<arbitrary-bytes>":2}` frames and land attacker-chosen bytes in defender SIEM logs at scale — smaller channel than full-body logging but non-zero and well-precedented as a log-injection vector (newline/ANSI-sequence/control-char injection into parsers and terminal viewers). Step 14b now mandates three sanitization rules before logging duplicate key names:
+Restructured from a flat `signer_input_rejection_vectors` array plus `signer_action_values` enum into a top-level `signer_side` object with `action_values`, `rejection_vectors`, and `positive_vectors` sub-fields. The partition makes the signer-side / verifier-side boundary explicit and gives future signer fixtures (canonicalization, serializer drift) a natural home without polluting the top-level namespace.
 
-- Truncate each key name to at most **64 bytes** (realistic JSON schema field names are well under; anything longer is attack signal, not schema)
-- Replace non-printable characters, control characters, and ANSI escape sequences with a fixed placeholder (`<non-printable>`)
-- Cap the number of duplicate key names logged per rejection at **8**, emitting `<...N more>` if exceeded
+Rejection vectors expanded from 2 to 4 shape-classes:
 
-These constraints close the attacker-controlled-byte channel without losing the diagnostic value of knowing which key(s) collided.
+- `signer-upstream-duplicate-key-rejection` (top-level)
+- `signer-upstream-duplicate-key-deep-nested` (one-level-nested)
+- `signer-upstream-duplicate-key-array-contained` (duplicate inside an object inside an array — real-world AdCP payloads put state-change fields in array-contained objects like `packages[]`, `creative_assets[]`, `events[]`; signers that only recurse into plain object values ship the exact attack surface)
+- `signer-upstream-duplicate-key-three-deep` (three nesting levels — catches hand-rolled walkers with shallow fixed-depth bounds)
 
-Closes #2545, #2546, #2547.
+New `positive_vectors` array with `signer-upstream-clean-input` — a well-formed vector with keys unique at every scope that the signer MUST sign. Prevents "reject-everything" signers from trivially passing conformance on the negative fixtures alone.
+
+Two new action tokens in `signer_side.action_values`: `reject-input-before-sign` (was already defined) and `sign-and-emit` (the positive-path action).
+
+**Test harness** (`tests/webhook-hmac-vectors.test.cjs`):
+
+Nine structural assertions for the `signer_side` block — that all three sub-fields exist, that rejection vectors cover the four shape-classes by id (top-level, plain-nested, array-contained, three-deep), that `positive_vectors` has a clean-input case, that `action_values` defines both tokens, that every signer-side vector is well-formed against the enum, and a scope-aware duplicate-key detector (walks JSON tracking object vs array nesting so the check correctly distinguishes duplicate keys at the same object scope from the same key name appearing legitimately in distinct array-contained objects). The detector assertion: rejection vectors MUST have a duplicate at some scope; the clean-input positive vector MUST NOT have one at any scope.
+
+**Two further follow-ups filed as separate issues** (out of scope for this PR):
+
+- **CI enforcement gap**: the spec language "interop harnesses MUST exercise both" is currently exhortation — the repo has no reference-signer harness that loads a signer implementation and asserts the expected action against these fixtures. Filed as follow-up for a dedicated signer-conformance harness PR.
+- **Threshold publication as attacker oracle**: publishing specific normative detection thresholds (the 3× / 2× / 1.5× / 20 / 50 numbers) gives attackers concrete values to tune against. The current spec frames the published values as defaults operators SHOULD override, but the stronger shape — move concrete thresholds to a non-normative operator guide and state only the structural shape (four-threshold OR, with categories) in the normative spec — is a larger discussion worth its own PR.
