@@ -23,6 +23,10 @@ SEO for AI (sometimes called GAIO or generative AI optimization) focuses on gett
 
 </AccordionGroup>
 
+<Note>
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent object shape, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Pilot implementations are encouraged; regulated or compliance-sensitive workflows should wait for graduation to stable. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 For a practical guide to buying ads on AI platforms, see the [monetizing AI guide](/docs/sponsored-intelligence/monetizing-ai). For the technical protocol walkthrough, see the [Sponsored Intelligence overview](/docs/sponsored-intelligence/overview).
 
 ## Buying AI media
@@ -198,6 +202,8 @@ Governance decisions will also be signed so that a seller or regulator can verif
 
 <Accordion title="Does AdCP support AI platforms and AI ad networks?">
 Yes. AdCP's `sponsored_intelligence` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via SI Chat Protocol. AI platforms and ad networks implement AdCP the same way any seller does: publish [`adagents.json`](/docs/governance/property/adagents), implement [`get_products`](/docs/media-buy/task-reference/get_products) with `channels: ["sponsored_intelligence"]`, and accept media buys. See the [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview) for product modeling, workflows, and measurement.
+
+Sponsored Intelligence is an [experimental surface](/docs/reference/experimental-status) in 3.0 (feature id `sponsored_intelligence.core`) — sellers implementing it MUST declare `sponsored_intelligence.core` in `experimental_features`, and buyers SHOULD check that declaration before relying on SI tasks. The surface may change between 3.x releases with at least 6 weeks' notice.
 </Accordion>
 
 <Accordion title="How does AdCP relate to MCP and A2A?">

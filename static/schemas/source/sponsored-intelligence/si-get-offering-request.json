@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-get-offering-request.json",
   "title": "SI Get Offering Request",
   "description": "Get offering details and availability before session handoff. Returns offering information, availability status, and optionally matching products based on context.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {

@@ -4,6 +4,10 @@ description: "si_terminate_session is the AdCP task for ending an SI session. Su
 "og:title": "AdCP — si_terminate_session"
 ---
 
+<Note>
+**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 End an SI session. Either the host or brand agent can initiate termination, with different reasons indicating how the session concluded.
 
 ## Request

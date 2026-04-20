@@ -675,6 +675,7 @@
     "sponsored_intelligence": {
       "type": "object",
       "description": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+      "x-status": "experimental",
       "properties": {
         "endpoint": {
           "type": "object",
