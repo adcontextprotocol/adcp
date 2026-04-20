@@ -385,10 +385,22 @@ Creates a media buy fixture at a specified lifecycle state, bypassing the `creat
 
 ### Seeding semantics and ordering
 
-- **Upsert on collision.** Seed scenarios are idempotent: a second call with the same primary ID and equivalent `fixture` SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a diverging `fixture` MAY return `INVALID_TRANSITION` (if the change violates the state machine) or MAY merge, at the seller's discretion — storyboard authors SHOULD NOT rely on merge behavior.
-- **Foreign-key ordering.** Storyboards that reference a `pricing_option_id` MUST seed the parent `product_id` first. Storyboards that seed a `media_buy` referencing a `product_id` MUST seed the product first. The runner enforces ordering via the phase sequence; sellers that receive a `seed_pricing_option` for a product that does not exist MUST return `INVALID_PARAMS` rather than auto-create the parent.
+- **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`product.json` for `seed_product`, `creative.json` for `seed_creative`, `media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`, the pricing-option shape inside `product.json` for `seed_pricing_option`). Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
+- **Idempotency on re-seed.** A second call with the same primary ID and a `fixture` equivalent to the first SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a **diverging** fixture MUST return `INVALID_PARAMS` with `error_detail` explaining which fields diverged — sellers MUST NOT merge or update silently. Storyboards that need to change fixture state mid-run MUST use `force_*` scenarios, not a re-seed. This keeps the same storyboard deterministic across sellers.
+- **Foreign-key ordering.** The runner seeds fixtures in dependency order so sellers receive referenced parents before their children. The dependency DAG:
+
+  ```
+  product ──┬─→ pricing_option
+            ├─→ plan
+            └─→ media_buy
+  creative ────→ media_buy
+  plan ────────→ media_buy
+  ```
+
+  Concretely: `seed_product` before `seed_pricing_option`; `seed_product`, `seed_creative`, and `seed_plan` all before `seed_media_buy` when the fixture references them. Storyboards that declare a `fixtures:` block MUST list entries in an order the runner can topologically sort — sellers that receive a `seed_pricing_option` for a product that does not exist, or a `seed_media_buy` referencing a creative/product/plan that was not seeded first, MUST return `INVALID_PARAMS` rather than auto-create the parent.
 - **Sandbox scope.** Seeded fixtures exist only for the authenticated sandbox account. `NOT_FOUND` applies the same way as for `force_*` — a seller that cannot see the parent product for the caller's account MUST return `NOT_FOUND`, not silently fall back to another tenant.
-- **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return `UNKNOWN_SCENARIO` for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed.
+- **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return `UNKNOWN_SCENARIO` for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed. This applies to **unfamiliar** `seed_*` names as well: a runner may emit a scenario the seller has never seen because the enum is open-for-extension (see below). Sellers and runners MUST respond with `UNKNOWN_SCENARIO` rather than schema-reject an unrecognized scenario value.
+- **Open-for-extension enum.** The `scenario` enum adds new values over time (new seed scenarios land as specialisms demand them). Runners and sellers MUST accept scenario strings they do not recognize and respond with `UNKNOWN_SCENARIO` rather than hard-fail schema validation — otherwise every new enum value becomes a breaking change for stale implementations.
 
 ## Response shape
 
@@ -587,6 +599,8 @@ The runner distinguishes three outcome categories in deterministic mode:
 |------|-------------|----------------|
 | **Functional compliance** | Pass all storyboards in observational mode | Tools exist, respond correctly, and complete buyer-initiated flows |
 | **Stateful compliance** | Pass all storyboards in deterministic mode | State machines enforce correct transitions, error codes match spec, operation gates block correctly |
+
+**Specialism-scoped seed requirements.** Stateful compliance also requires that sellers implement the `seed_*` scenarios covering the specialisms they certify against. The `UNKNOWN_SCENARIO` → `not_applicable` grading is for honest coverage reporting on missing surface area, not a blanket opt-out from conformance — a seller certifying `sales-non-guaranteed` MUST implement at least `seed_product` and `seed_pricing_option`; a seller certifying `creative-ad-server` MUST implement `seed_creative`; a seller certifying `governance-delivery-monitor` MUST implement `seed_plan` (and `seed_media_buy` where the storyboard requires it). The storyboard authors in `static/compliance/source/specialisms/` declare the fixtures their storyboards need; sellers match that list to the specialisms on their cert.
 
 ## Implementation guidance
 

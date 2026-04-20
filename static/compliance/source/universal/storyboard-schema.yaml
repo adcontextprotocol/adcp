@@ -73,14 +73,29 @@
 #           status: "active"
 #   Each top-level key maps to a seed_* scenario (products → seed_product,
 #   pricing_options → seed_pricing_option, creatives → seed_creative,
-#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key ordering:
-#   the runner MUST seed products before pricing_options, products before
-#   media_buys that reference them. See docs/building/implementation/comply-test-controller.mdx
-#   for the seeding semantics and per-scenario param shapes.
+#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key dependency DAG
+#   the runner MUST honor when auto-seeding:
+#
+#     product ──┬─→ pricing_option
+#               ├─→ plan
+#               └─→ media_buy
+#     creative ────→ media_buy
+#     plan ────────→ media_buy
+#
+#   Products seed before pricing_options and plans that reference them;
+#   products, creatives, and plans all seed before media_buys that reference
+#   them. See docs/building/implementation/comply-test-controller.mdx for the
+#   full seeding semantics and per-scenario param shapes.
 #
 #   Storyboards SHOULD prefer the `fixtures:` block over hardcoded sample_request
-#   IDs whose existence the runner cannot verify. Hardcoded-literal fixtures are
-#   still permitted but require the seller to pre-seed matching IDs out of band.)
+#   IDs whose existence the runner cannot verify.
+#
+#   Hardcoded-literal fixtures in sample_request (e.g., product_id: "test-product"
+#   without a matching `fixtures:` entry) are permitted through 3.x for existing
+#   storyboards that pre-seed matching IDs out of band, and SHOULD migrate to the
+#   `fixtures:` block before 4.0. New storyboards authored after this spec edit
+#   MUST NOT hardcode fixture IDs without a corresponding `fixtures:` block or a
+#   test-kit substitution.)
 #
 # phases: array of Phase objects
 #
@@ -203,6 +218,31 @@
 # distinguish not_applicable vs. no_phases vs. missing_tool — is defined in
 # runner-output-contract.yaml. Storyboard authors SHOULD assume failures will
 # be rendered with that detail and write descriptions accordingly.
+#
+# Runner grading codes introduced by the context accumulator and fixture
+# seeding:
+#
+#   capture_path_not_resolvable
+#       Emitted on the capturing step when a `context_outputs:` entry's
+#       `path` does not resolve against the step's response body. The step
+#       grades as failed — the capture declared a contract that the response
+#       did not meet. Distinct from unresolved_substitution so tooling can
+#       discriminate "producer contract breach" from "consumer missing state."
+#
+#   unresolved_substitution
+#       Emitted on a consumer step when a referenced $context.<name> or
+#       {{prior_step.<id>.<field>}} value is not populated at step-execution
+#       time (either because the producer step failed, was skipped, or never
+#       ran). The step grades as failed. Also used at preflight when a
+#       substitution is statically unresolvable (e.g., {{runner.webhook_url:*}}
+#       on a run with no webhook receiver) to grade the entire storyboard
+#       not_applicable before execution.
+#
+#   fixture_seed_unsupported
+#       Emitted when a storyboard's `prerequisites.controller_seeding` requires
+#       a seed_* scenario the seller does not implement (returned as
+#       UNKNOWN_SCENARIO). The storyboard grades not_applicable (coverage gap),
+#       not failed.
 #
 # --- Webhook receiver (optional, for outbound-webhook conformance) ---
 #
