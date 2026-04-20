@@ -28,7 +28,7 @@
 id: runner_output_contract
 version: "1.1.0"
 title: "Runner output contract"
-summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
+abstract: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
 # Conforming implementation: adcp-client PR #611
 # (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,
