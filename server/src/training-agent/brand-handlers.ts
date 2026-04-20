@@ -8,6 +8,7 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getSandboxBrands } from '@adcp/client/testing';
+import { getSession, sessionKeyFromArgs } from './state.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -886,9 +887,9 @@ interface AcquireRightsArgs {
   };
 }
 
-export function handleAcquireRights(
+export async function handleAcquireRights(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as AcquireRightsArgs;
   const rightsId = req.rights_id;
@@ -922,6 +923,42 @@ export function handleAcquireRights(
 
   if (!campaign?.description) {
     return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+  }
+
+  // Governance enforcement: if plans are active in this session, the rights
+  // price must fit within remaining authorised budget. Rights acquisitions
+  // are spending events and MUST be governed under the same plan as media
+  // buys. Without this check, the brand_rights/governance_denied storyboard
+  // gets a success response instead of GOVERNANCE_DENIED.
+  const session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  if (session.governancePlans.size > 0) {
+    const price = pricingOption.price;
+    for (const plan of session.governancePlans.values()) {
+      const remaining = plan.budget.total - plan.committedBudget;
+      const typeAlloc = plan.budget.allocations?.rights_license;
+      const typeRemaining = typeAlloc?.amount !== undefined
+        ? typeAlloc.amount - (plan.committedByType?.rights_license ?? 0)
+        : undefined;
+      if (price > remaining || (typeRemaining !== undefined && price > typeRemaining)) {
+        const msg = typeRemaining !== undefined && price > typeRemaining
+          ? `Rights price $${price} exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
+          : `Rights price $${price} exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
+        return {
+          errors: [{
+            code: 'GOVERNANCE_DENIED',
+            message: msg,
+            details: {
+              findings: [{
+                category_id: 'budget_authority',
+                severity: 'critical',
+                explanation: msg,
+              }],
+              plan_id: plan.planId,
+            },
+          }],
+        };
+      }
+    }
   }
 
   const descLower = campaign.description.toLowerCase();

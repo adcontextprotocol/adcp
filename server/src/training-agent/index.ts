@@ -7,16 +7,25 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import {
+  anyOf,
+  verifyApiKey,
+  extractBearerToken,
+  respondUnauthorized,
+  AuthError,
+  type Authenticator,
+  type AuthPrincipal,
+} from '@adcp/client/server';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
+import { getPublicJwks } from './webhooks.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -41,72 +50,71 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
 }
 
-function constantTimeEqual(a: string, b: string): boolean {
-  const ha = createHash('sha256').update(a).digest();
-  const hb = createHash('sha256').update(b).digest();
-  return timingSafeEqual(ha, hb);
+function buildAuthenticator(): Authenticator | null {
+  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
+    return null; // dev mode: open
+  }
+  const staticKeys: Record<string, AuthPrincipal> = {};
+  if (TRAINING_AGENT_TOKEN) staticKeys[TRAINING_AGENT_TOKEN] = { principal: 'static:primary' };
+  if (PUBLIC_TEST_AGENT_TOKEN) staticKeys[PUBLIC_TEST_AGENT_TOKEN] = { principal: 'static:public' };
+
+  const authenticators: Authenticator[] = [];
+  if (Object.keys(staticKeys).length > 0) {
+    authenticators.push(verifyApiKey({ keys: staticKeys }));
+  }
+  if (workos) {
+    const workosClient = workos; // narrow for closure
+    authenticators.push(verifyApiKey({
+      verify: async (token) => {
+        if (!isWorkOSApiKeyFormat(token)) return null;
+        const result = await workosClient.apiKeys.validateApiKey({ value: token });
+        if (!result.apiKey) return null;
+        const orgId = result.apiKey.owner.id;
+        logger.info({ orgId }, 'Training agent: authenticated via AAO API key');
+        return { principal: `workos:${orgId}` };
+      },
+    }));
+  }
+  if (authenticators.length === 0) return null;
+  return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
+const authenticator = buildAuthenticator();
+
 async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
+  if (!authenticator) {
     // No tokens configured and no WorkOS = dev mode, allow all
     res.locals.trainingPrincipal = 'anonymous';
     return next();
   }
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    res.status(401).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
+  // The SDK's authenticators read from a raw Node IncomingMessage — Express's
+  // Request extends it, so we pass `req` directly.
+  let principal: AuthPrincipal | null;
+  try {
+    principal = await authenticator(req);
+  } catch (err) {
+    const publicMessage = err instanceof AuthError
+      ? err.publicMessage
+      : 'Authentication failed';
+    logger.warn({ err }, 'Training agent: authentication error');
+    respondUnauthorized(req, res, {
+      error: 'invalid_token',
+      errorDescription: publicMessage,
     });
     return;
   }
-  const token = auth.slice(7);
-
-  // Accept static tokens (primary or public test agent).
-  // Principal for idempotency scoping: distinct per token tier but shared
-  // across all callers using that tier. Prefix-stable, no tenant bleed.
-  if (TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) {
-    res.locals.trainingPrincipal = 'static:primary';
-    return next();
-  }
-  if (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN)) {
-    res.locals.trainingPrincipal = 'static:public';
-    return next();
-  }
-
-  // Accept WorkOS API keys (AAO dashboard API keys with sk_ or wos_api_key_ prefix)
-  if (workos && isWorkOSApiKeyFormat(token)) {
-    try {
-      const result = await workos.apiKeys.validateApiKey({ value: token });
-      if (result.apiKey) {
-        const orgId = result.apiKey.owner.id;
-        logger.info({ orgId }, 'Training agent: authenticated via AAO API key');
-        res.locals.trainingPrincipal = `workos:${orgId}`;
-        return next();
-      }
-      res.status(401).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'Invalid API key. Generate a new key from your AAO dashboard.' },
-      });
-    } catch (err) {
-      logger.warn({ err }, 'Training agent: WorkOS API key validation failed');
-      res.status(401).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'API key validation failed. Please try again.' },
-      });
-    }
+  if (!principal) {
+    const hasCredentials = !!extractBearerToken(req);
+    respondUnauthorized(req, res, {
+      error: hasCredentials ? 'invalid_token' : 'invalid_request',
+      errorDescription: hasCredentials
+        ? 'Invalid bearer token. Use an AAO API key (from your dashboard) or a static test token.'
+        : 'Missing bearer token. Use an AAO API key (from your dashboard) or a static test token.',
+    });
     return;
   }
-
-  res.status(401).json({
-    jsonrpc: '2.0',
-    id: null,
-    error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
-  });
+  res.locals.trainingPrincipal = principal.principal;
+  next();
 }
 
 function getBaseUrl(req: Request): string {
@@ -125,6 +133,13 @@ export function createTrainingAgentRouter(): Router {
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'healthy', service: 'training-agent' });
+  });
+
+  // JWKS for webhook-signature verification by buyers (RFC 7517).
+  // Public keys only — the emitter holds the private half.
+  router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(getPublicJwks());
   });
 
   // adagents.json discovery

@@ -197,6 +197,8 @@ interface PlannedDeliveryInput {
 interface DeliveryMetricsInput {
   cumulative_spend?: number;
   geo_distribution?: Record<string, number>;
+  channel_distribution?: Record<string, number>;
+  pacing?: 'ahead' | 'on_track' | 'behind';
 }
 
 interface ReportPlanOutcomeInput extends ToolArgs {
@@ -900,6 +902,30 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
 
+  // Custom policies declared on the plan with `must` enforcement become binding
+  // conditions on every proposed action. Buyers honor them by passing the
+  // governance_context to the seller and complying off-protocol; the governance
+  // agent re-evaluates compliance during delivery-phase checks.
+  if (binding === 'proposed' && plan.customPolicies?.length) {
+    categoriesEvaluated.push('custom_policy');
+    for (const cp of plan.customPolicies) {
+      if (cp.enforcement === 'may') continue;
+      const isBinding = cp.enforcement === 'must' || cp.enforcement === undefined;
+      if (isBinding) {
+        conditions.push({
+          field: 'campaign',
+          reason: cp.policy,
+        });
+      }
+      findings.push({
+        categoryId: 'custom_policy',
+        severity: isBinding ? 'warning' : 'info',
+        explanation: cp.policy,
+        ...(cp.policy_id && { policyId: cp.policy_id }),
+      });
+    }
+  }
+
   // Committed binding: validate planned_delivery
   if (binding === 'committed' && plannedDelivery) {
     categoriesEvaluated.push('geo_compliance', 'channel_compliance', 'flight_compliance');
@@ -978,6 +1004,32 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
             explanation: `${pct}% of delivery in unauthorized market ${country}.`,
           });
         }
+      }
+    }
+
+    const pacing = deliveryMetrics.pacing;
+    if (pacing === 'ahead' || pacing === 'behind') {
+      findings.push({
+        categoryId: 'delivery_pacing',
+        severity: 'warning',
+        explanation: `Pacing reported as ${pacing} — line items are drifting from the planned schedule.`,
+        confidence: 0.85,
+      });
+    }
+
+    const channelDistribution = deliveryMetrics.channel_distribution;
+    if (channelDistribution) {
+      const overweight: string[] = [];
+      for (const [channel, pct] of Object.entries(channelDistribution)) {
+        if (pct >= 60) overweight.push(`${channel} at ${pct}%`);
+      }
+      if (overweight.length > 0) {
+        findings.push({
+          categoryId: 'delivery_pacing',
+          severity: 'warning',
+          explanation: `Channel mix concentrated: ${overweight.join(', ')}. Re-evaluate against plan reallocation threshold.`,
+          confidence: 0.8,
+        });
       }
     }
   }
