@@ -22,17 +22,24 @@ import {
   getComplianceCacheDir,
 } from '@adcp/client/testing';
 import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
+import {
+  StaticJwksResolver,
+  InMemoryReplayStore,
+  InMemoryRevocationStore,
+} from '@adcp/client/signing';
+import type { AdcpJsonWebKey } from '@adcp/client/signing';
 import { SingleAgentClient } from '@adcp/client';
 
-// SDK workaround: `applyBrandInvariant` injects top-level `brand` on every
-// outgoing request, but `SingleAgentClient.validateRequest` calls
-// `schema.strict().parse(...)` — so every tool whose request schema doesn't
-// declare `brand` (list_creative_formats, get_signals, sync_creatives, …)
-// rejects the runner's own request. Replace with a non-strict parse: known
-// fields are still validated, unknown keys (like a brand injected on a tool
-// that doesn't care about it) are ignored. Tools that require brand still
-// enforce it because their schema declares it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// SDK workaround: `applyBrandInvariant` in 5.3 injects top-level `brand` on
+// every request AND now constructs `account` when missing. Tools whose
+// request schemas declare neither (`list_creative_formats`, `get_signals`,
+// `activate_signal`, `sync_creatives`, …) then fail the SDK's
+// `schema.strict().parse()` validator with "Unrecognized keys: brand, account".
+// Replace with a non-strict parse: declared fields are still validated,
+// injected invariant fields are ignored. Tools that require a specific field
+// still enforce it because their own schema declares it as required.
+// Filed as @adcp/client issue; remove this patch when the SDK either relaxes
+// strict parsing or scopes brand injection to tools that declare it.
 const ProtoAny = SingleAgentClient.prototype as unknown as {
   getRequestSchema: (t: string) => unknown;
   validateRequest: (t: string, p: Record<string, unknown>) => void;
@@ -41,21 +48,14 @@ ProtoAny.validateRequest = function (taskType: string, params: Record<string, un
   const schema = this.getRequestSchema(taskType) as { parse?: (p: unknown) => unknown } | null | undefined;
   if (!schema || typeof schema.parse !== 'function') return;
   try {
-    // Strip the legacy compat fields the upstream validator also strips.
     const { brand_manifest: _bm, buyer_ref: _br, ...rest } = params;
-    schema.parse(rest); // non-strict: unknown keys are ignored
+    schema.parse(rest);
   } catch (err) {
     const issues = (err as { issues?: Array<{ path: Array<string|number>; message: string }> }).issues
       ?.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') ?? String(err);
     throw new Error(`Request validation failed for ${taskType}: ${issues}`);
   }
 };
-import {
-  StaticJwksResolver,
-  InMemoryReplayStore,
-  InMemoryRevocationStore,
-} from '@adcp/client/signing';
-import type { AdcpJsonWebKey } from '@adcp/client/signing';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at

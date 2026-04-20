@@ -26,6 +26,7 @@ import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
+import { requestSigningMiddleware } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -50,6 +51,19 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
 }
 
+/**
+ * Security posture: the training agent is a public sandbox. Any valid AAO
+ * dashboard API key authenticates — there is no org allowlist, no plan-tier
+ * gate, no per-org quota check. Account-level isolation is already provided
+ * downstream via `scopedPrincipal` (idempotency is partitioned by
+ * authPrincipal ⨯ account scope) and session state is keyed by
+ * brand.domain / account_id. Training-agent data is non-sensitive by design.
+ *
+ * Do NOT reuse this authenticator for tenant-scoped surfaces. Agents that
+ * need org gating should extend the `verify` callback with an allowlist
+ * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
+ * or layer an `anyOf` with a separate scope-aware authenticator.
+ */
 function buildAuthenticator(): Authenticator | null {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     return null; // dev mode: open
@@ -218,7 +232,11 @@ export function createTrainingAgentRouter(): Router {
   });
 
   // MCP endpoint
-  router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+  // RFC 9421 verifier runs after bearer auth (cheap identity check first)
+  // and before MCP dispatch. Unsigned requests pass through unless the
+  // operation is in `capability.required_for` — read-only tools and
+  // discovery probes don't need signatures.
+  router.post('/mcp', mcpRateLimiter, requireToken, requestSigningMiddleware, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;

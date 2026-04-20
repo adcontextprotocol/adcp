@@ -509,7 +509,16 @@ export class HTTPServer {
           req.path.startsWith('/api/slack/')) {
         next();
       } else {
-        express.json({ limit: '10mb' })(req, res, next);
+        // `verify` captures raw body bytes before JSON parses them — required
+        // for RFC 9421 request-signature verification on the training-agent
+        // `/mcp` endpoint, which rehashes the exact bytes the signer signed.
+        // Cheap (one utf-8 decode per request) and unused elsewhere.
+        express.json({
+          limit: '10mb',
+          verify: (req, _res, buf) => {
+            (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+          },
+        })(req, res, next);
       }
     });
     this.app.use(cookieParser());

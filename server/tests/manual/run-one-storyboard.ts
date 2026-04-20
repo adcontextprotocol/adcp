@@ -14,7 +14,7 @@ import { StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
 import { SingleAgentClient } from '@adcp/client';
 
-// See run-storyboards.ts for why this monkey-patch is necessary.
+// See run-storyboards.ts for rationale.
 const ProtoAny = SingleAgentClient.prototype as unknown as {
   getRequestSchema: (t: string) => unknown;
   validateRequest: (t: string, p: Record<string, unknown>) => void;
