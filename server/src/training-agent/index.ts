@@ -16,6 +16,7 @@ import {
   verifyApiKey,
   extractBearerToken,
   respondUnauthorized,
+  requireSignatureWhenPresent,
   AuthError,
   type Authenticator,
   type AuthPrincipal,
@@ -92,28 +93,18 @@ function buildAuthenticator(): Authenticator | null {
     }));
   }
 
+  // Presence-gated composition (5.6): if the client sends a signature,
+  // that signature MUST verify — we never fall through to bearer auth on
+  // an invalid signature. Required for the `signed-requests` specialism,
+  // whose negative conformance vectors assert rejection even when a
+  // bearer token is also supplied. The SDK helper also detects a solo
+  // `Signature` header (without `Signature-Input`), which a naïve
+  // `if (req.headers['signature-input'])` check missed.
   const bearerChain = bearerAuths.length === 0 ? null
     : bearerAuths.length === 1 ? bearerAuths[0]
     : anyOf(...bearerAuths);
-  const signingAuth = lazySigningAuthenticator();
-
-  // Presence-gated composition: if the client sends a signature, that
-  // signature MUST verify — we do not fall through to bearer auth on an
-  // invalid signature. This matches the spec semantics for the
-  // `signed-requests` specialism (every negative conformance vector
-  // depends on the verifier rejecting a bad signature rather than
-  // accepting the request via an also-present bearer token).
-  //
-  // anyOf() cannot express this: it catches AuthError from each
-  // authenticator and tries the next one. The right shape is upstream
-  // as verifySignatureIfPresent / requireSignatureWhenPresent — filed
-  // as adcp-client#659. Local wrapper until the SDK ships that helper.
-  return async (req) => {
-    const hasSignature = req.headers['signature-input'] !== undefined;
-    if (hasSignature) return signingAuth(req);
-    if (bearerChain) return bearerChain(req);
-    return null;
-  };
+  const fallback: Authenticator = bearerChain ?? (async () => null);
+  return requireSignatureWhenPresent(lazySigningAuthenticator(), fallback);
 }
 
 // Wrapped so the signing authenticator is lazily built on first auth call —
