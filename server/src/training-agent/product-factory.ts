@@ -847,5 +847,64 @@ export function buildCatalog(): CatalogProduct[] {
     }
   }
 
+  // Storyboard-hardcoded product IDs. Conformance storyboards reference
+  // these directly (`product_id: "test-product"`, etc.) rather than
+  // capturing IDs from our `get_products` response, so we alias them to
+  // real catalog products. Each alias is a shallow clone with overridden
+  // `product_id` and `name` — same publisher properties, formats, and
+  // measurement setup.
+  //
+  // Universal storyboards (error_compliance, idempotency,
+  // deterministic_testing, webhook_emission) also hardcode
+  // `pricing_option_id: "test-pricing"` / `"default"`, so the aliases
+  // also publish those pricing options (shallow-cloned from the source
+  // product's first pricing option with the expected id).
+  const firstPublisher = PUBLISHERS[0];
+  const ctvPublisher = PUBLISHERS.find(p => p.channels.includes('ctv')) ?? firstPublisher;
+  const aliases: Array<{
+    id: string;
+    name: string;
+    source: CatalogProduct | undefined;
+    pricingAliases?: string[];
+  }> = [
+    {
+      id: 'test-product',
+      name: 'Test Product (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === firstPublisher.id),
+      pricingAliases: ['test-pricing', 'default'],
+    },
+    {
+      id: 'sports_ctv_q2',
+      name: 'Sports CTV Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+    },
+  ];
+  for (const alias of aliases) {
+    if (!alias.source) continue;
+    const basePricing = alias.source.product.pricing_options?.[0];
+    const aliasedPricing = alias.pricingAliases && basePricing
+      ? [
+          ...(alias.source.product.pricing_options ?? []),
+          // Storyboards pair these aliased ids with small budgets (~$1k)
+          // — drop `min_spend_per_package` so webhook_emission/idempotency/
+          // deterministic_testing runs aren't rejected by the minimum-spend
+          // check before they exercise the path under test.
+          ...alias.pricingAliases.map(pid => {
+            const { min_spend_per_package: _drop, ...rest } = basePricing as unknown as Record<string, unknown>;
+            return { ...rest, pricing_option_id: pid } as typeof basePricing;
+          }),
+        ]
+      : alias.source.product.pricing_options;
+    catalog.push({
+      ...alias.source,
+      product: {
+        ...alias.source.product,
+        product_id: alias.id,
+        name: alias.name,
+        ...(aliasedPricing && { pricing_options: aliasedPricing }),
+      },
+    });
+  }
+
   return catalog;
 }

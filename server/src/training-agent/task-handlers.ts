@@ -1404,6 +1404,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
+  // Reject start_times in the past (schema_validation temporal_validation).
+  // Tolerance of 24h covers clock skew + long-running request handling; the
+  // conformance vector uses 2020-01-01, which is comfortably outside.
+  if (buyStart !== 'asap' && new Date(buyStart).getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: `start_time "${buyStart}" is in the past; the earliest accepted past start is 24h before now.` }] as TaskError[] };
+  }
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
@@ -1510,7 +1516,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors };
   }
 
-  const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
+  // Accept a buyer-supplied `media_buy_id` when present. Conformance
+  // storyboards (sales_non_guaranteed, governance_delivery_monitor) hard-code
+  // an id in the request and then query it on later steps; without this
+  // the seller's auto-generated id wouldn't match the query.
+  const requestedMediaBuyId = (req as unknown as { media_buy_id?: unknown }).media_buy_id;
+  const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
+    ? requestedMediaBuyId
+    : `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
@@ -2012,6 +2025,14 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Media buy cancellation
   const isCanceled = req.canceled === true;
   if (isCanceled) {
+    if (mb.canceledAt) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE_TRANSITION',
+          message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
+        }],
+      };
+    }
     const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
