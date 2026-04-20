@@ -479,7 +479,7 @@ An orchestrator's RTD module (e.g., `exampleRtdProvider`) implements AXE for Pre
 - Inspect bid requests in network tab for expected ortb2 data
 
 **Key-values not in ad server request:**
-- getTargetingData must return data keyed by ad unit code: {'div-gpt-ad-123': {axei: 'value'}}
+- getTargetingData must return data keyed by ad unit code: `{'div-gpt-ad-123': {axei: 'value'}}`
 - Check GAM targeting in browser: googletag.pubads().getTargeting('axei')
 - Verify line items in GAM target the correct keys (axei, axex, axem)
 
