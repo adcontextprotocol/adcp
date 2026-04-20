@@ -61,7 +61,7 @@ phases:
           plans:
             - plan_id: "comply-gov-denied-plan"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Small test campaign — limited budget authority"
               budget:
                 total: 10000
@@ -90,8 +90,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_denied_seller_setup_sync_accounts"
@@ -115,8 +115,8 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
                   categories: ["budget_authority", "brand_policy"]
@@ -141,12 +141,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display on outdoor lifestyle. Q2 flight, $50K budget. Adults 25-54, US."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -169,10 +167,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

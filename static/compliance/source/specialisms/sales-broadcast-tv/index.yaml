@@ -144,12 +144,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
-          brand:
-            domain: "novamotors.com"
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_broadcast_tv--get_products_brief"
@@ -233,9 +231,7 @@ phases:
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "novamotors.com"
+            operator: "pinnacle-agency.example"
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "2026-10-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
@@ -310,7 +306,7 @@ phases:
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"
 
@@ -413,7 +409,7 @@ phases:
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "volta_ev_launch_30s"
               name: "Nova Volta EV Launch - :30"
@@ -564,7 +560,7 @@ phases:
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"
           include_package_daily_breakdown: true
@@ -632,7 +628,7 @@ phases:
           account:
             brand:
               domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_nova_q4_2026"
           include_package_daily_breakdown: true

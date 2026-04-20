@@ -102,7 +102,7 @@ phases:
           plans:
             - plan_id: "gov_acme_strict"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Acme Outdoor low-budget validation flight"
               budget:
                 total: 10000
@@ -168,8 +168,8 @@ phases:
           payload:
             account:
               brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
             total_budget: 50000
             packages:
               - product_id: "sports_ctv_q2"

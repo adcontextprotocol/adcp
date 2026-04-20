@@ -169,8 +169,10 @@ phases:
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "draft"
           include_preview: true
 
@@ -237,8 +239,10 @@ phases:
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "draft"
           include_preview: true
 
@@ -313,8 +317,10 @@ phases:
               id: "display_728x90_generative"
             - agent_url: "https://your-agent.example.com"
               id: "display_320x50_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "production"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_multi_format_build_multi_format"
@@ -379,8 +385,10 @@ phases:
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "production"
           include_preview: true
 

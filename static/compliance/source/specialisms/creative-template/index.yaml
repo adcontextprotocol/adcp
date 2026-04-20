@@ -229,7 +229,7 @@ phases:
                 url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
               click_url:
                 asset_type: "url"
-                url: "https://acme-outdoor.example.com/summer-sale"
+                url: "https://acmeoutdoor.example/summer-sale"
               headline:
                 asset_type: "text"
                 text: "Summer Sale — 40% Off All Gear"
@@ -302,15 +302,17 @@ phases:
                 url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
               click_url:
                 asset_type: "url"
-                url: "https://acme-outdoor.example.com/summer-sale"
+                url: "https://acmeoutdoor.example/summer-sale"
               headline:
                 asset_type: "text"
                 text: "Summer Sale — 40% Off All Gear"
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_creative"
           context:
@@ -360,7 +362,7 @@ phases:
                 url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
               click_url:
                 asset_type: "url"
-                url: "https://acme-outdoor.example.com/summer-sale"
+                url: "https://acmeoutdoor.example/summer-sale"
               headline:
                 asset_type: "text"
                 text: "Summer Sale — 40% Off All Gear"
@@ -371,8 +373,10 @@ phases:
               id: "display_728x90"
             - agent_url: "https://your-agent.example.com"
               id: "display_320x50"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_multi_format"
           context:
