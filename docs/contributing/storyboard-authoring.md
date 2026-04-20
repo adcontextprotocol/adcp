@@ -53,7 +53,17 @@ The lint still accepts a bare top-level `brand.domain` as a fallback because the
 
 The authoritative list lives in `scripts/lint-storyboard-scoping.cjs` as `TENANT_SCOPED_TASKS`. A parity test (`tests/lint-storyboard-scoping.test.cjs`) asserts every task registered in the training agent's `HANDLER_MAP` appears in either `TENANT_SCOPED_TASKS` or `EXEMPT_FROM_LINT`. If you add a new tool to the dispatch table and forget to classify it, the parity test fails — you won't get silent drift.
 
-Rule of thumb: if the handler calls `getSession(sessionKeyFromArgs(...))`, it's tenant-scoped. Global discovery (`list_creative_formats`, `get_adcp_capabilities`), payload-array-keyed sync tasks (`sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources`), and global catalog reads (`get_brand_identity`, `get_rights`) are exempt.
+Rule of thumb: if the task's **request schema has a required globally-unique scope-ID** (`plan_id`, `rights_id`, `standards_id`, `list_id`, `event_source_id`), the seller can resolve the tenant from that ID alone — envelope identity is redundant and the lint does not require it (see `EXEMPT_FROM_LINT` bucket (c)).
+
+Everything else falls into `TENANT_SCOPED_TASKS`: create/update mutations without a scope-ID, list/get operations that don't carry a single resource ID, resource-standards calls without `standards_id` in schema, etc. These must carry envelope `account { brand, operator }`.
+
+Other exempt categories: payload-array-keyed sync tasks (`sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources`), global discovery (`list_creative_formats`, `get_adcp_capabilities`), global catalog reads (`get_brand_identity`, `get_rights`, `update_rights`), and the `comply_test_controller` sandbox primitive.
+
+### Why ID-scoped tasks are exempt but storyboards still carry identity
+
+`check_governance`, `report_plan_outcome`, `acquire_rights`, `log_event`, `calibrate_content`, `validate_content_delivery`, and `validate_property_delivery` all require a globally-unique ID (`plan_id`, `rights_id`, `standards_id`, etc.) that was previously provisioned with brand context. At the spec level, a real seller resolves the ID → tenant via their own lookup; the envelope doesn't need to repeat the identity.
+
+The training agent's `sessionKeyFromArgs` today still routes by envelope identity, so a storyboard that **drops** identity on an ID-scoped task will silently land in `open:default` and fail to find the plan/rights/standards. Carry envelope identity anyway — the lint just won't enforce it. Spec-level alignment (runtime resolves by ID) is tracked in #2577.
 
 ## Intentionally cross-tenant probes
 
