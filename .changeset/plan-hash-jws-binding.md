@@ -2,45 +2,38 @@
 "adcontextprotocol": minor
 ---
 
-Bind `governance_context` JWS tokens to the attested plan state via a required `plan_hash` claim, closing the plan-mutation replay window identified in #2455.
+Add a `plan_hash` audit-layer claim to the `governance_context` JWS token that forever-binds each signed attestation to the plan state the governance agent evaluated. Closes #2455.
 
-#2455 surfaced the race: a governance agent signs over plan `v`, the plan is mutated to `v'`, the original JWS still verifies because nothing in the payload is tied to plan state. Particularly damaging for Annex III / Art 22 plans where `human_review_required` or regulated `policy_categories` could be stripped without invalidating the attestation.
+**What `plan_hash` is**
 
-**What changes**
+An audit-layer property — a cryptographic receipt that rides inside the JWS. `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` over a single `plans[]` element at its current revision state, with a closed exclusion list for governance-agent bookkeeping (`version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget`, `committedByType`). Canonicalization reuses RFC 8785 JCS — the same scheme as idempotency payload equivalence.
 
-- Governance agents MUST include `plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` in every compact JWS they emit under the AdCP JWS profile. Canonicalization reuses RFC 8785 JCS (same scheme as idempotency payload equivalence).
-- The preimage is a single `plans[]` element at the plan-revision state the governance agent just evaluated, with a closed exclusion list for governance-agent bookkeeping (`version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget`, `committedByType`).
-- Governance agents that expose `audit_log_pointer` MUST retain the corresponding `plan_hash` alongside each internal plan-revision record so auditors can reconstruct which token attested to which revision.
-- Governance agents MUST NOT cache and re-emit a previously-signed `governance_context` across plan revisions; each `check_governance` invocation produces a fresh signature bound to the current `plan_hash`.
+**What `plan_hash` is NOT**
 
-**Who verifies the claim**
+It is not a wire-verification claim. Sellers do not verify it, are not expected to, and are not given a mechanism to. Plan payloads carry commercially sensitive buyer data (cross-seller allocations, per-seller caps, objectives, `approved_sellers` lists, custom policies, `ext`) that buyers do not share with sellers. There is no plan-retrieval mechanism in 3.x and none is planned. `plan_hash` is never listed in `crit`: `crit` gates wire verifiers, and no wire verifier processes this claim.
 
-The governance agent itself and auditors — not sellers. Plan payloads are commercially sensitive (cross-seller allocations, per-seller caps, objectives, `approved_sellers`, custom policies, `ext`) and buyers do not share them with sellers. No plan-retrieval mechanism is specified in 3.x and none is planned. `plan_hash` is an audit-layer binding, not a wire-verification claim.
+The seller verification contract is unchanged: the 15-step JWS checklist (authenticity, authorization scope, freshness). Sellers verify that a legitimate governance agent authorized this buyer to purchase this plan's action from them, in-date, not replayed. The plan itself stays opaque to sellers — as it should in any buyer/seller relationship.
 
-Three verification paths:
+**Who verifies `plan_hash`**
 
-1. **Governance-agent self-verification**: on every `check_governance` (required on every spend-commit per #2403), the GA re-evaluates current plan state and re-hashes. Tampering with the GA's store between calls is detected by mismatch against retained revision records. Primary 3.x enforcement path.
-2. **Auditor verification**: given access to plan state via `get_plan_audit_logs` and the GA's retained per-revision `plan_hash`, an auditor can recompute and verify any historical token against the plan state it attested to. This is the forever-binding property the signed format exists to deliver for regulators.
-3. **Buyer-side compliance verification**: a buyer's own tooling can verify its GA is producing tokens matching the plan the buyer pushed — catches a compromised or misbehaving governance vendor.
+Three off-wire parties:
 
-`plan_hash` is required in the claim set but MUST NOT appear in `crit`. `crit` gates wire verifiers (sellers), and sellers cannot verify this claim at all. Listing it in `crit` would force sellers to reject tokens they have no basis to verify, with no offsetting benefit.
+1. **The governance agent itself**: re-evaluates current plan state on every `check_governance` call (required on every spend-commit per #2403) and re-hashes. Tampering with its own persisted plan between calls surfaces as a mismatch against retained revision records.
+2. **Auditors**: given access to plan state via `get_plan_audit_logs` and the governance agent's retained per-revision `plan_hash`, an auditor can prove "this attestation was over plan state X at time T" years after the fact. Forever-binding regulator-facing provenance.
+3. **Buyer-side compliance**: a buyer's own tooling verifies its governance agent is producing tokens that match the plan the buyer actually pushed — catches a compromised or misbehaving governance vendor.
 
-**Why this lands in 3.0 rather than being deferred**
+**Semantics live in the governance spec**
 
-Adding a security-semantic claim to a signed-token profile mid-3.x is a one-way door even when enforcement is offline. Deferring the claim to 3.1 would leave every token issued in 3.0 permanently unbindable to plan state — the audit property is most valuable when it applies retroactively to the entire 3.x corpus, so landing in 3.0 is what makes the forever-binding guarantee actually cover the forever. No ecosystem cutover is required: sellers already treat `governance_context` as opaque, and the claim is a forward-compatible addition they ignore.
+Canonicalization rules, excluded-fields list, retention obligations, test vectors, and the verification paths are specified in `docs/governance/campaign/specification.mdx` under "Plan binding and audit" — not in the security doc. `plan_hash` is a governance-audit property that happens to travel on a signed wire artifact; framing it as a security-profile concern conflates the two and mis-signals to implementers that it is part of seller verification.
 
-**Enforcement bounds**
-
-- Spend-commit paths: bounded by the seller's next `check_governance` per #2403 (sub-second happy path; worst case 15-minute intent-token `exp`).
-- Modification and delivery phases: bounded by seller check cadence, worst case 30-day execution-token `exp`.
-- Audit-time: unbounded. Every token is forever-bindable to the plan it attested to via the retained `plan_hash`.
+The security doc's JWS profile still names `plan_hash` in the claim table (because it IS a claim the JWS carries) but reduces the entry to one sentence plus a pointer to the governance spec.
 
 **Reference test vectors**
 
-Ten vectors under `static/compliance/source/test-vectors/plan-hash/` pin the canonicalization bit-exactly: minimal, full, bookkeeping-stripped (identity-hash invariant), paired vectors proving omitted-vs-explicit-null, array-order, and ext-rotation all produce distinct hashes, and a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5. Generator asserts paired invariants and fails on divergence.
+Ten vectors under `static/compliance/source/test-vectors/plan-hash/` pin the canonicalization bit-exactly: minimal, full, bookkeeping-stripped (identity-hash invariant), paired vectors proving omitted-vs-explicit-null, array-order, and ext-rotation all produce distinct hashes, and a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5.
 
 **Migration**
 
-- 3.0 governance agents: add SHA-256 + JCS + base64url computation on each sign. Retain per-revision `plan_hash` alongside existing revision records.
-- Sellers: no change. Continue persisting and forwarding `governance_context` verbatim.
-- Auditors: recompute and verify using the existing `get_plan_audit_logs` access path.
+- Governance agents: add SHA-256 + JCS + base64url computation on each sign. Retain per-revision `plan_hash` alongside existing revision records.
+- Sellers: no change. Continue to persist and forward `governance_context` verbatim. The 15-step JWS verification checklist is unchanged.
+- Auditors: recompute and verify using the existing `get_plan_audit_logs` access path plus the governance agent's retained records.
