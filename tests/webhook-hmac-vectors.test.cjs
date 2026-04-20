@@ -55,11 +55,31 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
   }
 
   it('should produce different signatures for compact vs spaced JSON', () => {
-    const compact = data.vectors.find(v => v.description.includes('compact'));
-    const spaced = data.vectors.find(v => v.description.includes('spaced'));
-    assert.ok(compact, 'must have a compact JSON vector');
-    assert.ok(spaced, 'must have a spaced JSON vector');
+    const compact = data.vectors.find(v => v.description.startsWith('compact JSON'));
+    const spaced = data.vectors.find(v => v.description.startsWith('spaced JSON'));
+    assert.ok(compact, 'must have a "compact JSON" vector');
+    assert.ok(spaced, 'must have a "spaced JSON" vector');
     assert.notEqual(compact.expected_signature, spaced.expected_signature,
       'compact and spaced JSON must produce different signatures — this is the whole point of raw body signing');
+  });
+
+  describe('rejection vectors', () => {
+    for (const vector of data.rejection_vectors) {
+      it(`should not compute to the claimed signature: ${vector.description}`, () => {
+        // Rejection vectors where `signature` is not a numeric-HMAC value
+        // (e.g., structural-rejection cases like empty/null/"sha256=valid_but_irrelevant")
+        // are not computationally checkable — they're documented for verifier implementers.
+        if (vector.signature == null || vector.signature === '') return;
+        if (!/^sha(256|512)=[0-9a-f]+$/.test(vector.signature)) return;
+        if (typeof vector.timestamp !== 'number') return;
+
+        const message = `${vector.timestamp}.${vector.raw_body}`;
+        const hex = crypto.createHmac('sha256', data.secret).update(message, 'utf8').digest('hex');
+        const computed = `sha256=${hex}`;
+
+        assert.notEqual(computed, vector.signature,
+          `Rejection vector "${vector.description}" must not match a correctly-computed HMAC over the claimed raw_body — otherwise the test vector collapses into a positive case`);
+      });
+    }
   });
 });
