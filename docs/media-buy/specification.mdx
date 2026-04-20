@@ -415,6 +415,7 @@ Common error codes:
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
 - `GOVERNANCE_DENIED`: A registered governance agent denied the transaction. Buyer may restructure the buy, escalate to human spending authority, or contact the governance agent.
 - `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
+- `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Recovery: re-negotiate via `get_products` in `refine` mode against the existing `proposal_id` to obtain a fresh quote reflecting the new parameters, then resubmit the update against the new `proposal_id`. Sellers SHOULD populate `error.details.envelope_field` with the field path(s) that breached the envelope (e.g., `packages[0].budget`, `end_time`) so the buyer's agent can autonomously re-discover.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_REQUIRED`: Authentication is required to access this resource
 
