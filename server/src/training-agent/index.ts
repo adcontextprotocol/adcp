@@ -22,11 +22,12 @@ import {
 } from '@adcp/client/server';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
+import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import { requestSigningMiddleware } from './request-signing.js';
+import { buildRequestSigningAuthenticator } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -89,8 +90,24 @@ function buildAuthenticator(): Authenticator | null {
       },
     }));
   }
+  // Signed requests: valid RFC 9421 signatures authenticate without a bearer.
+  // `signed-requests` specialism vectors POST signed-but-bearerless requests;
+  // this composition lets them reach the verifier instead of dying at the
+  // bearer gate. 5.5+ feature.
+  authenticators.push(verifySignatureAsAuthenticator_());
   if (authenticators.length === 0) return null;
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
+}
+
+// Wrapped so the signing authenticator is lazily built on first auth call —
+// avoids reading the compliance test JWKS at module import time, which would
+// break test setups that mock the compliance cache.
+let _signingAuth: Authenticator | null = null;
+function verifySignatureAsAuthenticator_(): Authenticator {
+  return (req) => {
+    if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
+    return _signingAuth(req);
+  };
 }
 
 const authenticator = buildAuthenticator();
@@ -232,14 +249,18 @@ export function createTrainingAgentRouter(): Router {
   });
 
   // MCP endpoint
-  // RFC 9421 verifier runs after bearer auth (cheap identity check first)
-  // and before MCP dispatch. Unsigned requests pass through unless the
-  // operation is in `capability.required_for` — read-only tools and
-  // discovery probes don't need signatures.
-  router.post('/mcp', mcpRateLimiter, requireToken, requestSigningMiddleware, async (req: Request, res: Response) => {
+  // Auth is composed in `buildAuthenticator`:
+  //   anyOf(verifyApiKey(static), verifyApiKey(workos), verifySignatureAsAuthenticator(...))
+  // Bearer-OR-signature is accepted; neither short-circuits the other.
+  router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
-    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    // The framework returns `AdcpServer` (5.4+); the legacy factory returns
+    // the SDK's `Server`. Both satisfy the transport contract at runtime
+    // but have incompatible nominal types (different private fields).
+    // `any` stays until the flip-default PR deletes the legacy path.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let server: any = null;
     try {
       // Build training context (open mode for now; training mode in Stage 2).
       // Principal is set by requireToken; defaults to 'anonymous' in dev mode
@@ -247,7 +268,9 @@ export function createTrainingAgentRouter(): Router {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
       const ctx: TrainingContext = { mode: 'open', principal };
 
-      server = createTrainingAgentServer(ctx);
+      server = useFrameworkServer()
+        ? createFrameworkTrainingAgentServer(ctx)
+        : createTrainingAgentServer(ctx);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // Stateless
       });
@@ -327,11 +350,14 @@ export function createTrainingAgentRouter(): Router {
       return;
     }
 
-    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let server: any = null;
     try {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
       const ctx: TrainingContext = { mode: 'open', principal };
-      server = createTrainingAgentServer(ctx);
+      server = useFrameworkServer()
+        ? createFrameworkTrainingAgentServer(ctx)
+        : createTrainingAgentServer(ctx);
 
       // The endpoint path is relative to the router mount point
       const transport = new SSEServerTransport(`${req.baseUrl}/message`, res);

@@ -103,6 +103,11 @@ export function getPublicJwks(): { keys: AdcpJsonWebKey[] } {
   return { keys: [pub] };
 }
 
+/** Expose the webhook signer to framework-server config (`webhooks: { signerKey }`). */
+export function getWebhookSigningKey(): SignerKey {
+  return ensureKey().signer;
+}
+
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const { signer } = ensureKey();
