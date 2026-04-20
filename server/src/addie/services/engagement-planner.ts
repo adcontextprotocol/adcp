@@ -413,10 +413,13 @@ export async function composeMessage(
 
   text = stripCodeFences(text);
 
-  // Try to parse as JSON first for both Slack and email.
-  try {
-    const parsed = JSON.parse(text);
+  // Claude sometimes returns a JSON envelope followed by reflection text
+  // ("Wait, let me reconsider…") and then another envelope. JSON.parse rejects
+  // trailing content, so prefer the last well-formed top-level object —
+  // Claude's final decision after any reconsideration wins.
+  const parsed = parseEnvelope(text);
 
+  if (parsed) {
     if (parsed.skip) {
       logger.info(
         { person_id: ctx.relationship.id, reason: parsed.reason },
@@ -437,7 +440,7 @@ export async function composeMessage(
       };
     }
 
-    if (parsed.subject && parsed.body) {
+    if (parsed.subject && parsed.body && typeof parsed.subject === 'string' && typeof parsed.body === 'string') {
       const cleanedBody = extractUserFacingMessage(parsed.body, 'email');
       if (!cleanedBody) {
         logger.warn({ person_id: ctx.relationship.id }, 'Model returned non-user-facing email body');
@@ -450,8 +453,6 @@ export async function composeMessage(
         goalHint: inferGoalHint(cleanedBody, ctx.engagementOpportunities),
       };
     }
-  } catch {
-    // Not JSON — salvage the user-facing message text if possible.
   }
 
   const cleanedText = extractUserFacingMessage(text, channel);
@@ -479,6 +480,73 @@ export async function composeMessage(
 function stripCodeFences(text: string): string {
   const codeFenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
   return codeFenceMatch ? codeFenceMatch[1].trim() : text;
+}
+
+/**
+ * Find all top-level `{...}` objects in the text and return the LAST one that
+ * parses as JSON. Covers the case where Claude emits an envelope, then a
+ * reflection paragraph, then a revised envelope — the revision is the answer.
+ *
+ * Uses a string/escape-aware bracket counter so quoted braces don't throw off
+ * the depth count.
+ */
+export function parseEnvelope(text: string): Record<string, unknown> | null {
+  const envelopes: Record<string, unknown>[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const openIdx = text.indexOf('{', cursor);
+    if (openIdx === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let closeIdx = -1;
+
+    for (let i = openIdx; i < text.length; i++) {
+      const c = text[i];
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) { closeIdx = i; break; }
+      }
+    }
+
+    if (closeIdx === -1) break;
+
+    try {
+      const candidate = JSON.parse(text.slice(openIdx, closeIdx + 1));
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        envelopes.push(candidate as Record<string, unknown>);
+      }
+    } catch {
+      // Not valid JSON at this boundary; keep scanning.
+    }
+
+    cursor = closeIdx + 1;
+  }
+
+  return envelopes.length > 0 ? envelopes[envelopes.length - 1] : null;
+}
+
+/**
+ * A paragraph that parses as a JSON object on its own — these are envelope
+ * fragments that leaked past `parseEnvelope` (e.g. missing/malformed closing
+ * brace would leave them intact). Defense in depth for the fallback path.
+ */
+function looksLikeJsonEnvelopeParagraph(paragraph: string): boolean {
+  const t = paragraph.trim();
+  if (!t.startsWith('{') || !t.endsWith('}')) return false;
+  try {
+    const p = JSON.parse(t);
+    return p && typeof p === 'object' && !Array.isArray(p);
+  } catch {
+    return false;
+  }
 }
 
 const REASONING_PREFIX_PATTERNS = [
@@ -570,7 +638,10 @@ export function extractUserFacingMessage(rawText: string, channel: 'slack' | 'em
   const paragraphs = text
     .split(/\n\s*\n/)
     .map(paragraph => paragraph.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // Drop bare JSON envelope paragraphs — those are model scratch output that
+    // should never appear in a user-facing Slack or email message.
+    .filter(paragraph => !looksLikeJsonEnvelopeParagraph(paragraph));
 
   let firstUserFacingIndex = 0;
   while (firstUserFacingIndex < paragraphs.length && looksLikeReasoningParagraph(paragraphs[firstUserFacingIndex])) {
