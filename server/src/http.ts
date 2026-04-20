@@ -6742,9 +6742,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           })
         );
 
-        // Check if user is admin
+        // Check if user is admin via aao-admin working group (primary) or
+        // ADMIN_EMAILS env var (fallback). Must match requireAdmin middleware
+        // so the admin UI and backend agree on who sees admin surfaces.
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-        const isAdmin = adminEmails.includes(user.email.toLowerCase());
+        const isAdminByEmail = adminEmails.includes(user.email.toLowerCase());
+        const isAdminByWorkingGroup = await isWebUserAAOAdmin(user.id);
+        const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;

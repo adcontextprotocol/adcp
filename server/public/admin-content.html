@@ -693,6 +693,12 @@
 
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('mainContent').classList.remove('hidden');
+
+        // Admins land on All Content — editors need a full view of the library,
+        // not just what they personally authored.
+        if (isAdmin) {
+          switchTab('all');
+        }
       } catch (err) {
         console.error('Init error:', err);
         document.getElementById('loading').innerHTML =
