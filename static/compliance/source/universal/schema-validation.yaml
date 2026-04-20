@@ -317,6 +317,8 @@ phases:
           - Message indicating the date constraint violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -377,6 +379,8 @@ phases:
           - Message indicating the past start_time violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -439,6 +443,8 @@ phases:
           - context.correlation_id echoed
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

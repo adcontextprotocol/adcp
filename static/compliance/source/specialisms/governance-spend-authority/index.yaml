@@ -244,6 +244,8 @@ phases:
           - packages: line items
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

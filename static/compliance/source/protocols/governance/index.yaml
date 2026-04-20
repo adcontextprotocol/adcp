@@ -490,6 +490,8 @@ phases:
           - valid_actions: creative sync, get_delivery, etc.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"

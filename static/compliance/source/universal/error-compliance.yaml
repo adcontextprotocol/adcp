@@ -110,6 +110,8 @@ phases:
           - field: packages[0].budget (optional but recommended)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -155,6 +157,8 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -235,6 +239,8 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -288,6 +294,8 @@ phases:
           - recovery: correctable, transient, or fatal (optional)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -429,6 +437,8 @@ phases:
           - content containing adcp_error (L2: JSON text, L3: structuredContent)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
