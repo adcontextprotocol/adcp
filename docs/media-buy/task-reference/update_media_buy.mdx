@@ -680,7 +680,7 @@ Common errors and resolutions:
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
 | `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
-| `UPDATE_REQUIRES_GOVERNANCE` | Price-affecting update (`bid_price`, `budget`, `daily_cap`, flight extension, targeting broadening) without a fresh `modification`-phase `governance_context` whose `plan_hash` covers the post-update plan state | Call `check_governance` with `phase: "modification"` against the proposed post-update plan, then retry with the new token |
+| `UPDATE_REQUIRES_GOVERNANCE` | Update touches a re-check-triggering field (`bid_price`, `budget`, `daily_cap`, any `flight_dates` / `start_time` / `end_time` change, or any `targeting` / `targeting_overlay` change) without a fresh `modification`-phase `governance_context` whose `plan_hash` covers the post-update plan state | Call `check_governance` with `phase: "modification"` against the proposed post-update plan, then retry with the new token |
 | `PLAN_HASH_MISMATCH` | SHA-256 of the JCS-canonicalized plan bytes does not match the `plan_hash` claim on the `governance_context` token (e.g., the plan was mutated via `sync_plans` between approval and this call) | Re-run `check_governance` against the current plan revision to obtain a fresh token and retry |
 
 Example error response:
@@ -834,13 +834,15 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 
 When a buyer's account has governance agents configured, an `update_media_buy` that changes any **price-affecting field** MUST carry a fresh `modification`-phase `governance_context` token whose `plan_hash` claim covers the post-update plan state. This closes the post-approval pricing-unlock gap: without the re-check, a buyer could obtain governance approval for a benign plan, then PATCH `bid_price` or `budget` upward under the original intent token with no governance visibility into the new spend.
 
-**Price-affecting fields (MUST trigger re-check when present in the update)**:
+**Fields that MUST trigger re-check** (seller MUST reject any update touching these without a fresh `modification`-phase token):
 
 - `bid_price` (any change)
 - `budget` (any change — media-buy-level or package-level)
 - `daily_cap`
-- `flight_dates` / `start_time` / `end_time` when the change **extends** flight duration
-- `targeting` / `targeting_overlay` when the change **broadens** the addressable audience (adding geos, removing exclusions, adding inventory, widening demographic filters)
+- `flight_dates` / `start_time` / `end_time` (any change — extension, shortening, or shift)
+- `targeting` / `targeting_overlay` (any change — including any modification of geo, demographic, inventory, or exclusion fields)
+
+The seller does not evaluate whether a targeting change "broadens" the audience or whether a flight-date change "extends" flight duration. That determination is a policy decision — it depends on plan-level authority the seller does not have visibility into — and the governance agent, not the seller, makes it at `check_governance` time. The seller's role is the mechanical rule: *any* change to a listed field requires a fresh modification-phase token; the governance agent then approves or denies based on the post-update plan state. This closes the circularity in an earlier formulation where the seller had to decide "is this a broadening?" before the token that would answer the question existed.
 
 **Seller enforcement (MUST)**: a seller receiving an `update_media_buy` that touches any of the fields above MUST reject with `UPDATE_REQUIRES_GOVERNANCE` unless the request carries a `modification`-phase `governance_context` token that:
 
@@ -850,7 +852,16 @@ When a buyer's account has governance agents configured, an `update_media_buy` t
 
 Non-price-affecting updates (pause, resume, creative swap without spend change, reporting-webhook changes) do not require a fresh `modification` token — the original `governance_context` persisted with the media buy is sufficient.
 
-**Buyer workflow**: before submitting a price-affecting update, the buyer calls `check_governance` with `phase: "modification"`, the proposed post-update plan state, and the existing `governance_context`. The governance agent returns a new token bound to the post-update `plan_hash`. The buyer attaches the new token to `update_media_buy` on the protocol envelope.
+**Buyer workflow** (worked example for the post-update hash): before submitting a price-affecting update, the buyer constructs the post-update plan state and calls `check_governance`:
+
+1. Read the current plan body (the `plans[i]` object as submitted via `sync_plans` and evaluated at the last approval).
+2. Apply the proposed update patch *locally* to produce the post-update plan body (e.g., replace `packages[0].bid_price`, adjust `budget.total`, add a geo to `targeting.geo.include`).
+3. Strip the non-hashed fields (`updated_at`, seller annotations, any `soft_deleted: true` packages) per [Plan-hash computation](/docs/building/implementation/security#plan-hash-computation).
+4. Call `check_governance` with `phase: "modification"`, `plan_id`, the post-update plan body (the governance agent runs JCS + SHA-256 over this — the buyer does not need to pre-compute the hash), and the existing `governance_context`.
+5. The governance agent evaluates the post-update state, runs JCS + SHA-256 on the same bytes, and binds the resulting hash into the issued `modification`-phase token's `plan_hash` claim.
+6. Attach the new token to `update_media_buy` on the protocol envelope.
+
+When the seller receives the update, it applies the patch against its pinned plan revision, JCS-canonicalizes, SHA-256-hashes the result, and matches against the token's `plan_hash` claim. Buyer and seller agree on the post-update bytes because they applied the same patch to the same pinned starting revision and both used RFC 8785 canonicalization — the test vector at `/static/test-vectors/governance-plan-hash.json` pins the canonicalization contract.
 
 Sellers MUST NOT treat `bid_price` changes as "within previously-approved envelope" heuristically — the governance agent, not the seller, decides whether a price change is within plan authority. Any plan-level reallocation-threshold logic lives inside the governance agent's evaluation of the re-check.
 

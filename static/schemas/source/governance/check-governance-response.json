@@ -134,7 +134,7 @@
     },
     "plan_hash": {
       "type": "string",
-      "description": "SHA-256 (hex-encoded, lowercase) of the JCS-canonicalized plan bytes the governance agent evaluated when producing this decision. Redundant with the `plan_hash` claim embedded in the `governance_context` JWS but exposed at the response level so non-verifying callers can surface the binding to auditors without parsing the token. Sellers MUST verify against the token's claim (not this field) when enforcing; this field is informational. Present whenever `governance_context` is present.",
+      "description": "SHA-256 (hex-encoded, lowercase) of the JCS-canonicalized plan bytes the governance agent evaluated when producing this decision. Redundant with the `plan_hash` claim embedded in the `governance_context` JWS but exposed at the response level so non-verifying callers (auditors, logging pipelines, buyer-side tooling) can surface the binding without parsing the token. **Informational only.** Sellers enforcing plan binding MUST verify against the token's signed `plan_hash` claim and MUST NOT use this response field as the authoritative value — this field is not signature-protected and is trivially forgeable by an intermediary that can mutate the response body before signature verification runs on the attached `governance_context`. Present whenever `governance_context` is present.",
       "pattern": "^[0-9a-f]{64}$"
     },
     "context": {

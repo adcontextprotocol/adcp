@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "algorithm": "SHA-256",
+  "canonicalization": "RFC 8785 (JCS)",
+  "specification": "https://adcontextprotocol.org/docs/building/implementation/security#plan-hash-computation",
+  "description": "Test vectors for the `plan_hash` claim on `governance_context` JWS tokens (see AdCP Signed Governance Context profile). Each vector pins a canonical plan JSON document, its RFC 8785 (JCS) canonicalized byte form, and the hex-encoded lowercase SHA-256 of those bytes. Governance agents issuing tokens and sellers verifying them MUST reproduce the `expected_plan_hash` value for each `plan` input byte-for-byte; any divergence indicates a non-conformant canonicalization implementation. Intent-phase tokens bind the hash of the plan as approved; `modification`-phase tokens bind the hash of the post-update plan state (see vector `mod-bid-price-budget-increase`). The `plan` field in each vector represents the `plans[i]` element from a `sync_plans` request with governance-agent-assigned and seller-side-annotation fields stripped per the scope rules.",
+  "vectors": [
+    {
+      "id": "intent-multichannel-ctv-display",
+      "description": "Representative intent-phase plan: multi-channel (CTV + web display), North America markets, two packages, one policy reference set, reallocation threshold set.",
+      "plan": {
+        "plan_id": "plan_acme_q2_2026",
+        "brand": { "brand_id": "acme", "domain": "acme.example" },
+        "objectives": "Q2 awareness push across CTV and web display for North America",
+        "budget": {
+          "total": 250000,
+          "currency": "USD",
+          "per_seller_max_pct": 40,
+          "reallocation_threshold": 50000
+        },
+        "channels": {
+          "allowed": ["ctv", "web_display"]
+        },
+        "flight": {
+          "start": "2026-04-01T00:00:00Z",
+          "end": "2026-06-30T23:59:59Z"
+        },
+        "markets": ["US", "CA"],
+        "policy_ids": ["registry:brand-safety:gp-1", "registry:privacy:coppa"],
+        "human_review_required": false,
+        "packages": [
+          {
+            "package_id": "pkg_ctv_primetime",
+            "channel": "ctv",
+            "budget": 150000,
+            "daily_cap": 2500
+          },
+          {
+            "package_id": "pkg_web_display",
+            "channel": "web_display",
+            "budget": 100000
+          }
+        ]
+      },
+      "expected_jcs_bytes": "{\"brand\":{\"brand_id\":\"acme\",\"domain\":\"acme.example\"},\"budget\":{\"currency\":\"USD\",\"per_seller_max_pct\":40,\"reallocation_threshold\":50000,\"total\":250000},\"channels\":{\"allowed\":[\"ctv\",\"web_display\"]},\"flight\":{\"end\":\"2026-06-30T23:59:59Z\",\"start\":\"2026-04-01T00:00:00Z\"},\"human_review_required\":false,\"markets\":[\"US\",\"CA\"],\"objectives\":\"Q2 awareness push across CTV and web display for North America\",\"packages\":[{\"budget\":150000,\"channel\":\"ctv\",\"daily_cap\":2500,\"package_id\":\"pkg_ctv_primetime\"},{\"budget\":100000,\"channel\":\"web_display\",\"package_id\":\"pkg_web_display\"}],\"plan_id\":\"plan_acme_q2_2026\",\"policy_ids\":[\"registry:brand-safety:gp-1\",\"registry:privacy:coppa\"]}",
+      "expected_plan_hash": "12ac969ec95daa93f27d064b7b4511a83402a2ac48401a3f5e7dce6cb8e959a0"
+    },
+    {
+      "id": "mod-bid-price-budget-increase",
+      "description": "Modification-phase vector: the `intent-multichannel-ctv-display` plan with `packages[0].bid_price` added and `packages[0].budget` increased from 150000 to 180000. Bound to a `modification`-phase token's `plan_hash` claim; the buyer applies the patch locally before calling `check_governance` with `phase: \"modification\"`.",
+      "plan": {
+        "plan_id": "plan_acme_q2_2026",
+        "brand": { "brand_id": "acme", "domain": "acme.example" },
+        "objectives": "Q2 awareness push across CTV and web display for North America",
+        "budget": {
+          "total": 250000,
+          "currency": "USD",
+          "per_seller_max_pct": 40,
+          "reallocation_threshold": 50000
+        },
+        "channels": {
+          "allowed": ["ctv", "web_display"]
+        },
+        "flight": {
+          "start": "2026-04-01T00:00:00Z",
+          "end": "2026-06-30T23:59:59Z"
+        },
+        "markets": ["US", "CA"],
+        "policy_ids": ["registry:brand-safety:gp-1", "registry:privacy:coppa"],
+        "human_review_required": false,
+        "packages": [
+          {
+            "package_id": "pkg_ctv_primetime",
+            "channel": "ctv",
+            "budget": 180000,
+            "daily_cap": 2500,
+            "bid_price": 18.5
+          },
+          {
+            "package_id": "pkg_web_display",
+            "channel": "web_display",
+            "budget": 100000
+          }
+        ]
+      },
+      "expected_jcs_bytes": "{\"brand\":{\"brand_id\":\"acme\",\"domain\":\"acme.example\"},\"budget\":{\"currency\":\"USD\",\"per_seller_max_pct\":40,\"reallocation_threshold\":50000,\"total\":250000},\"channels\":{\"allowed\":[\"ctv\",\"web_display\"]},\"flight\":{\"end\":\"2026-06-30T23:59:59Z\",\"start\":\"2026-04-01T00:00:00Z\"},\"human_review_required\":false,\"markets\":[\"US\",\"CA\"],\"objectives\":\"Q2 awareness push across CTV and web display for North America\",\"packages\":[{\"bid_price\":18.5,\"budget\":180000,\"channel\":\"ctv\",\"daily_cap\":2500,\"package_id\":\"pkg_ctv_primetime\"},{\"budget\":100000,\"channel\":\"web_display\",\"package_id\":\"pkg_web_display\"}],\"plan_id\":\"plan_acme_q2_2026\",\"policy_ids\":[\"registry:brand-safety:gp-1\",\"registry:privacy:coppa\"]}",
+      "expected_plan_hash": "2af3e8cee5f9c2357d6fbef6d25089cc81ba8bb2ea6b9147d9f5832b39d11312"
+    },
+    {
+      "id": "minimal-plan-required-fields",
+      "description": "Minimum-field plan exercising only `plan_id`, `budget` (with `reallocation_threshold`), and `flight`. Included to pin the canonical form for the smallest plan shape a governance agent would sign.",
+      "plan": {
+        "plan_id": "p1",
+        "budget": {
+          "total": 1000,
+          "currency": "USD",
+          "reallocation_threshold": 100
+        },
+        "flight": {
+          "start": "2026-04-01T00:00:00Z",
+          "end": "2026-04-30T23:59:59Z"
+        }
+      },
+      "expected_jcs_bytes": "{\"budget\":{\"currency\":\"USD\",\"reallocation_threshold\":100,\"total\":1000},\"flight\":{\"end\":\"2026-04-30T23:59:59Z\",\"start\":\"2026-04-01T00:00:00Z\"},\"plan_id\":\"p1\"}",
+      "expected_plan_hash": "aa932ff9688aa31f291ef83e31c2c994253528800ff767b4a1ce921ba231ded6"
+    },
+    {
+      "id": "unicode-and-number-edge-cases",
+      "description": "Exercises JCS unicode handling (literal UTF-8 in `objectives` and brand fields; JCS emits literal UTF-8, not `\\uXXXX` escapes) and number canonicalization (`total: 1.0` serializes to `1` per RFC 8785 number rules). Implementations that emit `\\u65e5...` or `1.0` instead are non-conformant.",
+      "plan": {
+        "plan_id": "plan_jp",
+        "brand": { "brand_id": "café", "domain": "café.example" },
+        "objectives": "日本語テスト",
+        "budget": {
+          "total": 1.0,
+          "currency": "JPY",
+          "reallocation_threshold": 0
+        },
+        "flight": {
+          "start": "2026-05-01T00:00:00Z",
+          "end": "2026-05-31T23:59:59Z"
+        }
+      },
+      "expected_jcs_bytes": "{\"brand\":{\"brand_id\":\"café\",\"domain\":\"café.example\"},\"budget\":{\"currency\":\"JPY\",\"reallocation_threshold\":0,\"total\":1},\"flight\":{\"end\":\"2026-05-31T23:59:59Z\",\"start\":\"2026-05-01T00:00:00Z\"},\"objectives\":\"日本語テスト\",\"plan_id\":\"plan_jp\"}",
+      "expected_plan_hash": "30810d0b59ed161e1fd151103ece83b823a7c36a83dafee8f2331fd9a6f77539"
+    }
+  ]
+}
