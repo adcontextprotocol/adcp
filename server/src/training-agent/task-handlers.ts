@@ -959,7 +959,7 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
@@ -1173,7 +1173,7 @@ async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
+export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
   let formats = getFormats();
 
@@ -1197,7 +1197,7 @@ async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) 
   return { formats };
 }
 
-async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
@@ -1560,7 +1560,7 @@ async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuysArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
@@ -1648,7 +1648,7 @@ async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
@@ -1820,7 +1820,7 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
   };
 }
 
-async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const isDryRun = req.dry_run === true;
@@ -1919,7 +1919,7 @@ async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
+export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
@@ -1977,7 +1977,7 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
@@ -2212,7 +2212,7 @@ async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Promise<Record<string, unknown>> {
+export async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Promise<Record<string, unknown>> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -2302,7 +2302,7 @@ async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext)
 
 const MAX_SIGNAL_RESULTS = 10;
 
-async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
@@ -2434,7 +2434,7 @@ async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
-async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
+export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ActivateSignalRequest & ToolArgs & {
     signal_id?: string;
     destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
@@ -2551,7 +2551,7 @@ async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -2695,7 +2695,7 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { content: html } };
 }
 
-async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -2836,7 +2836,7 @@ interface PreviewCreativeArgs {
   item_limit?: number;
 }
 
-async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
+export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PreviewCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -2952,7 +2952,7 @@ interface ReportUsageArgs extends ToolArgs {
   }>;
 }
 
-async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
+export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 

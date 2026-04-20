@@ -22,6 +22,7 @@ import {
 } from '@adcp/client/server';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
+import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -239,7 +240,11 @@ export function createTrainingAgentRouter(): Router {
   router.post('/mcp', mcpRateLimiter, requireToken, requestSigningMiddleware, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
-    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    // Explicit `any` because the framework and legacy servers differ in
+    // their TypeScript types (CJS-resolved McpServer vs. legacy Server),
+    // even though both satisfy the `Transport` contract at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let server: any = null;
     try {
       // Build training context (open mode for now; training mode in Stage 2).
       // Principal is set by requireToken; defaults to 'anonymous' in dev mode
@@ -247,7 +252,9 @@ export function createTrainingAgentRouter(): Router {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
       const ctx: TrainingContext = { mode: 'open', principal };
 
-      server = createTrainingAgentServer(ctx);
+      server = useFrameworkServer()
+        ? createFrameworkTrainingAgentServer(ctx)
+        : createTrainingAgentServer(ctx);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // Stateless
       });
@@ -327,11 +334,14 @@ export function createTrainingAgentRouter(): Router {
       return;
     }
 
-    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let server: any = null;
     try {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
       const ctx: TrainingContext = { mode: 'open', principal };
-      server = createTrainingAgentServer(ctx);
+      server = useFrameworkServer()
+        ? createFrameworkTrainingAgentServer(ctx)
+        : createTrainingAgentServer(ctx);
 
       // The endpoint path is relative to the router mount point
       const transport = new SSEServerTransport(`${req.baseUrl}/message`, res);
