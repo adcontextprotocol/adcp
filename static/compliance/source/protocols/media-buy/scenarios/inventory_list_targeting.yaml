@@ -155,8 +155,8 @@ phases:
         comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
-          Return the media buy with packages[0].targeting.property_list and
-          .collection_list populated with the list_id values sent on create.
+          Return the media buy with packages[0].targeting_overlay.property_list
+          and .collection_list populated with the list_id values sent on create.
 
         sample_request:
           media_buy_ids:
