@@ -149,6 +149,21 @@ As of April 2026:
 We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
 </Accordion>
 
+<Accordion title="How does AdCP compare to UCP and ACP?">
+Google's Universal Commerce Protocol (UCP) — developed with Shopify, Walmart, Target, and others — and OpenAI and Stripe's Agentic Commerce Protocol (ACP) standardize *commerce* in AI assistants: checkout, payments, and fulfillment. AdCP standardizes *advertising*: how offers get surfaced, how a brand agent engages a user, and how attribution flows back.
+
+These are different layers, not competing specifications.
+
+| Layer | Standard | What it does |
+|---|---|---|
+| Commerce | UCP, ACP | Checkout, payments, fulfillment, order status |
+| Advertising | AdCP | Sponsored discovery, media buying, creative, brand governance, attribution |
+
+The layers meet at the handoff. The [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) runs a conversational brand experience inside an AI assistant; when the user decides to buy, the host hands off to ACP or UCP for checkout, carrying the SI `session_id` through as context so the transaction can be attributed back to the sponsored conversation. The commerce protocol's own session owns the purchase flow. AdCP owns the path up to the handoff; the commerce protocol owns the transaction.
+
+A platform implementing both sees AdCP for "surface the right offer and engage the user" and UCP/ACP for "take the payment." Neither substitutes for the other.
+</Accordion>
+
 <Accordion title="Why not just roll our own protocol?">
 You can, and for some deployments that is the right call — proprietary internal protocols are fine when the scope stays inside a single organization.
 
