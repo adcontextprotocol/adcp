@@ -114,6 +114,14 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.per",
           "value": "households"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.window.interval",
+          "value": 7
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.window.unit",
+          "value": "days"
         }
       ]
     }

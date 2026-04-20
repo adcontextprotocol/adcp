@@ -2,11 +2,17 @@
  * Validates positive wire-level test vectors for PackageStatus.targeting_overlay
  * echo in static/test-vectors/media-buy/package-status-targeting-overlay-echo.json.
  *
- * Each vector's `payload` MUST validate against the declared schema, and each
- * declared `assertion` MUST resolve to the expected value. Failures here mean:
+ * Three layers of defense:
  *
- *   - PackageStatus shape drifted during schema regeneration (schema layer)
- *   - The vector file fell out of sync with the schema (vector layer)
+ *   1. Schema-shape lock — PackageStatus.properties.targeting_overlay.$ref points
+ *      at /schemas/core/targeting.json. Because PackageStatus and TargetingOverlay
+ *      both set additionalProperties:true, payload-level validation alone would
+ *      not catch a regeneration that drops the property declaration; this direct
+ *      schema read does.
+ *   2. Payload validation — every vector's payload validates against the
+ *      get-media-buys-response.json schema.
+ *   3. Assertion resolution — every declared assertion path resolves to the
+ *      expected value (and is not undefined).
  *
  * Downstream SDKs (adcp-client, adcp-client-python) load this same vector file
  * to validate their code generators — so changes here propagate out-of-repo.
@@ -32,7 +38,10 @@ async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) {
     throw new Error(`Cannot load external schema: ${uri}`);
   }
-  const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
+  const schemaPath = path.resolve(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
+  if (schemaPath !== SCHEMA_BASE_DIR && !schemaPath.startsWith(SCHEMA_BASE_DIR + path.sep)) {
+    throw new Error(`Schema ref escapes base directory: ${uri}`);
+  }
   return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 }
 
@@ -51,11 +60,12 @@ const data = JSON.parse(fs.readFileSync(VECTORS_PATH, 'utf8'));
 
 describe('PackageStatus targeting_overlay echo vectors', () => {
   let validate;
+  let rootSchema;
 
   before(async () => {
     const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: loadExternalSchema });
     addFormats(ajv);
-    const rootSchema = await loadExternalSchema(data.schema);
+    rootSchema = await loadExternalSchema(data.schema);
     validate = await ajv.compileAsync(rootSchema);
   });
 
@@ -75,6 +85,23 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     });
   });
 
+  it('PackageStatus declares targeting_overlay with the core/targeting.json $ref', () => {
+    // Direct schema-shape lock: additionalProperties:true on PackageStatus means payload
+    // validation alone does not catch regeneration that drops this declaration. This
+    // assertion is the actual wire-level contract for downstream SDK codegen.
+    const packageStatusSchema =
+      rootSchema.properties.media_buys.items.properties.packages.items;
+    assert.equal(packageStatusSchema.title, 'PackageStatus');
+    assert.ok(
+      packageStatusSchema.properties && packageStatusSchema.properties.targeting_overlay,
+      'PackageStatus.properties.targeting_overlay must be declared'
+    );
+    assert.equal(
+      packageStatusSchema.properties.targeting_overlay.$ref,
+      '/schemas/core/targeting.json'
+    );
+  });
+
   for (const vector of data.vectors) {
     describe(`vector: ${vector.id}`, () => {
       it('payload validates against get-media-buys-response.json', () => {
@@ -90,6 +117,7 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
       for (const { path: p, value } of vector.assertions || []) {
         it(`echoes ${p}`, () => {
           const actual = resolvePath(vector.payload, p);
+          assert.notEqual(actual, undefined, `path ${p} did not resolve in payload`);
           assert.deepEqual(actual, value);
         });
       }
