@@ -24,6 +24,17 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(data.vectors.length > 0, 'must have at least one vector');
   });
 
+  it('every vector and rejection_vector has a unique kebab-case id', () => {
+    const allVectors = [...data.vectors, ...data.rejection_vectors];
+    const seen = new Set();
+    allVectors.forEach((v, i) => {
+      assert.equal(typeof v.id, 'string', `vector at index ${i} missing id field`);
+      assert.match(v.id, /^[a-z0-9]+(-[a-z0-9]+)*$/, `id "${v.id}" at index ${i} must be kebab-case`);
+      assert.ok(!seen.has(v.id), `duplicate vector id: ${v.id}`);
+      seen.add(v.id);
+    });
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
@@ -55,10 +66,10 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
   }
 
   it('should produce different signatures for compact vs spaced JSON', () => {
-    const compact = data.vectors.find(v => v.description.startsWith('compact JSON'));
-    const spaced = data.vectors.find(v => v.description.startsWith('spaced JSON'));
-    assert.ok(compact, 'must have a "compact JSON" vector');
-    assert.ok(spaced, 'must have a "spaced JSON" vector');
+    const compact = data.vectors.find(v => v.id === 'compact-js-style');
+    const spaced = data.vectors.find(v => v.id === 'spaced-python-default');
+    assert.ok(compact, 'must have vector id "compact-js-style"');
+    assert.ok(spaced, 'must have vector id "spaced-python-default"');
     assert.notEqual(compact.expected_signature, spaced.expected_signature,
       'compact and spaced JSON must produce different signatures — this is the whole point of raw body signing');
   });

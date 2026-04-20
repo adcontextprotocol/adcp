@@ -5,87 +5,101 @@
   "specification": "https://adcontextprotocol.org/docs/building/implementation/webhooks",
   "status": "legacy",
   "deprecation": "AdCP 3.0 unifies webhook signing on the RFC 9421 webhook profile (see docs/building/implementation/security.mdx#webhook-callbacks). This HMAC-SHA256 path is the legacy fallback selected when a buyer populates push_notification_config.authentication.credentials; it is deprecated and removed in AdCP 4.0. Conformance vectors for the 9421 webhook profile will ship alongside the request-signing vectors.",
-  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification (legacy / deprecated path). Each vector contains a raw_body (the exact bytes on the wire), a timestamp (Unix seconds), and the expected signature. Implementations supporting the legacy path MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it. When constructing a body from a JSON value, use compact separators (',' and ':', no whitespace between tokens) so the signed bytes match the bytes on the wire.",
+  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification (legacy / deprecated path). Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, a `raw_body` (the exact bytes on the wire), a `timestamp` (Unix seconds), and the expected signature. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Implementations supporting the legacy path MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it. When constructing a body from a JSON value, use compact separators (',' and ':', no whitespace between tokens) so the signed bytes match the bytes on the wire.",
   "vectors": [
     {
+      "id": "compact-js-style",
       "description": "compact JSON (JS-style JSON.stringify)",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_123\",\"status\":\"approved\"}",
       "expected_signature": "sha256=c4faf82609efe07621706df0d28c801de2b5145f427e129f243a3839df891a4e"
     },
     {
+      "id": "spaced-python-default",
       "description": "spaced JSON (Python-style json.dumps with default separators)",
       "timestamp": 1700000000,
       "raw_body": "{\"event\": \"creative.status_changed\", \"creative_id\": \"creative_123\", \"status\": \"approved\"}",
       "expected_signature": "sha256=4acce503547a93922a2b41c32f5f0e646b71a36572fd1536d3d7fcd88a4e5c5f"
     },
     {
+      "id": "empty-object",
       "description": "empty object",
       "timestamp": 1700000000,
       "raw_body": "{}",
       "expected_signature": "sha256=fc66235ab6cf0a5927d76d88194036fa99c7e08c75d55c9de5008288d448f1a0"
     },
     {
+      "id": "nested",
       "description": "nested objects and arrays",
       "timestamp": 1700000000,
       "raw_body": "{\"task_id\":\"task_456\",\"operation_id\":\"op_789\",\"result\":{\"media_buy_id\":\"mb_001\",\"packages\":[{\"package_id\":\"pkg_1\"},{\"package_id\":\"pkg_2\"}]}}",
       "expected_signature": "sha256=a90052e145bd73ba69a236748df05a3887ef9e73ddd429ef179bdd498ddb97ba"
     },
     {
+      "id": "unicode-utf8",
       "description": "unicode characters (literal UTF-8, not escaped)",
       "timestamp": 1700000000,
       "raw_body": "{\"brand_name\":\"Café Münchën\",\"tagline\":\"日本語テスト\"}",
       "expected_signature": "sha256=4383aa943264c461c5b9796734fdd9ae51934ecbdf7d38fcf94d330bfa590576"
     },
     {
+      "id": "pretty-printed",
       "description": "pretty-printed JSON (multiline with indentation)",
       "timestamp": 1700000000,
       "raw_body": "{\n  \"status\": \"completed\",\n  \"result\": {\n    \"id\": \"mb_001\"\n  }\n}",
       "expected_signature": "sha256=ad4858d6a7a38207ee178502b4bffc700080258a433e127919b445b68794f085"
     },
     {
+      "id": "scalars-mixed",
       "description": "numeric values, booleans, and null",
       "timestamp": 1700000000,
       "raw_body": "{\"price\":19.99,\"count\":1000,\"active\":true,\"discount\":null}",
       "expected_signature": "sha256=12d4173bebd369c066880bd8f12952c4c1f6f48addbc1dc5267d8ba8de205a4f"
     },
     {
+      "id": "empty-body",
       "description": "empty body",
       "timestamp": 1700000000,
       "raw_body": "",
       "expected_signature": "sha256=9ab3f90245d5919d344a849a4a1b0ec20b75fcf8f29d817e63b23b54fce52294"
     },
     {
+      "id": "timestamp-zero",
       "description": "timestamp zero",
       "timestamp": 0,
       "raw_body": "{\"event\":\"test\"}",
       "expected_signature": "sha256=446cc9dbe11ee98af9445a27dfcf9d52530c874583e5750d295bad336a406c3c"
     },
     {
+      "id": "timestamp-2040",
       "description": "large timestamp (year 2040)",
       "timestamp": 2208988800,
       "raw_body": "{\"event\":\"test\"}",
       "expected_signature": "sha256=a0fdee5e93b2ac2efdf8d3d22b7a03ae8e6df157b493d0140f7902ef32f6be60"
     },
     {
+      "id": "null-bytes",
       "description": "null bytes in body",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\u0000null\"}",
       "expected_signature": "sha256=7672d4251c1bc327b8c4cbb0e0d4d93a062db44810663f46bcabdd7d3736e9fc"
     },
     {
+      "id": "trailing-newline",
       "description": "trailing newline in body",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}\n",
       "expected_signature": "sha256=bc9597756458e0349125bcb50b828271adadc9ed1282e91a5b0c79dbf0864fc8"
     },
     {
+      "id": "compact-whitespace-keys",
       "description": "compact separators with whitespace-sensitive keys and nested objects/arrays — canonical on-wire form",
       "timestamp": 1700000000,
       "raw_body": "{\"key with spaces\":1,\"nested\":{\"inner key\":[1,2,{\"deep key\":\"v\"}],\"flag\":true}}",
       "expected_signature": "sha256=df7036a04cf825c30ef6bdc020c98fcdcc7429c99e8178c17188912757860f97"
     },
     {
+      "id": "unicode-ascii-escaped",
       "description": "ascii-escaped unicode (\\u00e9, \\u65e5) — produces a different signature than the raw-UTF-8 vector above; unicode-escape policy is not canonicalized, so signers and verifiers MUST compare bytes",
       "timestamp": 1700000000,
       "raw_body": "{\"name\":\"caf\\u00e9\",\"region\":\"\\u65e5\\u672c\"}",
@@ -94,6 +108,7 @@
   ],
   "rejection_vectors": [
     {
+      "id": "truncated-signature",
       "description": "truncated signature",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}",
@@ -101,6 +116,7 @@
       "reason": "Signature length mismatch — MUST reject before HMAC comparison"
     },
     {
+      "id": "wrong-algorithm-prefix",
       "description": "wrong algorithm prefix",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}",
@@ -108,6 +124,7 @@
       "reason": "Only sha256= prefix is valid"
     },
     {
+      "id": "empty-signature",
       "description": "empty signature header",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}",
@@ -115,6 +132,7 @@
       "reason": "Missing or empty signature MUST be rejected"
     },
     {
+      "id": "missing-signature",
       "description": "missing signature header",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}",
@@ -122,6 +140,7 @@
       "reason": "Null signature MUST be rejected"
     },
     {
+      "id": "timestamp-too-old",
       "description": "timestamp outside window (5 minutes in the past)",
       "timestamp": 1699999399,
       "raw_body": "{\"event\":\"test\"}",
@@ -130,6 +149,7 @@
       "reason": "Timestamp 601 seconds old — exceeds 300-second window"
     },
     {
+      "id": "timestamp-too-future",
       "description": "timestamp outside window (5 minutes in the future)",
       "timestamp": 1700000401,
       "raw_body": "{\"event\":\"test\"}",
@@ -138,6 +158,7 @@
       "reason": "Timestamp 401 seconds in the future — exceeds 300-second window"
     },
     {
+      "id": "non-numeric-timestamp",
       "description": "non-numeric timestamp",
       "timestamp": "not-a-number",
       "raw_body": "{\"event\":\"test\"}",
@@ -145,6 +166,7 @@
       "reason": "Non-numeric timestamp MUST be rejected before HMAC computation"
     },
     {
+      "id": "body-tampered",
       "description": "body modified after signing",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"hacked\"}",
@@ -152,6 +174,7 @@
       "reason": "Signature was computed over {\"event\":\"test\"} — modified body MUST not verify"
     },
     {
+      "id": "double-prefix",
       "description": "double prefix",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}",
@@ -159,6 +182,7 @@
       "reason": "Double sha256= prefix produces wrong length and MUST be rejected"
     },
     {
+      "id": "signer-spaced-wire-compact",
       "description": "signer used Python-default spaced separators but client wrote compact bytes on the wire",
       "timestamp": 1700000000,
       "raw_body": "{\"key with spaces\":1,\"nested\":{\"inner key\":[1,2,{\"deep key\":\"v\"}],\"flag\":true}}",
