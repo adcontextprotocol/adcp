@@ -1,4 +1,4 @@
-> **Mirror notice.** Canonical source: [`/api/agreement?type=membership`](https://agenticadvertising.org/api/agreement?type=membership). This file mirrors version 1.1, effective 2025-12-12, exported 2026-04-20. The Foundation website is authoritative; if this copy and the website diverge, the website governs. See [`governance/README.md`](./README.md) for the refresh procedure.
+> **Mirror notice.** Canonical source: [`/api/agreement?type=membership`](https://agenticadvertising.org/api/agreement?type=membership). This file mirrors version 1.1, effective 2025-12-12, exported 2026-04-20. The Foundation website is authoritative; if this copy and the website diverge, the website governs. See [`governance/README.md`](https://github.com/adcontextprotocol/adcp/blob/main/governance/README.md) for the refresh procedure.
 
 # AgenticAdvertising.Org Membership Agreement
 
