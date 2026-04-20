@@ -1624,9 +1624,9 @@ async function handleUserMessage({
         logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
         // Fallback: send via say() so the user isn't left without a response
         try {
-          const fallbackValidation = validateOutput(fullText);
-          const guarded = guardBareJsonEnvelope(fallbackValidation.sanitized);
-          const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(guarded.text);
+          const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-fallback' });
+          const fallbackValidation = validateOutput(guarded.text);
+          const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
           await say({
             text: slackText,
@@ -1651,9 +1651,9 @@ async function handleUserMessage({
       fullText = response.text;
 
       // Send response via say() with feedback buttons and inline images
-      const outputValidation = validateOutput(response.text);
-      const guarded = guardBareJsonEnvelope(outputValidation.sanitized);
-      const { text: textWithoutImages, images } = extractMarkdownImages(guarded.text);
+      const guarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-non-streaming' });
+      const outputValidation = validateOutput(guarded.text);
+      const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
         await say({
@@ -2110,13 +2110,13 @@ async function handleAppMention({
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
-  const mentionGuarded = guardBareJsonEnvelope(outputValidation.sanitized);
+  const mentionGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'app-mention' });
+  const outputValidation = validateOutput(mentionGuarded.text);
 
   // Send response in thread (must explicitly pass thread_ts for app_mention events)
   try {
     await say({
-      text: wrapUrlsForSlack(mentionGuarded.text),
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs,
     });
   } catch (error) {
@@ -3068,8 +3068,8 @@ async function handleDirectMessage(
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
-  const dmGuarded = guardBareJsonEnvelope(outputValidation.sanitized);
+  const dmGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-assistant' });
+  const outputValidation = validateOutput(dmGuarded.text);
 
   // Always thread the response to the user's message. This ensures:
   // 1. Slack Assistant "Chat" tab: response appears inline in the conversation
@@ -3081,7 +3081,7 @@ async function handleDirectMessage(
   try {
     const postResult = await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(dmGuarded.text),
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: replyThreadTs,
     });
     responseTs = postResult.ts;
@@ -3446,14 +3446,14 @@ async function handleActiveThreadReply({
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
-  const activeThreadGuarded = guardBareJsonEnvelope(outputValidation.sanitized);
+  const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
+  const outputValidation = validateOutput(activeThreadGuarded.text);
 
   // Send response in the thread
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(activeThreadGuarded.text),
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -4017,7 +4017,8 @@ async function handleChannelMessage({
     }
 
     // Validate the output
-    const outputValidation = validateOutput(response.text);
+    const proposedGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'proposed-channel-response' });
+    const outputValidation = validateOutput(proposedGuarded.text);
     if (outputValidation.flagged) {
       logger.warn({ channelId, reason: outputValidation.reason }, 'Addie Bolt: Proposed response flagged');
       return;
@@ -4054,11 +4055,10 @@ async function handleChannelMessage({
     });
 
     // Post the response directly to the channel thread
-    const proposedGuarded = guardBareJsonEnvelope(outputValidation.sanitized);
     try {
       await boltApp?.client.chat.postMessage({
         channel: channelId,
-        text: wrapUrlsForSlack(proposedGuarded.text),
+        text: wrapUrlsForSlack(outputValidation.sanitized),
         thread_ts: threadTs,
       });
       logger.info({ channelId, userId }, 'Addie Bolt: Posted response to channel');
@@ -4810,7 +4810,7 @@ async function handleReactionAdded({
   }
 
   // Send response in thread
-  const reactionGuarded = guardBareJsonEnvelope(response.text);
+  const reactionGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'reaction-response' });
   try {
     await client.chat.postMessage({
       channel: itemChannel,

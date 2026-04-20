@@ -249,10 +249,20 @@ export interface BareJsonGuardResult {
  * Claude, not echoed verbatim; if one ends up in the Slack message body, this
  * keeps it readable and flags it for investigation.
  *
- * Leaves everything else — normal prose, already-fenced JSON, mixed content —
- * untouched.
+ * Known limitation: this catches the common "bare JSON at the top of the
+ * message" case. A response that starts with a short prose prefix before the
+ * JSON (e.g. "Here is the result: {...}") will not be wrapped. The prompt
+ * rule in behaviors.md is the primary control; this guard is a safety net.
+ *
+ * The log line intentionally does NOT include the response content, because
+ * the cases that trigger this wrap are exactly the cases where the payload
+ * is most likely to contain PII, Stripe data, or other secrets pulled from a
+ * tool result.
  */
-export function guardBareJsonEnvelope(text: string): BareJsonGuardResult {
+export function guardBareJsonEnvelope(
+  text: string,
+  context: { pathTag: string },
+): BareJsonGuardResult {
   const trimmed = text.trim();
   if (trimmed.length < 2) return { text, wasWrapped: false };
 
@@ -269,7 +279,12 @@ export function guardBareJsonEnvelope(text: string): BareJsonGuardResult {
   }
 
   logger.warn(
-    { length: text.length, preview: trimmed.slice(0, 200) },
+    {
+      pathTag: context.pathTag,
+      length: text.length,
+      firstChar: first,
+      looksLikeArray: first === '[',
+    },
     'Addie: Raw JSON envelope detected in outbound response — wrapping in code fence',
   );
 

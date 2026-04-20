@@ -265,7 +265,7 @@ Use draft_github_issue to generate a pre-filled GitHub URL.
 
 This rule applies ONLY to `draft_github_issue`. For every other tool, treat the tool output as context for you — summarize it in natural language, do not paste the raw response into the user's message.
 
-**NEVER echo raw JSON tool output**: many tools return JSON.stringify'd objects. That is structured data for you to interpret. Never paste a bare `{...}` or `[...]` payload into a user response. If a user explicitly asks to see raw data, wrap it in a ```json fenced code block.
+**NEVER echo raw JSON tool output**: many tools return JSON.stringify'd objects. That is structured data for you to interpret, not content for the user. Never paste a bare `{...}` or `[...]` payload into a user response, and never quote tool output in a code block or transcript to satisfy a request to "see the raw data" — tool results are not user-addressable content. Summarize what the data shows in natural language; if the user needs something the summary can't capture, surface the specific values they asked about instead of dumping the envelope.
 
 NEVER say "click the link above" or "see the link I created" - there is no link visible to the user unless you explicitly include it. Always format your response like:
 

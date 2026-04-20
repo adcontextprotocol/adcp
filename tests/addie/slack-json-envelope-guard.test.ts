@@ -9,10 +9,12 @@ vi.mock('../../server/src/logger.js', () => ({
 
 import { guardBareJsonEnvelope } from '../../server/src/addie/security.js';
 
+const ctx = { pathTag: 'test' };
+
 describe('guardBareJsonEnvelope', () => {
   test('wraps a bare JSON object in a json code fence', () => {
     const input = '{"has_portrait": false, "reason": "not generated"}';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(true);
     expect(text.startsWith('```json\n')).toBe(true);
     expect(text.endsWith('\n```')).toBe(true);
@@ -21,54 +23,54 @@ describe('guardBareJsonEnvelope', () => {
 
   test('wraps a bare JSON array in a json code fence', () => {
     const input = '[{"id": 1}, {"id": 2}]';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(true);
     expect(text.startsWith('```json\n')).toBe(true);
   });
 
   test('wraps JSON with surrounding whitespace', () => {
     const input = '\n\n  {"ok": true}  \n';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(true);
     expect(text).toContain('"ok"');
   });
 
   test('leaves normal prose untouched', () => {
     const input = 'Here is your answer. The portrait has not been generated yet.';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(false);
     expect(text).toBe(input);
   });
 
   test('leaves markdown with embedded JSON untouched', () => {
     const input = 'Your portrait status:\n\n```json\n{"has_portrait": false}\n```';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(false);
     expect(text).toBe(input);
   });
 
   test('leaves responses that start with a code fence untouched', () => {
     const input = '```json\n{"foo": "bar"}\n```';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(false);
     expect(text).toBe(input);
   });
 
   test('leaves malformed JSON-looking text untouched', () => {
     const input = '{this is not valid json at all';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(false);
     expect(text).toBe(input);
   });
 
   test('leaves empty or single-char input untouched', () => {
-    expect(guardBareJsonEnvelope('').wasWrapped).toBe(false);
-    expect(guardBareJsonEnvelope('{').wasWrapped).toBe(false);
+    expect(guardBareJsonEnvelope('', ctx).wasWrapped).toBe(false);
+    expect(guardBareJsonEnvelope('{', ctx).wasWrapped).toBe(false);
   });
 
   test('leaves prose that starts with a brace but is not JSON untouched', () => {
     const input = '{Not JSON} just using a brace stylistically.';
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(false);
     expect(text).toBe(input);
   });
@@ -78,9 +80,19 @@ describe('guardBareJsonEnvelope', () => {
       type: 'tool_result',
       content: { members: [{ id: 'u1', name: 'Alice' }] },
     });
-    const { text, wasWrapped } = guardBareJsonEnvelope(input);
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
     expect(wasWrapped).toBe(true);
     expect(text).toContain('"tool_result"');
     expect(text.startsWith('```json\n')).toBe(true);
+  });
+
+  test('leaves JSON followed by trailing prose untouched (trailing content breaks parse)', () => {
+    // The natural "Claude pasted tool output then added commentary" shape.
+    // JSON.parse rejects trailing chars, so this falls through to the prompt rule.
+    // Documented limitation — the guard is a safety net, not a complete fix.
+    const input = '{"ok": true}\n\nAnd here is a quick summary of what it shows...';
+    const { text, wasWrapped } = guardBareJsonEnvelope(input, ctx);
+    expect(wasWrapped).toBe(false);
+    expect(text).toBe(input);
   });
 });
