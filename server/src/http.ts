@@ -116,7 +116,7 @@ import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
-import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
+import { serveHtmlWithMetaTags, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
@@ -313,11 +313,17 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null) {
+  // Trust a pre-resolved isAdmin (set by enrichUserWithAdmin / dev-user flag).
+  // Fall back to ADMIN_EMAILS for callers that haven't enriched yet.
   let isAdmin = false;
   if (user) {
-    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-    isAdmin = adminEmails.includes(user.email.toLowerCase());
+    if (typeof user.isAdmin === 'boolean') {
+      isAdmin = user.isAdmin;
+    } else {
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+      isAdmin = adminEmails.includes(user.email.toLowerCase());
+    }
   }
 
   return {
@@ -340,7 +346,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null): string {
   const config = buildAppConfig(user);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
@@ -625,6 +631,7 @@ export class HTTPServer {
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         // Inject config
         const configScript = getAppConfigScript(user);
@@ -744,6 +751,7 @@ export class HTTPServer {
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
+      await enrichUserWithAdmin(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -1648,6 +1656,7 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
@@ -1687,6 +1696,7 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
@@ -1750,22 +1760,16 @@ export class HTTPServer {
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      // User is populated by optionalAuth middleware if authenticated
-      let isAdmin = false;
-      if (req.user) {
-        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-        isAdmin = adminEmails.includes(req.user.email.toLowerCase());
-      }
-
       let user = null;
       if (req.user) {
         await enrichUserWithMembership(req.user as any);
+        await enrichUserWithAdmin(req.user as any);
         user = {
           id: req.user.id,
           email: req.user.email,
           firstName: req.user.firstName,
           lastName: req.user.lastName,
-          isAdmin,
+          isAdmin: !!(req.user as any).isAdmin,
           isMember: !!(req.user as any).isMember,
         };
       }
