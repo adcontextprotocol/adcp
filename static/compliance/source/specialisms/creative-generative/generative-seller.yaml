@@ -11,9 +11,6 @@ required_tools:
   - sync_creatives
   - get_media_buy_delivery
 requires_scenarios:
-  - media_buy_seller/governance_approved
-  - media_buy_seller/governance_denied
-  - media_buy_seller/governance_conditions
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
 
