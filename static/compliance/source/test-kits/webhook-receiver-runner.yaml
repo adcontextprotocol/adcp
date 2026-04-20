@@ -95,6 +95,12 @@ endpoint_modes:
     runner_config:
       base_url_env: ADCP_RUNNER_WEBHOOK_BASE_URL
       required_for_adcp_verified: true
+      scheme: https
+      # HTTPS is REQUIRED for proxy_url. Runners MUST reject an
+      # ADCP_RUNNER_WEBHOOK_BASE_URL with an http:// scheme unless the runner
+      # is started with an explicit local-dev flag (not exposed in AdCP
+      # Verified grading). The loopback_mock mode operates in-process and has
+      # no TLS surface; this rule applies only to proxy_url.
 
 # --- Per-step receiver URLs ---
 #
@@ -104,16 +110,19 @@ endpoint_modes:
 #   {{runner.webhook_url:<step_id>}}   Per-step URL unique to step <step_id>
 #
 # Per-step URLs scope assertions cleanly: an expect_webhook on step_A matches
-# only webhooks delivered to step_A's URL. A storyboard testing fan-in
-# dedup (one URL receiving from multiple triggering steps) opts into a shared
-# receiver by setting shared_receiver: true on the emitting step.
+# only webhooks delivered to step_A's URL. Fan-in scenarios (one URL receiving
+# from multiple emitting steps) are deferred — see storyboard-schema.yaml
+# "shared_receiver (deferred / out of scope v1)."
 
 receiver_urls:
   per_step_url_template: "{{runner.webhook_base}}/step/<step_id>/<operation_id>"
-  shared_receiver_url_template: "{{runner.webhook_base}}/shared/<storyboard_id>/<operation_id>"
   operation_id_source: push_notification_config.url
-  # The operation_id in the URL template matches the one the caller sets in
-  # the push_notification_config.url path segment, not a server-generated ID.
+  # <operation_id> in the URL template is the ID the RUNNER (acting as caller)
+  # sets in the path segment of push_notification_config.url when it registers
+  # the webhook on the triggering step. This is NOT a server-generated ID — the
+  # agent under test MUST NOT mint its own operation_id. The agent's webhook
+  # payload MUST echo this operation_id back verbatim so the runner can match
+  # inbound deliveries to the step that triggered them.
 
 # --- Retry-replay assertion shape ---
 #
@@ -131,13 +140,33 @@ receiver_urls:
 retry_replay_contract:
   mechanism: receiver_returns_5xx_then_2xx
   default_count: 3
+  min_count: 1
+  max_count: 10
+  # Hard ceiling on retry_trigger.count. Runners MUST reject storyboards whose
+  # retry_trigger.count falls outside [min_count, max_count] with a storyboard
+  # validation error at load time. The ceiling prevents a typo (count: 1000000)
+  # from turning a runner into a DoS amplifier against a real seller in
+  # proxy_url mode. Sellers exercise retry back-off with N=3 routinely;
+  # higher counts do not add meaningful conformance signal.
   default_http_status: 503
+  allowed_statuses: [429, 500, 502, 503, 504]
+  # Runners MUST reject retry_trigger.http_status values outside this
+  # allowlist. Statuses like 400 or 404 are not retryable signals for
+  # at-least-once senders — a storyboard declaring one is a bug, not a
+  # legitimate test shape.
   default_timeout_seconds: 90
   expected_behavior: |
     The sender retries on each 5xx response. Every retry MUST carry the
     byte-identical idempotency_key the first delivery carried. The runner
     records all deliveries and asserts key stability; a key rotation across
     retries fails the step with `idempotency_key_rotated`.
+
+    When 9421 is in effect for the storyboard, the runner ALSO verifies the
+    signature on every retry delivery using the run-scoped replay store (see
+    client_primitives.signature_replay_store). A sender that reuses the 9421
+    `nonce` sig-param across retries fails the step with `signature_replayed`
+    on the second delivery even though idempotency_key is stable — nonce
+    freshness is a separate invariant.
 
 # --- @adcp/client primitives the runner hooks ---
 #
@@ -179,6 +208,27 @@ client_primitives:
     reference: 9421 webhook verifier (TBD in @adcp/client)
     status: pending
     blocked_on: "@adcp/client implementation of docs/building/implementation/security.mdx#webhook-callbacks"
+
+  signature_replay_store:
+    # The runner MUST maintain ONE (keyid, nonce) replay store shared across
+    # every webhook delivery it observes in a storyboard run — including
+    # every expect_webhook_signature_valid step AND every retry delivery
+    # produced under expect_webhook_retry_keys_stable.
+    #
+    # Rationale: without a shared store, a publisher emitting the same signed
+    # bytes at two different expect_webhook_signature_valid steps would pass
+    # both in isolation, silently missing cross-step nonce replay. The 9421
+    # profile's (keyid, nonce) uniqueness guarantee is per-signer, not
+    # per-step — scoping replay state per-step in the runner would redefine
+    # the guarantee in a way production receivers don't.
+    #
+    # Scope: one store per storyboard run; destroyed at run end. Not shared
+    # across runs (a fresh run is a fresh counterparty-session from the
+    # publisher's perspective).
+    reference: Run-scoped (keyid, nonce) replay store
+    required_for:
+      - expect_webhook_signature_valid
+      - expect_webhook_retry_keys_stable (when 9421 in effect)
 
 # --- Claim scope ---
 

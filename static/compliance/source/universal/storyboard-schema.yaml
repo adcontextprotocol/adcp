@@ -151,11 +151,11 @@
 # exposes these substitutions for use in sample_request payloads and expectations:
 #
 #   {{runner.webhook_base}}            → HTTPS base of the runner's receiver for this run
-#   {{runner.webhook_url:<step_id>}}   → per-step URL; unique per step unless shared_receiver: true
+#   {{runner.webhook_url:<step_id>}}   → per-step URL; unique per step
 #
-# Per-step receivers are the default so each step's expect_webhook matches only
-# its own deliveries. Set shared_receiver: true on a step to emit into a shared
-# bucket (e.g., multi-task fan-in dedup tests).
+# Per-step receivers are the only supported shape in v1 so each step's
+# expect_webhook matches only its own deliveries. Fan-in scenarios are deferred
+# (see "shared_receiver" note below).
 #
 # --- Webhook-assertion steps ---
 #
@@ -176,7 +176,13 @@
 #       status: "completed"       # optional; match any status if omitted
 #     timeout_seconds: 30         # optional; fail if no match within window
 #     expect_idempotency_key: true  # default true; assert the key is present and pattern-valid
-#     schema_ref: <path>          # optional; validate payload against the webhook schema
+#     webhook_payload_schema_ref: <path>
+#                                 # optional — validate payload against the webhook schema
+#                                 # (distinct from step-level `schema_ref` and
+#                                 # `response_schema_ref`, which apply to the caller→agent
+#                                 # request/response. Webhook steps have no caller request,
+#                                 # so the payload schema is named explicitly to avoid
+#                                 # overload of schema_ref.)
 #     expect_max_deliveries_per_logical_event: 1
 #                                 # optional — if set, runner asserts at most N distinct
 #                                 # logical webhook events (grouped by idempotency_key)
@@ -200,17 +206,45 @@
 #   byte-identical idempotency_key (the sender regenerating a key on retry is a
 #   conformance failure).
 #
+#   Signature verification on every delivery in the retry loop: when 9421 is in
+#   effect (i.e., push_notification_config was registered without `authentication`),
+#   the runner MUST verify the 9421 signature on EVERY delivery including retries
+#   and MUST reuse the run-scoped (keyid, nonce) replay store (see test-kit
+#   client_primitives.signature_replay_store). A publisher that stably reuses
+#   idempotency_key (correct) but also reuses the 9421 `nonce` sig-param
+#   (incorrect — nonce MUST be fresh per delivery) would pass retry-stability
+#   but MUST fail signature-replay dedup on the second delivery. Running the two
+#   checks together catches this class of bug; a retry-stability step that skips
+#   signature verification hides it.
+#
 #   Fields:
 #     triggered_by: <step_id>
 #     filter: { ... }             # same shape as expect_webhook
 #     retry_trigger:
-#       count: 3                  # runner returns 5xx for the first N deliveries
-#       http_status: 503          # optional; default 503
+#       count: 3                  # runner returns 5xx for the first N deliveries.
+#                                 # MUST be 1 ≤ count ≤ 10 (test-kit
+#                                 # retry_replay_contract.max_count). Counts outside
+#                                 # the range fail storyboard validation; sellers
+#                                 # legitimately exercise N=3 for back-off sanity,
+#                                 # higher counts risk becoming DoS amplifiers in
+#                                 # proxy_url mode.
+#       http_status: 503          # optional; default 503. MUST be in
+#                                 # {429, 500, 502, 503, 504} (test-kit
+#                                 # retry_replay_contract.allowed_statuses). Other
+#                                 # statuses are not retryable signals for
+#                                 # at-least-once senders and fail validation.
 #     timeout_seconds: 90         # longer default — must cover sender's retry back-off
 #     expect_min_deliveries: 2    # fail if fewer deliveries observed within window
+#     verify_signature_on_every_delivery: true
+#                                 # default true when 9421 is in effect. Set false
+#                                 # ONLY when the storyboard is explicitly registered
+#                                 # for legacy HMAC mode; in 9421 mode, silently
+#                                 # disabling retry-delivery signature verification
+#                                 # hides nonce-replay bugs.
 #
 #   Error modes: insufficient_retries, idempotency_key_rotated,
-#   idempotency_key_format_changed.
+#   idempotency_key_format_changed, signature_replayed (nonce reused across
+#   retries), signature_invalid (any retry delivery fails 9421).
 #
 # task: expect_webhook_signature_valid
 #   Assert that the inbound webhook passed the 9421 webhook-signing verifier
@@ -222,6 +256,13 @@
 #   conformance vectors under /compliance/{version}/test-vectors/webhook-signing/
 #   when those land, not by this step type.
 #
+#   Cross-step replay dedup: the runner MUST share a single (keyid, nonce) replay
+#   store across ALL expect_webhook_signature_valid invocations (and all retry
+#   deliveries under expect_webhook_retry_keys_stable) in a storyboard run — see
+#   test-kit client_primitives.signature_replay_store. A per-step store would let
+#   a publisher reuse the same (keyid, nonce) bytes at two expect_webhook_signature_valid
+#   steps and pass both in isolation, silently missing cross-step replay.
+#
 #   Fields:
 #     triggered_by: <step_id>
 #     filter: { ... }             # same shape as expect_webhook
@@ -231,3 +272,37 @@
 #   Error modes: signature_invalid, signature_expired, signature_key_unknown,
 #   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
 #   signature_replayed.
+#
+# --- shared_receiver (deferred / out of scope v1) ---
+#
+# Storyboards with multiple webhook-triggering steps MUST use per-step receiver
+# URLs; the default substitution `{{runner.webhook_url:<step_id>}}` gives each
+# step its own receiver so expect_webhook scopes cleanly. A `shared_receiver: true`
+# flag on an emitting step would route all emissions from that step to a shared
+# bucket (for fan-in dedup tests), but the mechanics — filter matching across
+# multiple emitters, retry-replay policy precedence, shared replay store scoping —
+# are underspecified. shared_receiver is OUT OF SCOPE for the first
+# webhook-emission universal release; storyboard authors MUST NOT set it. Future
+# fan-in storyboards will either flesh out the semantics or adopt a different
+# idiom (e.g., per-step receivers with cross-step assertions on aggregate
+# observations).
+#
+# --- Unresolved substitution behavior ---
+#
+# When a storyboard references a substitution variable the runner cannot
+# resolve — most commonly {{runner.webhook_base}} or {{runner.webhook_url:<id>}}
+# on a run with no webhook receiver configured — the runner MUST NOT ship the
+# literal `{{...}}` token to the agent under test. Shipping unresolved
+# substitutions is a conformance bug on the runner side, not a grading signal
+# about the agent.
+#
+# Runners MUST resolve substitutions at one of two preflight points:
+#   1. Before the storyboard run starts — if any step references an unresolvable
+#      substitution, grade the storyboard as not_applicable with
+#      `unresolved_substitution` as the reason, and skip execution entirely.
+#      This is the preferred behavior for absent webhook receivers.
+#   2. Before individual step execution — if a later-computed substitution
+#      (e.g., {{prior_step.<id>.operation_id}}) fails to resolve, grade the
+#      step as failed with `unresolved_substitution`.
+#
+# Neither path may ship a literal `{{...}}` token on the wire.

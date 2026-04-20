@@ -160,7 +160,7 @@ phases:
           operation_id: "{{prior_step.trigger_webhook_operation.operation_id}}"
         timeout_seconds: 30
         expect_idempotency_key: true
-        schema_ref: "core/mcp-webhook-payload.json"
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
         stateful: true
         expected: |
           Webhook arrives within 30 seconds. Payload validates against

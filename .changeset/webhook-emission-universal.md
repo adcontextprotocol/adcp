@@ -16,4 +16,14 @@ Storyboards are unidirectional today (runner → agent). Verifying outbound webh
 
 Clean seam: the runner delegates to `@adcp/client` primitives (`AsyncHandlerConfig.webhookDedup`, `WebhookMetadata.idempotency_key`, `Activity.type == "webhook_duplicate"`) rather than reimplementing signature verification or idempotency dedup. The same code that production receivers rely on is what the conformance runner exercises. Cross-references adcontextprotocol/adcp-client#629 by URL.
 
+Implementation-feedback follow-ups (from adcp-client runner work):
+- Renamed `schema_ref` on webhook-assertion steps to `webhook_payload_schema_ref` to avoid overloading the request-schema field name on caller→agent steps.
+- Clarified that the "caller" minting `operation_id` in the URL template is the runner, not the agent under test — agents MUST echo the runner-supplied operation_id back in the webhook payload and MUST NOT mint their own.
+- Required signature verification on every delivery in `expect_webhook_retry_keys_stable` (not just the first) when 9421 is in effect, with a run-scoped `(keyid, nonce)` replay store, to catch publishers that stably reuse both `idempotency_key` (correct) and 9421 `nonce` (incorrect — nonce MUST be fresh per delivery).
+- Mandated a single cross-step `(keyid, nonce)` replay store shared across all `expect_webhook_signature_valid` invocations in a run, so cross-step nonce replay is detected.
+- Capped `retry_trigger.count` at 10 and allowlisted `retry_trigger.http_status` to `{429, 500, 502, 503, 504}` to prevent typo'd storyboards from turning runners into DoS amplifiers in `proxy_url` mode.
+- Required HTTPS scheme on `proxy_url` endpoint mode (loopback_mock is in-process and has no TLS surface).
+- Deferred `shared_receiver: true` semantics (fan-in dedup across multiple emitting steps); storyboard authors MUST use per-step receivers in v1.
+- Specified that unresolved substitutions like `{{runner.webhook_base}}` MUST grade the storyboard `not_applicable` (preflight) or the step `failed` (step-time) — runners MUST NOT ship literal `{{...}}` tokens on the wire.
+
 Preview status pending runner implementation in adcp-client (tracked at adcontextprotocol/adcp#2426).
