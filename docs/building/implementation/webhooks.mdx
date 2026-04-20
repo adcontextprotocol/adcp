@@ -315,7 +315,7 @@ The signed message is `{unix_timestamp}.{raw_json_body}` — the Unix timestamp 
 Signature = sha256= + hex( HMAC-SHA256( secret, "{timestamp}.{rawBody}" ) )
 ```
 
-The `rawBody` **must** be the exact bytes sent on the wire.
+The `rawBody` **must** be the exact bytes sent on the wire. When serializing a JSON payload to produce the body, use **compact separators** (`","` and `":"`, no surrounding whitespace) — this matches JavaScript `JSON.stringify` and most HTTP-client defaults, and is what the receiver sees as `raw_body`. The common cross-SDK failure here is a signer that calls a language default which inserts spaces (e.g., Python `json.dumps(payload)`) while the HTTP client writes compact bytes on the wire — the signer then signs over bytes the receiver never sees. Use `json.dumps(payload, separators=(",", ":"))` (or equivalent) for byte-equality. See [Webhook Security — legacy normative rules](/docs/building/implementation/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40) for the full rules on canonical on-wire form and verifier input handling.
 
 **Publisher implementation (legacy):**
 ```typescript

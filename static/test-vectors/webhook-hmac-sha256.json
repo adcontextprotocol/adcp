@@ -5,7 +5,7 @@
   "specification": "https://adcontextprotocol.org/docs/building/implementation/webhooks",
   "status": "legacy",
   "deprecation": "AdCP 3.0 unifies webhook signing on the RFC 9421 webhook profile (see docs/building/implementation/security.mdx#webhook-callbacks). This HMAC-SHA256 path is the legacy fallback selected when a buyer populates push_notification_config.authentication.credentials; it is deprecated and removed in AdCP 4.0. Conformance vectors for the 9421 webhook profile will ship alongside the request-signing vectors.",
-  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification (legacy / deprecated path). Each vector contains a raw_body (the exact bytes on the wire), a timestamp (Unix seconds), and the expected signature. Implementations supporting the legacy path MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it.",
+  "description": "Test vectors for AdCP webhook HMAC-SHA256 signature verification (legacy / deprecated path). Each vector contains a raw_body (the exact bytes on the wire), a timestamp (Unix seconds), and the expected signature. Implementations supporting the legacy path MUST produce matching signatures for every vector and MUST use constant-time comparison when verifying signatures in production. Sign the raw_body as-is — never re-serialize it. When constructing a body from a JSON value, use compact separators (',' and ':', no whitespace between tokens) so the signed bytes match the bytes on the wire.",
   "vectors": [
     {
       "description": "compact JSON (JS-style JSON.stringify)",
@@ -78,6 +78,18 @@
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"test\"}\n",
       "expected_signature": "sha256=bc9597756458e0349125bcb50b828271adadc9ed1282e91a5b0c79dbf0864fc8"
+    },
+    {
+      "description": "compact separators with whitespace-sensitive keys and nested objects/arrays — canonical on-wire form",
+      "timestamp": 1700000000,
+      "raw_body": "{\"key with spaces\":1,\"nested\":{\"inner key\":[1,2,{\"deep key\":\"v\"}],\"flag\":true}}",
+      "expected_signature": "sha256=df7036a04cf825c30ef6bdc020c98fcdcc7429c99e8178c17188912757860f97"
+    },
+    {
+      "description": "ascii-escaped unicode (\\u00e9, \\u65e5) — produces a different signature than the raw-UTF-8 vector above; unicode-escape policy is not canonicalized, so signers and verifiers MUST compare bytes",
+      "timestamp": 1700000000,
+      "raw_body": "{\"name\":\"caf\\u00e9\",\"region\":\"\\u65e5\\u672c\"}",
+      "expected_signature": "sha256=572cfc7fa6ed58d2154bdbfff6ee1a2107a4d60adb60709d0c3e065972a01114"
     }
   ],
   "rejection_vectors": [
@@ -145,6 +157,13 @@
       "raw_body": "{\"event\":\"test\"}",
       "signature": "sha256=sha256=0ae7bf3ebd08098a9bec251fd1405a852dfbe3f75f5f19d9aa3e81af0f2617ca",
       "reason": "Double sha256= prefix produces wrong length and MUST be rejected"
+    },
+    {
+      "description": "signer used Python-default spaced separators but client wrote compact bytes on the wire",
+      "timestamp": 1700000000,
+      "raw_body": "{\"key with spaces\":1,\"nested\":{\"inner key\":[1,2,{\"deep key\":\"v\"}],\"flag\":true}}",
+      "signature": "sha256=fdbde186af151dc1430f33fd9c70a0b5455b02d95a675d24bc85f60f3e05ffb5",
+      "reason": "Signature was computed over the spaced-separator form '{\"key with spaces\": 1, ...}' while the wire carries the compact form — the canonical on-wire form is compact (','/':') so this MUST NOT verify. This is the exact cross-SDK bug that motivated pinning compact separators in the legacy scheme."
     }
   ]
 }
