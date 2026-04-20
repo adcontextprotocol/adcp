@@ -62,14 +62,14 @@ function validateSpeakers(speakers: unknown): { error: string; message: string }
         return { error: `Invalid speaker ${field}`, message: `${field} must be a string under 255 chars` };
       }
     }
-    if (sp.bio !== undefined && sp.bio !== null && (typeof sp.bio !== 'string' || sp.bio.length > 5000)) {
-      return { error: 'Invalid speaker bio', message: 'bio must be a string under 5000 chars' };
+    if (sp.bio !== undefined && sp.bio !== null && (typeof sp.bio !== 'string' || sp.bio.length > 1000)) {
+      return { error: 'Invalid speaker bio', message: 'bio must be a string under 1000 chars' };
     }
     for (const field of ['headshot_url', 'link_url'] as const) {
       const v = sp[field];
       if (v !== undefined && v !== null && v !== '') {
-        if (typeof v !== 'string') {
-          return { error: `Invalid speaker ${field}`, message: `${field} must be a string` };
+        if (typeof v !== 'string' || v.length > 2048) {
+          return { error: `Invalid speaker ${field}`, message: `${field} must be a string under 2048 chars` };
         }
         try {
           const parsed = new URL(v);

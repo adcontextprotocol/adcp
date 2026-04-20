@@ -233,6 +233,65 @@ describe('Event speakers (#2552)', () => {
     }
   });
 
+  it('ignores client-supplied display_order — array index is the ordering contract', async () => {
+    await request(app)
+      .put(`/api/admin/events/${eventId}`)
+      .send({
+        speakers: [
+          { name: 'First by position', display_order: 99 },
+          { name: 'Second by position', display_order: 0 },
+        ],
+      })
+      .expect(200);
+
+    const res = await request(app).get(`/api/events/${EVENT_SLUG}`).expect(200);
+    expect(res.body.speakers.map((s: any) => s.name)).toEqual(['First by position', 'Second by position']);
+    expect(res.body.speakers.map((s: any) => s.display_order)).toEqual([0, 1]);
+  });
+
+  it('trims whitespace from name/title/company on write', async () => {
+    await request(app)
+      .put(`/api/admin/events/${eventId}`)
+      .send({ speakers: [{ name: '  Alice  ', title: '  CEO  ', company: '  Acme  ' }] })
+      .expect(200);
+
+    const res = await request(app).get(`/api/events/${EVENT_SLUG}`).expect(200);
+    expect(res.body.speakers[0].name).toBe('Alice');
+    expect(res.body.speakers[0].title).toBe('CEO');
+    expect(res.body.speakers[0].company).toBe('Acme');
+  });
+
+  it('rejects whitespace-only name', async () => {
+    await request(app)
+      .put(`/api/admin/events/${eventId}`)
+      .send({ speakers: [{ name: '   ' }] })
+      .expect(400);
+  });
+
+  it('rejects bio over 1000 chars', async () => {
+    await request(app)
+      .put(`/api/admin/events/${eventId}`)
+      .send({ speakers: [{ name: 'Alice', bio: 'x'.repeat(1001) }] })
+      .expect(400);
+  });
+
+  it('rejects headshot_url over 2048 chars', async () => {
+    await request(app)
+      .put(`/api/admin/events/${eventId}`)
+      .send({ speakers: [{ name: 'Alice', headshot_url: 'https://example.com/' + 'a'.repeat(2040) }] })
+      .expect(400);
+  });
+
+  it('deleting the event cascades to speakers', async () => {
+    await pool.query(
+      `INSERT INTO event_speakers (event_id, name, display_order) VALUES ($1, 'to-be-cascaded', 0)`,
+      [eventId]
+    );
+    await pool.query(`DELETE FROM events WHERE id = $1`, [eventId]);
+    const result = await pool.query(`SELECT id FROM event_speakers WHERE event_id = $1`, [eventId]);
+    expect(result.rows).toHaveLength(0);
+  });
+
   it('POST rejects invalid speakers before creating the event', async () => {
     const slug = `evt-speakers-bad-${Date.now()}`;
     await request(app)

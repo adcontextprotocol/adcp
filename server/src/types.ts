@@ -1101,7 +1101,7 @@ export interface EventSpeakerInput {
   bio?: string;
   headshot_url?: string;
   link_url?: string;
-  display_order?: number;
+  // display_order is derived from array position on write; not accepted as input.
 }
 
 export interface Event {

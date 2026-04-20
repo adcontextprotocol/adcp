@@ -1175,12 +1175,17 @@ export class EventsDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      // Lock the parent event row so concurrent PUTs serialize and can't
+      // double-insert the same roster on top of each other.
+      await client.query('SELECT id FROM events WHERE id = $1 FOR UPDATE', [eventId]);
       await client.query('DELETE FROM event_speakers WHERE event_id = $1', [eventId]);
 
       const inserted: EventSpeaker[] = [];
       for (let i = 0; i < speakers.length; i++) {
         const s = speakers[i];
-        const order = typeof s.display_order === 'number' ? s.display_order : i;
+        // Always use array index as the display_order — the client's
+        // array ordering IS the ordering contract. Don't trust a
+        // user-supplied display_order that could desync from position.
         const row = await client.query<EventSpeaker>(
           `INSERT INTO event_speakers
              (event_id, name, title, company, bio, headshot_url, link_url, display_order)
@@ -1189,13 +1194,13 @@ export class EventsDatabase {
                      display_order, created_at, updated_at`,
           [
             eventId,
-            s.name,
-            s.title ?? null,
-            s.company ?? null,
+            (s.name || '').trim(),
+            s.title?.trim() || null,
+            s.company?.trim() || null,
             s.bio ?? null,
             s.headshot_url ?? null,
             s.link_url ?? null,
-            order,
+            i,
           ]
         );
         inserted.push(row.rows[0]);
