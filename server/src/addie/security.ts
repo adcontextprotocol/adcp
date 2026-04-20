@@ -238,6 +238,47 @@ export function wrapUrlsForSlack(text: string): string {
   );
 }
 
+export interface BareJsonGuardResult {
+  text: string;
+  wasWrapped: boolean;
+}
+
+/**
+ * Wrap a response in a ```json fence if it's a bare JSON envelope (starts with
+ * `{` or `[` and parses cleanly). Tool results are meant to be interpreted by
+ * Claude, not echoed verbatim; if one ends up in the Slack message body, this
+ * keeps it readable and flags it for investigation.
+ *
+ * Leaves everything else — normal prose, already-fenced JSON, mixed content —
+ * untouched.
+ */
+export function guardBareJsonEnvelope(text: string): BareJsonGuardResult {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return { text, wasWrapped: false };
+
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') return { text, wasWrapped: false };
+
+  // Skip if the response already starts with a code fence that wraps the JSON.
+  if (/^```/.test(text.trimStart())) return { text, wasWrapped: false };
+
+  try {
+    JSON.parse(trimmed);
+  } catch {
+    return { text, wasWrapped: false };
+  }
+
+  logger.warn(
+    { length: text.length, preview: trimmed.slice(0, 200) },
+    'Addie: Raw JSON envelope detected in outbound response — wrapping in code fence',
+  );
+
+  return {
+    text: '```json\n' + trimmed + '\n```',
+    wasWrapped: true,
+  };
+}
+
 /**
  * Extract markdown images from text and return them separately.
  * Used to convert markdown image syntax into Slack Block Kit image blocks,
