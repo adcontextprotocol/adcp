@@ -560,6 +560,13 @@
       "type": "object",
       "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
       "properties": {
+        "aggregation_window_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "default": 30,
+          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Default 30 days when omitted. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push. Absence of this field indicates the governance agent has not committed to any aggregation window; buyers MUST assume per-commit evaluation only."
+        },
         "property_features": {
           "type": "array",
           "description": "Property features this governance agent can evaluate. Each feature describes a score, rating, or certification the agent can provide for properties.",
