@@ -28,7 +28,7 @@
               "properties": {
                 "supported": {
                   "const": true,
-                  "description": "Discriminator. True means replay protection is active and the other fields in this branch are authoritative."
+                  "description": "Discriminator. True means the seller deduplicates replays — a repeat of the same idempotency_key within replay_ttl_seconds returns the cached response without re-executing side effects."
                 },
                 "replay_ttl_seconds": {
                   "type": "integer",
