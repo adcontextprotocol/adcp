@@ -328,7 +328,8 @@ phases:
             authentication:
               schemes:
                 - "Bearer"
-              credentials: "test-revocation-token"
+              credentials: "pinnacle-expired-rights-revocation-webhook-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_rights_enforcement_acquire_expired_rights"
 
         validations:
           - check: error_code

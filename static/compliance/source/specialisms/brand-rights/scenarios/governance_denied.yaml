@@ -173,6 +173,13 @@ phases:
               - "commercial"
             start_date: "2026-04-01"
             end_date: "2026-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes:
+                - "Bearer"
+              credentials: "pinnacle-revocation-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_acquire_rights_denied"
 
           context:
             correlation_id: "brand_rights--governance_denied--acquire"
