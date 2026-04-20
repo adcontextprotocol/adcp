@@ -18,7 +18,13 @@
  *     See TODOs below.
  */
 
-import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from 'node:crypto';
+import {
+  createHash,
+  createPublicKey,
+  timingSafeEqual,
+  verify as cryptoVerify,
+  type KeyObject,
+} from 'node:crypto';
 import { httpbis } from 'http-message-signatures';
 import { parseDictionary } from 'structured-headers';
 
@@ -77,7 +83,18 @@ export type WebhookSignatureErrorCode =
   | 'webhook_content_digest_missing';
 
 export type VerifyResult =
-  | { readonly valid: true; readonly keyid: string; readonly alg: string }
+  | {
+      readonly valid: true;
+      readonly keyid: string;
+      readonly alg: string;
+      /**
+       * The `tag` parameter from the Signature-Input header, if present.
+       * Call sites SHOULD enforce `tag === 'adcp/webhook-signing/v1'` to
+       * defend against cross-profile signature reuse. Enforcement is out of
+       * scope for this verifier.
+       */
+      readonly tag?: string;
+    }
   | { readonly valid: false; readonly reason: WebhookSignatureErrorCode };
 
 const MAX_VALIDITY_SECONDS = 300; // 5 minutes — RFC 9421 AdCP webhook profile
@@ -97,19 +114,12 @@ function getHeader(
   return undefined;
 }
 
-/** Base64url (no padding) for comparing digest values. */
-function toBase64(bytes: Buffer): string {
-  return bytes.toString('base64');
-}
-
 /**
  * Verify a `Content-Digest` header per RFC 9530 (sha-256 only in this profile
  * version; see webhooks.mdx).  Returns `true` if the digest matches the
  * supplied body bytes.
  */
 function verifyContentDigest(headerValue: string, bodyBytes: Buffer): boolean {
-  // Parse the dictionary. structured-headers represents byte-sequence values
-  // as Uint8Array wrapped in a tuple [value, params].
   let dict: ReturnType<typeof parseDictionary>;
   try {
     dict = parseDictionary(headerValue);
@@ -131,9 +141,9 @@ function verifyContentDigest(headerValue: string, bodyBytes: Buffer): boolean {
   if (asBuffer.length !== expected.length) {
     return false;
   }
-  // Constant-time compare would be ideal; content-digest is not a MAC so
-  // plain equality is acceptable here.
-  return toBase64(asBuffer) === toBase64(expected);
+  // content-digest IS in the signature base for AdCP webhooks, so binding
+  // body → sig does cross this compare. Use timing-safe compare unconditionally.
+  return timingSafeEqual(asBuffer, expected);
 }
 
 /**
@@ -142,7 +152,7 @@ function verifyContentDigest(headerValue: string, bodyBytes: Buffer): boolean {
  * with a single label; multi-label handling is out of scope for this
  * minimum-viable verifier.
  */
-type BareItemValue = string | number | boolean | ArrayBuffer | Date | unknown;
+type BareItemValue = string | number | boolean | ArrayBuffer | Date;
 
 interface ParsedSignatureInput {
   readonly label: string;
@@ -219,8 +229,11 @@ function jwkToKeyObject(jwk: JWK): KeyObject | null {
 }
 
 /**
- * Map an RFC 9421 `alg` string to (node:crypto digest, key type).
- * Returns null for unsupported algorithms.
+ * Map an `alg` string to (node:crypto digest, key type).
+ * RFC 9421 Signature-Input `alg` uses IANA-registered names (RFC 9421 §6.2).
+ * JWK `alg` uses JOSE names (RFC 7518 / RFC 8037). We accept each string
+ * only in its proper context and never let JOSE names leak into the
+ * Signature-Input `alg` parameter.
  */
 interface AlgSpec {
   readonly digest: string | null;
@@ -231,16 +244,30 @@ interface AlgSpec {
    * DER by default; we must convert first.
    */
   readonly p1363: boolean;
+  /**
+   * Fixed signature length (in bytes) for P1363-formatted algorithms. Used
+   * to distinguish malformed signatures from valid-but-wrong signatures.
+   */
+  readonly p1363SigLen?: number;
 }
 
-function algSpec(alg: string): AlgSpec | null {
+function algSpecRfc9421(alg: string): AlgSpec | null {
   switch (alg) {
     case 'ed25519':
-    case 'EdDSA':
       return { digest: null, jwkKty: 'OKP', jwkCrv: 'Ed25519', p1363: false };
     case 'ecdsa-p256-sha256':
+      return { digest: 'sha256', jwkKty: 'EC', jwkCrv: 'P-256', p1363: true, p1363SigLen: 64 };
+    default:
+      return null;
+  }
+}
+
+function algSpecJwk(alg: string): AlgSpec | null {
+  switch (alg) {
+    case 'EdDSA':
+      return { digest: null, jwkKty: 'OKP', jwkCrv: 'Ed25519', p1363: false };
     case 'ES256':
-      return { digest: 'sha256', jwkKty: 'EC', jwkCrv: 'P-256', p1363: true };
+      return { digest: 'sha256', jwkKty: 'EC', jwkCrv: 'P-256', p1363: true, p1363SigLen: 64 };
     default:
       return null;
   }
@@ -248,11 +275,12 @@ function algSpec(alg: string): AlgSpec | null {
 
 /**
  * Convert a fixed-width P1363 (r||s) signature to DER, which node:crypto's
- * ECDSA verifier expects by default.
+ * ECDSA verifier expects by default.  Throws if the signature length does
+ * not match the expected width or if r/s are zero after stripping.
  */
-function p1363ToDer(sig: Buffer): Buffer {
-  if (sig.length % 2 !== 0) {
-    throw new Error('P1363 signature has odd length');
+function p1363ToDer(sig: Buffer, expectedLen: number): Buffer {
+  if (sig.length !== expectedLen) {
+    throw new Error(`P1363 signature length mismatch: expected ${expectedLen}, got ${sig.length}`);
   }
   const half = sig.length / 2;
   const r = sig.subarray(0, half);
@@ -265,7 +293,12 @@ function p1363ToDer(sig: Buffer): Buffer {
       i += 1;
     }
     let body = int.subarray(i);
-    if (body[0] !== undefined && (body[0] & 0x80) !== 0) {
+    if (body.length === 0) {
+      // r or s is zero — invalid ECDSA signature; refuse to encode a
+      // DER integer with empty contents (decoders reject it too).
+      throw new Error('P1363 signature component is zero');
+    }
+    if ((body[0] & 0x80) !== 0) {
       body = Buffer.concat([Buffer.from([0x00]), body]);
     }
     return Buffer.concat([Buffer.from([0x02, body.length]), body]);
@@ -297,30 +330,56 @@ function buildSignatureBase(
   // label.  The raw header value after "label=" is exactly what we need.
   // e.g. `sig1=("@method" ...);created=...;...` -> we want `("@method" ...);created=...;...`
   const rawForLabel = extractLabelValue(parsed.raw, parsed.label);
+  if (rawForLabel === null) {
+    throw new Error('failed to locate signature label in Signature-Input');
+  }
   base.push(['"@signature-params"', [rawForLabel]]);
   return httpbis.formatSignatureBase(base);
 }
 
-function extractLabelValue(headerValue: string, label: string): string {
-  // Structured-headers parsed form loses exact byte ordering of parameters;
-  // however, RFC 9421 requires the exact serialized form as stored in the
-  // header.  The simplest approach: find "<label>=" in the raw header and
-  // take the rest up to the next top-level comma.
-  const needle = `${label}=`;
-  const idx = headerValue.indexOf(needle);
-  if (idx === -1) {
-    return headerValue;
-  }
-  // From idx+needle.length, scan to the end of this dictionary member.
-  // Dictionary members are comma-separated at the top level; commas inside
-  // parentheses or quoted strings don't count.
+/**
+ * Locate the raw value bytes for the member named `label` in a structured-
+ * fields dictionary header.  We intentionally byte-slice rather than use the
+ * parsed form, because RFC 9421 §2.5 requires `@signature-params` to be
+ * re-emitted byte-for-byte as it appeared in the Signature-Input header.
+ *
+ * This anchors on top-level dictionary members (comma-separated) and matches
+ * the label case-insensitively (RFC 8941 token rules).  Quoted strings,
+ * parenthesized inner lists, and backslash escapes inside quoted strings
+ * are respected so that e.g. a `nonce="...,sig1=..."` cannot fool the scan.
+ */
+function extractLabelValue(headerValue: string, label: string): string | null {
+  const labelLower = label.toLowerCase();
+  const s = headerValue;
+  let memberStart = 0;
   let depth = 0;
   let inQuotes = false;
-  let end = headerValue.length;
-  for (let i = idx + needle.length; i < headerValue.length; i += 1) {
-    const ch = headerValue[i];
+
+  const tryMember = (start: number, end: number): string | null => {
+    // Strip leading/trailing OWS, split at the first `=` at depth 0 (there
+    // should be no inner `=` at depth 0 before the value in a well-formed
+    // dictionary member).
+    let a = start;
+    let b = end;
+    while (a < b && (s[a] === ' ' || s[a] === '\t')) a += 1;
+    while (b > a && (s[b - 1] === ' ' || s[b - 1] === '\t')) b -= 1;
+    const eq = s.indexOf('=', a);
+    if (eq === -1 || eq >= b) return null;
+    const name = s.slice(a, eq).trim();
+    if (name.toLowerCase() !== labelLower) return null;
+    return s.slice(eq + 1, b).trim();
+  };
+
+  for (let i = 0; i <= s.length; i += 1) {
+    if (i === s.length) {
+      const hit = tryMember(memberStart, i);
+      if (hit !== null) return hit;
+      break;
+    }
+    const ch = s[i];
     if (inQuotes) {
-      if (ch === '\\') {
+      if (ch === '\\' && i + 1 < s.length) {
+        // Skip the escaped char so that e.g. \" doesn't close the string.
         i += 1;
         continue;
       }
@@ -338,15 +397,16 @@ function extractLabelValue(headerValue: string, label: string): string {
       continue;
     }
     if (ch === ')') {
-      depth -= 1;
+      if (depth > 0) depth -= 1;
       continue;
     }
     if (ch === ',' && depth === 0) {
-      end = i;
-      break;
+      const hit = tryMember(memberStart, i);
+      if (hit !== null) return hit;
+      memberStart = i + 1;
     }
   }
-  return headerValue.slice(idx + needle.length, end).trim();
+  return null;
 }
 
 /**
@@ -360,11 +420,11 @@ function extractLabelValue(headerValue: string, label: string): string {
  *   - JWKS fetching / caching from the seller's adagents.json — caller's
  *     responsibility; this function takes a pre-resolved JWKS.
  */
-export async function verifyWebhookSignature(
+export function verifyWebhookSignature(
   req: WebhookRequest,
   jwks: JWKS,
   opts: WebhookVerifyOptions = {},
-): Promise<VerifyResult> {
+): VerifyResult {
   const { requireContentDigest = true, maxSkewSeconds = DEFAULT_SKEW_SECONDS } = opts;
 
   // Step 1: both Signature and Signature-Input MUST be present.
@@ -384,11 +444,15 @@ export async function verifyWebhookSignature(
   const algParam = parsed.params.get('alg');
   const createdParam = parsed.params.get('created');
   const expiresParam = parsed.params.get('expires');
+  const tagParam = parsed.params.get('tag');
 
   if (typeof keyidParam !== 'string' || typeof algParam !== 'string') {
     return { valid: false, reason: 'webhook_signature_header_malformed' };
   }
   if (typeof createdParam !== 'number' || typeof expiresParam !== 'number') {
+    return { valid: false, reason: 'webhook_signature_header_malformed' };
+  }
+  if (tagParam !== undefined && typeof tagParam !== 'string') {
     return { valid: false, reason: 'webhook_signature_header_malformed' };
   }
 
@@ -403,13 +467,15 @@ export async function verifyWebhookSignature(
     return { valid: false, reason: 'webhook_signature_key_unknown' };
   }
 
-  // Step 4: alg must match JWK.
-  const spec = algSpec(algParam);
+  // Step 4: alg must be a valid RFC 9421 name, and must describe the same
+  // key shape as the JWK.  When the JWK declares its own `alg` (JOSE name),
+  // that must also agree — this is the algorithm-confusion defense.
+  const spec = algSpecRfc9421(algParam);
   if (!spec) {
     return { valid: false, reason: 'webhook_signature_invalid' };
   }
   if (jwk.alg !== undefined) {
-    const jwkSpec = algSpec(jwk.alg);
+    const jwkSpec = algSpecJwk(jwk.alg);
     if (!jwkSpec || jwkSpec.jwkKty !== spec.jwkKty || jwkSpec.jwkCrv !== spec.jwkCrv) {
       return { valid: false, reason: 'webhook_signature_invalid' };
     }
@@ -418,13 +484,16 @@ export async function verifyWebhookSignature(
     return { valid: false, reason: 'webhook_signature_invalid' };
   }
 
-  // Step 5: validity window.
+  // Step 5: validity window. `expires - created > MAX_VALIDITY_SECONDS` is a
+  // spec violation (the signer emitted a longer-than-permitted window), not
+  // a clock-skew expiry — route to `header_malformed` so call sites can tell
+  // the two apart.
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (expiresParam < createdParam) {
     return { valid: false, reason: 'webhook_signature_header_malformed' };
   }
   if (expiresParam - createdParam > MAX_VALIDITY_SECONDS) {
-    return { valid: false, reason: 'webhook_signature_expired' };
+    return { valid: false, reason: 'webhook_signature_header_malformed' };
   }
   if (nowSeconds > expiresParam + maxSkewSeconds) {
     return { valid: false, reason: 'webhook_signature_expired' };
@@ -462,12 +531,19 @@ export async function verifyWebhookSignature(
     return { valid: false, reason: 'webhook_signature_key_unknown' };
   }
 
+  // For P1363 algorithms, a wrong-length signature is a malformed header
+  // (couldn't have been produced by a conforming signer) rather than an
+  // invalid-signature outcome. Catch that before we try DER conversion.
+  if (spec.p1363 && spec.p1363SigLen !== undefined && sigBytes.length !== spec.p1363SigLen) {
+    return { valid: false, reason: 'webhook_signature_header_malformed' };
+  }
+
   let ok = false;
   try {
     if (spec.jwkKty === 'OKP') {
       ok = cryptoVerify(null, Buffer.from(base, 'utf-8'), key, sigBytes);
     } else {
-      const derSig = spec.p1363 ? p1363ToDer(sigBytes) : sigBytes;
+      const derSig = spec.p1363 ? p1363ToDer(sigBytes, spec.p1363SigLen ?? sigBytes.length) : sigBytes;
       ok = cryptoVerify(spec.digest, Buffer.from(base, 'utf-8'), key, derSig);
     }
   } catch {
@@ -479,7 +555,12 @@ export async function verifyWebhookSignature(
   }
 
   // Step 9: success.
-  return { valid: true, keyid: keyidParam, alg: algParam };
+  return {
+    valid: true,
+    keyid: keyidParam,
+    alg: algParam,
+    ...(tagParam !== undefined ? { tag: tagParam } : {}),
+  };
 }
 
 export type { KeyObject };

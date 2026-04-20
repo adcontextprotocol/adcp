@@ -25,6 +25,23 @@ export const TEST_ED25519_PRIVATE_JWK = {
   d: 'A_rC9vrZ2D1xJWLBXGdRW7CYLAh_f83Gqv8nhly7N2M',
 } as const;
 
+export const TEST_ES256_PUBLIC_JWK = {
+  kid: 'test-es256-2026',
+  kty: 'EC',
+  crv: 'P-256',
+  alg: 'ES256',
+  use: 'sig',
+  key_ops: ['verify'],
+  x: 'vGSQmjzPN1txgDY-oBb108gMsRETA9J5IPxqlBczQOY',
+  y: 'JGIbsHoOnHLL_LFqGYUW43BYDAqGYrNRZUylkE7rqSU',
+} as const;
+
+export const TEST_ES256_PRIVATE_JWK = {
+  ...TEST_ES256_PUBLIC_JWK,
+  key_ops: ['sign'],
+  d: '6QL-bTWRsEbiR2NeE19KnjYUw7CiGxLqLQyBr5MMhKw',
+} as const;
+
 export const TEST_JWKS = {
-  keys: [TEST_ED25519_PUBLIC_JWK],
+  keys: [TEST_ED25519_PUBLIC_JWK, TEST_ES256_PUBLIC_JWK],
 } as const;
