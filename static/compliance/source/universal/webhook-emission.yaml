@@ -111,8 +111,8 @@ phases:
             correlation_id: "webhook_emission--get_capabilities"
         validations:
           - check: field_present
-            path: "operations"
-            description: "Agent declares its supported operations"
+            path: "supported_protocols"
+            description: "Agent declares its supported AdCP protocols"
 
   - id: idempotency_key_presence
     title: "Every webhook payload carries idempotency_key"
