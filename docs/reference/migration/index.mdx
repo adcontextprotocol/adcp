@@ -53,6 +53,8 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
 | Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/implementation/security) |
 | Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/implementation/security) |
+| Webhook signing | Unified on RFC 9421 profile, baseline-required for sellers; HMAC fallback deprecated (removed in 4.0) | New requirement | [Webhooks](/docs/building/implementation/webhooks) |
+| Webhook idempotency | `idempotency_key` required on every webhook payload | New requirement | [Webhooks § Reliability](/docs/building/implementation/webhooks) |
 | Governance | `governance_context` is a signed JWS verified via governance agent JWKS | Restructure | [Governance](/docs/governance/campaign) |
 | IO approval | `MediaBuy.pending_approval` removed — approval is a task-layer object | Restructure | [Media buy lifecycle](/docs/media-buy/media-buys) |
 | Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/docs/governance/annex-iii-obligations) |
