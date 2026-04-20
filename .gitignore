@@ -62,3 +62,6 @@ skills/*/schemas/
 .stripe-webhook-secret
 test-results/
 tests/screenshots/
+
+# C2PA test fixtures — generated at test time, not committed.
+server/tests/fixtures/c2pa/*.pem
