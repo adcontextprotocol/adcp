@@ -22,6 +22,7 @@ import {
   PostgresStateStore,
   structuredSerialize,
   structuredDeserialize,
+  cleanupExpiredIdempotency,
   type AdcpStateStore,
 } from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
@@ -349,6 +350,10 @@ export function startSessionCleanup(): void {
         const taskDeleted = await cleanupExpiredTasks(getPool());
         if (taskDeleted > 0) {
           logger.info({ deleted: taskDeleted }, 'Cleaned up expired MCP tasks');
+        }
+        const idempDeleted = await cleanupExpiredIdempotency(getPool());
+        if (idempDeleted > 0) {
+          logger.info({ deleted: idempDeleted }, 'Cleaned up expired idempotency entries');
         }
       }
     } catch (err) {

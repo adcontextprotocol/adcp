@@ -233,11 +233,19 @@ import { PUBLISHERS } from './publishers.js';
 import {
   isMutatingTool,
   validateKeyFormat,
-  lookupIdempotency,
-  cacheResponse,
   scopedPrincipal,
-  isPrincipalAtCap,
+  getIdempotencyStore,
 } from './idempotency.js';
+import { getWebhookEmitter } from './webhooks.js';
+
+// MCP webhook envelope's `task_type` enum (core.generated TaskType — not re-exported).
+type WebhookTaskType =
+  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
+  | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
+  | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
+  | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
+  | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
+  | 'get_rights' | 'acquire_rights';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -299,6 +307,62 @@ function deriveAccountScope(args: Record<string, unknown>): string | undefined {
 export function clearTaskStore(): void {
   sdkTaskStore?.cleanup();
   sdkTaskStore = null;
+}
+
+/** Map tool name → TaskType for webhook envelopes. Only tools that emit
+ * webhooks need an entry — tools absent from this map never fire an emission
+ * even if the caller supplies a push_notification_config.url. */
+const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
+  create_media_buy: 'create_media_buy',
+  update_media_buy: 'update_media_buy',
+  sync_creatives: 'sync_creatives',
+  activate_signal: 'activate_signal',
+  get_signals: 'get_signals',
+  create_property_list: 'create_property_list',
+  update_property_list: 'update_property_list',
+  get_property_list: 'get_property_list',
+  list_property_lists: 'list_property_lists',
+  delete_property_list: 'delete_property_list',
+  sync_accounts: 'sync_accounts',
+  get_account_financials: 'get_account_financials',
+  get_creative_delivery: 'get_creative_delivery',
+  sync_event_sources: 'sync_event_sources',
+  sync_audiences: 'sync_audiences',
+  sync_catalogs: 'sync_catalogs',
+  log_event: 'log_event',
+  get_brand_identity: 'get_brand_identity',
+  get_rights: 'get_rights',
+  acquire_rights: 'acquire_rights',
+};
+
+function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
+  const pnc = args.push_notification_config as { url?: unknown } | undefined;
+  if (!pnc || typeof pnc !== 'object') return undefined;
+  return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
+}
+
+/**
+ * Derive a stable logical event id for webhook idempotency.
+ *
+ * The `operation_id` feeds `WebhookIdempotencyKeyStore` — two emissions with
+ * the same operation_id reuse the same `idempotency_key`, which is the
+ * cross-attempt invariant receiver-side dedup depends on. We prefer a
+ * buyer-facing entity id from the response (media_buy_id, creative_id,
+ * activation_id, etc.) so retries from the same buyer collapse; if the
+ * response has none, we fall back to the request's idempotency_key which
+ * is already unique per logical submission.
+ */
+function deriveWebhookOperationId(
+  toolName: string,
+  response: Record<string, unknown>,
+  requestIdempotencyKey: string | undefined,
+): string {
+  for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
+    const v = response[field];
+    if (typeof v === 'string' && v.length > 0) return `${toolName}.${v}`;
+  }
+  if (requestIdempotencyKey) return `${toolName}.${requestIdempotencyKey}`;
+  return `${toolName}.${randomUUID()}`;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -3110,6 +3174,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let handlerThrew = false;
     let cachableResponse: Record<string, unknown> | null = null;
     let skipHandler = false;
+    let idempotencyPayloadHash: string | undefined;
+    let idempotencyClaimed = false;
 
     if (isMutatingTool(name)) {
       if (idempotencyKey === undefined || idempotencyKey === null) {
@@ -3132,19 +3198,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           flushable: true,
         };
       }
-      // Fail closed when the cache bucket for this principal is full —
-      // silently dropping the insert would let a retry re-execute and
-      // double-book (security.mdx rule 8).
-      if (isPrincipalAtCap(idempotencyPrincipal)) {
-        return {
-          result: adcpError('RATE_LIMITED', {
-            message: 'Idempotency cache capacity exceeded for this principal. Retry after existing keys expire.',
-            recovery: 'transient',
-          }, callerContext),
-          flushable: true,
-        };
-      }
-      const outcome = lookupIdempotency(idempotencyPrincipal, idempotencyKey, handlerArgs);
+      const store = getIdempotencyStore();
+      const outcome = await store.check({
+        principal: idempotencyPrincipal,
+        key: idempotencyKey,
+        payload: handlerArgs,
+      });
       if (outcome.kind === 'expired') {
         return {
           result: adcpError('IDEMPOTENCY_EXPIRED', {
@@ -3166,17 +3225,35 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           flushable: true,
         };
       }
+      if (outcome.kind === 'in-flight') {
+        // A parallel request with the same key is executing. Retries should
+        // back off and see 'replay' once the in-flight handler saves. Return
+        // a transient error so the caller retries after a brief delay.
+        return {
+          result: adcpError('RATE_LIMITED', {
+            message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
+            recovery: 'transient',
+          }, callerContext),
+          flushable: true,
+        };
+      }
       if (outcome.kind === 'replay') {
         // Cached inner response; envelope fields (`replayed`, `context`) are
         // produced fresh on every response per security.mdx. Replayed
         // responses bypass the handler entirely — no mutations, no flush.
-        const body: Record<string, unknown> = { ...outcome.response, replayed: true };
+        const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
           structuredContent: body,
         };
         skipHandler = true;
+      } else {
+        // 'miss' → the store reserved the claim via putIfAbsent. We must
+        // call save() on success or release() on any other path so the
+        // placeholder doesn't leak.
+        idempotencyPayloadHash = outcome.payloadHash;
+        idempotencyClaimed = true;
       }
     }
 
@@ -3244,30 +3321,60 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error('Internal error: toolResult missing after dispatch');
     }
 
-    // Cache ONLY successful inner responses (security.mdx rule 2+3).
-    // Errors re-execute on retry; structured { errors: [...] } responses
-    // are errors from the buyer's perspective and are not cached either.
+    // Resolve the in-flight claim from check(). Cache only successful inner
+    // responses (security.mdx rule 2+3); errors, structured { errors: [...] }
+    // bodies, and exceptions all release the claim so a retry re-executes.
+    if (idempotencyClaimed && typeof idempotencyKey === 'string') {
+      const store = getIdempotencyStore();
+      const shouldSave =
+        cachableResponse !== null
+        && !toolResult.isError
+        && !handlerThrew;
+      if (shouldSave && idempotencyPayloadHash) {
+        await store.save({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+          payloadHash: idempotencyPayloadHash,
+          response: cachableResponse,
+        });
+      } else {
+        await store.release({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+        });
+      }
+    }
+
+    // Fire completion webhook if the buyer supplied a push URL and the tool
+    // mapped to a TaskType. Emission is fire-and-forget so the sync response
+    // doesn't wait on the receiver; retries/backoff live inside the emitter.
+    const webhookUrl = extractWebhookUrl(handlerArgs);
+    const taskType = TOOL_TO_TASK_TYPE[name];
     if (
-      isMutatingTool(name)
-      && typeof idempotencyKey === 'string'
+      webhookUrl
+      && taskType
       && cachableResponse !== null
       && !toolResult.isError
       && !handlerThrew
     ) {
-      const inserted = cacheResponse(idempotencyPrincipal, idempotencyKey, handlerArgs, cachableResponse);
-      if (!inserted) {
-        // Cap was hit between the pre-check and post-execution insert.
-        // The handler already ran and (likely) mutated state — we can't
-        // undo that. Return RATE_LIMITED so a retry with the same key
-        // doesn't silently re-execute and double-book.
-        return {
-          result: adcpError('RATE_LIMITED', {
-            message: 'Idempotency cache capacity exceeded after request completed. The request succeeded but was not cached; a retry with the same idempotency_key may re-execute.',
-            recovery: 'transient',
-          }, callerContext),
-          flushable: !handlerThrew,
-        };
-      }
+      const emitter = getWebhookEmitter();
+      const operationId = deriveWebhookOperationId(
+        name,
+        cachableResponse,
+        typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+      );
+      const webhookTaskId = (cachableResponse.task_id as string | undefined)
+        ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
+      const payload: Record<string, unknown> = {
+        task_id: webhookTaskId,
+        task_type: taskType,
+        protocol: 'mcp',
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        result: cachableResponse,
+      };
+      void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
+        .catch(err => logger.warn({ err, tool: name, url: webhookUrl }, 'Webhook emission failed'));
     }
 
     // If not task-augmented, return result directly.
