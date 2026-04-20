@@ -86,6 +86,10 @@ Storyboards — scripted compliance scenarios that agents must pass — now live
 
 Compliance runs have three tiers: **universal** storyboards every agent runs (capability discovery, schema validation, error compliance), **domain baselines** for each declared protocol, and **specialism storyboards** for each narrow claim. A per-version protocol tarball at `/protocol/{version}.tgz` lets clients bulk-sync schemas, storyboards, and examples in one request.
 
+<Note>
+**AdCP Verified is self-attested in 3.0.** Agents run the storyboard suite and publish a signed `runner-output.json` with a hash chain over the test-kit corpus. AAO does not audit the output or gate issuance — the Verified stamp means "this agent published passing runner output," not "an auditor confirmed the claim." Independent third-party audit is a 3.1 deliverable. Verifying parties (buyers, integrators, regulators) can re-run any claim against the referenced storyboards and compare output hashes.
+</Note>
+
 <Card title="Compliance Catalog" icon="arrow-right" href="/docs/building/compliance-catalog">
   Full index of domains and specialisms with status flags and storyboard sources.
 </Card>
