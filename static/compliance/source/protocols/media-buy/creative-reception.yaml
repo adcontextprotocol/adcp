@@ -136,16 +136,19 @@ phases:
         sample_request:
           creatives:
             - creative_id: "acme_summer_native_001"
+              name: "Acme Summer Sale — native 2026"
               format_id:
                 agent_url: "https://your-platform.example.com"
                 id: "native_post"
               assets:
                 headline:
                   asset_type: "text"
-                  text: "Summer Sale — 40% Off All Gear"
+                  content: "Summer Sale — 40% Off All Gear"
                 image:
                   asset_type: "image"
                   url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                  width: 1200
+                  height: 628
                 click_url:
                   asset_type: "url"
                   url: "https://acme-outdoor.example.com/summer-sale"

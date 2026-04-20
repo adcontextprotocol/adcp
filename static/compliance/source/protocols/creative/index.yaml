@@ -171,6 +171,8 @@ phases:
                 image:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
                   mime_type: "image/png"
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s Video"
@@ -191,6 +193,8 @@ phases:
                 image:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-native.png"
+                  width: 1200
+                  height: 628
                   mime_type: "image/png"
                 headline:
                   asset_type: "text"
