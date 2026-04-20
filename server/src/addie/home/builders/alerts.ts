@@ -72,7 +72,7 @@ export async function buildAlerts(memberContext: MemberContext): Promise<AlertSe
       title: 'Add Your Company Logo',
       message: 'Upload a logo to appear on the member directory and homepage',
       actionLabel: 'Add Logo',
-      actionUrl: 'https://agenticadvertising.org/dashboard-settings',
+      actionUrl: 'https://agenticadvertising.org/member-profile',
     });
   }
 

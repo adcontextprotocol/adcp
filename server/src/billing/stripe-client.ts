@@ -262,6 +262,51 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
 }
 
 /**
+ * Resolve a casual or aliased lookup key (e.g. "explorer", "explorer_annual",
+ * "professional_annual") to a canonical product like "aao_membership_explorer_50".
+ *
+ * Why: callers — especially Addie's LLM — sometimes invent intuitive keys
+ * derived from the tier name and billing interval rather than passing the
+ * exact lookup_key returned by find_membership_products.
+ *
+ * Safety: resolution must be *unambiguous*. If the alias could match more
+ * than one canonical product (e.g. "professional" → both `_250` annual and
+ * `_monthly`; "individual" → both `_individual` and `_individual_discounted`;
+ * "corporate" → `_5m`, `_50m`, `_under5m`), we refuse to guess and return
+ * undefined so the caller falls back to the "No price found" error with the
+ * full list of valid keys. Silently picking "first match wins" would risk
+ * charging the wrong price.
+ *
+ * TODO(#2550): This resolver is a band-aid. The root fix is in the Addie
+ * tool layer: tighten `find_membership_products` / `create_payment_link`
+ * tool descriptions so the LLM passes lookup_key verbatim, and surface a
+ * `did_you_mean` field in the tool response so the model learns the
+ * canonical key. As soon as the catalog gains a monthly Explorer SKU,
+ * `explorer_annual` will collide here and stop resolving — track interval
+ * preservation in #2550 too.
+ */
+export function resolveLookupKeyAlias(input: string, products: BillingProduct[]): BillingProduct | undefined {
+  const trimmed = input.trim().toLowerCase();
+  const normalized = trimmed
+    .replace(/^aao_/, '')
+    .replace(/^membership_/, '')
+    .replace(/_(annual|annually|monthly|yearly)$/, '');
+
+  if (!normalized) return undefined;
+
+  const matches = products.filter(p => {
+    const key = (p.lookup_key || '').toLowerCase();
+    return key === `aao_membership_${normalized}`
+      || key.startsWith(`aao_membership_${normalized}_`)
+      || key === `aao_${normalized}`
+      || key.startsWith(`aao_${normalized}_`);
+  });
+
+  if (matches.length !== 1) return undefined;
+  return matches[0];
+}
+
+/**
  * Get a specific price by lookup key
  */
 export async function getPriceByLookupKey(lookupKey: string): Promise<string | null> {
@@ -291,6 +336,15 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     }
   } catch (error) {
     logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error in direct Stripe lookup');
+  }
+
+  const aliased = resolveLookupKeyAlias(lookupKey, cachedProducts);
+  if (aliased) {
+    logger.info(
+      { lookupKey, resolvedKey: aliased.lookup_key, priceId: aliased.price_id },
+      'getPriceByLookupKey: Resolved alias to canonical lookup key',
+    );
+    return aliased.price_id;
   }
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);

@@ -98,6 +98,12 @@ An agent may have access to multiple accounts (e.g., an agency managing several 
 
 For schema definitions, see [`account.json`](https://adcontextprotocol.org/schemas/v3/core/account.json).
 
+## Tenant resolution
+
+AdCP resolves tenant from the authenticated principal, not from request payloads. Seller agents map the authenticated identity (bearer token, mTLS client cert, or RFC 9421 key) to the originating buyer's account via their own authorization context. Task payloads never carry tenant identity as a substitute for authentication — when a schema requires a globally-unique resource ID (`plan_id`, `rights_id`, `standards_id`, `event_source_id`, `list_id`) rather than an `account` envelope, the seller resolves ID → tenant via the same authorization context. The authenticated principal must hold access to the referenced resource, and the resource itself carries the brand it was provisioned for; envelope identity on those calls would be redundant and, if it disagreed with the authenticated principal, a spoofing vector.
+
+Compliance storyboards in the training agent inject envelope identity on these calls as a sandbox routing convention, because the training agent has no authenticated-principal layer of its own — see [Storyboard authoring](/docs/contributing/storyboard-authoring). Production sellers do not require it.
+
 ## Protocol Configuration
 
 Both MCP and A2A protocols use the same authentication header. Configure your client with:
