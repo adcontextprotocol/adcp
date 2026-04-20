@@ -166,9 +166,13 @@ Every request carries an explicit `account` (via `account_id` for explicit-accou
 
 ```javascript
 // Two-step: precheck request account is authorized, then scope the query to it.
+// authorizedAccountIds is a Set<string> populated once at auth-time, not an Array.
+// Set.has() is O(1); Array.includes() is O(n) and scans element-by-element, which
+// on large authorized-account sets introduces a timing difference between early
+// and late matches that a caller can probe across requests.
 async function getMediaBuy(mediaBuyId, requestAccountId, authAgent) {
   // Step 1: auth precheck
-  if (!authAgent.authorizedAccountIds.includes(requestAccountId)) {
+  if (!authAgent.authorizedAccountIds.has(requestAccountId)) {
     // Generic error - don't reveal whether the account exists
     throw new NotFoundError("Media buy not found");
   }
