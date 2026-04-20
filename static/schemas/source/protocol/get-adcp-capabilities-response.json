@@ -870,12 +870,12 @@
         },
         "profile": {
           "type": "string",
-          "enum": ["adcp-webhook-9421-v1"],
-          "description": "Identifier of the webhook-signing profile version the agent emits. Closed enum so receivers can statically validate the declared profile; future profile revisions will extend this enum in a follow-up schema bump."
+          "enum": ["adcp/webhook-signing/v1"],
+          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
           "type": "array",
-          "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp-webhook-9421-v1.",
+          "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
           "items": {
             "type": "string",
             "enum": ["ed25519", "ecdsa-p256-sha256"]
@@ -897,7 +897,7 @@
       "properties": {
         "per_principal_key_isolation": {
           "type": "boolean",
-          "description": "When true, this multi-principal operator scopes signing keys per-principal via the `{operator}:{principal}:{key_version}` keyid convention so a single principal's key compromise does not silently re-scope across principals served by the same operator. See docs/building/understanding/security-model.mdx.",
+          "description": "When true, this multi-principal operator scopes signing keys per-principal so a single principal's key compromise does not silently re-scope across principals served by the same operator. `kid` values remain opaque to verifiers per RFC 7517; any operator-side naming convention (e.g., `{operator}:{principal}:{key_version}`) is internal bookkeeping and MUST NOT be parsed by verifiers. See docs/building/understanding/security-model.mdx.",
           "default": false
         },
         "key_origins": {
