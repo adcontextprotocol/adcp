@@ -233,6 +233,8 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
         vibe,
         palette: 'amber',
         status: 'generated',
+        c2pa_signed_at: result.c2pa?.signedAt,
+        c2pa_manifest_digest: result.c2pa?.manifestDigest,
       });
 
       // Update image_url to the serving path
