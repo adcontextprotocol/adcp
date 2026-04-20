@@ -30,6 +30,7 @@ import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
+import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -3738,6 +3739,29 @@ export class HTTPServer {
                 invalidateMemberContextCache();
                 invalidateMembershipCache(org.workos_organization_id);
 
+                // Auto-publish directory listing on fresh activation only.
+                // Scoped to subscription.created to avoid clobbering a later
+                // manual unpublish on renewals / tier changes.
+                if (
+                  event.type === 'customer.subscription.created' &&
+                  (TIER_PRESERVING_STATUSES as readonly string[]).includes(subUpdate.subscription_status)
+                ) {
+                  try {
+                    await ensureMemberProfilePublished({
+                      orgId: org.workos_organization_id,
+                      orgName: org.name ?? '',
+                      source: `stripe:${event.type}`,
+                    });
+                  } catch (err) {
+                    // Don't fail the webhook — the backlog endpoint surfaces
+                    // orgs we missed so an operator can clean them up.
+                    logger.error(
+                      { err, orgId: org.workos_organization_id },
+                      'Failed to auto-publish member profile on activation',
+                    );
+                  }
+                }
+
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
                   // Record audit log for subscription cancellation (use system user since webhook context)
@@ -3932,6 +3956,22 @@ export class HTTPServer {
                 // Invalidate member context cache
                 invalidateMemberContextCache();
                 invalidateMembershipCache(org.workos_organization_id);
+
+                // Auto-publish directory listing on fresh invoice activation.
+                // The UPDATE above is guarded by `subscription_status != 'active'`,
+                // so reaching here means this was an actual transition to active.
+                try {
+                  await ensureMemberProfilePublished({
+                    orgId: org.workos_organization_id,
+                    orgName: org.name ?? '',
+                    source: `stripe:${event.type}`,
+                  });
+                } catch (err) {
+                  logger.error(
+                    { err, orgId: org.workos_organization_id },
+                    'Failed to auto-publish member profile on invoice activation',
+                  );
+                }
               }
 
               // Record revenue event
