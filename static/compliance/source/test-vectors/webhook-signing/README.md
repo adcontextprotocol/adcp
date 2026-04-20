@@ -4,7 +4,7 @@ Test vectors for the AdCP RFC 9421 webhook-signing profile. These fixtures drive
 
 Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/implementation/security#webhook-callbacks) in `docs/building/implementation/security.mdx`.
 
-**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/test-vectors/webhook-signing/` (tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable). SDKs SHOULD fetch from the CDN path rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/test-vectors/webhook-signing/positive/001-basic-post.json`.
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/webhook-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/webhook-signing/positive/001-basic-post.json`.
 
 ## ⚠️ Security — test keys are public
 
