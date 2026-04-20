@@ -268,23 +268,34 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
  * Why: callers — especially Addie's LLM — sometimes invent intuitive keys
  * derived from the tier name and billing interval rather than passing the
  * exact lookup_key returned by find_membership_products.
+ *
+ * Safety: resolution must be *unambiguous*. If the alias could match more
+ * than one canonical product (e.g. "professional" → both `_250` annual and
+ * `_monthly`; "individual" → both `_individual` and `_individual_discounted`;
+ * "corporate" → `_5m`, `_50m`, `_under5m`), we refuse to guess and return
+ * undefined so the caller falls back to the "No price found" error with the
+ * full list of valid keys. Silently picking "first match wins" would risk
+ * charging the wrong price.
  */
 export function resolveLookupKeyAlias(input: string, products: BillingProduct[]): BillingProduct | undefined {
-  const normalized = input
-    .toLowerCase()
+  const trimmed = input.trim().toLowerCase();
+  const normalized = trimmed
     .replace(/^aao_/, '')
     .replace(/^membership_/, '')
-    .replace(/_(annual|annually|monthly|yearly|year|month)$/i, '');
+    .replace(/_(annual|annually|monthly|yearly)$/, '');
 
   if (!normalized) return undefined;
 
-  return products.find(p => {
+  const matches = products.filter(p => {
     const key = (p.lookup_key || '').toLowerCase();
     return key === `aao_membership_${normalized}`
       || key.startsWith(`aao_membership_${normalized}_`)
       || key === `aao_${normalized}`
       || key.startsWith(`aao_${normalized}_`);
   });
+
+  if (matches.length !== 1) return undefined;
+  return matches[0];
 }
 
 /**
