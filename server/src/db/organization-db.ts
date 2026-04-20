@@ -1439,26 +1439,31 @@ export class OrganizationDatabase {
     let existing = 0;
 
     try {
-      // List all organizations from WorkOS
-      const orgs = await workos.organizations.listOrganizations({
-        limit: 100, // Paginate if needed in the future
-      });
+      // Paginate through all organizations from WorkOS (limit is per-page max)
+      let after: string | undefined;
+      do {
+        const orgs = await workos.organizations.listOrganizations({
+          limit: 100,
+          after,
+        });
 
-      for (const workosOrg of orgs.data) {
-        const localOrg = await this.getOrganization(workosOrg.id);
+        for (const workosOrg of orgs.data) {
+          const localOrg = await this.getOrganization(workosOrg.id);
 
-        if (!localOrg) {
-          // Create the org locally
-          await this.createOrganization({
-            workos_organization_id: workosOrg.id,
-            name: workosOrg.name,
-          });
-          synced++;
-          logger.info({ orgId: workosOrg.id, name: workosOrg.name }, 'Synced organization from WorkOS');
-        } else {
-          existing++;
+          if (!localOrg) {
+            await this.createOrganization({
+              workos_organization_id: workosOrg.id,
+              name: workosOrg.name,
+            });
+            synced++;
+            logger.info({ orgId: workosOrg.id, name: workosOrg.name }, 'Synced organization from WorkOS');
+          } else {
+            existing++;
+          }
         }
-      }
+
+        after = orgs.listMetadata?.after ?? undefined;
+      } while (after);
 
       if (synced > 0) {
         logger.info({ synced, existing }, 'WorkOS organization sync complete');
@@ -1467,6 +1472,37 @@ export class OrganizationDatabase {
       return { synced, existing };
     } catch (error) {
       logger.error({ error }, 'Failed to sync organizations from WorkOS');
+      throw error;
+    }
+  }
+
+  /**
+   * Ensure a local organizations row exists for a WorkOS organization.
+   * Fetches the org from WorkOS (for its name) and creates the local row if missing.
+   * Safe to call on every login — cheap no-op when the row already exists.
+   */
+  async ensureOrganizationExists(
+    workos: WorkOS,
+    workos_organization_id: string
+  ): Promise<Organization> {
+    const existing = await this.getOrganization(workos_organization_id);
+    if (existing) return existing;
+
+    const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
+    try {
+      const created = await this.createOrganization({
+        workos_organization_id,
+        name: workosOrg.name,
+      });
+      logger.info(
+        { orgId: workos_organization_id, name: workosOrg.name },
+        'Lazily created local organization row from WorkOS'
+      );
+      return created;
+    } catch (error) {
+      // Race: another request may have created it between our check and insert.
+      const afterRace = await this.getOrganization(workos_organization_id);
+      if (afterRace) return afterRace;
       throw error;
     }
   }
@@ -1547,11 +1583,20 @@ export class OrganizationDatabase {
     user_name?: string;
   }): Promise<void> {
     const pool = getPool();
-    await pool.query(
+    // Only record if the organization exists locally. The local row is created
+    // on first billing/agreement event, so early logins may arrive before it.
+    const result = await pool.query(
       `INSERT INTO org_activities (organization_id, activity_type, logged_by_user_id, logged_by_name, activity_date)
-       VALUES ($1, 'dashboard_login', $2, $3, NOW())`,
+       SELECT $1, 'dashboard_login', $2, $3, NOW()
+       WHERE EXISTS (SELECT 1 FROM organizations WHERE workos_organization_id = $1)`,
       [data.workos_organization_id, data.workos_user_id, data.user_name || null]
     );
+    if (result.rowCount === 0) {
+      logger.debug(
+        { workos_organization_id: data.workos_organization_id, workos_user_id: data.workos_user_id },
+        'Skipped login activity record: organization not present in local DB yet'
+      );
+    }
   }
 
   /**
