@@ -246,25 +246,30 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
   const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
 
   // ── Custom tools outside AdcpToolMap ─────────────────────────
-  // Registered through the framework's `customTools` config (5.4). Each
-  // is a passthrough-input tool — real validation lives inside the
-  // legacy handler. A thin wrapper constructs TrainingContext from the
-  // MCP SDK's auth extra and produces the same AdaptedResponse shape
-  // the domain adapter emits.
-  const passthroughInput = { _passthrough: z.any().optional() };
+  // Registered through the framework's `customTools` config (5.4).
+  // Each tool ships a real zod inputSchema so `tools/list` publishes the
+  // actual argument contract — MCP clients (Claude Desktop, inspector,
+  // schema-driven callers) see the real fields instead of a `_passthrough`
+  // placeholder. Handlers still do semantic validation (NOT_FOUND,
+  // VALIDATION_ERROR); zod only gates type shape at the MCP surface.
+  //
+  // Schemas are permissive (`.passthrough()` / `z.any()` nested) because
+  // the training agent emulates a full seller/brand and accepts spec
+  // payload variants that evolve faster than we want to tighten here.
 
-  function customToolFor(name: string, description: string, handler: LegacyHandler): AdcpCustomToolConfig<typeof passthroughInput, undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function customToolFor(name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, handler: LegacyHandler): AdcpCustomToolConfig<any, undefined> {
     return {
       description,
-      inputSchema: passthroughInput,
-      handler: async (args, extra) => {
+      inputSchema,
+      handler: async (args: unknown, extra: unknown) => {
         const params = (args as Record<string, unknown>) ?? {};
-        const authInfo = (extra?.authInfo ?? undefined) as { clientId?: string } | undefined;
+        const authInfo = ((extra as { authInfo?: { clientId?: string } } | undefined)?.authInfo) ?? undefined;
         const trainingCtx: TrainingContext = {
           mode: 'open',
           principal: authInfo?.clientId ?? 'anonymous',
         };
-        const { context: callerContext, _passthrough: _pt, ...handlerArgs } = params;
+        const { context: callerContext, ...handlerArgs } = params;
         try {
           const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
           return toAdaptedResponse(result, callerContext);
@@ -275,6 +280,116 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
       },
     };
   }
+
+  const ACCOUNT_REF = z.object({
+    publisher_id: z.string().optional(),
+    buyer_id: z.string().optional(),
+    sandbox: z.boolean().optional(),
+  }).passthrough().optional();
+
+  const BRAND_REF = z.object({
+    domain: z.string().optional(),
+  }).passthrough().optional();
+
+  const CONTEXT_REF = z.any().optional();
+
+  const CREATIVE_APPROVAL_SCHEMA = {
+    rights_id: z.string().optional(),
+    rights_grant_id: z.string().optional(),
+    creative_url: z.string().optional(),
+    creative_id: z.string().optional(),
+    creative_format: z.string().optional(),
+    creative: z.object({
+      creative_id: z.string().optional(),
+      format: z.string().optional(),
+      assets: z.array(z.any()).optional(),
+    }).passthrough().optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const UPDATE_RIGHTS_SCHEMA = {
+    rights_id: z.string(),
+    end_date: z.string().optional(),
+    impression_cap: z.number().optional(),
+    paused: z.boolean().optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const VALIDATE_PROPERTY_DELIVERY_SCHEMA = {
+    list_id: z.string(),
+    account: ACCOUNT_REF,
+    records: z.array(z.object({
+      identifier: z.object({ type: z.string(), value: z.string() }).passthrough(),
+      impressions: z.number().int().min(0),
+      record_id: z.string().optional(),
+    }).passthrough()),
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const CREATE_COLLECTION_LIST_SCHEMA = {
+    name: z.string(),
+    description: z.string().optional(),
+    base_collections: z.array(z.any()).optional(),
+    filters: z.record(z.string(), z.any()).optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const GET_COLLECTION_LIST_SCHEMA = {
+    list_id: z.string(),
+    resolve: z.boolean().optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const UPDATE_COLLECTION_LIST_SCHEMA = {
+    list_id: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    base_collections: z.array(z.any()).optional(),
+    filters: z.record(z.string(), z.any()).optional(),
+    webhook_url: z.string().optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const LIST_COLLECTION_LISTS_SCHEMA = {
+    name_contains: z.string().optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const DELETE_COLLECTION_LIST_SCHEMA = {
+    list_id: z.string(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
+
+  const COMPLY_TEST_CONTROLLER_SCHEMA = {
+    scenario: z.enum([
+      'list_scenarios',
+      'force_creative_status',
+      'force_account_status',
+      'force_media_buy_status',
+      'force_session_status',
+      'simulate_delivery',
+      'simulate_budget_spend',
+    ]),
+    params: z.record(z.string(), z.any()).optional(),
+    account: ACCOUNT_REF,
+    brand: BRAND_REF,
+    context: CONTEXT_REF,
+  };
 
   const allChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))]
     .map(c => MediaChannelSchema.parse(c))
@@ -287,6 +402,13 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     idempotency: getIdempotencyStore(),
     webhooks: { signerKey: getWebhookSigningKey() },
 
+    // Only `static:public` is account-scoped: it's the shared sandbox token,
+    // so unscoped idempotency keys would collide across callers. Other
+    // principals (`workos:<orgId>`, `static:primary`, `signing:<keyid>`) are
+    // single-caller and use the auth principal directly — callers that want
+    // account isolation within one org include `account.{publisher,buyer}_id`
+    // in the idempotency key payload, which the SDK's canonical hash already
+    // differentiates. Revisit if a shared-token pattern emerges for orgs.
     resolveIdempotencyPrincipal: (ctx: HandlerContext, params: Record<string, unknown>, _toolName: AdcpServerToolName) => {
       const auth = ctx.authInfo?.clientId ?? 'anonymous';
       if (auth !== 'static:public') return auth;
@@ -423,29 +545,29 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
 
     customTools: {
-      creative_approval: customToolFor('creative_approval', 'Approve or reject a creative asset for a media buy.', handleCreativeApproval),
-      update_rights: customToolFor('update_rights', 'Update the terms of an active rights grant.', handleUpdateRights),
-      validate_property_delivery: customToolFor('validate_property_delivery', 'Validate that delivered properties comply with a property list.', handleValidatePropertyDelivery),
-      create_collection_list: customToolFor('create_collection_list', 'Create a collection list of property list references.', handleCreateCollectionList),
-      get_collection_list: customToolFor('get_collection_list', 'Fetch a collection list by id.', handleGetCollectionList),
-      update_collection_list: customToolFor('update_collection_list', 'Update a collection list\'s member references.', handleUpdateCollectionList),
-      list_collection_lists: customToolFor('list_collection_lists', 'List all collection lists in the session.', handleListCollectionLists),
-      delete_collection_list: customToolFor('delete_collection_list', 'Delete a collection list by id.', handleDeleteCollectionList),
-      comply_test_controller: customToolFor('comply_test_controller', 'Training-agent compliance helper for forcing statuses and simulating delivery/spend.', handleComplyTestController),
+      creative_approval: customToolFor('creative_approval', 'Submit a generated creative for brand approval against rights grant terms.', CREATIVE_APPROVAL_SCHEMA, handleCreativeApproval),
+      update_rights: customToolFor('update_rights', 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.', UPDATE_RIGHTS_SCHEMA, handleUpdateRights),
+      validate_property_delivery: customToolFor('validate_property_delivery', 'Validate that delivered properties comply with a property list.', VALIDATE_PROPERTY_DELIVERY_SCHEMA, handleValidatePropertyDelivery),
+      create_collection_list: customToolFor('create_collection_list', 'Create a collection list for program-level brand safety.', CREATE_COLLECTION_LIST_SCHEMA, handleCreateCollectionList),
+      get_collection_list: customToolFor('get_collection_list', 'Retrieve a collection list with optional resolution.', GET_COLLECTION_LIST_SCHEMA, handleGetCollectionList),
+      update_collection_list: customToolFor('update_collection_list', 'Modify an existing collection list.', UPDATE_COLLECTION_LIST_SCHEMA, handleUpdateCollectionList),
+      list_collection_lists: customToolFor('list_collection_lists', 'List collection lists owned by the given account.', LIST_COLLECTION_LISTS_SCHEMA, handleListCollectionLists),
+      delete_collection_list: customToolFor('delete_collection_list', 'Delete a collection list.', DELETE_COLLECTION_LIST_SCHEMA, handleDeleteCollectionList),
+      comply_test_controller: customToolFor('comply_test_controller', 'Training-agent compliance helper for forcing statuses and simulating delivery/spend. Sandbox only.', COMPLY_TEST_CONTROLLER_SCHEMA, handleComplyTestController),
     },
   });
 
-  logger.info({ signingCap: signingCap.supported }, 'Framework training agent server constructed');
+  logger.debug({ signingCap: signingCap.supported }, 'Framework training agent server constructed');
 
   return server;
 }
 
 /**
- * Returns true when the framework path should be used. Default is ON (the
- * framework path is authoritative); set `TRAINING_AGENT_USE_FRAMEWORK=0`
- * (or `false`) to drop back to the legacy hand-rolled dispatch for
- * regression triage. Will be removed entirely once the legacy path is
- * deleted.
+ * Returns true when the framework path should be used. Default is OFF —
+ * the legacy hand-rolled dispatch remains authoritative until framework
+ * zod parity is verified end-to-end. Set `TRAINING_AGENT_USE_FRAMEWORK=1`
+ * to opt in. Default will flip to ON once the framework path passes every
+ * storyboard the legacy path passes.
  */
 export function useFrameworkServer(): boolean {
   const v = process.env.TRAINING_AGENT_USE_FRAMEWORK;

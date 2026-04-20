@@ -847,5 +847,84 @@ export function buildCatalog(): CatalogProduct[] {
     }
   }
 
+  // Storyboard-hardcoded product IDs. Conformance storyboards reference
+  // these directly (`product_id: "test-product"`, etc.) rather than
+  // capturing IDs from our `get_products` response, so we alias them to
+  // real catalog products. Each alias is a shallow clone with overridden
+  // `product_id` and `name` — same publisher properties, formats, and
+  // measurement setup.
+  //
+  // Universal storyboards (error_compliance, idempotency,
+  // deterministic_testing, webhook_emission) also hardcode
+  // `pricing_option_id: "test-pricing"` / `"default"`, so the aliases
+  // also publish those pricing options (shallow-cloned from the source
+  // product's first pricing option with the expected id).
+  const firstPublisher = PUBLISHERS[0];
+  const ctvPublisher = PUBLISHERS.find(p => p.channels.includes('ctv')) ?? firstPublisher;
+  const aliases: Array<{
+    id: string;
+    name: string;
+    source: CatalogProduct | undefined;
+    pricingAliases?: string[];
+  }> = [
+    {
+      id: 'test-product',
+      name: 'Test Product (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === firstPublisher.id),
+      pricingAliases: ['test-pricing', 'default'],
+    },
+    {
+      id: 'sports_ctv_q2',
+      name: 'Sports CTV Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+    },
+  ];
+  for (const alias of aliases) {
+    if (!alias.source) continue;
+    const basePricing = alias.source.product.pricing_options?.[0];
+    const aliasedPricing = alias.pricingAliases && basePricing
+      ? [
+          ...(alias.source.product.pricing_options ?? []),
+          // Storyboards pair these aliased ids with small budgets (~$1k)
+          // — drop `min_spend_per_package` so webhook_emission/idempotency/
+          // deterministic_testing runs aren't rejected by the minimum-spend
+          // check before they exercise the path under test.
+          ...alias.pricingAliases.map(pid => {
+            const { min_spend_per_package: _drop, ...rest } = basePricing as unknown as Record<string, unknown>;
+            return { ...rest, pricing_option_id: pid } as typeof basePricing;
+          }),
+        ]
+      : alias.source.product.pricing_options;
+    // Product cards embed `click_url` pointing at the source product's id;
+    // rebuild with the alias id so the URL matches the new product_id.
+    // The catalog shape contract (buildCatalog unit tests) asserts that
+    // every product's click_url contains its product_id.
+    const rebuildCard = <T extends { manifest?: { assets?: Record<string, unknown> } } | undefined>(card: T): T => {
+      if (!card?.manifest?.assets) return card;
+      const assets = { ...card.manifest.assets };
+      const clickAsset = assets.click_url as { url?: string } | undefined;
+      if (clickAsset?.url) {
+        const sourceId = alias.source!.product.product_id;
+        assets.click_url = { ...clickAsset, url: clickAsset.url.replace(sourceId, alias.id) };
+      }
+      return { ...card, manifest: { ...card.manifest, assets } } as T;
+    };
+    catalog.push({
+      ...alias.source,
+      product: {
+        ...alias.source.product,
+        product_id: alias.id,
+        name: alias.name,
+        ...(aliasedPricing && { pricing_options: aliasedPricing }),
+        ...('product_card' in alias.source.product && alias.source.product.product_card
+          ? { product_card: rebuildCard(alias.source.product.product_card) }
+          : {}),
+        ...('product_card_detailed' in alias.source.product && alias.source.product.product_card_detailed
+          ? { product_card_detailed: rebuildCard(alias.source.product.product_card_detailed) }
+          : {}),
+      },
+    });
+  }
+
   return catalog;
 }

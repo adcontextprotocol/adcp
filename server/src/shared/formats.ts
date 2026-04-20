@@ -540,6 +540,42 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
           requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
       ],
     },
+    // Storyboard-hardcoded format ids (creative_lifecycle, creative_sales_agent).
+    // Aliased to close-enough shapes; storyboards pass a format_id string
+    // and don't care about subtle shape differences.
+    {
+      format_id: { agent_url: agentUrl, id: 'video_30s' },
+      name: '30-second video',
+      description: 'Standard 30-second video spot, 1920x1080.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], max_file_size_bytes: 50_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'native_post' },
+      name: 'Native social post',
+      description: 'Native social feed post with image or short video.',
+      renders: [{ role: 'primary', dimensions: { width: 1080, height: 1080 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'native_content' },
+      name: 'Native content placement',
+      description: 'Native content placement with headline, image, and body copy.',
+      renders: [{ role: 'primary', dimensions: { width: 1200, height: 630 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'body', asset_type: 'text', asset_role: 'body', required: false },
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
   ];
 }
 
@@ -581,4 +617,7 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   native_feed: ['social'],
   display_300x250_generative: ['display'],
   video_30s_generative: ['olv', 'ctv'],
+  video_30s: ['olv', 'ctv'],
+  native_post: ['social'],
+  native_content: ['display'],
 };

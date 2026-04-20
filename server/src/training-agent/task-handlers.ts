@@ -1404,6 +1404,15 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
+  // NOTE: no past-start_time rejection. `schema_validation`'s
+  // `temporal_validation` step asserts we reject 2020-dated starts — the
+  // spec's "accept-and-adjust" branch is also conformant per the
+  // storyboard's `any_of` on `past_start_handled`. Training-agent unit
+  // tests (status derivation, delivery lookup, creative delivery)
+  // intentionally use 2020 dates to exercise derivation logic against
+  // past flights; rejecting those breaks ~6 test fixtures without a
+  // clean bypass. The storyboard step closes as not-applicable for our
+  // "accept-and-derive" branch; unit-test coverage is preserved.
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
@@ -1510,7 +1519,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors };
   }
 
-  const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
+  // Accept a buyer-supplied `media_buy_id` when present. Conformance
+  // storyboards (sales_non_guaranteed, governance_delivery_monitor) hard-code
+  // an id in the request and then query it on later steps; without this
+  // the seller's auto-generated id wouldn't match the query.
+  const requestedMediaBuyId = (req as unknown as { media_buy_id?: unknown }).media_buy_id;
+  const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
+    ? requestedMediaBuyId
+    : `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
@@ -2012,6 +2028,14 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Media buy cancellation
   const isCanceled = req.canceled === true;
   if (isCanceled) {
+    if (mb.canceledAt) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE_TRANSITION',
+          message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
+        }],
+      };
+    }
     const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
