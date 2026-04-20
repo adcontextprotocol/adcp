@@ -20,6 +20,7 @@ import {
   type Authenticator,
   type AuthPrincipal,
 } from '@adcp/client/server';
+import { RequestSignatureError } from '@adcp/client/signing';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
@@ -73,13 +74,13 @@ function buildAuthenticator(): Authenticator | null {
   if (TRAINING_AGENT_TOKEN) staticKeys[TRAINING_AGENT_TOKEN] = { principal: 'static:primary' };
   if (PUBLIC_TEST_AGENT_TOKEN) staticKeys[PUBLIC_TEST_AGENT_TOKEN] = { principal: 'static:public' };
 
-  const authenticators: Authenticator[] = [];
+  const bearerAuths: Authenticator[] = [];
   if (Object.keys(staticKeys).length > 0) {
-    authenticators.push(verifyApiKey({ keys: staticKeys }));
+    bearerAuths.push(verifyApiKey({ keys: staticKeys }));
   }
   if (workos) {
     const workosClient = workos; // narrow for closure
-    authenticators.push(verifyApiKey({
+    bearerAuths.push(verifyApiKey({
       verify: async (token) => {
         if (!isWorkOSApiKeyFormat(token)) return null;
         const result = await workosClient.apiKeys.validateApiKey({ value: token });
@@ -90,20 +91,36 @@ function buildAuthenticator(): Authenticator | null {
       },
     }));
   }
-  // Signed requests: valid RFC 9421 signatures authenticate without a bearer.
-  // `signed-requests` specialism vectors POST signed-but-bearerless requests;
-  // this composition lets them reach the verifier instead of dying at the
-  // bearer gate. 5.5+ feature.
-  authenticators.push(verifySignatureAsAuthenticator_());
-  if (authenticators.length === 0) return null;
-  return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
+
+  const bearerChain = bearerAuths.length === 0 ? null
+    : bearerAuths.length === 1 ? bearerAuths[0]
+    : anyOf(...bearerAuths);
+  const signingAuth = lazySigningAuthenticator();
+
+  // Presence-gated composition: if the client sends a signature, that
+  // signature MUST verify — we do not fall through to bearer auth on an
+  // invalid signature. This matches the spec semantics for the
+  // `signed-requests` specialism (every negative conformance vector
+  // depends on the verifier rejecting a bad signature rather than
+  // accepting the request via an also-present bearer token).
+  //
+  // anyOf() cannot express this: it catches AuthError from each
+  // authenticator and tries the next one. The right shape is upstream
+  // as verifySignatureIfPresent / requireSignatureWhenPresent — filed
+  // as adcp-client#659. Local wrapper until the SDK ships that helper.
+  return async (req) => {
+    const hasSignature = req.headers['signature-input'] !== undefined;
+    if (hasSignature) return signingAuth(req);
+    if (bearerChain) return bearerChain(req);
+    return null;
+  };
 }
 
 // Wrapped so the signing authenticator is lazily built on first auth call —
 // avoids reading the compliance test JWKS at module import time, which would
 // break test setups that mock the compliance cache.
 let _signingAuth: Authenticator | null = null;
-function verifySignatureAsAuthenticator_(): Authenticator {
+function lazySigningAuthenticator(): Authenticator {
   return (req) => {
     if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
     return _signingAuth(req);
@@ -124,10 +141,27 @@ async function requireToken(req: Request, res: Response, next: NextFunction): Pr
   try {
     principal = await authenticator(req);
   } catch (err) {
+    logger.warn({ err }, 'Training agent: authentication error');
+    // When a signature verification failure bubbles up from
+    // `verifySignatureAsAuthenticator`, it arrives as `AuthError` with a
+    // `RequestSignatureError` cause. Hand the SDK error code to
+    // `respondUnauthorized` so the response carries
+    // `WWW-Authenticate: Signature error="<code>"` — the shape the
+    // `signed_requests` conformance vectors grade against.
+    const sigCause = err instanceof AuthError && err.cause instanceof RequestSignatureError
+      ? err.cause
+      : null;
+    if (sigCause) {
+      // `respondUnauthorized` hardcodes `Bearer` as the challenge scheme.
+      // Emit the Signature challenge directly so the conformance grader's
+      // `WWW-Authenticate: Signature ...` extractor can read the error code.
+      res.set('WWW-Authenticate', `Signature realm="mcp", error="${sigCause.code}"`);
+      res.status(401).json({ error: sigCause.code, error_description: sigCause.message });
+      return;
+    }
     const publicMessage = err instanceof AuthError
       ? err.publicMessage
       : 'Authentication failed';
-    logger.warn({ err }, 'Training agent: authentication error');
     respondUnauthorized(req, res, {
       error: 'invalid_token',
       errorDescription: publicMessage,
@@ -160,6 +194,18 @@ export function createTrainingAgentRouter(): Router {
 
   // Start session cleanup
   startSessionCleanup();
+
+  // Eagerly initialize the signing authenticator so missing/corrupt
+  // compliance JWKS fixtures fail loud at boot rather than as an opaque
+  // 401 on the first signed request.
+  if (authenticator) {
+    try {
+      if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
+    } catch (err) {
+      logger.fatal({ err }, 'Training agent: failed to initialise signing authenticator');
+      throw err;
+    }
+  }
 
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
@@ -262,7 +308,6 @@ export function createTrainingAgentRouter(): Router {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let server: any = null;
     try {
-      // Build training context (open mode for now; training mode in Stage 2).
       // Principal is set by requireToken; defaults to 'anonymous' in dev mode
       // when no tokens are configured.
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
