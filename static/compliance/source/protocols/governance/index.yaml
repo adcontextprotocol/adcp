@@ -147,10 +147,8 @@ phases:
         sample_request:
           accounts:
             - account:
-                account:
-                  brand:
-                    domain: "acmeoutdoor.example"
-                  operator: "pinnacle-agency.example"
+                brand:
+                  domain: "acmeoutdoor.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "https://governance.pinnacle-agency.example"
@@ -274,6 +272,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -490,12 +490,12 @@ phases:
           - valid_actions: creative sync, get_delivery, etc.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_q2_approved"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"

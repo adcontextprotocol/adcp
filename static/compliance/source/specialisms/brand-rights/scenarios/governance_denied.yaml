@@ -113,10 +113,8 @@ phases:
         sample_request:
           accounts:
             - account:
-                account:
-                  brand:
-                    domain: "acmeoutdoor.example"
-                  operator: "pinnacle-agency.example"
+                brand:
+                  domain: "acmeoutdoor.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
