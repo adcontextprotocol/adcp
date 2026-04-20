@@ -46,6 +46,17 @@ app.use(express.json({
     (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
   },
 }));
+app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  const suffix = req.path.replace(/^\/\.well-known\/oauth-protected-resource/, '') || '/';
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({
+    resource: `${proto}://${host}${suffix}`,
+    authorization_servers: [`${proto}://${host}/auth`],
+    bearer_methods_supported: ['header'],
+  });
+});
 app.use('/api/training-agent', createTrainingAgentRouter());
 const server = http.createServer(app);
 server.listen(0, '127.0.0.1', async () => {

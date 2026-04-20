@@ -1,0 +1,92 @@
+name: Training Agent Storyboards
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/src/training-agent/**'
+      - 'server/tests/manual/run-storyboards.ts'
+      - 'server/tests/manual/run-one-storyboard.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'static/compliance/source/**'
+  push:
+    branches: [main]
+    paths:
+      - 'server/src/training-agent/**'
+      - 'server/tests/manual/run-storyboards.ts'
+      - 'server/tests/manual/run-one-storyboard.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'static/compliance/source/**'
+
+concurrency:
+  group: training-agent-storyboards-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  storyboards:
+    name: Storyboards (${{ matrix.mode }} dispatch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [legacy, framework]
+        include:
+          - mode: legacy
+            flag_value: '0'
+            # Baseline on main — keep in sync with the last clean run reported
+            # in the PR description. Rising is fine; regressing fails CI.
+            min_clean_storyboards: 32
+            min_passing_steps: 254
+          - mode: framework
+            flag_value: '1'
+            # Framework path is opt-in and trails legacy until zod parity
+            # lands. Gate keeps it from going backwards while we close the gap.
+            min_clean_storyboards: 19
+            min_passing_steps: 216
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Run storyboards (${{ matrix.mode }})
+        id: run
+        env:
+          TRAINING_AGENT_USE_FRAMEWORK: ${{ matrix.flag_value }}
+          PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
+        run: |
+          npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log
+          clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
+          passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
+          echo "clean=${clean}" >> "$GITHUB_OUTPUT"
+          echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce non-regression (${{ matrix.mode }})
+        env:
+          CLEAN: ${{ steps.run.outputs.clean }}
+          PASSED: ${{ steps.run.outputs.passed }}
+          MIN_CLEAN: ${{ matrix.min_clean_storyboards }}
+          MIN_PASSED: ${{ matrix.min_passing_steps }}
+        run: |
+          echo "Mode: ${{ matrix.mode }} (flag=${{ matrix.flag_value }})"
+          echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
+          echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
+            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor."
+            exit 1
+          fi
+          if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
+            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor."
+            exit 1
+          fi
