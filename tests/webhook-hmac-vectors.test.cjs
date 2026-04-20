@@ -93,6 +93,87 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(shortSecret, 'must include a sub-32-byte secret rejection vector');
   });
 
+  describe('signer-side fixtures', () => {
+    it('signer_side object is present with rejection_vectors, positive_vectors, and action_values', () => {
+      assert.equal(typeof data.signer_side, 'object',
+        'signer_side object MUST be present — conformance suites rely on this partition to separate signer-facing fixtures from verifier-facing fixtures. The signer-side MUST in security.mdx §duplicate-object-keys is unverifiable on the wire, so out-of-band interop testing against these fixtures is the enforcement path.');
+      assert.ok(Array.isArray(data.signer_side.rejection_vectors),
+        'signer_side.rejection_vectors MUST be an array');
+      assert.ok(Array.isArray(data.signer_side.positive_vectors),
+        'signer_side.positive_vectors MUST be an array — a negative-only fixture set lets a signer that rejects everything trivially pass conformance; the positive vectors assert the happy path');
+      assert.equal(typeof data.signer_side.action_values, 'object',
+        'signer_side.action_values enum MUST be defined so downstream harnesses resolve expected_signer_action tokens from a single source of truth');
+    });
+
+    it('rejection_vectors covers the shape-classes the signer MUST handle', () => {
+      assert.ok(data.signer_side.rejection_vectors.length >= 4,
+        'rejection_vectors MUST cover at least four shape-classes: top-level, plain-nested, array-contained, and three-deep — fewer vectors let hand-rolled walkers with shape or depth blind spots ship silently');
+      const ids = data.signer_side.rejection_vectors.map(v => v.id);
+      assert.ok(ids.includes('signer-upstream-duplicate-key-rejection'),
+        'top-level duplicate-key vector MUST exist by id');
+      assert.ok(ids.includes('signer-upstream-duplicate-key-deep-nested'),
+        'plain-nested duplicate-key vector MUST exist by id');
+      assert.ok(ids.includes('signer-upstream-duplicate-key-array-contained'),
+        'array-contained duplicate-key vector MUST exist by id — real-world AdCP payloads put state-change fields inside array-contained objects (packages[], creative_assets[], events[]); a signer that does not descend into array members ships the attack surface the rule targets');
+      assert.ok(ids.includes('signer-upstream-duplicate-key-three-deep'),
+        'three-deep duplicate-key vector MUST exist by id — hand-rolled recursive walkers with shallow depth bounds ship silently without this vector');
+    });
+
+    it('positive_vectors covers at least one clean-input case', () => {
+      assert.ok(data.signer_side.positive_vectors.length >= 1,
+        'positive_vectors MUST have at least one clean-input case — without it, a signer that rejects every input trivially passes the rejection vectors');
+      const clean = data.signer_side.positive_vectors.find(v => v.id === 'signer-upstream-clean-input');
+      assert.ok(clean, 'signer-upstream-clean-input fixture MUST exist by id');
+      assert.equal(clean.expected_signer_action, 'sign-and-emit',
+        'clean-input fixture MUST have expected_signer_action "sign-and-emit"');
+    });
+
+    it('signer_side.action_values defines both reject-input-before-sign and sign-and-emit', () => {
+      assert.ok(data.signer_side.action_values['reject-input-before-sign'],
+        'action_values["reject-input-before-sign"] MUST be defined — the load-bearing negative action');
+      assert.ok(data.signer_side.action_values['sign-and-emit'],
+        'action_values["sign-and-emit"] MUST be defined — the positive-path action asserted by positive_vectors');
+    });
+
+    const allSignerVectors = [
+      ...(data.signer_side?.rejection_vectors || []),
+      ...(data.signer_side?.positive_vectors || []),
+    ];
+
+    for (const vector of allSignerVectors) {
+      it(`well-formed signer-side vector: ${vector.id}`, () => {
+        const enumKeys = Object.keys(data.signer_side?.action_values || {});
+        assert.equal(typeof vector.id, 'string', 'signer-side vector MUST have a kebab-case id');
+        assert.match(vector.id, /^[a-z0-9]+(-[a-z0-9]+)*$/, `id "${vector.id}" MUST be kebab-case`);
+        assert.equal(typeof vector.signer_input_body, 'string',
+          `vector "${vector.id}": signer_input_body MUST be a string (the pre-serialized bytes the upstream caller passed to the signer — distinct from raw_body which is wire-facing)`);
+        assert.ok(enumKeys.includes(vector.expected_signer_action),
+          `vector "${vector.id}": expected_signer_action "${vector.expected_signer_action}" is not in signer_side.action_values enum [${enumKeys.join(', ')}]`);
+      });
+    }
+
+    // Scope-aware duplicate-key detection lives in tests/helpers/reference-webhook-signer.cjs
+    // so the reference signer and these fixture-shape assertions share one parser. See the
+    // CONTRACT BOUNDARY comment at the top of that file — the fixtures ARE the conformance
+    // contract; the helper's functions are one implementation that passes them.
+    const { hasDuplicateKeyInAnyObjectScope } = require('./helpers/reference-webhook-signer.cjs');
+
+    it('duplicate-keys signer rejection vectors actually contain duplicate keys in at least one object scope', () => {
+      for (const vector of data.signer_side?.rejection_vectors || []) {
+        if (!/duplicate/.test(vector.id)) continue;
+        assert.ok(hasDuplicateKeyInAnyObjectScope(vector.signer_input_body),
+          `vector "${vector.id}": signer_input_body MUST contain a duplicate object key in at least one object scope — otherwise the fixture does not probe the rule it claims to probe`);
+      }
+    });
+
+    it('clean-input positive vector does NOT contain duplicate keys at any object scope', () => {
+      const clean = data.signer_side?.positive_vectors?.find(v => v.id === 'signer-upstream-clean-input');
+      if (!clean) return;
+      assert.ok(!hasDuplicateKeyInAnyObjectScope(clean.signer_input_body),
+        `clean-input fixture MUST NOT contain duplicate keys at any object scope — otherwise the "positive case" is actually a negative case and the fixture does not assert what it claims`);
+    });
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
