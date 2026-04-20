@@ -276,6 +276,14 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
  * undefined so the caller falls back to the "No price found" error with the
  * full list of valid keys. Silently picking "first match wins" would risk
  * charging the wrong price.
+ *
+ * TODO(#2550): This resolver is a band-aid. The root fix is in the Addie
+ * tool layer: tighten `find_membership_products` / `create_payment_link`
+ * tool descriptions so the LLM passes lookup_key verbatim, and surface a
+ * `did_you_mean` field in the tool response so the model learns the
+ * canonical key. As soon as the catalog gains a monthly Explorer SKU,
+ * `explorer_annual` will collide here and stop resolving — track interval
+ * preservation in #2550 too.
  */
 export function resolveLookupKeyAlias(input: string, products: BillingProduct[]): BillingProduct | undefined {
   const trimmed = input.trim().toLowerCase();
