@@ -4332,7 +4332,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({
       major_versions: [3],
-      idempotency: { replay_ttl_seconds: 86400 },
+      idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.protocol_version).toBe('3.0');
     expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
