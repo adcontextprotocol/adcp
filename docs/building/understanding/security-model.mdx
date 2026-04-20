@@ -45,6 +45,7 @@ Three attack classes don't appear in a traditional API threat model but belong i
 - **Credential reuse across accounts under one agent.** An agency agent typically holds credentials that work across every brand in its authorized-account set. A stolen agent token is therefore a multi-brand breach, not a single-brand one. AdCP's per-`(agent, account)` cache scoping (see [Agent and Account Isolation](/docs/building/implementation/security#agent-and-account-isolation)) and signed governance tokens (bound to a specific plan and seller) limit *what* can be done with a stolen credential, but don't prevent the theft. Credential hygiene in agentic systems is proportionally more critical than in single-tenant APIs.
 - **Shared-governance-agent supply chain.** A governance agent often signs for many brands from a single origin. Its compromise is a multi-tenant breach. The JWKS / revocation-list requirements in the [governance profile](/docs/building/implementation/security#signed-governance-context) limit the blast radius and make rotation observable, but the buyer's due-diligence posture toward its governance agent is a real-world security dependency — treat the governance agent as a processor with multi-customer blast radius and assess it accordingly.
 - **Prompt injection exfiltrating agent-side credentials.** Planners, creative-review agents, brief-interpretation pipelines all process untrusted text (briefs, creative metadata, product descriptions, campaign names) while holding credentials. A successful injection can cause the agent to issue unauthorized tool calls or leak tokens into logs, external URLs, or downstream agent messages. AdCP cannot prevent this at the protocol layer, but every operator running an LLM-powered agent needs input sandboxing, egress controls on tool calls (which URLs / which tools can the agent reach from within a given prompt context), and monitoring for anomalous credential use. This is the most likely near-term breach vector in the space and is not solved by protocol compliance alone.
+- **Cross-principal tool-call confusion.** A buyer agent typically holds active credentials for *multiple* principals at once — several sellers (one set of credentials per seller) and several brand accounts (inside a single agency agent's authority set). LLM-driven agents often expose every one of those tool surfaces to the same planning loop. A prompt injected via text returned from seller X (a product description, a campaign name, a rejection reason) can cause the agent to call a tool on seller Y's endpoint, or to call `create_media_buy` for brand A using a budget authorized for brand B. This is the classical [confused deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem) problem at LLM-tool-call granularity. The protocol-layer defense is in Layer 2 (account scoping on every tool call, refusing any cross-account action the caller does not hold authority for); the operator-layer defense is to tag each inbound string with its principal of origin, refuse tool calls whose target principal differs from the principal that supplied the string unless a human approves, and forbid a single LLM context from holding credentials for principals whose interests can conflict. This threat is distinct from ordinary prompt injection: the attacker does not need to escape the sandbox to use the *victim principal's* credentials — the victim's own agent does it for them.
 
 ### Structural privacy separation
 
@@ -79,11 +80,13 @@ flowchart TB
 
 ### Layer 1: Identity — who is actually calling?
 
-Before any other check, the seller must establish *which authenticated agent* is making the request. In AdCP 3.0 that is one of:
+Before any other check, the seller must establish *which authenticated agent* is making the request. AdCP defines three mechanisms; the version-gating determines which are permitted for which operation class:
 
-- **mTLS** — the buyer presents a client certificate resolving to a registered domain
-- **Pre-provisioned API key** — issued by the seller at onboarding, mapped to the buyer
-- **RFC 9421 signed HTTP requests** (normative in 3.1) — the buyer signs each request with a key declared in its public agent registry
+- **RFC 9421 signed HTTP requests** — the buyer signs each request with a key declared in its public agent registry. *Recommended in 3.0 for all authenticated operations; REQUIRED for mutating / financial operations in 3.1+.*
+- **mTLS** — the buyer presents a client certificate resolving to a registered domain. *Permitted for any operation in 3.0 and 3.1+.*
+- **Bearer tokens** (pre-provisioned API key or JWT) — issued by the seller at onboarding, mapped to the buyer. *Permitted in 3.0 as the effective baseline; **PROHIBITED for mutating / financial operations in 3.1+**, read-only thereafter.*
+
+The normative matrix and verifier rules live in [Authentication](/docs/building/integration/authentication#authentication-method); the 3.0 → 3.1 sunset for bearer on mutating operations is logged under [known limitations](/docs/reference/known-limitations#authentication-and-identity).
 
 **What this defends against.** An attacker cannot claim to be Acme by setting an `iss` field or a `caller` header. Identity is bound to something the attacker cannot forge (a private key, a certificate, or a pre-shared secret). Every subsequent layer uses the authenticated agent as its scope — get this wrong and the rest of the stack is decorative.
 
@@ -127,7 +130,7 @@ Key properties:
 
 - **Revocation.** Governance agents publish a signed revocation list at a well-known path. Compromised keys and rescinded plans can be invalidated without trusting the CDN serving the list.
 - **Retention.** Revoked public keys remain discoverable for 7+ years so historical tokens remain verifiable after rotation.
-- **Non-repudiation.** Because the governance attestation is signed and public-key-verifiable, a buyer cannot later claim a plan was never approved, and a seller cannot later claim an approval was never received.
+- **Approval provenance.** Because the governance attestation is signed and public-key-verifiable, any party holding the artifact can verify it was approved by the holder of the signing key at the stated time. This approaches non-repudiation — but only conditionally. The buyer cannot later claim the plan was *never approved* so long as (a) the signing key was not compromised at time-of-signing (revocation lists bound this — a post-hoc claim of "the key was already stolen when I signed" is falsifiable against the revocation timeline) and (b) the signer retains ordinary custody of its signing key. The seller side is *weaker*: an attestation proves the plan existed, not that it was delivered or acknowledged. For full bilateral non-repudiation, the seller should return a signed `plan_receipt` binding `{plan_id, received_at, plan_sha256}`. Absent a signed receipt, "never received" remains deniable.
 
 **What this defends against.** After-the-fact tampering. Claim drift between parties in a dispute. Regulatory inquiries that arrive long after the credentials have rotated.
 
@@ -137,7 +140,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 
 ### Identity
 
-- [ ] How is the calling agent authenticated? (mTLS, API key, or RFC 9421 signed requests — not a header field, not `iss`)
+- [ ] How is the calling agent authenticated? (RFC 9421 signed requests, mTLS, or Bearer/API key — not a header field, not `iss`. For mutating / financial operations, plan the migration off Bearer before the 3.1 sunset — see [Authentication](/docs/building/integration/authentication#authentication-method).)
 - [ ] Where are tokens stored? (KMS / secret manager — not files, not env vars at rest)
 - [ ] Is the rotation cadence right-sized to blast radius and documented? (≤24h is a reasonable default for write-capable tokens; tighter windows are appropriate for tokens that commit spend at scale or cross organizational boundaries.)
 - [ ] What is the revocation path, and who can execute it in under an hour?

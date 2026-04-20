@@ -225,6 +225,23 @@ CREATE POLICY account_isolation_list ON media_buys
   USING (account_id = ANY(current_setting('app.authorized_accounts')::uuid[]));
 ```
 
+### Client-side isolation: cross-principal tool-call confusion
+
+The rules above are server-side enforcement. They protect the seller's data even when a legitimate-but-compromised agent is the caller. The **client-side companion** is the buyer agent's obligation not to let text supplied by principal X drive tool calls that use principal Y's authority.
+
+An LLM-driven buyer agent typically holds credentials for multiple principals at once: several sellers (one credential set per seller) and, inside an agency agent, several brand accounts. Any untrusted string the agent processes — product descriptions returned by a seller, campaign names inherited from a brief, rejection reasons in an error envelope, webhook event bodies — is text sourced from *one* of those principals. If the agent's planning loop can call tools across all of them from a single LLM context, a prompt injected in seller X's text can cause the agent to call `create_media_buy` on seller Y's endpoint, or to spend brand A's budget on brand B's inventory. This is the [confused-deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem) problem at tool-call granularity: the attacker doesn't need to escape the sandbox — the agent's own legitimate authority does the damage.
+
+Operators running LLM-powered AdCP agents MUST apply at least the following controls:
+
+1. **Tag text with its principal of origin.** Every string the LLM context ingests from the network (tool results, webhook bodies, registry documents, creative metadata) MUST be annotated internally with the `{principal_domain, tool_name, response_field}` triple that produced it. Dropping the annotation at ingest time is where this defense dies.
+2. **Restrict tool-call targets to the calling principal.** A tool call whose target principal is not the same as the principal that supplied the string(s) driving the decision MUST either (a) be refused, (b) go through a human approval step, or (c) be mediated by an explicit per-principal policy the operator has declared up front. The default MUST be refuse, not allow.
+3. **Segregate credential scopes by LLM context.** A single LLM planning loop MUST NOT hold live credentials for principals whose interests can conflict (e.g., two brands competing for the same inventory; a buyer credential and a governance agent's signing key in one context). The scope-segregation is enforced at the process / tool-registration layer, not by instructing the LLM — the LLM MUST NOT have the affordance to misuse.
+4. **Log every cross-principal *attempt*, not just successes.** Refusals under rule 2 are the signal operators MUST monitor — a rising refusal rate from a given principal is the earliest detectable sign of an injection campaign targeting your agent.
+
+This threat is distinct from ordinary prompt injection: ordinary injection exfiltrates data or triggers unauthorized tool calls within *one* principal's authority. Cross-principal confusion uses principal X's untrusted text to reach principal Y's authority without the attacker ever holding Y's credentials. The server-side Layer 2 controls above detect the attempt only if principal Y's account isn't already in the buyer agent's authorized set — when it is (the whole point of agency and multi-seller agents), the server sees a legitimate-looking call.
+
+The protocol cannot force this discipline on the client agent. The test for it is operational: every LLM-powered AdCP buyer MUST be able to describe, in writing, which principals can appear together in the same planning context and what gates a cross-principal tool call.
+
 ## Time Semantics
 
 AdCP operates across jurisdictions, ad servers, and daypart calendars. Implementations MUST be precise about time or buyers and sellers will disagree about what "delivered by 5pm" meant.
@@ -637,7 +654,7 @@ Servers MUST NOT echo internal verification details (e.g., which specific claim 
 
 **`policy_decisions` visibility**: the token is a JWS (readable by anyone with the public key), not a JWE (encrypted). If `policy_decisions` contains the full list of policy IDs the governance agent evaluated, every seller who receives the token learns which policies the buyer's governance posture considers — competitive intelligence, and in some cases signaling about sensitive audience characteristics (e.g., a `minors_compliance` policy ID implies targeting of under-18 audiences). Governance agents SHOULD use `policy_decision_hash` in place of `policy_decisions` when the buyer's compliance posture is sensitive; the full log remains available to auditors via `audit_log_pointer` with governance-agent-controlled access.
 
-<a id="intent-phase-disclosure"></a>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
+<span id="intent-phase-disclosure"></span>**Intent-phase seller disclosure to GA**: the `aud` binding means a buyer evaluating N sellers in a competitive auction must request N distinct intent tokens, each `aud`-bound to one seller. The governance agent therefore sees the full list of sellers the buyer considered — a privacy regression relative to the opaque-string model where sellers were unknown to the GA at intent time. This is an explicit trade-off: cross-seller replay resistance requires per-seller binding. A future `aud_hash` mechanism (where the token binds a hash of the seller URL with a token-scoped salt, and each seller computes the hash on its own URL to verify) can recover intent-time seller privacy against the GA without sacrificing replay resistance. Not defined in 3.0; tracked as a follow-up.
 
 **`caller` URL**: contains the orchestrator's identifier. Sellers and auditors who retain tokens long-term should be aware of the retention policy implied by this.
 
@@ -1310,26 +1327,102 @@ async function validateBudget(request, account) {
 
 ## Transport Security
 
-### HTTPS Requirements
+AdCP's application-layer security primitives (9421 signing, JWS governance, idempotency) assume the transport does not help the attacker. A misconfigured TLS stack breaks that assumption — it downgrades a protocol designed to withstand active on-path adversaries into one that trusts every intermediary.
 
-- All AdCP communications must use HTTPS with TLS 1.3+ (TLS 1.2 minimum)
-- Validate SSL certificates (no self-signed certificates in production)
-- Implement HTTP Strict Transport Security (HSTS) headers
+This section is normative for every AdCP endpoint — inbound (seller and buyer API surfaces) and outbound (JWKS fetch, brand.json fetch, revocation list fetch, webhook delivery). It is deliberately prescriptive so operators do not have to reason from first principles about cipher suites at 3 a.m.
+
+### TLS version policy
+
+- **TLS 1.3 is RECOMMENDED** for every AdCP endpoint.
+- **TLS 1.2 is the minimum.** Endpoints MUST reject TLS 1.1 and below at the handshake.
+- **Client-side verifiers** (e.g., an AdCP server fetching a counterparty's JWKS, brand.json, or revocation list) MUST refuse to negotiate below TLS 1.2. Libraries that still default to TLS 1.0 for "compatibility" MUST be configured explicitly.
+- SSL 2.0, SSL 3.0, TLS 1.0, and TLS 1.1 MUST NOT be enabled — not for any endpoint, not for any legacy partner, not even on a separate port.
+
+### Cipher suites and algorithms
+
+- TLS 1.3: use the IETF-defined suites (`TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256`). All three are AEAD; no other TLS 1.3 suites exist. Do not disable any of them arbitrarily — operators who disable ChaCha20 on "speed" grounds are one client quirk away from broken mobile clients.
+- TLS 1.2: restrict to **AEAD-only** ECDHE suites. The permitted set is `ECDHE-ECDSA-AES128-GCM-SHA256`, `ECDHE-ECDSA-AES256-GCM-SHA384`, `ECDHE-ECDSA-CHACHA20-POLY1305`, `ECDHE-RSA-AES128-GCM-SHA256`, `ECDHE-RSA-AES256-GCM-SHA384`, `ECDHE-RSA-CHACHA20-POLY1305`.
+- CBC-MAC, RC4, 3DES, DES, NULL, EXPORT, anonymous DH, and static RSA key-exchange suites MUST be disabled on TLS 1.2 — their presence silently downgrades the security properties of everything built above the handshake.
+- Server certificates MUST use ECDSA (P-256 or P-384) or RSA ≥ 2048 bits. RSA < 2048 MUST NOT be used.
+- Endpoints MUST prefer server-side cipher ordering (OpenSSL `SSL_OP_CIPHER_SERVER_PREFERENCE`, nginx `ssl_prefer_server_ciphers on`) so a weak client cannot force a weak suite when a strong one is mutually available.
+
+### Certificate validation (outbound fetches)
+
+Every outbound HTTPS request AdCP makes — JWKS, brand.json, revocation list, webhook callback, aggregator proxy — MUST perform full PKIX validation. The specific checks:
+
+- **Trust chain** MUST terminate at a public root the operator has intentionally included. No `--insecure`, no `verify=False`, no `rejectUnauthorized: false` anywhere in production code paths. This is the single most common production compromise — an engineer turns off verification to work around a cert issue in staging, the flag ships.
+- **SAN match** is the authoritative identity check. The certificate MUST have a Subject Alternative Name entry matching the URL host. CN-only fallback MUST NOT be accepted; major HTTP clients still support it for legacy reasons, but AdCP verifiers MUST require SAN.
+- **Expiry** MUST be checked against the current clock. Fetching a JWKS from a domain whose TLS cert expired last week is a governance red flag, not a compatibility problem.
+- **Hostname verification** MUST be enabled in the library config. Several popular HTTP client libraries ship with hostname verification on by default; a surprising number have a flag that disables it. AdCP implementations MUST assert hostname verification is on, not assume it.
+- **OCSP stapling** SHOULD be accepted when offered; OCSP must-staple on operator-controlled certificates is RECOMMENDED. Must-staple turns a missing staple into a hard failure, which closes the soft-fail-on-OCSP loophole.
+- **Certificate Transparency (CT)** SCTs SHOULD be checked on endpoints serving regulated spend. Browsers already enforce CT; AdCP SDKs fetching governance JWKS on a regulated-category workflow SHOULD too, so a hidden mis-issued cert is detectable.
+- **Pinning** is NOT required at the protocol layer and SHOULD be avoided for counterparty-supplied URLs (brand.json, JWKS) because it collides with legitimate operator cert rotation. Pinning to a public-CA chain (intermediate-pin) is acceptable; pinning to a specific leaf cert is discouraged.
+
+### Inbound server-side headers
 
 ```javascript
 app.use((req, res, next) => {
-  // HSTS header
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // HSTS: 1 year, include subdomains, preload-eligible. MUST be on every HTTPS response.
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 
-  // Prevent clickjacking
+  // No framing of AdCP API responses — even though they're JSON, frame isolation
+  // protects any error or debug HTML that could leak through.
   res.setHeader('X-Frame-Options', 'DENY');
 
-  // Prevent MIME sniffing
+  // MIME sniffing off: responses declare their type, clients MUST respect it.
   res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // Prevent referrers leaking to external URLs supplied by counterparties.
+  res.setHeader('Referrer-Policy', 'no-referrer');
+
+  // AdCP endpoints serve no browser-facing HTML — block script-source loading outright.
+  // If your operator reuses the same origin for a dashboard, adjust this per-path.
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
 
   next();
 });
 ```
+
+**HSTS max-age MUST be ≥ 31536000 (1 year)** for any domain serving an AdCP endpoint. `includeSubDomains` MUST be set unless the operator has a documented reason not to. Domains serving spend-committing AdCP endpoints SHOULD be submitted to the HSTS preload list.
+
+### Client / outbound TLS hardening
+
+Outbound-fetch code paths (governance JWKS, brand.json, revocation list, webhook delivery, aggregator proxy) MUST:
+
+- Use a connection pool with a fixed per-host cap and a fixed overall cap. Unbounded pools are a resource-exhaustion surface.
+- Cap TLS handshake time at 10 s and total request time at 30 s by default — counterparty-supplied URLs are a tarpit DoS vector otherwise.
+- Pin the connection to the IP address that passed the [SSRF controls](#webhook-url-validation-ssrf) — DNS re-resolution between the SSRF check and the actual connect is how TOCTOU bypasses land.
+- Refuse redirects on security-sensitive fetches. JWKS, brand.json, revocation list, and webhook-callback fetches MUST NOT follow redirects; the [brand.json resolution rule](#buyer-identity-resolution) already says "one redirect (`authoritative_location` or `house` variant), no chains" — everywhere else, zero.
+- Disable session resumption across trust boundaries. Resuming a TLS session with an attacker-controlled counterparty onto a later verified counterparty (same IP via DNS rebind) is a well-known class of confusion; library defaults are usually fine, but the operator MUST audit.
+
+### TLS renegotiation and downgrade
+
+- TLS 1.2 **secure renegotiation** (RFC 5746) MUST be enabled if renegotiation is supported at all. Insecure-renegotiation-tolerant stacks are a MUST-disable.
+- **TLS compression** (CRIME) MUST be off.
+- **Heartbeat extension** MUST be off on TLS 1.2 endpoints (Heartbleed lineage).
+- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only discovery endpoints (`get_adcp_capabilities`, `list_creative_formats`) MAY use 0-RTT; everything else MUST NOT.
+
+### mTLS transport
+
+When [mTLS](/docs/building/integration/authentication#mtls) is the authentication mechanism:
+
+- The client certificate SAN / Subject MUST match the buyer's registered domain as declared in `adagents.json` or `brand.json`. Relying on any header field (`X-Forwarded-Client-Cert`, `X-Client-DN`, etc.) is [explicitly forbidden](#buyer-identity-resolution) — header fields can be injected across misconfigured proxies.
+- The terminating edge (load balancer, mesh sidecar) MUST forward the verified certificate identity to the AdCP server over an in-cluster channel the server can authenticate. Unauthenticated sidecar headers are a bypass — deploy mTLS end-to-end, or pin the in-cluster channel.
+- Client certificates MUST be checked against a CRL or OCSP responder operated by the operator. "Issued by us" is not the same as "still valid."
+
+### Private-network and metadata protection
+
+This section's transport controls do not substitute for the [SSRF controls](#webhook-url-validation-ssrf) on counterparty-supplied URLs. Every outbound fetch to a counterparty URL MUST apply the SSRF rules — reject non-HTTPS, reject IPs in reserved ranges (including cloud-metadata addresses), refuse redirects, cap size and time. TLS is useless if the URL points at `169.254.169.254`.
+
+### What this section does NOT replace
+
+Transport security is the floor, not the ceiling. Even a flawless TLS stack does not replace:
+
+- **Application-layer body integrity** ([request signing](#request-signing) and [webhook callbacks](#webhook-callbacks)) — TLS protects the wire, not the payload after a compromised intermediary.
+- **Governance attestation** ([signed governance context](#signed-governance-context)) — TLS does not tell the seller whether the buyer's governance agent authorized this spend.
+- **Idempotency** ([request safety](#request-safety)) — TLS does not prevent the sender from retrying after a network timeout.
+
+Operators that confuse "we have a modern TLS configuration" with "our AdCP deployment is secure" are exactly the operators the body-bound signature profile exists to defend against.
 
 ## Input Validation
 
