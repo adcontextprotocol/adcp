@@ -1,7 +1,8 @@
 ---
+"adcontextprotocol": patch
 ---
 
-Fix webhook-signing positive vectors 004 and 005 to apply full `@target-uri`
+Fix webhook-signing positive vectors 004 + 005 to apply full `@target-uri`
 canonicalization per the shared rules in `request-signing/canonicalization.json`.
 Previously both vectors signed the as-received URL instead of the canonical one,
 contradicting step 4 (strip default ports) and step 6 (uppercase `%xx` hex /
