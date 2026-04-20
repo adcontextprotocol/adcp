@@ -196,7 +196,23 @@ async function main() {
           replayStore: new InMemoryReplayStore(),
           revocationStore: new InMemoryRevocationStore(),
         },
-        request_signing: { transport: 'mcp' },
+        request_signing: {
+          transport: 'mcp',
+          // Our declared capability is `covers_content_digest: 'either'`;
+          // vectors 007 and 018 assert specific mismatching policies
+          // (`required` / `forbidden`) — the grader skip-list per
+          // capability-profile mismatch. Vector 020 (rate-abuse) sends
+          // cap+1 requests per run and is opt-in anyway. Vector 025
+          // grades the SDK's library verifier against an inline malformed
+          // JWK (`jwks_override`) — it exercises SDK internals, not our
+          // agent, so we skip it here and rely on upstream SDK tests.
+          skipVectors: [
+            '007-missing-content-digest',
+            '018-digest-covered-when-forbidden',
+            '025-jwk-alg-crv-mismatch',
+          ],
+          skipRateAbuse: true,
+        },
         ...(brand && { brand }),
       });
       const summary = summarize(sb, result);

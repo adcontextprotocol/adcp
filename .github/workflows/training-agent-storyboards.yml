@@ -38,14 +38,14 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            min_clean_storyboards: 33
-            min_passing_steps: 261
+            min_clean_storyboards: 34
+            min_passing_steps: 262
           - mode: framework
             flag_value: '1'
             # Framework path is opt-in and trails legacy until zod parity
             # lands. Gate keeps it from going backwards while we close the gap.
-            min_clean_storyboards: 20
-            min_passing_steps: 225
+            min_clean_storyboards: 21
+            min_passing_steps: 226
     steps:
       - uses: actions/checkout@v6
 

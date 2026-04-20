@@ -22,6 +22,7 @@ import {
   type AuthPrincipal,
 } from '@adcp/client/server';
 import { RequestSignatureError } from '@adcp/client/signing';
+import { REQUIRED_FOR_OPERATIONS } from './request-signing.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
@@ -103,8 +104,46 @@ function buildAuthenticator(): Authenticator | null {
   const bearerChain = bearerAuths.length === 0 ? null
     : bearerAuths.length === 1 ? bearerAuths[0]
     : anyOf(...bearerAuths);
-  const fallback: Authenticator = bearerChain ?? (async () => null);
+
+  // required_for enforcement: if the caller has no signature and no
+  // valid bearer, and the operation is on the required-for list, reject
+  // with `request_signature_required` so the conformance vector grader
+  // reads a Signature challenge (not Bearer) with the right error code.
+  // Bearer-authed callers bypass this check — they already authenticated
+  // through the advertised fallback mechanism.
+  const fallback: Authenticator = async (req) => {
+    if (bearerChain) {
+      const result = await bearerChain(req);
+      if (result) return result;
+    }
+    const op = resolveOperationFromRequest(req);
+    if (op && REQUIRED_FOR_OPERATIONS.includes(op)) {
+      throw new AuthError(`Signature required for ${op}.`, {
+        cause: new RequestSignatureError(
+          'request_signature_required',
+          0,
+          `Operation ${op} requires an RFC 9421 signature; none was provided.`,
+        ),
+      });
+    }
+    return null;
+  };
+
   return requireSignatureWhenPresent(lazySigningAuthenticator(), fallback);
+}
+
+function resolveOperationFromRequest(req: { rawBody?: string }): string | undefined {
+  const raw = req.rawBody;
+  if (!raw) return undefined;
+  try {
+    const body = JSON.parse(raw) as { method?: string; params?: { name?: string } };
+    if (body.method === 'tools/call' && typeof body.params?.name === 'string') {
+      return body.params.name;
+    }
+  } catch {
+    // Non-JSON or malformed; transport layer will reject.
+  }
+  return undefined;
 }
 
 // Wrapped so the signing authenticator is lazily built on first auth call —

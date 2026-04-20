@@ -56,18 +56,33 @@ function loadTestJwks(): AdcpJsonWebKey[] {
 }
 
 /**
+ * Operations for which the training agent requires RFC 9421 signatures.
+ *
+ * Advertised via `required_for` on `get_adcp_capabilities` and enforced
+ * in the auth chain (index.ts). Keeping this narrow — `create_media_buy`
+ * is the canonical money-moving operation the `signed-requests`
+ * conformance vectors target (vector 001 tests precisely this) — lets
+ * the same agent serve signed and unsigned callers for every other
+ * operation. Widening would require every storyboard that issues the
+ * newly-required op to carry a bearer AND a valid signature, which
+ * doubles the ceremony without changing the grading coverage.
+ */
+export const REQUIRED_FOR_OPERATIONS: ReadonlyArray<string> = ['create_media_buy'];
+
+/**
  * Get the capability block we advertise on `get_adcp_capabilities`.
  *
- * `required_for` is empty (3.0 default): signed callers are verified, but
- * unsigned callers fall through to `verifyApiKey` in the `anyOf` chain —
- * neither path short-circuits the other.
+ * `required_for` is narrow (see {@link REQUIRED_FOR_OPERATIONS}): the
+ * specialism's conformance vectors assert rejection on unsigned calls to
+ * listed operations, and the training agent enforces this in the auth
+ * chain so grading is honest about the advertised contract.
  */
 export function getRequestSigningCapability(): VerifierCapability {
   if (!capabilityDeclaration) {
     capabilityDeclaration = {
       supported: true,
       covers_content_digest: 'either',
-      required_for: [],
+      required_for: [...REQUIRED_FOR_OPERATIONS],
       supported_for: [...MUTATING_TOOLS],
     };
   }
