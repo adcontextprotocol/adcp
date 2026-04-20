@@ -159,7 +159,13 @@ function validateToken(token, operationType) {
 
 Every piece of state — media buys, creatives, idempotency cache entries, session IDs, governance tokens — is scoped to the [account](/docs/reference/glossary#a) that owns it. Cross-account reads MUST return a generic "not found" rather than leak existence. The authenticated [agent](/docs/reference/glossary#a) is how the seller knows *who is calling*; the `account` on the request is *what billing relationship the call is acting on*. Isolation requires both checks.
 
-See the glossary for the formal definitions of [Account](/docs/reference/glossary#a) and [Agent](/docs/reference/glossary#a).
+Sales agents MUST:
+
+1. **Bind on create** — permanently associate each object (media buy, creative, session, etc.) with the account used on the request that created it.
+2. **Verify on access** — on every subsequent read or modification, verify the authenticated agent has access to the object's bound account.
+3. **Fail closed** — when verification fails, return a generic error (status 403 or 404 is acceptable, but the body MUST NOT distinguish "unauthorized" from "not found" or name the account). Never fall through to the resource query.
+
+See [Accounts & Security — Data Isolation](/docs/media-buy/advanced-topics/accounts-and-security#data-isolation) for the billing-relationship model these rules enforce, and the glossary for the formal definitions of [Account](/docs/reference/glossary#a) and [Agent](/docs/reference/glossary#a).
 
 ### The two-step pattern
 
@@ -200,7 +206,7 @@ Filtering by the *whole* authorized set on a by-ID lookup is a regression: a `ge
 
 ### Row-Level Security
 
-Implement row-level security at the database layer so a bug in one handler cannot punch through the wall:
+The most common isolation failure is **IDOR via joined or nested relations**: a query scopes the primary table by `account_id` but joins or returns fields from a related table (line items, creatives, delivery rows) that was never filtered by the same principal. Defend per-principal at the data layer, not just in handler code, so a bug in one handler cannot punch through the wall:
 
 ```sql
 -- PostgreSQL example
