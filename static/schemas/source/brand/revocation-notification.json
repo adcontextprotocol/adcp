@@ -5,9 +5,12 @@
   "description": "Payload sent by a rights holder to a buyer's revocation_webhook when rights are revoked. The buyer must cease creative delivery by effective_at. Partial revocation is supported — if revoked_uses is present, only those uses are revoked.",
   "type": "object",
   "properties": {
-    "notification_id": {
+    "idempotency_key": {
       "type": "string",
-      "description": "Unique identifier for this notification. Buyers use this for deduplication — the same revocation may be delivered multiple times."
+      "description": "Sender-generated key stable across retries of the same revocation notification. Rights holders MUST generate a cryptographically random value (UUID v4 recommended) per distinct revocation event and reuse the same key when retrying delivery. Buyers MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential); keys from different senders are independent.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "rights_id": {
       "type": "string",
@@ -41,6 +44,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["notification_id", "rights_id", "brand_id", "reason", "effective_at"],
+  "required": ["idempotency_key", "rights_id", "brand_id", "reason", "effective_at"],
   "additionalProperties": true
 }

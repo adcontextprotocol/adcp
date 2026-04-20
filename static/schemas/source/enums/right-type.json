@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/right-type.json",
   "title": "Right Type",
   "description": "Categories of intellectual property rights that can be licensed through the brand protocol.",
+  "x-status": "experimental",
   "type": "string",
   "enum": [
     "talent",

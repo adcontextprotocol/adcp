@@ -7,6 +7,10 @@ description: "check_governance is the universal validation gate in AdCP — orch
 
 # check_governance
 
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task. The governance agent infers the check type from the fields present:
 
 | Check type | Who calls | Discriminating fields | Purpose |
@@ -33,7 +37,7 @@ The orchestrator calls `check_governance` with `tool` and `payload` before sendi
 
 The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
 
-Before executing the check, the seller verifies the signed `governance_context` token that arrived on the protocol envelope from the buyer:
+Before executing the check, the seller verifies the signed `governance_context` token that arrived on the protocol envelope from the buyer. The buyer produces an **intent-phase** token (per the [JWS profile](/docs/building/implementation/security#adcp-jws-profile)); the seller's own execution check produces the `purchase`/`modification`/`delivery`-phase tokens bound to the assigned `media_buy_id` for the rest of the lifecycle.
 
 ```
 on receive(create_media_buy request):
@@ -42,10 +46,10 @@ on receive(create_media_buy request):
   verify(token, {                                     # per Security — Signed Governance Context
     sellerId:    my_adagents_url,
     planId:      request.plan_id,
-    phase:       "purchase",
-    mediaBuyId:  null,                                 # populated on subsequent lifecycle calls
+    phase:       "intent",                             # buyer produces intent tokens
+    mediaBuyId:  null,                                 # intent tokens have no media_buy_id
   })                                                  # throws on any of 15 checks failing
-  call check_governance(planned_delivery, token)      # seller-side execution check
+  call check_governance(planned_delivery, token)      # seller-side execution check — produces purchase-phase token
   proceed only if governance_agent status = approved
 ```
 
@@ -64,6 +68,16 @@ Sellers can adopt committed governance checks incrementally:
 - **Level 1: Purchase only** -- One call per `create_media_buy`. The minimum viable integration.
 - **Level 2: + Modification** -- One call per `update_media_buy`.
 - **Level 3: + Delivery reporting** -- Periodic calls during active delivery.
+
+## Invocation requirement
+
+When a governance agent is configured on the plan, buyer agents MUST invoke `check_governance` before every spend-commit request (`create_media_buy`, `update_media_buy`, `acquire_rights`, `update_rights`, `activate_signal`, `build_creative`) — full stop. There is no dollar floor, no anomaly threshold, and no cold-start exemption; every commit goes through the governance agent. The buyer-side call is an intent check (`tool` + `payload`), which produces an intent-phase `governance_context` token the buyer attaches to its request to the seller. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields.
+
+Seller-side enforcement makes the MUST real through the [signed `governance_context` token](/docs/building/implementation/security#signed-governance-context): a seller receiving a spend-commit for a plan with a configured governance agent MUST require a valid, in-date intent-phase token (`phase: "intent"`, `sub` equal to the plan_id, `aud` addressed to this seller), and MUST reject with `PERMISSION_DENIED` otherwise. The seller then performs its own execution check — calling `check_governance` with `planned_delivery` and the received `governance_context` — which produces the `purchase`-phase token bound to the newly assigned `media_buy_id` for the rest of the lifecycle. A buyer that skips the intent check cannot produce a valid intent token, so the commit is rejected before the seller ever reaches its execution check.
+
+When no governance agent is configured on the plan, `check_governance` invocation is neither required nor meaningful — there is nothing to call. Sellers MAY refuse to transact on plans lacking a configured governance agent as a matter of their own commercial policy.
+
+See the [specification](/docs/governance/campaign/specification#spend-commit-invocation) for the full definition, including audit requirements, seller-side retention MUSTs, and interaction with idempotency.
 
 ## Status values
 

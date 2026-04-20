@@ -11,7 +11,7 @@ As AI agents gain autonomy in advertising — discovering inventory, building cr
 Embedded Human Judgment (EHJ) is AdCP's answer. It is not an after-the-fact review process. It is not a temporary safety phase while AI "matures." It is a permanent design constraint for accountable systems.
 
 <Note>
-**On register.** This page specifies *where* humans belong in the loop — which classes of decisions require human judgment — not *how* operators implement that judgment. AdCP uses a principles register here rather than RFC 2119 MUST/SHOULD because the enforceable surface is elsewhere: [`check_governance`](/docs/governance/campaign/tasks/check_governance) returning `conditions` or `denied` (MUST escalate), `TERMS_REJECTED` (MUST route to human), and lifecycle tasks like [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) (MUST be available to authorized humans). Those are where the normative rules live. The principles below tell you *which* decisions those rules must cover; they do not prescribe UI or workflow.
+**On register.** This page specifies *where* humans belong in the loop — which classes of decisions require human judgment — not *how* operators implement that judgment. AdCP uses a principles register here rather than RFC 2119 MUST/SHOULD because the enforceable surface is elsewhere: [`check_governance`](/docs/governance/campaign/tasks/check_governance) MUST be invoked on every spend-commit when a governance agent is configured on the plan (and sellers MUST reject any spend-commit lacking a valid `governance_context` token), `conditions` or `denied` MUST escalate, `TERMS_REJECTED` MUST route to human, and lifecycle tasks like [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) MUST be available to authorized humans. Those are where the normative rules live. The principles below tell you *which* decisions those rules must cover; they do not prescribe UI or workflow.
 </Note>
 
 ## The five principles
@@ -200,11 +200,45 @@ Each EHJ principle surfaces in specific protocol mechanisms:
 |--------------|-----------------|-----------------|
 | Humans define boundaries | `budget.reallocation_threshold` on plans | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) |
 | Oversight is architectural | Three-party model (orchestrator, governance, seller) | [Safety model](/docs/governance/campaign/safety-model) |
+| Governance invocation is enforceable, not advisory | `check_governance` MUST be invoked on every spend-commit when a governance agent is configured on the plan; sellers MUST reject spend-commits without a valid `governance_context` token | [Spend-commit invocation](/docs/governance/campaign/specification#spend-commit-invocation) |
 | Judgment cannot be delegated to software | `plan.human_review_required: true` forces async human review — `check_governance` goes async and resolves to `approved` or `denied` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance) |
 | Accountability requires legibility | `get_plan_audit_logs`, structured findings with confidence scores | [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) |
 | Adoption must be incremental | Governance agents choose their own enforcement strategy internally | [Campaign governance](/docs/governance/campaign/index) |
 
 Plan-level autonomy settings map directly to EHJ decision types. `budget.reallocation_threshold` at or above `budget.total` grants autonomous execution of reallocations; a positive value below the total sets guardrails; `0` requires human approval for every reallocation. Orthogonally, `plan.human_review_required: true` mandates human review of every action on the plan — set automatically when resolved policies or policy categories carry `requires_human_review: true`. When human review is needed, `check_governance` behaves as an async task: it returns async status and resolves to `approved` or `denied` once the human acts. The caller does not need to know whether a human was involved.
+
+## How human-in-the-loop enters the protocol
+
+AdCP does not enumerate per-task approval rules. Human review enters through two mechanisms.
+
+### Universal: any mutation can go async
+
+Any task that mutates state can be returned as `input-required` or `submitted` by the agent handling it, pausing until a human responds — see [task lifecycle](/docs/building/implementation/task-lifecycle). This applies equally to the orchestrator, the seller, the creative agent, and the governance agent. There is no protocol rule that forbids a human step at any boundary; only the operator's latency budget. This mechanism is per-call and opaque to the other side — it is not a substitute for the declarative, auditable enforcement campaign governance provides across sellers.
+
+### Formal buyer-side: campaign governance
+
+Campaign governance is the protocol's specified mechanism for the buyer to *declaratively* require review on campaign actions. The buyer declares constraints in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans); the policies live on the governance agent, and [`check_governance`](/docs/governance/campaign/tasks/check_governance) enforces them on every campaign action. The orchestrator calls it as an **intent check** to the plan's governance agent before sending an action to a seller — the orchestrator does not evaluate policies locally. The seller calls it as an **execution check** to the same governance agent on accounts where `governance_agents` has been declared via [`sync_governance`](/docs/accounts/tasks/sync_governance). This two-sided structure ensures no party grades its own homework.
+
+The governance agent escalates to a human when any of the following are true:
+
+| Trigger | Declared in |
+|---|---|
+| `plan.human_review_required: true` | `sync_plans` |
+| Budget reallocation exceeds `budget.reallocation_threshold` | `sync_plans` |
+| Resolved policy with `requires_human_review: true` | Policy registry / plan policies |
+| Governance agent's own judgment | Governance agent's internal logic |
+
+When the governance agent escalates, `check_governance` itself goes async and resolves to `approved` or `denied` once the human acts. The caller does not need to know whether a human was involved.
+
+### What this means for specific operations
+
+Campaign governance covers the media-buy lifecycle in three phases (see [Governance phases](/docs/governance/campaign/specification#governance-phases)):
+
+- **Purchase** — `create_media_buy`, `acquire_rights`, `activate_signal`, `build_creative`
+- **Modification** — `update_media_buy`, `update_rights`
+- **Delivery** — seller-initiated periodic checks
+
+Operations outside this set — buy-terms negotiation, `sync_catalogs`, `sync_creatives`, and anything else — use the universal mechanism only: any party may take them async for human review, but the protocol does not require it.
 
 ## How this manifests in practice
 

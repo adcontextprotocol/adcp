@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/acquire-rights-response.json",
   "title": "Acquire Rights Response",
   "description": "Result of a rights acquisition request. Returns one of three statuses: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on status field.",
+  "x-status": "experimental",
   "type": "object",
   "oneOf": [
     {

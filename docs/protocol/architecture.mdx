@@ -45,7 +45,23 @@ Four protocol domains handle core advertising operations. The [Trusted Match Pro
 
 **Governance** operates across all transaction domains. Governance agents manage property lists (curated sets of properties for targeting or exclusion), content standards (brand suitability policies), and creative governance (security scanning, content categorization). Governance data flows into media buy decisions, creative validation, and signal activation. See [Governance Protocol](/docs/governance/overview).
 
-Human-in-the-loop approval checkpoints are supported at any stage — campaign approval, creative review, budget thresholds, and policy exceptions. This is not a real-time protocol: operations may take minutes to days when human approval is required.
+Human-in-the-loop enters the protocol through two mechanisms: any mutation may be taken async for human review via the task lifecycle, and campaign governance provides a declarative buyer-side review channel via `sync_plans` and `check_governance`. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol). This is not a real-time protocol: operations may take minutes to days when human approval is required.
+
+### Privacy posture across domains
+
+AdCP's privacy posture is not uniform. TMP is the only domain that enforces privacy **structurally** — through separated code paths, schema-level prohibitions on combining identity with context, and independently verifiable decorrelation. Every other domain relies on **contractual confidentiality or per-session consent** — the parties exchanging data are bound by the account's terms or the user's consent, not by protocol-level separation. Governance gating (via campaign governance) is orthogonal: it can require human approval on budget, policy, or brand-safety grounds, but it does not change the privacy mechanism of the underlying domain.
+
+| Domain | Privacy mechanism | Notes |
+|---|---|---|
+| Trusted Match Protocol | **Structural separation** | Context Match and Identity Match operate on separated code paths; schemas prohibit crossover. See [TMP privacy architecture](/docs/trusted-match/privacy-architecture). |
+| Media Buy | Contractual | Buyer and seller exchange full plan context under account terms. |
+| Creative | Contractual | Creative assets and targeting signals pass through the creative agent under account terms. |
+| Signals | Contractual | Audience and signal data exchanged under account terms and signal-provider agreements. |
+| Brand / Registry / Accounts | Public or contractual | Brand identity is public (`brand.json`); commercial terms are account-scoped. |
+| Sponsored Intelligence | Consent-first | The user consents per session; the brand agent sees conversation content, and identity only when the user shares it. Networks that route sessions may see routing metadata — see [Networks](/docs/sponsored-intelligence/networks). |
+| Governance | Contractual | Governance agents receive the context needed to evaluate policies under account terms. |
+
+"Structural" means the protocol — not the operator's policy — prevents the combination of sensitive data. If you need that property outside TMP, build it yourself or compose with TMP.
 
 ---
 
@@ -85,7 +101,7 @@ These parties exchange impressions and money through the orchestration layer.
 
 **Governance agents** provide compliance and quality control across all layers: property lists, brand suitability scoring, quality measurement (MFA score, ad density), and privacy compliance (COPPA, TCF, GDPR). They operate at setup time, real-time, and post-bid.
 
-**Human-in-the-loop** — optional manual approval at key decision points: campaign approval, creative review, budget thresholds, and policy exceptions.
+**Human-in-the-loop** — manual approval at decision points. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol).
 
 ---
 

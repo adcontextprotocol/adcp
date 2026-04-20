@@ -97,7 +97,7 @@ The response structure is identical across protocols, with only the transport wr
       "pricing_options": [
         {
           "pricing_option_id": "string",
-          "model": "cpm | percent_of_media | flat_fee",
+          "model": "cpm | percent_of_media | flat_fee | per_unit | custom",
           "...": "..."
         }
       ]
@@ -126,10 +126,12 @@ The response structure is identical across protocols, with only the transport wr
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
     - **pricing_option_id**: Unique identifier for this pricing option
-    - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - **model**: Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
     - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
     - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
     - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
+    - `model: "per_unit"` — `unit` (what is counted), `unit_price` (cost per one unit), `currency` (ISO 4217)
+    - `model: "custom"` — `description` (human-readable), `metadata` (structured parameters), `currency` (optional). Escape hatch for performance kickers, tiered volume, hybrid formulas, or any construct the standard models cannot express. Buyers SHOULD route custom pricing through operator review before commitment.
 
 Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
@@ -591,7 +593,7 @@ Discover all available deployments across platforms:
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
   - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
-    - **model** (string): Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - **model** (string): Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
 
 ## Error Codes
 
