@@ -855,6 +855,24 @@
       },
       "required": ["supported"]
     },
+    "privacy": {
+      "type": "object",
+      "description": "Privacy-posture capabilities for PII-handling operations. Fields are advisory in 3.x — receivers use them to negotiate hashing schemes and other privacy controls at onboarding. In 4.0, `audience_hash_schemes` MUST include `hmac_sha256` and MUST NOT include `sha256_plain`.",
+      "properties": {
+        "audience_hash_schemes": {
+          "type": "array",
+          "description": "Hashing schemes this seller accepts for `hashed_email` / `hashed_phone` in audience-member payloads (sync_audiences, log_event, et al.). `sha256_plain` is the legacy 3.x default — plain SHA-256 of the normalized identifier. It provides no cross-seller-correlation resistance and is trivially invertible against known-identifier universes (email ≈ 5B addresses); treat it as a pseudonymous identifier, not anonymization. `hmac_sha256` is the 3.x privacy-hardened scheme — HMAC-SHA-256 with a per-seller key (≥256-bit CSPRNG, rotated ≥annually) exchanged out-of-band at onboarding. It prevents cross-seller correlation but does NOT anonymize: a seller with the key and a guess at the cleartext can still recover membership. Buyers MUST use the scheme declared here when computing `hashed_email` / `hashed_phone`; if multiple schemes are declared, buyers SHOULD prefer `hmac_sha256`. 4.0 MUST require `hmac_sha256` and MUST remove `sha256_plain`. See docs/reference/privacy-considerations.mdx#pii-hashing.",
+          "items": {
+            "type": "string",
+            "enum": ["sha256_plain", "hmac_sha256"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["sha256_plain"]
+        }
+      },
+      "additionalProperties": false
+    },
     "compliance_testing": {
       "type": "object",
       "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block entirely if the agent does not support compliance testing.",
