@@ -31,8 +31,11 @@ narrative: |
      is identical — the key is what makes retries safe, not payload equivalence.
 
   Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
-  Sellers SHOULD declare their replay window in adcp.idempotency.replay_ttl_seconds
-  on get_adcp_capabilities; when omitted, buyers assume a 24-hour minimum.
+  Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
+  { supported: true, replay_ttl_seconds: N } to opt into replay protection, or
+  { supported: false } to declare they do not deduplicate retries. This storyboard
+  validates the supported: true behavior; sellers declaring supported: false
+  MUST skip this storyboard (they have no replay window to test).
 
 agent:
   interaction_model: media_buy_seller
@@ -63,9 +66,11 @@ phases:
       - id: get_capabilities
         title: "Check idempotency capability declaration"
         narrative: |
-          Call get_adcp_capabilities and verify adcp.idempotency.replay_ttl_seconds
-          is declared. This field is REQUIRED — clients MUST NOT fall back to an
-          assumed default, and a seller that omits it is non-compliant.
+          Call get_adcp_capabilities and verify adcp.idempotency is declared with
+          supported: true and a replay_ttl_seconds value. The block is REQUIRED —
+          clients MUST NOT fall back to an assumed default, and a seller that omits
+          it is non-compliant. Sellers running this storyboard must declare
+          supported: true; supported: false sellers skip this storyboard entirely.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -74,8 +79,8 @@ phases:
         stateful: false
         expected: |
           Return capabilities declaring media_buy in supported_protocols AND
-          adcp.idempotency.replay_ttl_seconds (minimum 3600s; recommended 86400s
-          or longer).
+          adcp.idempotency with supported: true and replay_ttl_seconds (minimum
+          3600s; recommended 86400s or longer).
         sample_request:
           context:
             correlation_id: "idempotency--get_capabilities"
@@ -85,9 +90,13 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_value
+            path: "adcp.idempotency.supported"
+            value: true
+            description: "Agent declares supported: true for this storyboard (supported: false sellers skip)"
           - check: field_present
             path: "adcp.idempotency.replay_ttl_seconds"
-            description: "Agent declares replay window TTL (required)"
+            description: "Agent declares replay window TTL (required when supported: true)"
 
           - check: field_present
             path: "context"
