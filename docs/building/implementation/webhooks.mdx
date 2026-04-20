@@ -130,6 +130,10 @@ const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${o
 
 The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
 
+### Echoing the caller's `context` object
+
+When the originating request carried a top-level `context` object, the seller MUST echo that same object verbatim in every webhook payload for the same operation, alongside `operation_id`. This is the same contract that applies to synchronous and async-status responses — see [Context and sessions — Normative echo contract](/docs/building/integration/context-sessions#normative-echo-contract). The echo MUST carry through `working`, `input-required`, `completed`, `failed`, and `canceled` deliveries; dropping `context` between the initial response and a later webhook breaks buyer-side correlation exactly where it's needed most. Buyers routing by `context.trace_id` or `context.internal_campaign_id` rely on verbatim echo on every delivery.
+
 ## When webhooks fire
 
 Webhooks are sent for each status change after the initial response, as long as `push_notification_config` is in the request.
