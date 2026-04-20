@@ -1051,9 +1051,13 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/listings/unpublished-backlog
   // Orgs with an active membership whose directory listing is missing or not
   // public. Use for cleanup of the pre-autopublish backlog.
-  apiRouter.get("/listings/unpublished-backlog", requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get("/listings/unpublished-backlog", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const result = await query<{
+      const { limit, offset } = req.query;
+      const lim = clampLimit(limit, 25);
+      const off = clampOffset(offset);
+
+      const rowsResult = await query<{
         workos_organization_id: string;
         name: string;
         subscription_status: string;
@@ -1078,15 +1082,27 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
          WHERE o.subscription_status IN ('active', 'trialing', 'past_due')
            AND (mp.id IS NULL OR mp.is_public = FALSE)
          ORDER BY o.subscription_current_period_end DESC NULLS LAST,
-                  o.name ASC`
+                  o.name ASC
+         LIMIT $1 OFFSET $2`,
+        [lim, off],
+      );
+
+      const countResult = await query<{ total: string }>(
+        `SELECT COUNT(*)::text AS total
+         FROM organizations o
+         LEFT JOIN member_profiles mp
+           ON mp.workos_organization_id = o.workos_organization_id
+         WHERE o.subscription_status IN ('active', 'trialing', 'past_due')
+           AND (mp.id IS NULL OR mp.is_public = FALSE)`,
       );
 
       res.json({
-        backlog: result.rows.map(row => ({
+        backlog: rowsResult.rows.map(row => ({
           ...row,
           has_profile: row.profile_id !== null,
         })),
-        total: result.rows.length,
+        page: { limit: lim, offset: off },
+        total: Number(countResult.rows[0]?.total ?? 0),
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching unpublished-listing backlog");
