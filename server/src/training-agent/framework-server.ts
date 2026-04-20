@@ -27,7 +27,7 @@ import { z } from 'zod';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
 import { getWebhookSigningKey } from './webhooks.js';
-import { getRequestSigningCapability } from './request-signing.js';
+import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
 import { createLogger } from '../logger.js';
 
@@ -242,8 +242,8 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
  * opaque `AdcpServer` handle from `@adcp/client/server` — no SDK types
  * escape our module boundary.
  */
-export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): AdcpServer {
-  const signingCap = getRequestSigningCapability();
+export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpServer {
+  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
 
   // ── Custom tools outside AdcpToolMap ─────────────────────────
   // Registered through the framework's `customTools` config (5.4). Each

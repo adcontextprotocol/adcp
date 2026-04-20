@@ -237,7 +237,7 @@ import {
   getIdempotencyStore,
 } from './idempotency.js';
 import { getWebhookEmitter } from './webhooks.js';
-import { getRequestSigningCapability } from './request-signing.js';
+import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 
 // MCP webhook envelope's `task_type` enum (core.generated TaskType — not re-exported).
 type WebhookTaskType =
@@ -2212,13 +2212,13 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   return result;
 }
 
-export async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Promise<Record<string, unknown>> {
+export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
-  const signingCap = getRequestSigningCapability();
+  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
