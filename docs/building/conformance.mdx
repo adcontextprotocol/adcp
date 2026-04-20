@@ -1,0 +1,139 @@
+---
+title: Conformance Specification
+sidebarTitle: Conformance Specification
+description: "What 'AdCP-conformant' means, defined by the storyboards that verify it. Conformance is what the spec requires; verified is what the suite attests."
+"og:title": "AdCP — Conformance Specification"
+---
+
+**Status**: Request for Comments
+**Last Updated**: April 19, 2026
+
+## Two words, not three
+
+AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
+
+- **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
+- **Verified** — AAO has tested the agent recently against those storyboards and issued a signed attestation ([AAO Verified badge](/docs/building/compliance-catalog)). Gated on active membership and a live heartbeat.
+- **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
+
+Put differently:
+
+- Conformance is a property of the agent's wire behavior.
+- Verification is a time-bounded third-party attestation that an agent is conformant.
+- Verified ⊆ Conformant. You can be conformant without being verified; you cannot be verified without being conformant.
+
+## Storyboards are the truth
+
+Rather than restate every MUST in prose — which would inevitably drift from the executable suite — **the storyboards ARE the conformance specification.** This document is a navigational index to them, grouped by the declaration that obligates the storyboard to run.
+
+Every normative rule in the suite has exactly one home: the storyboard YAML at [`/compliance/latest/`](https://adcontextprotocol.org/compliance/latest/). Changes to what "conformant" means happen there, in a versioned release, tested against real agents. If a rule isn't in a storyboard, it's not part of conformance.
+
+This is deliberate. A separate prose spec that restates storyboard rules creates two sources of truth. Two sources of truth drift. We pick one: the suite.
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in the referenced storyboards and prose sections below are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Conformance is layered
+
+Every agent satisfies the universal layer. Each `supported_protocols` claim adds a protocol baseline. Each `specialisms` claim adds a specialism baseline.
+
+| Layer | Obligation | Path |
+|-------|------------|------|
+| **Universal** | Every AdCP agent | [`/compliance/latest/universal/`](https://adcontextprotocol.org/compliance/latest/universal/) |
+| **Protocol** | Agent claiming a `supported_protocols` value | [`/compliance/latest/protocols/{protocol}/`](https://adcontextprotocol.org/compliance/latest/protocols/) |
+| **Specialism** | Agent claiming a `specialisms` value | [`/compliance/latest/specialisms/{id}/`](https://adcontextprotocol.org/compliance/latest/specialisms/) |
+
+Agents MUST NOT declare a capability whose storyboards they do not pass. See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy and [Validate Your Agent](/docs/building/validate-your-agent) for how to run the suite locally.
+
+## Universal conformance
+
+Every agent MUST pass every storyboard below.
+
+| Storyboard | What it verifies |
+|------------|------------------|
+| [`capability_discovery`](https://adcontextprotocol.org/compliance/latest/universal/capability-discovery) | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
+| [`schema_validation`](https://adcontextprotocol.org/compliance/latest/universal/schema-validation) | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| [`error_compliance`](https://adcontextprotocol.org/compliance/latest/universal/error-compliance) | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
+| [`idempotency`](https://adcontextprotocol.org/compliance/latest/universal/idempotency) | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
+| [`security_baseline`](https://adcontextprotocol.org/compliance/latest/universal/security) | Unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding |
+| [`deterministic_testing`](https://adcontextprotocol.org/compliance/latest/universal/deterministic-testing) | `comply_test_controller` state machine — skipped if `capabilities.compliance_testing.supported: false` |
+
+Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/docs/building/implementation/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
+
+## Protocol conformance
+
+A `supported_protocols` claim obligates the protocol's baseline storyboard.
+
+| `supported_protocols` | Storyboard |
+|-----------------------|------------|
+| `media_buy` | [`media_buy_seller`](https://adcontextprotocol.org/compliance/latest/protocols/media-buy/) + [`media_buy_state_machine`](https://adcontextprotocol.org/compliance/latest/protocols/media-buy/state-machine) |
+| `creative` | [`creative_lifecycle`](https://adcontextprotocol.org/compliance/latest/protocols/creative/) |
+| `signals` | [`signals_baseline`](https://adcontextprotocol.org/compliance/latest/protocols/signals/) |
+| `governance` | [`media_buy_governance_escalation`](https://adcontextprotocol.org/compliance/latest/protocols/governance/) |
+| `brand` | [`brand_baseline`](https://adcontextprotocol.org/compliance/latest/protocols/brand/) |
+| `sponsored_intelligence` | [`si_baseline`](https://adcontextprotocol.org/compliance/latest/protocols/sponsored-intelligence/) |
+
+## Specialism conformance
+
+A `specialisms` claim obligates the specialism's storyboard in addition to its parent protocol baseline. The catalog lives at [`/compliance/latest/index.json`](https://adcontextprotocol.org/compliance/latest/index.json); the human-readable index is the [Compliance Catalog](/docs/building/compliance-catalog).
+
+Specialisms carry a `status` — `stable` (verified pass/fail), `preview` (storyboard not yet defined; runner emits `passed: null`), `deprecated` (scheduled for removal). Agents MAY claim preview specialisms, but preview claims do not yield a pass/fail verdict.
+
+## Outside the wire
+
+Some requirements can't be verified by a storyboard because they're operator-level, not wire-level. They remain part of running a conformant agent, but the suite can't attest to them. Operators MUST self-assess against these; third-party frameworks (SOC 2, ISO 27001) are the usual attestation path.
+
+- **Secret storage** — credentials SHOULD live in a KMS or equivalent. The wire shows only whether auth succeeds, not where the key was stored.
+- **Credential rotation and revocation** — the operator MUST have a documented path to revoke a compromised credential in under an hour. The wire can't observe the runbook.
+- **Personnel and physical security** — who can touch production, break-glass custody, employee offboarding. Entirely outside the protocol.
+- **Governance agent due diligence** — when the operator relies on a third-party governance agent, the buyer SHOULD treat it as a processor with multi-customer blast radius and assess its posture. The storyboards verify correct JWS handling by the seller but cannot vouch for the governance agent itself.
+- **LLM subprocessor posture** — if the agent uses an LLM provider, the DPA with that provider governs whether prompts, brand assets, or creative metadata may be retained. The protocol can't see upstream DPA terms.
+- **Incident response** — AdCP emits the signals worth watching (`IDEMPOTENCY_CONFLICT` spikes, failed governance verifications, SSRF rejections); detection, alert routing, and response are operator concerns.
+- **Data residency configuration** — whether and how EU / UK data is kept in-region is typically declared in the agent's capabilities or contract; the wire records the declaration, not the underlying infrastructure.
+
+Full operator checklist: [Security Model § What to verify before going live](/docs/building/understanding/security-model#what-to-verify-before-going-live).
+
+## Conformance vs external assurance
+
+Conformance is wire-level correctness. SOC 2, ISO 27001, and NIST CSF are operational assurance. They answer different questions and neither substitutes for the other.
+
+| External control area | Storyboard evidence | Gap to external assurance |
+|------------------------|---------------------|----------------------------|
+| Access control (SOC 2 CC6, ISO 27001 A.5.15) | `security_baseline` (identity) + isolation checks in protocol storyboards | Personnel access reviews, least-privilege admin, offboarding |
+| Change management (SOC 2 CC8) | `idempotency` proves duplicate state changes are prevented on the wire | Deployment approvals, release gates, rollback procedures |
+| System monitoring (SOC 2 CC7, ISO 27001 A.8.16) | Error taxonomy produces a monitorable surface | Detection engineering, alert routing, on-call runbooks |
+| Cryptography (ISO 27001 A.8.24) | TLS, RFC 9421 signing, JWS governance tokens | KMS selection, rotation cadence, cert lifecycle |
+| Audit logging (SOC 2 CC7) | Governance storyboards verify signed-record issuance | Log retention, legal hold, integrity monitoring |
+| Data handling (SOC 2 Privacy, GDPR, ISO 27701) | TMP two-call separation, audience hashing, signal access control | Data subject rights, DPA management, cross-border transfer |
+| Vendor and subprocessor risk (SOC 2 CC9) | `adagents.json` / brand.json discovery, JWKS publication | Third-party risk assessment, LLM provider review |
+| Incident response (SOC 2 CC7, NIST CSF RS) | Signals observable; response not mandated | Runbooks, tabletop exercises, breach notification |
+| Business continuity (ISO 27001 A.5.30) | Cross-instance state storyboard checks | RPO/RTO targets, DR testing |
+
+Two practical consequences:
+
+1. Storyboard pass evidence MAY support specific external control objectives. It is not a substitute for an audit.
+2. External certification does not imply AdCP conformance. SOC 2 Type II says nothing about whether `create_media_buy` responses validate.
+
+## How to claim conformance
+
+1. Declare `supported_protocols` and `specialisms` in `get_adcp_capabilities`.
+2. Pass every storyboard the declaration obligates — universal + protocol baselines + specialism baselines — at a specific AdCP major version.
+3. Keep declaration and behavior in sync. An undeclared capability the suite happens to test is separate from a declared capability that fails. Both are non-conformant.
+
+Conformance is per-version; the suite is per-version. A 3.0-conformant agent is not thereby 3.1-conformant.
+
+**For third-party attestation**, run the heartbeat against AAO and earn an [AAO Verified badge](/docs/building/compliance-catalog). The badge is a signed claim that AAO tested the agent recently and the pass still holds. Buyers filtering on *verified* get a smaller set than *conformant* — fewer agents, fresher attestation, a named party on the hook.
+
+## What this document does not do
+
+- **Define individual MUSTs.** The storyboards do. If a rule isn't in a storyboard, it isn't part of conformance.
+- **Grant or revoke certification.** The [AgenticAdvertising.org certification program](/docs/learning/overview) runs on top of this; conformance is necessary but not sufficient.
+- **Publish reference test vectors beyond those already in the suite.** Broader test-vector corpus: [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
+
+## Further reading
+
+- **[Compliance Catalog](/docs/building/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
+- **[Validate Your Agent](/docs/building/validate-your-agent)** — How to run the suite
+- **[Security Model](/docs/building/understanding/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce
+- **[Security (implementation reference)](/docs/building/implementation/security)** — Normative rules cited by the storyboards
+- **[Versioning](/docs/reference/versioning)** — Major-version support windows
+- **[Known Limitations](/docs/reference/known-limitations)** — Visible edges of the specification
