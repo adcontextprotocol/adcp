@@ -262,6 +262,52 @@ When a portfolio plan references a `member_plan_id` that the governance agent do
 **Concurrency**: An orchestrator may send `create_media_buy` requests to multiple sellers simultaneously, each triggering a `committed` check. Budget checks are point-in-time and do not reserve budget, so concurrent approvals may together exceed the plan budget. The governance agent detects overspend at outcome reporting time. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 </Note>
 
+### Aggregated-spend evaluation (fragmentation defense)
+
+Governance thresholds (`reallocation_threshold`, `human_review_required` trigger points, registry-policy dollar floors) MUST be evaluated against **aggregated committed spend** over a trailing window, not per-plan or per-media-buy in isolation. A buyer that fragments a \$999,900 intended spend into 100 × \$9,999 buys — each individually below an operator's \$10,000 human-review threshold — would otherwise bypass review entirely. This is a fragmentation attack on governance, not a legitimate usage pattern, and the governance agent MUST close it.
+
+Governance agents MUST aggregate committed spend across all of the following when evaluating any threshold:
+
+- All plans attributable to the same `(buyer_agent, seller_agent, account_id)` tuple — fragmentation across plans on the same account does not reset the aggregate. Delegated sub-agents (see [Delegations](#delegations)) share the delegating buyer's aggregate: the `buyer_agent` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
+- Every [spend-commit task](#spend-commit-tasks) — fragmentation across task surfaces does not reset the aggregate. The spend-commit task inventory is the single authoritative list; new spend-commit tasks added there join the aggregate automatically, without a separate edit in this section.
+- The trailing window declared via the `governance.aggregation_window_days` capability (see [get_adcp_capabilities](#governance-aggregation-capability) below). The window slides with wall-clock time, not plan boundaries.
+
+**Evaluation-time semantics (testable).** At the moment of a spend-commit, the governance agent computes
+
+```
+aggregate = sum(c.amount for c in commit_history
+                where c.key == this.key
+                  and c.ts > now - aggregation_window_days × 86400s)
+            + this.amount
+```
+
+then evaluates `aggregate` against each applicable threshold. The current incoming commit is included in the sum. Commits that were denied outright do not contribute; commits approved or approved-with-conditions do. `now` is the governance agent's wall-clock time at evaluation; sliding-window boundaries are not snapped to plan or calendar boundaries.
+
+**Commitments are sticky within the window.** `c.amount` is the amount committed at approval time, not the delivered amount. Under-delivery, cancellation, makegoods, and post-approval budget reductions MUST NOT decrement a commit's contribution to the aggregate before the trailing window rolls it off. Otherwise a buyer could free fragmentation headroom by cancelling an approved commit and immediately re-committing sub-threshold — full spend moves across the round trip, each leg passes in isolation. An `update_media_buy` that *increases* committed budget enters as a delta (new committed budget − prior committed); a decrease does not decrement.
+
+When an individual commit would be below a threshold in isolation but pushes the trailing-window aggregate above the threshold, the governance agent MUST apply the threshold's consequence (human review escalation, denial, or conditions) to that commit. Governance agents MAY expose an `aggregate_committed` field on `get_plan_audit_logs` responses so auditors can reconstruct the fragmentation-defense decision without re-deriving it from the full outcome stream. The field's shape (units, currency, window-boundary reporting) is governance-agent-specific in 3.x and will be standardized in a later revision; implementers exposing it SHOULD document their shape alongside their `get_plan_audit_logs` response.
+
+Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `account_id` so two accounts share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
+
+#### Composition with `reallocation_threshold`
+
+A reallocation is itself a spend-commit: `update_media_buy` carries an incremental commit delta (new committed budget − previously committed), and that delta enters the aggregate and counts toward `reallocation_threshold` evaluation. A buyer cannot sidestep a \$25,000 reallocation threshold by fragmenting one \$30,000 reallocation into six \$4,999 updates — each update's delta accumulates into the trailing-window aggregate and trips the threshold once the cumulative delta crosses it.
+
+#### Conformance example
+
+Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(buyer_agent, seller_agent, account_id)`).
+
+| # | Prior 30-day aggregate | Incoming commit | Post-aggregate | Expected outcome |
+|---|-----------------------|-----------------|----------------|-------------------|
+| 1 | \$4,000 | \$2,500 `create_media_buy` | \$6,500 | Auto-approve — below threshold |
+| 2 | \$8,000 | \$2,500 `create_media_buy` | \$10,500 | Escalate to human review — aggregate crosses threshold even though the incoming commit is \$2,500 in isolation |
+
+A governance agent that approves row 2 without escalation is non-conformant: it has either failed to aggregate across the 30-day window, failed to key on the correct tuple, or failed to include the incoming commit in the sum.
+
+#### Governance aggregation capability
+
+Sellers and governance agents declare their aggregation window via `governance.aggregation_window_days` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Buyers that depend on a specific window for compliance (e.g., a brand-level weekly cadence review) MUST check this capability before relying on aggregation semantics — a governance agent declaring `aggregation_window_days: 7` does not defend against fragmentation spread across a 30-day quarter-end push. Absent declaration means the agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). There is no schema default: omission is not equivalent to a declared 30-day window.
+
 ## Brand compliance configuration
 
 Compliance policies live at the brand level, not in individual campaign plans. The brand's policy team configures the brand's compliance profile, and the governance agent resolves it when processing plans for that brand.
