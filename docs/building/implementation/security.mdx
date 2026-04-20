@@ -978,9 +978,17 @@ The normative rule is:
 
 `warn_for` is unchanged by this rule: it was already non-rejecting for unsigned requests and continues to surface signed-but-invalid signatures as monitoring signal during rollout.
 
-**Sellers that intend signing to be unconditional for an operation MUST configure their fallback authenticators to reject all other credential types for that operation.** Advertising `required_for: [create_media_buy]` while continuing to accept bearer tokens for `create_media_buy` does not prevent unsigned spend — the verifier advertised bearer as valid, and callers are entitled to use it. Sellers that want the strict reading (unsigned-always-rejected) MUST either stop accepting bearer for the operation, or gate the bearer authenticator on a per-caller flag that rejects bearer-only requests from counterparties who have completed 9421 onboarding.
+<Warning>
+**Seller enforcement — pick the posture that matches your capability declaration.**
 
-*Example of the per-caller flag pattern:* a seller whose `agents[]` entries carry a `signing_onboarded: true` flag on 9421-ready counterparties configures its bearer authenticator to reject bearer credentials whose resolved agent has `signing_onboarded: true` for operations in `required_for`. Other agents continue to authenticate via bearer until their flag flips. This keeps the promotion to `required_for` operationally safe — existing bearer traffic continues while onboarded counterparties are held to the stricter bar.
+Three enforcement postures are valid; sellers MUST pick one and configure their fallback authenticators accordingly. Advertising `required_for` while letting bearer authentication remain open for the listed operation is security theater — the verifier advertised bearer as valid, and callers are entitled to use it.
+
+- **Strict (signing is unconditional for this operation).** Sellers MUST either stop accepting bearer/API-key/mTLS for the operation entirely, *or* gate the fallback authenticator on a per-caller flag that rejects non-signed requests from counterparties who have completed 9421 onboarding. This is the posture where `required_for` rejects everything unsigned.
+- **Prefer signing, accept fallback (recommended during rollout).** Advertise `required_for` for the operation but leave bearer open. The composition rule applies: unsigned-unauthenticated callers are rejected, unsigned-bearer-authed callers pass. Good for quarters-long migrations where buyers onboard to 9421 at their own pace.
+- **Advisory only.** Move the operation to `warn_for` (or `supported_for`) rather than `required_for`. The verifier verifies signatures when present and logs failures, but never rejects for missing signature.
+
+*Example of the per-caller flag (strict posture):* a seller whose `agents[]` entries carry a `signing_onboarded: true` flag on 9421-ready counterparties configures its bearer authenticator to reject bearer credentials whose resolved agent has `signing_onboarded: true` for operations in `required_for`. Other agents continue to authenticate via bearer until their flag flips. Promotion to `required_for` stays operationally safe — existing bearer traffic continues while onboarded counterparties are held to the stricter bar.
+</Warning>
 
 Buyers reading `required_for` on a counterparty's capability surface learn **"callers presenting no credential at all will be rejected on this operation; callers presenting a bearer, API key, or mTLS credential the verifier accepts will not be rejected for missing signature."** That is not "all unsigned callers will be rejected." A buyer that wants its own unsigned bearer calls to fail closed on a `required_for` operation MUST negotiate with the seller to revoke bearer credentials for that operation rather than infer the behavior from the capability block.
 
