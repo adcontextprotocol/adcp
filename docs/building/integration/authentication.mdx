@@ -5,6 +5,8 @@ description: "AdCP authentication guide: public vs authenticated operations, bea
 ---
 
 
+AdCP 3.0 supports three authentication mechanisms: (1) RFC 9421 request signing (RECOMMENDED, REQUIRED in 3.1+ for mutating operations), (2) mutual TLS, and (3) Bearer tokens over TLS (permitted in 3.0 for non-financial operations only). Implementations MUST support RFC 9421 for mutating operations by the 3.1 deprecation date. The full per-mechanism matrix is in [Authentication Method](#authentication-method) below; the implementation-reference counterpart is in the [security reference](/docs/building/implementation/security).
+
 AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
 
 ## When Authentication is Required

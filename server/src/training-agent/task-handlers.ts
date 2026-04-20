@@ -3168,9 +3168,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
       if (outcome.kind === 'replay') {
         // Cached inner response; envelope fields (`replayed`, `context`) are
-        // produced fresh on every response per security.mdx. Replayed
+        // produced fresh on every response per security.mdx:258. Replayed
         // responses bypass the handler entirely — no mutations, no flush.
-        const body: Record<string, unknown> = { ...outcome.response, replayed: true };
+        // Explicit assignment of `replayed` AFTER the spread ensures a stale
+        // cached `replayed: false` (defensive — sanitize-on-insert below
+        // should already prevent this) cannot override the envelope flag.
+        const body: Record<string, unknown> = { ...outcome.response };
+        body.replayed = true;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -3254,7 +3258,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       && !toolResult.isError
       && !handlerThrew
     ) {
-      const inserted = cacheResponse(idempotencyPrincipal, idempotencyKey, handlerArgs, cachableResponse);
+      // Sanitize-on-insert: never cache a handler-produced `replayed` flag.
+      // The envelope `replayed: true` is added fresh on replay from
+      // security.mdx:258 — caching a `replayed: false` here would let a
+      // malicious/buggy handler poison future replays.
+      const { replayed: _droppedReplayed, ...sanitizedForCache } = cachableResponse;
+      const inserted = cacheResponse(idempotencyPrincipal, idempotencyKey, handlerArgs, sanitizedForCache);
       if (!inserted) {
         // Cap was hit between the pre-check and post-execution insert.
         // The handler already ran and (likely) mutated state — we can't
