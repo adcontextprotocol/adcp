@@ -1,4 +1,5 @@
 {
+  "_WARNING": "PUBLIC TEST KEYS — DO NOT TRUST IN PRODUCTION. The _private_d_for_test_only field exposes the full private key on every entry so SDK signer/verifier roundtrips can be exercised against the same material. Any production verifier that adds one of these kids to its trust store can be forged against by anyone who downloads this file. These keys are valid ONLY for grading against the AdCP webhook-signing conformance vectors.",
   "$comment": "Test keypairs for AdCP webhook-signing conformance. These keys are public and MUST NOT be used in production. See README.md.",
   "keys": [
     {

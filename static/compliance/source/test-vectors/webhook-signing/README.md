@@ -6,6 +6,10 @@ Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/i
 
 **Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/test-vectors/webhook-signing/` (tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable). SDKs SHOULD fetch from the CDN path rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/test-vectors/webhook-signing/positive/001-basic-post.json`.
 
+## ⚠️ Security — test keys are public
+
+`keys.json` publishes the full private key material for every test keypair in the `_private_d_for_test_only` field so SDKs can exercise both signer and verifier roles against the same material. **Any production verifier that adds `test-ed25519-webhook-2026`, `test-es256-webhook-2026`, `test-wrong-purpose-2026`, or `test-revoked-webhook-2026` to its trust store is exploitable** — anyone who downloads `keys.json` can forge signatures under those kids. These keys are valid ONLY for grading against this conformance suite. Production signers MUST mint and publish their own keypairs under their own `jwks_uri`; production verifiers MUST NOT treat the test kids as trusted in any deployment exposed to live traffic.
+
 ## Scope
 
 These vectors exercise the [webhook verifier checklist](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-for-webhooks) and the RFC 9421 profile constraints specific to webhooks: required covered components (content-digest is REQUIRED, no policy branch), the distinct `tag="adcp/webhook-signing/v1"`, the `adcp_use: "webhook-signing"` key-purpose discriminator, and the `webhook_signature_*` error taxonomy. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
@@ -41,21 +45,25 @@ test-vectors/webhook-signing/
 │   ├── 008-wrong-adcp-use.json           → webhook_signature_key_purpose_invalid (step 8; adcp_use=request-signing)
 │   ├── 009-content-digest-mismatch.json  → webhook_signature_digest_mismatch (step 11)
 │   ├── 010-malformed-signature-input.json → webhook_signature_header_malformed (step 1)
-│   ├── 011-signature-without-input.json  → webhook_signature_header_malformed (pre-check; bound-pair broken)
+│   ├── 011-signature-without-input.json  → webhook_signature_header_malformed (step 1; bound pair broken, one header without the other)
 │   ├── 012-missing-expires-param.json    → webhook_signature_params_incomplete (step 2)
 │   ├── 013-expires-le-created.json       → webhook_signature_window_invalid (step 5; expires ≤ created)
 │   ├── 014-missing-nonce-param.json      → webhook_signature_params_incomplete (step 2)
 │   ├── 015-signature-invalid.json        → webhook_signature_invalid (step 10; signature bytes corrupted)
 │   ├── 016-replayed-nonce.json           → webhook_signature_replayed (step 12; requires runner state)
 │   ├── 017-key-revoked.json              → webhook_signature_key_revoked (step 9; requires runner state)
-│   └── 018-rate-abuse.json               → webhook_signature_rate_abuse (step 9a; requires runner state)
+│   ├── 018-rate-abuse.json               → webhook_signature_rate_abuse (step 9a; requires runner state)
+│   ├── 019-revocation-stale.json         → webhook_signature_revocation_stale (step 9; requires runner state)
+│   ├── 020-key-ops-missing-verify.json   → webhook_signature_key_purpose_invalid (step 8; key_ops lacks "verify")
+│   └── 021-base64-alphabet-mixing.json   → webhook_signature_header_malformed (step 1; Signature token mixes base64url and standard-base64 chars)
 └── positive/                             vectors that MUST verify successfully
-    ├── 001-basic-post.json               Ed25519, all five required components covered
-    ├── 002-es256-post.json               ES256, all five required components covered
-    ├── 003-multiple-signature-labels.json Two Signature-Input labels; verifier processes sig1 only
-    ├── 004-default-port-stripped.json    URL has :443; canonical strips it before signing
-    ├── 005-percent-encoded-path.json     Path has lowercase %xx; canonical uppercases
-    └── 006-query-byte-preserved.json     Query b=2&a=1&c=3 — preserved byte-for-byte, not alphabetized
+    ├── 001-basic-post.json                   Ed25519, all five required components covered
+    ├── 002-es256-post.json                   ES256, all five required components covered
+    ├── 003-multiple-signature-labels.json    Two Signature-Input labels; verifier processes the label named `sig1`
+    ├── 004-default-port-stripped.json        URL has :443; canonical strips it before signing
+    ├── 005-percent-encoded-path.json         Path has lowercase %xx; canonical uppercases
+    ├── 006-query-byte-preserved.json         Query b=2&a=1&c=3 — preserved byte-for-byte, not alphabetized
+    └── 007-body-without-idempotency-key.json Body omits idempotency_key; signature still verifies (schema vs. signature separation)
 ```
 
 ## Vector shape
@@ -90,6 +98,8 @@ Each vector is a JSON object with these fields:
 
 Fixed Unix-seconds timestamp representing "now" at vector construction time (2026-04-18T10:00:00Z). Verifiers running the vectors SHOULD stub their clock to this value so `window_invalid` checks are deterministic across time zones and machines.
 
+**Units**: Unix **seconds**, not milliseconds. Verifiers whose internal clocks are in milliseconds MUST divide by 1000 before comparing to `created`/`expires` sig-params. Using a millisecond value directly would make every signature appear ~1000× in the past and trip `window_invalid`.
+
 ### `jwks_ref`
 
 Array of `kid` values the vector expects in the signer JWKS. Verifiers load `keys.json`, filter to the listed `kid`s, and present that subset to their verifier under test. Not all keys in `keys.json` are in every vector's JWKS — for example, vector 008 references only `test-wrong-purpose-2026`, which causes step 8 to reject.
@@ -102,7 +112,44 @@ The RFC 9421 §2.5 canonical signature base the signer produced. Verifiers compu
 
 Positive vectors: `{"success": true}`. Verifiers MUST accept the signature.
 
-Negative vectors: `{"success": false, "error_code": "webhook_signature_<...>", "failed_step": <n>}`. Verifiers MUST reject the signature with the exact `error_code` byte-for-byte. The `failed_step` field is informational — grading is on the stable error code only. An implementation that rejects with the correct error code at a different checklist step number is conformant; the step order in the spec is a scaffolding for correctness, not a grading target.
+Negative vectors: `{"success": false, "error_code": "webhook_signature_<...>", "failed_step": <n>, "sub_step": "<letter>"?}`. Verifiers MUST reject the signature with the exact `error_code` byte-for-byte. The `failed_step` and `sub_step` fields are informational — grading is on the stable error code only. An implementation that rejects with the correct error code at a different checklist step number is conformant; the step order in the spec is a scaffolding for correctness, not a grading target.
+
+- `failed_step` is always an **integer** (1–13).
+- `sub_step` is optional and, when present, is a **string** letter (e.g., `"a"` for step 9a's per-keyid cap check). Vectors without a sub-step omit the field entirely rather than setting it to null.
+
+### `test_harness_state`
+
+Negative vectors that assert verifier state the vector cannot set from the outside (016, 017, 018, 019) carry `test_harness_state` describing the preconditions the runner MUST install before delivering the vector. Recognized shapes:
+
+| Field | Type | Used by | Meaning |
+|---|---|---|---|
+| `replay_cache_entries` | `Array<{keyid, nonce}>` | 016-replayed-nonce | Entries the runner MUST preload into its (keyid, nonce) replay cache. Paired with `black_box_behavior: "deliver_twice"` for runners that provoke the replay by double-delivery instead. |
+| `revoked_kids` | `string[]` | 017-key-revoked | Kids the runner MUST preload into the revocation list. |
+| `per_keyid_cap_filled_for` | `string` | 018-rate-abuse | Kid whose per-keyid replay-cache cap the runner MUST fill to its grading target before delivering the vector. Paired with `black_box_behavior: "pre_fill_per_keyid_cap"`. |
+| `revocation_list_stale_seconds` | `integer` | 019-revocation-stale | Simulated seconds since last successful revocation-list refresh. Runner MUST present this to the receiver as exceeding the `next_update + grace` window. Paired with `black_box_behavior: "simulate_stale_revocation_fetch"`. |
+
+Runners that cannot install a declared harness-state primitive skip the affected vector as `not_applicable` — never as failed.
+
+### `black_box_behavior`
+
+State-dependent vectors (016, 017, 018, 019) declare a `black_box_behavior` string describing the runner-side action that provokes the assertion without white-box state injection. AdCP Verified grading runs black-box only. White-box harnesses MAY inject state directly (per the `test_harness_state` shape above) and skip the black-box step.
+
+### `jwks_override` (vector 020 only)
+
+Vector 020 tests that the verifier rejects JWKs whose `key_ops` lacks `"verify"`. The vector's signature itself is produced by a normally-configured key; the JWK presented to the verifier overrides `keys.json` with a mutated variant. Runners MUST substitute the keyid's entry with the `jwks_override[kid]` shape before resolving the signature. Field present only on vectors that need JWK mutation; most vectors present `keys.json` entries unchanged.
+
+### `jwks_ref` semantics (positive vector 003)
+
+Vector 003 includes two `Signature-Input` labels: the vector's own `sig1` and a decorative `relay` label. Verifiers MUST process the label named `sig1` specifically — not "the first label in the header," not "any label." The spec at [`#adcp-rfc-9421-profile`](https://adcontextprotocol.org/docs/building/implementation/security#adcp-rfc-9421-profile) says signers name the label `sig1` by convention, and verifiers key off the name rather than position. If an implementation picks a different label, the vector will fail even if that label's signature is individually valid.
+
+### Signature validity vs. payload schema validation (positive vector 007)
+
+Vector 007's body omits `idempotency_key`, which is required by the webhook payload schema per #2417. The 9421 signature still verifies cleanly because signature verification is a **transport-layer** check; payload schema validation is a **separate application-layer check** that fires after. A conformant receiver will:
+
+1. Verify the signature (steps 1–13 of the webhook verifier checklist) → accept.
+2. Validate the decoded payload against the webhook schema → reject for missing `idempotency_key`.
+
+Step 2's rejection does NOT map to any `webhook_signature_*` code. Implementations that conflate the two and reject vector 007 at the signature layer are non-conformant. Implementations that accept vector 007 at the signature layer and separately reject the payload at schema validation are correctly splitting the concerns.
 
 ### `requires_contract` and `test_harness_state` (negative vectors only, when applicable)
 

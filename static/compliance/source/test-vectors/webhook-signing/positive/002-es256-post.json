@@ -9,7 +9,7 @@
       "Content-Type": "application/json",
       "Content-Digest": "sha-256=:dJ2koiIMZIhdGE7tidErCHV13FFvOIowCcXDiwyG54I=:",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-es256-webhook-2026\";alg=\"ecdsa-p256-sha256\";tag=\"adcp/webhook-signing/v1\"",
-      "Signature": "sig1=:Lxm2sI8t5uJVYlQyBCSG5vog_Q0egH9ebq2sim3j_2Ns3jDhFCAEH0cjCJa5PuY2Eb8GCbC4f4PraPQ12KclXA:"
+      "Signature": "sig1=:iVB5KDEpieLdhi-wx1z9ZEPPJLDCN0JRjInTVCxN4STDBFCAgk78UIIbwWNlSVT3pChDfloWxXezPRxqT5IspQ:"
     },
     "body": "{\"idempotency_key\":\"whk_01HW9D3H8FZP2N6R8T0V4X6Z9B\",\"task_id\":\"task_456\",\"operation_id\":\"op_abc\",\"status\":\"completed\",\"result\":{\"media_buy_id\":\"mb_001\"}}"
   },
