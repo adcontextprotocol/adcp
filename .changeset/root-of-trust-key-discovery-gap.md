@@ -29,22 +29,29 @@ Adds two pieces:
   gap** section between *What AdCP does not do in 3.0* and *What is
   outside the protocol*. Enumerates where 3.0 relies on the
   counterparty origin (RFC 9421 JWKS, governance JWKS, `brand.json`
-  agent keys, `authoritative_location` pointers), specifies the
+  agent keys, `authoritative_location` pointers), acknowledges that
+  the existing AgenticAdvertising.org registry resolves identity and
+  authorization and caches `adagents.json` `signing_keys[]` but does
+  not today operate as a key-transparency anchor, specifies the
   TOFU-with-continuity baseline 3.x actually delivers, and documents
-  four multi-source controls that raise the bar without a registry:
-  DNS-TXT cross-check, publication-delay / continuity windows on
-  never-before-seen keys, out-of-band key-rotation signalling, and
-  rotation-validity discipline. Then sketches the 4.0 centralized
-  publisher-key registry — enrollment, append-only rotation log,
-  public queryability, governance-neutral operation, JWKS wire
-  compatibility — with the explicit caveat that it is not a 3.x
-  requirement but is the anchor the 3.x controls are designed to feed
-  into.
+  four multi-source controls that raise the bar without transparency
+  anchoring: DNS-TXT cross-check, publication-delay / continuity
+  windows on never-before-seen keys, out-of-band key-rotation
+  signalling, and rotation-validity discipline. Then sketches the 4.0
+  extension — enrollment, append-only rotation log, public
+  queryability, governance-neutral operation, JWKS wire compatibility
+  — framed as adding key-transparency anchoring to the existing
+  registry rather than building a new one, with the explicit caveat
+  that it is not a 3.x requirement but is the anchor the 3.x controls
+  are designed to feed into.
 
 - `known-limitations.mdx` §Authentication and identity — adds a
-  **No centralized publisher-key registry** bullet and a cross-link
-  to the new section, so the limitation is surfaced on the canonical
-  non-goals page rather than only in the architectural discussion.
+  **No key-transparency anchoring in the registry** bullet that
+  explicitly cites the existing registry and draws the line between
+  identity/authorization discovery (shipped) and cryptographic key
+  anchoring (4.0), and a cross-link to the new section, so the
+  limitation is surfaced on the canonical non-goals page rather than
+  only in the architectural discussion.
 
 No schema change, no new wire format. The 3.x deliverable is honesty
 about the trust model plus a normative baseline operators can actually

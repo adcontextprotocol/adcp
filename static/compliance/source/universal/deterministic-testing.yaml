@@ -270,6 +270,8 @@ phases:
           Sync a sandbox account so the state machine has an entity to
           force transitions on.
         task: sync_accounts
+        schema_ref: 'account/sync-accounts-request.json'
+        response_schema_ref: 'account/sync-accounts-response.json'
         comply_scenario: deterministic_account
         stateful: true
 
@@ -279,6 +281,7 @@ phases:
           operator: 'test.example'
           sandbox: true
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_account_sync_accounts_for_state"
           context:
             correlation_id: "deterministic_testing--sync_accounts_for_state"
         validations:
@@ -903,6 +906,8 @@ phases:
           Create an SI session via si_initiate_session. The session_id is captured
           for controller-driven termination.
         task: si_initiate_session
+        schema_ref: 'sponsored-intelligence/si-initiate-session-request.json'
+        response_schema_ref: 'sponsored-intelligence/si-initiate-session-response.json'
         comply_scenario: deterministic_session
         stateful: true
         context_outputs:
@@ -918,6 +923,7 @@ phases:
             response_formats:
               - 'text'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_session_initiate_session"
           context:
             correlation_id: "deterministic_testing--initiate_session"
         validations:
@@ -974,6 +980,8 @@ phases:
           Attempt to send a message on the terminated session. The agent should
           return an error or terminated status.
         task: si_send_message
+        schema_ref: 'sponsored-intelligence/si-send-message-request.json'
+        response_schema_ref: 'sponsored-intelligence/si-send-message-response.json'
         comply_scenario: deterministic_session
         stateful: true
         expected: |
@@ -984,6 +992,7 @@ phases:
           session_id: '$context.session_id'
           message: 'comply test — session should be terminated'
 
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_session_verify_terminated_session"
           context:
             correlation_id: "deterministic_testing--verify_terminated_session"
         validations:

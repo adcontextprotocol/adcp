@@ -235,6 +235,10 @@ Content-Digest: sha-256=:<base64url-unpadded>:
 
 Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
 
+:::note Hash algorithm — this profile version
+`Content-Digest` in this profile version is `sha-256=` only. Verifiers SHOULD tolerate (but not require) additional RFC 9530 hash algorithms for forward-compatibility; `sha-512` is reserved for a future profile version and MUST NOT be mixed with `sha-256` in the same header today. Signers MUST emit exactly one algorithm at a time in this profile version — a `Content-Digest` carrying both `sha-256=...` and `sha-512=...` is non-conformant and verifiers MUST reject it.
+:::
+
 **Verification** follows the 14-step [request verifier checklist](/docs/building/implementation/security#verifier-checklist-requests) with three webhook substitutions:
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/implementation/security#webhook-error-taxonomy)).
@@ -283,6 +287,18 @@ app.use(express.json({
 The `created`/`expires`/`nonce` sig-params enforce a 5-minute max validity window and `(keyid, nonce)` replay dedup. See [Transport replay dedup](/docs/building/implementation/security#transport-replay-dedup) for the per-keyid cap and memory-bounding rules.
 :::
 
+### mTLS on webhook ingress (SHOULD-consider, defense-in-depth)
+
+The RFC 9421 profile anchors signer identity in the seller's published JWKS, which itself resolves through the seller's `brand.json` / `adagents.json` on a TLS-terminating origin. An origin compromise at that layer (DNS hijack, CA misissuance, host takeover) has an outsized blast radius until the revocation path converges — see the normative baseline in [§Transport Security](/docs/building/implementation/security#transport-security) and the key-discovery / root-of-trust discussion in [§Identity and JWKS resolution](/docs/building/implementation/security#identity-and-jwks-resolution). {/* XREF: security.mdx §Transport Security, §Identity and JWKS resolution */}
+
+Buyers whose webhook endpoints accept financial or otherwise high-impact mutations SHOULD consider requiring mutual TLS on webhook ingress as a transport-layer defense-in-depth measure on top of the 9421 signature. mTLS binds the TCP connection to a client certificate the buyer has explicitly provisioned for the seller, so a compromised `brand.json` origin that can mint valid 9421 signatures still cannot establish the TLS session at all.
+
+Normative points for buyers who adopt mTLS on webhook ingress:
+
+- The webhook-ingress **client certificate MUST be distinct from the signing keypair**. Reusing the 9421 webhook-signing key as a TLS client certificate collapses two independent trust domains onto a single key and negates the defense-in-depth benefit (a compromise of the signing key becomes a compromise of the transport identity too).
+- mTLS is a transport posture negotiated bilaterally during onboarding; it is NOT advertised as a protocol-level capability in this profile version. Do not emit or rely on any `webhook_signing.mtls_supported` capability flag — capability surfacing for mTLS is out of scope for 3.x and is tracked separately.
+- mTLS does not replace signature verification. Receivers that terminate mTLS MUST still run the 9421 verifier checklist; signature verification remains the authoritative principal check.
+
 ### Legacy HMAC-SHA256 fallback (deprecated)
 
 :::warning Deprecated — removed in AdCP 4.0
@@ -330,8 +346,27 @@ function signWebhook(rawBody: string, secret: string): { signature: string; time
 ```
 
 **Receiver implementation (legacy):**
+
+The snippet below avoids a length-based early return. Comparing raw signatures requires equal-length buffers (Node's `timingSafeEqual` throws otherwise), and a pre-check branch leaks the candidate's length via timing. Instead, both operands are hashed once more so the final compare is always over two fixed-size 32-byte buffers, independent of the incoming header shape.
+
 ```typescript
 import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifyHmac(rawBody: string, header: string, secret: string): boolean {
+  const expected = createHmac('sha256', secret).update(rawBody).digest();
+  let candidate: Buffer;
+  try {
+    // Header is "sha256=<hex>"; strip the prefix before decoding.
+    const hex = header.startsWith('sha256=') ? header.slice('sha256='.length) : header;
+    candidate = Buffer.from(hex, 'hex');
+  } catch {
+    candidate = Buffer.alloc(0);
+  }
+  // Hash both operands again so the compare is always over two 32-byte buffers.
+  const a = createHmac('sha256', secret).update(expected).digest();
+  const b = createHmac('sha256', secret).update(candidate).digest();
+  return timingSafeEqual(a, b);
+}
 
 function verifyWebhook(
   rawBody: string, signature: string, timestamp: string, secret: string,
@@ -342,9 +377,7 @@ function verifyWebhook(
   if (Math.abs(now - ts) > 300) return false;
 
   const message = `${ts}.${rawBody}`;
-  const expected = `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
-  if (signature.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  return verifyHmac(message, signature, secret);
 }
 ```
 
@@ -372,6 +405,23 @@ app.post('/webhooks/adcp', (req, res) => {
 });
 ```
 
+## Out-of-band security events
+
+### `identity.compromise_notification`
+
+A publisher, operator, or governance authority (GA) MUST emit an `identity.compromise_notification` webhook event to every subscribed integration partner when it revokes a signing key due to known or suspected compromise, rather than during routine scheduled rotation. This is the protocol-level push channel that complements the pull-based revocation list — it exists so that the attack window between "key compromise detected" and "verifiers stop honoring the key" is bounded by webhook latency rather than by the verifier's revocation-poll cadence. {/* XREF: security.mdx §Key revocation and compromise response */}
+
+The payload identifies the compromised `keyid`, the effective revocation time, and a human-readable `reason` enum (e.g. `suspected_private_key_disclosure`, `origin_compromise`, `ca_misissuance`, `operator_decision`).
+
+**Subscriber requirements:**
+
+- On receipt of a successfully-verified `identity.compromise_notification`, the subscriber MUST immediately invalidate any cached JWKS, JWS-verification, or signature-verification state keyed on the named `keyid` (and any material fetched from the same `jwks_uri` if `reason` indicates origin compromise), refetching from the authoritative origin on the next verification attempt.
+- The subscriber MUST alarm on receipt: this is a security-significant event and MUST surface to on-call operators, not silently accumulate in a log. Silent handling defeats the purpose of the out-of-band channel.
+- The subscriber MUST treat signatures created before the effective revocation time with the documented GA revocation semantics (as normatively specified in the revocation-list section of security.mdx); the compromise webhook is notification, not an independent trust anchor.
+- The subscriber MUST verify the signature on the `identity.compromise_notification` webhook itself against a key that is **not** the one being revoked. An operator revoking `kid=X` MUST sign the notification with a different, still-valid `kid`; otherwise a holder of the compromised key could forge a self-revocation to trigger denial-of-service cache churn across the ecosystem.
+
+This event is one-shot per revocation decision, carries the standard `idempotency_key`, and is subject to the normal at-least-once delivery and dedup semantics below.
+
 ## Reliability
 
 Webhooks use **at-least-once delivery** — you may receive the same event more than once, and events may arrive out of order.
@@ -385,11 +435,14 @@ Every webhook payload — MCP task envelope, governance list-change webhooks (`c
 - The key MUST be stable across retries of the same event and MUST NOT be reused for a distinct event.
 
 **Receiver requirements:**
+- **Byte-exact key lookup (MUST).** `idempotency_key` is part of the signed region by virtue of being in the body, and `content-digest` covers the body. Receivers MUST look up the key as the exact byte-string received; normalization, Unicode folding, case-folding, whitespace trimming, or numeric re-quoting are forbidden. Two keys that differ by a trailing space, a Unicode NFC/NFD fold, or a quoted-vs-unquoted numeric form MUST be treated as distinct — any transform re-serializes the body, breaks the digest, and desynchronizes sender and receiver dedup state.
 - Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the sender's cryptographic identity as established by signature verification — under the 9421 default, the resolved `keyid` → signer `agents[]` entry URL; under the legacy fallback, the credential binding from the verified HMAC secret or Bearer token. Never derive identity from a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple sellers MUST NOT collapse them. During an HMAC→9421 migration, a receiver SHOULD map both sender-identity forms for the same logical seller to one keyspace so that a duplicate across schemes still dedupes.
 - Dedup state SHOULD persist for at least 24h. Publishers SHOULD NOT retry beyond that window; retries arriving after the receiver's TTL will be reprocessed as fresh events.
 - Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile seller emitting high-volume fresh keys is otherwise a storage-amplification vector.
 - **Duplicates MUST be answered with `2xx`** (typically `200 OK`), not `409 Conflict`. At-least-once senders interpret any non-2xx response as "delivery failed" and retry with exponential back-off; returning `4xx` on a successfully-deduped event turns correct receiver behavior into a retry storm. A duplicate is a no-op, not an error.
 - Webhook receivers do **not** verify payload equivalence across key reuse. If a sender reuses a key with a changed payload (a sender bug), the receiver's cached first copy wins and the second is silently deduped. This differs from the request-side `IDEMPOTENCY_CONFLICT` behavior — senders are solely responsible for generating a fresh key on every distinct event.
+- **Mismatch forensics (MUST).** Silently deduping does NOT mean silently discarding the signal. When a receiver observes an incoming body whose hash differs from the cached body hash under the same `(sender, idempotency_key)`, the receiver MUST emit a structured log event of type `WEBHOOK_PAYLOAD_MISMATCH` carrying at minimum: the sender identity, the `idempotency_key`, the SHA-256 of the cached body, the SHA-256 of the incoming body, and the arrival timestamp. The delivery response is still `2xx` (the dedup semantics above are unchanged), but the mismatch MUST be forensically recoverable. Receivers SHOULD alert operators when this event fires at non-trivial rates from a given sender, because in steady state it indicates either a sender bug or an attacker attempting to substitute content under a previously-accepted key.
+- **Senders MUST NOT reuse an `idempotency_key` for semantically different content within the receiver's dedup window.** A distinct event MUST get a fresh key. Violating this rule is a sender bug that the receiver is contractually entitled to treat as the first-write-wins case above — the sender does not get a second chance to change the content under the same key.
 
 ```javascript
 app.post('/webhooks/adcp', async (req, res) => {

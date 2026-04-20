@@ -472,6 +472,12 @@ Use `signing_keys` when the publisher wants to pin the public keys an authorized
 - Buyers should verify signed agent responses against the pinned keys in `adagents.json`
 - If an agent domain is compromised, pinned keys prevent the attacker from silently swapping both the endpoint and its advertised keys
 
+Publishers MUST populate `signing_keys` for any authorized agent whose delegated scopes include mutating operations (for example, sales agents able to create or modify media buys). Leaving `signing_keys` empty in that case reduces the trust chain to counterparty-controlled `jwks_uri` discovery and forfeits the publisher's pin as a cross-check.
+
+Verifier requirement: if the publisher's `adagents.json` entry for an agent contains `signing_keys`, the verifier MUST reject any signature whose `keyid` is not in that pinned set, regardless of `jwks_uri` contents. The pin is authoritative; the agent-hosted JWKS is advisory and MUST NOT override it.
+
+A follow-up is tracked to promote `signing_keys` from optional to required at the schema level for mutating-scope authorizations; the prose requirement above is the normative floor until that schema change lands.
+
 ### `countries`
 
 Use ISO 3166-1 alpha-2 country codes to constrain authorization geographically. This avoids ambiguous regional shorthands such as "LATAM" or "EMEA" and gives buyer agents a precise machine-readable scope.
