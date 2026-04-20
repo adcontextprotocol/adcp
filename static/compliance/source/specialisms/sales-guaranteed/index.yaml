@@ -395,6 +395,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
                   mime_type: "video/mp4"
 
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_creative_sync_sync_creatives"

@@ -564,6 +564,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
                   mime_type: "video/mp4"
             - creative_id: "display_trail_pro_300x250"
               name: "Trail Pro 3000 - Display 300x250"
@@ -574,6 +577,8 @@ phases:
                 image:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
                   mime_type: "image/png"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_sync_sync_creatives"
           context:
