@@ -59,7 +59,9 @@ or, pre-`sync_accounts` / implicit-accounts flows:
 }
 ```
 
-Top-level `brand: { domain: "..." }` is accepted as a minimal-identity shorthand but is strictly less expressive — it omits the operator identity needed for agency billing, governance trails, and proposal workflows. AdCP compliance storyboards under `static/compliance/source/` use the `account { brand, operator }` form on every buyer-side step. See [docs/contributing/storyboard-authoring.md](https://github.com/adcontextprotocol/adcp/blob/main/docs/contributing/storyboard-authoring.md) for the authoring convention.
+Top-level `brand: { domain: "..." }` is accepted as a minimal-identity shorthand but is strictly less expressive — it omits the operator identity needed for agency billing, governance trails, and proposal workflows. AdCP compliance storyboards under `static/compliance/source/` use the `account { brand, operator }` form on every buyer-side step. See [Storyboard authoring](/docs/contributing/storyboard-authoring) for the convention.
+
+> **Self-buying advertisers** (DTC brands, in-house teams) still use the `account { brand, operator }` shape — with `operator` set to the brand's own domain. The pair stays expressive because `operator` now marks the in-house buying team as the billing principal, distinct from the brand identity itself.
 
 > **Note on `sync_accounts`:** request bodies carry the pair inside each element of the `accounts[]` array (`accounts: [{ brand, operator, billing, ... }]`), not under a top-level `account` wrapper. The wrapper applies to every *other* buyer-side task.
 
