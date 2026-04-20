@@ -8284,13 +8284,29 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     });
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
-    this.app.use((err: Error & { status?: number; statusCode?: number }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    this.app.use((err: Error & { status?: number; statusCode?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       const status = err.status || err.statusCode || 500;
 
       // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
       if (status === 416) {
         logger.debug({ path: req.path }, 'Range not satisfiable');
         return res.status(416).end();
+      }
+
+      // body-parser malformed JSON / payload errors are client errors, not server issues
+      if (status === 400 && (err.type === 'entity.parse.failed' || err.type === 'entity.verify.failed' || err.type === 'encoding.unsupported')) {
+        logger.warn({ path: req.path, method: req.method, type: err.type, msg: err.message }, 'Malformed request body');
+        return res.status(400).json({ error: 'Malformed request body', type: err.type });
+      }
+      if (status === 413) {
+        logger.warn({ path: req.path, method: req.method }, 'Request body too large');
+        return res.status(413).json({ error: 'Request body too large' });
+      }
+
+      // Any other 4xx thrown by middleware is a client error, not an unhandled server error
+      if (status >= 400 && status < 500) {
+        logger.warn({ err, path: req.path, method: req.method, status }, 'Client error');
+        return res.status(status).json({ error: err.message || 'Bad request' });
       }
 
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
