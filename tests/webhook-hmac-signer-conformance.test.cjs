@@ -39,6 +39,8 @@ describe('Signer conformance harness', () => {
         const result = referenceSigner(vector.signer_input_body, { secret: data.secret });
         assert.equal(result.action, vector.expected_signer_action,
           `vector "${vector.id}": reference signer returned action "${result.action}", expected "${vector.expected_signer_action}". A failure here means either the fixture is miscategorized or the signer's duplicate-key detection is missing a shape the fixture probes`);
+        assert.equal(result.error?.code, 'duplicate_key_input',
+          `vector "${vector.id}": the error identifier is normative (security.mdx §duplicate-object-keys) and MUST be exactly "duplicate_key_input" so that multi-SDK integrations can dispatch on it — this is the one field in the error object that is cross-SDK stable; everything else is implementation-defined`);
         assert.ok(Array.isArray(result.error?.duplicate_keys) && result.error.duplicate_keys.length > 0,
           `vector "${vector.id}": rejection MUST surface at least one sanitized duplicate-key name in error.duplicate_keys for operator diagnosis`);
         assert.ok(result.error.duplicate_keys.length <= 4,
