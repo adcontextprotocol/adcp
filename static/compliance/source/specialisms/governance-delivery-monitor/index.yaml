@@ -165,6 +165,10 @@ phases:
           - monitoring: delivery phase governance is active
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:
@@ -277,6 +281,10 @@ phases:
           - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"

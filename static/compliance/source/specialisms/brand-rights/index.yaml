@@ -239,6 +239,10 @@ phases:
           - Terms and constraints
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "standard_monthly"
           buyer:
@@ -313,6 +317,10 @@ phases:
           - Error indicates the rights period is invalid or expired
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "standard_monthly"
           buyer:

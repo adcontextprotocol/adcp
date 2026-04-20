@@ -102,8 +102,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Show all available advertising products"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "schema_validation--get_products_schema"
@@ -147,8 +149,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium display inventory with pricing details"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "schema_validation--pricing_options_present"
@@ -212,8 +216,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Show all available advertising products with creative format requirements"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           context:
             correlation_id: "schema_validation--get_products_for_formats"
 
@@ -311,6 +317,12 @@ phases:
           - Message indicating the date constraint violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
           packages:
@@ -367,6 +379,12 @@ phases:
           - Message indicating the past start_time violation
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2020-01-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
           packages:
@@ -425,6 +443,12 @@ phases:
           - context.correlation_id echoed
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2020-01-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
           packages:

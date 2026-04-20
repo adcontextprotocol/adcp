@@ -162,6 +162,10 @@ phases:
           - findings propagated from the governance agent
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:

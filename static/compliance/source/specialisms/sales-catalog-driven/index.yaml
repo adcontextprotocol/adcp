@@ -476,6 +476,10 @@ phases:
           - match_quality: how well events matched to ad exposures (0.0-1.0)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           event_source_id: "amsterdam_website"
           events:
             - event_id: "evt_001"
@@ -541,6 +545,10 @@ phases:
           based on the performance_index signal.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_id: "mb_amsterdam_spring_2026"
           measurement_period:
             start: "2026-04-07T00:00:00Z"

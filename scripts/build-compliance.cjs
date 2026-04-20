@@ -404,6 +404,17 @@ function main() {
     process.exit(1);
   }
 
+  // Scoping lint: every session-scoped step must carry brand/account identity.
+  // Fails fast before we build dist/ so broken storyboards don't ship.
+  try {
+    execSync('node scripts/lint-storyboard-scoping.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
