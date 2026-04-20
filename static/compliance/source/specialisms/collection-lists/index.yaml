@@ -117,8 +117,6 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
-          brand:
-            domain: "novamotors.example"
           name: "Nova Motors approved programs"
           base_collections:
             - selection_type: "distribution_ids"

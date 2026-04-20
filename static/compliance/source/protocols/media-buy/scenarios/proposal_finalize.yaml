@@ -92,8 +92,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -142,8 +140,6 @@ phases:
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -189,8 +185,6 @@ phases:
             - scope: "proposal"
               proposal_id: "balanced_reach_q2"
               action: "finalize"
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -232,8 +226,6 @@ phases:
             brand:
               domain: "acmeoutdoor.com"
             operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
           proposal_id: "balanced_reach_q2"
           total_budget: 50000
           start_time: "2026-04-01T00:00:00Z"

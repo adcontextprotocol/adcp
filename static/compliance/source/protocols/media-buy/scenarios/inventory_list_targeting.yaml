@@ -64,9 +64,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Video inventory on outdoor lifestyle programming. Q3 flight, $30K budget."
-          brand:
-            domain: "acmeoutdoor.example"
-
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           context:
             correlation_id: "inventory_list_targeting--get_products_brief"
         context_outputs:
@@ -104,8 +105,10 @@ phases:
           can read them back.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           idempotency_key: "inventory-list-targeting-create-v1"
           start_time: "2026-07-01T00:00:00Z"
           end_time: "2026-09-30T23:59:59Z"
@@ -159,8 +162,10 @@ phases:
           .collection_list populated with the list_id values sent on create.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_ids:
             - "$context.media_buy_id"
 
@@ -200,8 +205,10 @@ phases:
           collection_list are replaced (not merged) with the new list_id values.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -233,8 +240,10 @@ phases:
           in persistent state just like fields on create_media_buy.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_ids:
             - "$context.media_buy_id"
 
