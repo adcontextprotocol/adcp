@@ -1080,6 +1080,30 @@ export interface SponsorshipTier {
   max_sponsors?: number;
 }
 
+export interface EventSpeaker {
+  id: string;
+  event_id: string;
+  name: string;
+  title?: string;
+  company?: string;
+  bio?: string;
+  headshot_url?: string;
+  link_url?: string;
+  display_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface EventSpeakerInput {
+  name: string;
+  title?: string;
+  company?: string;
+  bio?: string;
+  headshot_url?: string;
+  link_url?: string;
+  // display_order is derived from array position on write; not accepted as input.
+}
+
 export interface Event {
   id: string;
   slug: string;
