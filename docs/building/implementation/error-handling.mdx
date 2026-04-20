@@ -76,6 +76,51 @@ Failed operations return status `failed` with error details. The error object fo
 }
 ```
 
+### Envelope vs. payload errors — the two-layer model
+
+AdCP exposes errors in two distinct places, and implementers need to populate the right layer for the right situation. This is the single most common source of error-shape drift between agents and storyboards.
+
+| Layer | Key | When to populate | Shape |
+|---|---|---|---|
+| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+
+**A fatal task failure SHOULD populate both layers.** The payload carries the structured `errors[]` array that any protocol can read verbatim, and the transport envelope carries `adcp_error` so MCP/A2A clients can extract a typed error without re-parsing the payload. Populating only one of the two is the source-of-truth for most interop bugs — a runner that reads the transport envelope sees no error, and a runner that reads the payload sees no error signal on the transport:
+
+```json
+// MCP — structuredContent AND payload both carry the error
+{
+  "content": [{"type": "text", "text": "{\"adcp_error\":{\"code\":\"BUDGET_TOO_LOW\", ...}}"}],
+  "isError": true,
+  "structuredContent": {
+    "adcp_error": { "code": "BUDGET_TOO_LOW", "message": "...", "recovery": "correctable" },
+    "payload": {
+      "errors": [
+        { "code": "BUDGET_TOO_LOW", "message": "...", "recovery": "correctable", "field": "budget.total" }
+      ]
+    }
+  }
+}
+```
+
+```json
+// A2A — artifact DataPart carries adcp_error; if the agent also surfaces payload via a sibling DataPart, errors[] lives there
+{
+  "status": { "state": "failed" },
+  "artifacts": [{
+    "artifactId": "error-result",
+    "parts": [
+      { "kind": "data", "data": { "adcp_error": { "code": "BUDGET_TOO_LOW", ... } } },
+      { "kind": "data", "data": { "errors": [{ "code": "BUDGET_TOO_LOW", "field": "budget.total", ... }] } }
+    ]
+  }]
+}
+```
+
+**Non-fatal errors populate only the payload.** A `status: "submitted"` or `status: "input-required"` task reporting a warning (e.g., "this media buy requires manual approval — [warning details]") populates `errors[]` in the payload with `severity: "warning"` but MUST NOT populate `adcp_error`. The transport envelope signals "the task failed" — it is not a warning channel.
+
+**Storyboard validators.** Prefer `check: error_code` over `check: field_present, path: "errors"` when asserting on a failed task's error code. `error_code` is shape-agnostic — the runner resolves it from either `adcp_error.code` (transport) or `errors[0].code` (payload). Direct `path: "errors"` checks pin the assertion to the payload shape and fail against agents that surface errors only via the transport envelope, even when the agent is conformant. See [Storyboard authoring — Asserting on errors](/docs/contributing/storyboard-authoring#asserting-on-errors).
+
 ### Error Object Fields
 
 These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:

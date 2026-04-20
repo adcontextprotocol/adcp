@@ -311,9 +311,8 @@ phases:
           context:
             correlation_id: "error_compliance--validate_error_shape"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains errors array"
+          - check: error_code
+            description: "Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"
@@ -454,9 +453,8 @@ phases:
           context:
             correlation_id: "error_compliance--validate_transport_binding"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains errors array"
+          - check: error_code
+            description: "Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"

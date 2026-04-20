@@ -81,6 +81,35 @@ If your step is *supposed* to probe a session-scoped task without tenant identit
 
 Use sparingly. When in doubt, carry brand identity — nearly all real-world calls do.
 
+## Asserting on errors
+
+AdCP surfaces errors in two layers (see [Error handling — envelope vs. payload](/docs/building/implementation/error-handling#envelope-vs-payload-errors-the-two-layer-model)). Storyboards MUST assert error shape in a way that works regardless of which layer a conformant agent surfaced the error on.
+
+**Use `check: error_code` — not `check: field_present, path: "errors"`.**
+
+```yaml
+# ✅ Shape-agnostic — resolves from either adcp_error (envelope) or errors[] (payload)
+validations:
+  - check: error_code
+    value: "BUDGET_TOO_LOW"
+    description: "Budget validation rejected with BUDGET_TOO_LOW"
+
+# ✅ Multiple acceptable codes
+validations:
+  - check: error_code
+    allowed_values: ["VALIDATION_ERROR", "INVALID_REQUEST", "BUDGET_TOO_LOW"]
+
+# ❌ Pins to the payload `errors[]` shape — fails against agents that surface
+#    errors only via the transport envelope (MCP `adcp_error`, A2A DataPart)
+validations:
+  - check: field_present
+    path: "errors"
+```
+
+Every code used in `value:` or `allowed_values:` MUST exist in the canonical error-code enum at `static/schemas/source/enums/error-code.json`. The `lint:error-codes` script (wired into `npm run test`) walks every storyboard and rejects references to codes that aren't in the enum — a build failure before any test runs.
+
+When a rename is required, register the old code as a deprecation alias in `static/schemas/source/enums/error-code-aliases.json` (added lazily when the first rename lands). Aliased codes validate against the lint during the deprecation window, then fail once the alias is removed. This is how renames like `INVALID_TRANSITION` → `INVALID_STATE` land without breaking storyboard authorship across versions.
+
 ## Running the lint locally
 
 ```bash
