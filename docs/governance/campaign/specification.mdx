@@ -688,13 +688,34 @@ Governance agents MUST:
 
 - Compute `plan_hash` over the current plan state on every `check_governance` call and include it in the signed JWS payload. The hash MUST be over the plan the agent just evaluated; stale attestations over mutated plans MUST NOT be produced.
 - Refresh the signature on every `check_governance` invocation — fresh `jti`, `iat`, `exp`, and `plan_hash`. Governance agents MUST NOT cache and re-emit a previously-signed `governance_context` token across plan revisions. Envelope idempotency response caching is a separate regime — `governance_context` is on the closed exclusion list in [Payload equivalence](/docs/building/implementation/security#payload-equivalence) precisely so it can rotate on replay.
-- Retain per-revision `plan_hash` alongside each internal plan-revision record so auditors can reconstruct which token attested to which revision long after the live plan has moved on. Governance agents that expose `audit_log_pointer` MUST retain the corresponding `plan_hash` — an audit log that cannot be joined back to the attested plan state is half an audit trail. Retained `plan_hash` values are never exposed on the wire; they exist only for auditor reconstruction.
+- **Retain the per-revision `plan_hash`** alongside each internal plan-revision record — MUST, regardless of whether `audit_log_pointer` is exposed. Retention is what delivers the forever-binding property; without universal retention, every governance agent that doesn't use `audit_log_pointer` silently voids the audit layer for its entire token corpus. An audit log that cannot be joined back to the attested plan state is half an audit trail, and a governance agent that cannot verify its own historical tokens cannot detect tampering of its own store. Retained values are implementation-internal and are never exposed on the wire except through the normalized response on [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs), which echoes `plan_hash` per entry so auditors do not have to reconstruct from the governance agent's private records.
 
 #### Wire-verification contract
 
 `plan_hash` is not listed in `crit`. `crit` is wire-verifier semantics (RFC 7515 §4.1.11): it forces verifiers to reject tokens whose listed claims they cannot process. No wire verifier processes `plan_hash` — the only parties who can fetch the preimage (governance agent, auditor, buyer compliance) are off-wire. Listing in `crit` would force sellers to reject tokens they have no basis to verify, with no offsetting benefit. Governance agents MUST emit the claim and MUST NOT list it in `crit`.
 
 Sellers persist and forward `governance_context` verbatim and perform the [15-step JWS verification checklist](/docs/building/implementation/security#seller-verification-checklist) — authenticity, authorization scope, freshness. They treat `plan_hash` as opaque cargo inside the token and never inspect it.
+
+#### Verification recipes
+
+**Auditor recipe.** A regulator or third-party auditor with access to a plan's audit logs verifies historical attestations as follows:
+
+1. Call [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) with `include_entries: true` to retrieve the audit trail. Each `check` entry carries `plan_hash` (the claim asserted at issuance time) and `governance_context` (the signed JWS).
+2. For each governance_context, decode the compact JWS and verify the 15-step JWS contract (signature, `iss` in brand.json, `aud`, `exp`, etc.) against the governance agent's published JWKS.
+3. Extract the `plan_hash` claim from the decoded JWS payload and base64url-decode to 32 raw bytes.
+4. Decode the entry-level `plan_hash` to 32 raw bytes and byte-compare to the claim. A mismatch means the retained audit record disagrees with the signed token — either the token was tampered with or the record was, and the governance agent's integrity is in question.
+5. Optionally: recompute `plan_hash` from the governance agent's retained per-revision plan record (if the auditor has authenticated access to the governance agent's revision store) and byte-compare again. A mismatch here means the governance agent's own store was tampered with between signing and audit.
+
+Auditors MUST use constant-time byte comparison (e.g., `crypto.timingSafeEqual` in Node) on all three comparisons.
+
+**Buyer-side compliance recipe.** A buyer whose own tooling wants to verify its governance agent is producing honest tokens:
+
+1. Observe `governance_context` tokens flowing through the protocol envelope to sellers (the buyer already has these; no retrieval needed).
+2. For each token, decode the JWS, extract the `plan_hash` claim, and base64url-decode to 32 bytes.
+3. Recompute `plan_hash` over the buyer's own copy of the plan at the revision the token attests to. The buyer has authoritative plan state from their own `sync_plans` calls.
+4. Byte-compare. A mismatch means the governance agent is signing attestations that don't match the plan the buyer actually pushed — either vendor compromise or a bug. Either is a critical finding the buyer should escalate.
+
+This path catches a misbehaving governance vendor without involving the seller, the auditor, or the protocol. The data is already on the buyer's side.
 
 #### Reference test vectors
 
