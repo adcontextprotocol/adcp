@@ -60,7 +60,12 @@ interface Summary {
 
 async function startLocalAgent(): Promise<{ url: string; close: () => Promise<void> }> {
   const app = express();
-  app.use(express.json({ limit: '5mb' }));
+  app.use(express.json({
+    limit: '5mb',
+    verify: (req, _res, buf) => {
+      (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+    },
+  }));
   app.use('/api/training-agent', createTrainingAgentRouter());
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);

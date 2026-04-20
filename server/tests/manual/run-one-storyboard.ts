@@ -40,7 +40,12 @@ function brandForStoryboard(s: Storyboard): StoryboardRunOptions['brand'] | unde
 }
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({
+  limit: '5mb',
+  verify: (req, _res, buf) => {
+    (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+  },
+}));
 app.use('/api/training-agent', createTrainingAgentRouter());
 const server = http.createServer(app);
 server.listen(0, '127.0.0.1', async () => {

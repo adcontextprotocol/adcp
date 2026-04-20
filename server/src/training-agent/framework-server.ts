@@ -22,11 +22,13 @@
 
 import { createAdcpServer } from '@adcp/client/server';
 import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
+import { MediaChannelSchema } from '@adcp/client/types';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
 import { getWebhookSigningKey } from './webhooks.js';
 import { getRequestSigningCapability } from './request-signing.js';
+import { PUBLISHERS } from './publishers.js';
 import { createLogger } from '../logger.js';
 
 import {
@@ -274,6 +276,10 @@ export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): AdcpS
     };
   }
 
+  const allChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))]
+    .map(c => MediaChannelSchema.parse(c))
+    .sort();
+
   const server = createAdcpServer({
     name: 'adcp-training-agent',
     version: '1.0.0',
@@ -291,11 +297,75 @@ export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): AdcpS
     capabilities: {
       major_versions: [3],
       specialisms: ['signed-requests'],
+      features: {
+        inlineCreativeManagement: true,
+        propertyListFiltering: true,
+        contentStandards: true,
+        conversionTracking: true,
+        audienceTargeting: true,
+      },
+      account: {
+        requireOperatorAuth: false,
+        supportedBilling: ['agent', 'operator', 'advertiser'],
+      },
+      creative: {
+        hasCreativeLibrary: true,
+        supportsTransformation: true,
+        supportsGeneration: true,
+        supportsCompliance: false,
+      },
       request_signing: {
         supported: signingCap.supported,
         covers_content_digest: signingCap.covers_content_digest,
         required_for: [...signingCap.required_for],
         ...(signingCap.supported_for && { supported_for: [...signingCap.supported_for] }),
+      },
+      // 5.5 `overrides`: deep-merged on top of the framework's auto-derived
+      // response so training-agent-specific fields (publisher portfolio,
+      // compliance_testing scenarios, per-domain targeting surface) surface
+      // on `get_adcp_capabilities` without needing to replace the tool.
+      overrides: {
+        media_buy: {
+          portfolio: {
+            publisher_domains: PUBLISHERS.map(p => p.domain),
+            primary_channels: allChannels,
+          },
+          content_standards: {
+            supports_local_evaluation: true,
+            supported_channels: allChannels,
+            supports_webhook_delivery: false,
+          },
+          audience_targeting: {
+            supported_identifier_types: ['hashed_email'],
+            minimum_audience_size: 100,
+          },
+          conversion_tracking: {
+            supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
+            supported_hashed_identifiers: ['hashed_email'],
+            supported_action_sources: ['website', 'app'],
+          },
+          execution: {
+            targeting: {
+              geo_countries: true,
+              geo_regions: true,
+              geo_metros: { nielsen_dma: true },
+              geo_postal_areas: { us_zip: true },
+              language: true,
+              keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
+              negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+            },
+          },
+        },
+        compliance_testing: {
+          scenarios: [
+            'force_creative_status',
+            'force_account_status',
+            'force_media_buy_status',
+            'force_session_status',
+            'simulate_delivery',
+            'simulate_budget_spend',
+          ],
+        },
       },
     },
 
@@ -371,8 +441,11 @@ export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): AdcpS
 }
 
 /**
- * Returns true when the framework path should be used. Default is legacy.
- * Flip via `TRAINING_AGENT_USE_FRAMEWORK=1`.
+ * Returns true when the framework path should be used. Default is ON (the
+ * framework path is authoritative); set `TRAINING_AGENT_USE_FRAMEWORK=0`
+ * (or `false`) to drop back to the legacy hand-rolled dispatch for
+ * regression triage. Will be removed entirely once the legacy path is
+ * deleted.
  */
 export function useFrameworkServer(): boolean {
   const v = process.env.TRAINING_AGENT_USE_FRAMEWORK;
