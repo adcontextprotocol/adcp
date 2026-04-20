@@ -27,8 +27,8 @@ const yaml = require('js-yaml');
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
 /**
- * Tasks whose training-agent handler calls getSession(sessionKeyFromArgs(...))
- * and depends on top-level identity to land in the right tenant session.
+ * Tasks whose request schema has no required globally-unique scope-ID and
+ * whose training-agent handler keys session state by envelope identity.
  * Storyboard steps invoking these tasks MUST carry brand/account identity.
  */
 const TENANT_SCOPED_TASKS = new Set([
@@ -42,8 +42,8 @@ const TENANT_SCOPED_TASKS = new Set([
   'sync_creatives',
   'list_creatives',
   'get_creative_delivery',
-  'build_creative',
-  'preview_creative',
+  'build_creative',       // schema has optional account + brand
+  'preview_creative',     // schema has no required scope-ID
   // Products & signals
   'get_products',
   'get_signals',
@@ -51,19 +51,13 @@ const TENANT_SCOPED_TASKS = new Set([
   'provide_performance_feedback',
   // Governance plans
   'sync_plans',
-  'check_governance',
-  'report_plan_outcome',
-  'get_plan_audit_logs',
-  'log_event',
-  // Brand rights (session-scoped grants only)
-  'acquire_rights',
+  'get_plan_audit_logs',  // schema required=[]; filters optional
   // Property lists
   'create_property_list',
   'list_property_lists',
   'get_property_list',
   'update_property_list',
   'delete_property_list',
-  'validate_property_delivery',
   // Collection lists
   'create_collection_list',
   'get_collection_list',
@@ -75,33 +69,62 @@ const TENANT_SCOPED_TASKS = new Set([
   'list_content_standards',
   'get_content_standards',
   'update_content_standards',
-  'calibrate_content',
-  'validate_content_delivery',
   // Reporting
   'report_usage',
 ]);
 
 /**
- * Tasks whose handlers either (a) don't scope by top-level identity (global
- * discovery / catalog reads) or (b) derive identity from the request payload
- * array, not the envelope. Storyboard steps invoking these tasks are
- * skipped by the lint.
+ * Tasks where envelope identity is not required by the spec. Three sub-buckets:
+ *
+ * (a) Payload-array-keyed sync tasks — identity lives in the array items, not
+ *     the envelope. `sync_accounts`, `sync_governance`, `sync_catalogs`,
+ *     `sync_event_sources`.
+ *
+ * (b) Global discovery / catalog reads. `get_adcp_capabilities`,
+ *     `list_creative_formats`, `get_brand_identity`, `get_rights`,
+ *     `update_rights`, `comply_test_controller`.
+ *
+ * (c) Identity implicit via a required globally-unique ID in the request
+ *     schema. The seller looks up the ID → resolves the tenant → applies
+ *     policy. Envelope `account` is redundant. Covers the Option C split
+ *     from #2577:
+ *       - `check_governance`       — required `plan_id`
+ *       - `report_plan_outcome`    — required `plan_id`
+ *       - `acquire_rights`         — required `rights_id` + `buyer` + `campaign`
+ *       - `log_event`              — required `event_source_id`
+ *       - `calibrate_content`      — required `standards_id`
+ *       - `validate_content_delivery` — required `standards_id`
+ *       - `validate_property_delivery` — required `list_id` (schema also
+ *                                         has optional `account`)
+ *
+ *     Storyboard authors may still carry envelope identity on these tasks for
+ *     training-agent session routing; the lint simply doesn't require it.
+ *     The training-agent runtime aligning its routing to resolve by ID is
+ *     tracked as follow-up work in #2577.
  */
 const EXEMPT_FROM_LINT = new Set([
-  // Payload-array-keyed sync tasks
+  // (a) Payload-array-keyed sync tasks
   'sync_accounts',
   'sync_governance',
   'sync_catalogs',
   'sync_event_sources',
-  // Test-control primitive (sandbox-gated, operates on its own session)
+  // (b) Test-control primitive (sandbox-gated, operates on its own session)
   'comply_test_controller',
-  // Global discovery
+  // (b) Global discovery
   'get_adcp_capabilities',
   'list_creative_formats',
-  // Global brand/rights catalog reads
+  // (b) Global brand/rights catalog reads
   'get_brand_identity',
   'get_rights',
   'update_rights',
+  // (c) Identity implicit via required globally-unique ID
+  'check_governance',
+  'report_plan_outcome',
+  'acquire_rights',
+  'log_event',
+  'calibrate_content',
+  'validate_content_delivery',
+  'validate_property_delivery',
 ]);
 
 /** Walk a directory for *.yaml files. */
