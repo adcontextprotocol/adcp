@@ -483,6 +483,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
 | `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
+| `plan_hash` | Yes | Audit-layer binding of the attestation to the evaluated plan state. Not part of the seller verification checklist — sellers treat it as opaque cargo. Semantics, canonicalization, and verification paths are defined in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
@@ -500,6 +501,8 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 **Unknown-claim handling**: verifiers MUST ignore claims whose names they do not recognize *unless* those claim names appear in the token's `crit` header, in which case the token MUST be rejected. This asymmetric rule — ignore unknown, but reject unknown-and-critical — is how future versions of the profile add semantically meaningful claims without breaking backward compatibility for verifiers that haven't updated yet.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+**`plan_hash` is audit-layer, not wire-layer**: the `plan_hash` claim is cryptographic cargo the token carries for off-wire verification by the governance agent, auditors, and buyer-side compliance. It is not part of this profile's seller verification contract and is never listed in `crit`. Canonicalization, excluded fields, retention rules, and test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) (governance spec). Sellers persist and forward `governance_context` verbatim and perform the 15-step verification checklist below — authenticity, authorization scope, freshness — without inspecting `plan_hash`.
 
 #### Buyer identity resolution
 
@@ -547,7 +550,7 @@ Before treating a request as governance-approved, sellers MUST perform these che
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved.
+Only after all 15 checks pass does the seller treat the request as governance-approved. Note that sellers do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
 
 #### Replay dedup
 
@@ -650,6 +653,7 @@ Payload:
 {
   "iss": "https://gov.scope3.com",
   "sub": "plan_q1_2026_launch",
+  "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
   "aud": "https://seller.example.com/adcp",
   "iat": 1744934400,
   "exp": 1744935300,
@@ -728,8 +732,8 @@ function handleGovernanceContext(value: string, ctx) {
 
 #### Migration (3.0 → 3.1)
 
-- **3.0**: governance agents MUST emit compact JWS per this profile. Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
-- **3.1**: all sellers MUST verify per the checklist above. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end.
+- **3.0**: governance agents MUST emit compact JWS per this profile, including the required `plan_hash` audit-layer claim (see [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) for semantics). Sellers MAY verify the 15-step checklist; sellers that do not verify MUST persist and forward the token unchanged. Values that are not JWS are deprecated and SHOULD only appear from pre-3.0 governance agents during the transition; governance agents that emit non-JWS values in 3.0 MUST declare this in their capabilities so sellers can detect unverifiable deployments.
+- **3.1**: all sellers MUST verify per the 15-step checklist. Governance agents MUST emit JWS. Non-JWS values will be rejected end-to-end. `plan_hash` remains audit-layer (governance-agent / auditor / buyer-compliance verification only — not seller verification).
 
 The field name and schema shape (single string, ≤4096 chars) do not change between versions. Only the string's internal format is tightened. This preserves the correlation-key semantics from earlier protocol versions — sellers that already treat the value as opaque need no changes to continue forwarding; sellers that want the accountability properties opt in by implementing the verification checklist.
 

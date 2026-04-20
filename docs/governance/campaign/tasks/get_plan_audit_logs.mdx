@@ -147,6 +147,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "tool": "create_media_buy",
           "check_type": "execution",
           "governance_context": "gc_mb_seller_456",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
           "purchase_type": "media_buy",
           "status": "approved",
           "explanation": "Media buy within plan budget ($150,000 of $500,000 remaining). Geo targeting matches authorized markets. COPPA compliance verified.",
@@ -255,6 +256,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). |
 | `plans[].entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
 | `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
+| `plans[].entries[].plan_hash` | string | Audit-layer binding to the plan revision this attestation was evaluated over — `base64url_no_pad(SHA-256(JCS(plan_payload)))` per [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Present on `check` entries. Auditors and buyer-side compliance tooling verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests. |
 | `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
 | `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
 | `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
