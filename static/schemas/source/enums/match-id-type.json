@@ -16,8 +16,8 @@
     "other"
   ],
   "enumDescriptions": {
-    "hashed_email": "SHA-256 hashed email address (matches audience-member.hashed_email)",
-    "hashed_phone": "SHA-256 hashed phone number in E.164 format (matches audience-member.hashed_phone)",
+    "hashed_email": "SHA-256 hashed email address (matches audience-member.hashed_email). Pseudonymous PII, not anonymous — unsalted SHA-256 of the email namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
+    "hashed_phone": "SHA-256 hashed phone number in E.164 format (matches audience-member.hashed_phone). Pseudonymous PII, not anonymous — unsalted SHA-256 of the E.164 namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
     "rampid": "LiveRamp RampID",
     "id5": "ID5 universal ID",
     "uid2": "Unified ID 2.0",

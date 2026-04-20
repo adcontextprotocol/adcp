@@ -397,7 +397,7 @@ Manage first-party CRM audiences on a seller account. Upload hashed customer lis
 - Orchestrators MUST include at least one audience with hashed member data
 - Sales agents MUST return per-audience outcomes with matching status
 - Sales agents SHOULD support `push_notification_config` for async matching completion
-- Sales agents MUST accept SHA-256 hashed identifiers for privacy compliance
+- Sales agents MUST accept SHA-256 hashed identifiers and MUST reject cleartext email/phone in `hashed_email`/`hashed_phone` fields (PII minimization at the transport boundary; see [Privacy Considerations](/docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous) for the retention/consent obligations that hashing does not satisfy)
 
 ## Error Handling
 
