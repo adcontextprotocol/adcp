@@ -837,7 +837,7 @@ This profile constrains RFC 9421 to a single canonical shape so cross-implementa
 
 Signers that canonicalize and verifiers that canonicalize MUST produce identical bytes for the same logical request. If your 9421 library applies different rules, either configure it to match this profile or normalize before handing the URL to the library.
 
-The [`canonicalization.json`](https://adcontextprotocol.org/test-vectors/request-signing/canonicalization.json) conformance set exercises every rule above with fixed inputs and expected outputs, plus malformed-authority rejection cases. SDKs SHOULD run this set on every commit — canonicalization divergence between signers is silent until it isn't, and then it's a production interop bug that's painful to diagnose.
+The [`canonicalization.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/canonicalization.json) conformance set exercises every rule above with fixed inputs and expected outputs, plus malformed-authority rejection cases. SDKs SHOULD run this set on every commit — canonicalization divergence between signers is silent until it isn't, and then it's a production interop bug that's painful to diagnose.
 
 Verifiers MUST reject signatures whose covered-component list omits any required component for the request type. Signers MUST NOT cover additional headers without coordination — extra components silently invalidate signatures across implementations that don't include them.
 
