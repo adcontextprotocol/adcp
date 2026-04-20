@@ -14,10 +14,10 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 | Area | v2.x | v3.x |
 |------|------|------|
-| **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence |
+| **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence (experimental) |
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
 | **Governance** | No brand suitability protocol | Property lists, content standards, campaign governance, policy registry, and brand calibration |
-| **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
+| **Sponsored Intelligence** (experimental) | No conversational brand protocol | Consent-first brand sessions in AI assistants |
 | **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
@@ -910,11 +910,11 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement campaign governance tasks (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) when offering plan-level governance
   </Accordion>
 
-  <Accordion title="Sponsored Intelligence agents (new in v3)">
-    Implement conversational brand experiences. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol).
+  <Accordion title="Sponsored Intelligence agents (new in v3 — experimental)">
+    Implement conversational brand experiences. SI ships in 3.0 as an [experimental surface](/docs/reference/experimental-status) (`sponsored_intelligence.core`) — session lifecycle, UI components, and capability negotiation may change between 3.x releases with 6 weeks' notice. Sellers MUST declare `sponsored_intelligence.core` in `experimental_features`. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol).
 
     - [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
-    - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`
+    - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols` and `sponsored_intelligence.core` in `experimental_features`
   </Accordion>
 </AccordionGroup>
 
