@@ -2031,7 +2031,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     if (mb.canceledAt) {
       return {
         errors: [{
-          code: 'INVALID_STATE_TRANSITION',
+          code: 'INVALID_STATE',
           message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
         }],
       };
