@@ -322,6 +322,61 @@
       }
     }
 
+    /* Speakers Section */
+    .speakers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .speaker-card {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--color-gray-50);
+      border-radius: 10px;
+      align-items: flex-start;
+    }
+    .speaker-headshot {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--color-gray-200);
+    }
+    .speaker-headshot-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      font-size: 1.1rem;
+      letter-spacing: 0.05em;
+    }
+    .speaker-info { min-width: 0; }
+    .speaker-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 0.15rem;
+      color: var(--color-text-heading);
+    }
+    .speaker-name-link {
+      color: inherit;
+      text-decoration: none;
+    }
+    .speaker-name-link:hover { text-decoration: underline; }
+    .speaker-subline {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      margin: 0 0 0.4rem;
+    }
+    .speaker-bio {
+      font-size: 0.875rem;
+      color: var(--color-text);
+      margin: 0;
+      line-height: 1.45;
+    }
+
     /* Sponsors Section */
     .sponsors-grid {
       display: grid;
@@ -546,6 +601,7 @@
         const data = await res.json();
         const event = data.event;
         const sponsors = data.sponsors || [];
+        const speakers = data.speakers || [];
         const registrationCount = data.registration_count || 0;
         const industryGathering = data.industry_gathering || null;
         const myRegistration = data.my_registration || null;
@@ -555,7 +611,7 @@
         // Update meta tags
         updateMetaTags(event);
 
-        renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration);
+        renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration, speakers);
 
         if (data.draft_preview) {
           document.getElementById('draftBanner').style.display = 'block';
@@ -589,7 +645,7 @@
       }
     }
 
-    function renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration) {
+    function renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration, speakers = []) {
       const startDate = new Date(event.start_time);
       const endDate = event.end_time ? new Date(event.end_time) : null;
       const eventTimezone = event.timezone || 'America/New_York';
@@ -738,6 +794,37 @@
           <div class="event-section">
             <h2 class="section-title">About This Event</h2>
             <div class="event-description">${renderDescription(event.description)}</div>
+          </div>
+        `;
+      }
+
+      // Speakers
+      if (speakers.length > 0) {
+        html += `
+          <div class="event-section">
+            <h2 class="section-title">Speakers</h2>
+            <div class="speakers-grid">
+              ${speakers.map(sp => {
+                const initials = (sp.name || '').split(/\s+/).map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
+                const subline = [sp.title, sp.company].filter(Boolean).map(escapeHtml).join(' · ');
+                const headshot = sp.headshot_url
+                  ? `<img src="${escapeHtml(sp.headshot_url)}" alt="${escapeHtml(sp.name)}" class="speaker-headshot">`
+                  : `<div class="speaker-headshot speaker-headshot-fallback">${escapeHtml(initials || '·')}</div>`;
+                const nameEl = sp.link_url
+                  ? `<a href="${escapeHtml(sp.link_url)}" target="_blank" rel="noopener noreferrer" class="speaker-name-link">${escapeHtml(sp.name)}</a>`
+                  : `<span>${escapeHtml(sp.name)}</span>`;
+                return `
+                  <div class="speaker-card">
+                    ${headshot}
+                    <div class="speaker-info">
+                      <h3 class="speaker-name">${nameEl}</h3>
+                      ${subline ? `<p class="speaker-subline">${subline}</p>` : ''}
+                      ${sp.bio ? `<p class="speaker-bio">${escapeHtml(sp.bio)}</p>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
           </div>
         `;
       }

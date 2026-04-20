@@ -33,6 +33,7 @@ import type {
   EventStatus,
   EventType,
   EventFormat,
+  EventSpeakerInput,
 } from "../types.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
@@ -357,9 +358,11 @@ export function createEventsRouter(): {
       // Also get registration and sponsorship counts
       const registrations = await eventsDb.getEventRegistrations(id);
       const sponsorships = await eventsDb.getEventSponsorships(id);
+      const speakers = await eventsDb.getEventSpeakers(id);
 
       res.json({
         event,
+        speakers,
         registration_count: registrations.length,
         attendance_count: registrations.filter((r) => r.attended).length,
         sponsorship_count: sponsorships.filter((s) => s.payment_status === "paid").length,
@@ -377,7 +380,7 @@ export function createEventsRouter(): {
   adminApiRouter.put("/:id", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const updates: UpdateEventInput = req.body;
+      const { speakers: speakersUpdate, ...updates } = req.body as UpdateEventInput & { speakers?: EventSpeakerInput[] };
 
       // Get current event to check for sponsorship changes
       const currentEvent = await eventsDb.getEventById(id);
@@ -435,6 +438,46 @@ export function createEventsRouter(): {
         }
       }
 
+      // Validate speakers if provided
+      if (speakersUpdate !== undefined) {
+        if (!Array.isArray(speakersUpdate)) {
+          return res.status(400).json({ error: 'Invalid speakers', message: 'speakers must be an array' });
+        }
+        if (speakersUpdate.length > 200) {
+          return res.status(400).json({ error: 'Too many speakers', message: 'An event can have at most 200 speakers' });
+        }
+        for (const sp of speakersUpdate) {
+          if (!sp || typeof sp.name !== 'string' || sp.name.trim().length === 0 || sp.name.length > 255) {
+            return res.status(400).json({ error: 'Invalid speaker', message: 'Each speaker needs a name (1–255 chars)' });
+          }
+          for (const field of ['title', 'company'] as const) {
+            const v = sp[field];
+            if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 255)) {
+              return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a string under 255 chars` });
+            }
+          }
+          if (sp.bio !== undefined && sp.bio !== null && (typeof sp.bio !== 'string' || sp.bio.length > 5000)) {
+            return res.status(400).json({ error: 'Invalid speaker bio', message: 'bio must be a string under 5000 chars' });
+          }
+          for (const field of ['headshot_url', 'link_url'] as const) {
+            const v = sp[field];
+            if (v !== undefined && v !== null && v !== '') {
+              if (typeof v !== 'string') {
+                return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a string` });
+              }
+              try {
+                const parsed = new URL(v);
+                if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                  return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be http(s)` });
+                }
+              } catch {
+                return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a valid URL` });
+              }
+            }
+          }
+        }
+      }
+
       // Auto-create Stripe product if sponsorship is being enabled with tiers
       // and no product exists yet
       const sponsorshipEnabled = updates.sponsorship_enabled ?? currentEvent.sponsorship_enabled;
@@ -476,6 +519,11 @@ export function createEventsRouter(): {
         });
       }
 
+      let speakers = undefined;
+      if (speakersUpdate !== undefined) {
+        speakers = await eventsDb.replaceEventSpeakers(id, speakersUpdate);
+      }
+
       logger.info({ eventId: id }, "Event updated");
 
       // Notify registered users if significant fields changed (fire-and-forget)
@@ -512,7 +560,7 @@ export function createEventsRouter(): {
         }).catch(err => logger.error({ err }, 'Failed to load registrations for event notification'));
       }
 
-      res.json({ event });
+      res.json({ event, ...(speakers !== undefined ? { speakers } : {}) });
     } catch (error) {
       logger.error({ err: error }, "Error updating event");
       res.status(500).json({
@@ -1687,8 +1735,9 @@ export function createEventsRouter(): {
         }
       }
 
-      // Get sponsors for display
+      // Get sponsors + speakers for display
       const sponsors = await eventsDb.getEventSponsorsForDisplay(event.id);
+      const speakers = await eventsDb.getEventSpeakers(event.id);
 
       // Get registration count (but not full list)
       const registrations = await eventsDb.getEventRegistrations(event.id);
@@ -1755,6 +1804,7 @@ export function createEventsRouter(): {
       res.json({
         event: publicEvent,
         sponsors,
+        speakers,
         registration_count: registrationCount,
         industry_gathering: industryGathering ? {
           id: industryGathering.id,
