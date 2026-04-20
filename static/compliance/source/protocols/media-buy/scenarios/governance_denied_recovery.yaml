@@ -229,6 +229,9 @@ phases:
             - product_id: "$context.product_id"
               budget: 8000
               pricing_option_id: "$context.pricing_option_id"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
