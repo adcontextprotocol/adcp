@@ -263,14 +263,9 @@ async function runTests() {
 
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
-    const enumSchemas = schemas.filter(([p]) => p.includes('/enums/'));
+    const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
 
     for (const [schemaPath, schema] of enumSchemas) {
-      // Alias/metadata files in /enums/ are data, not enum schemas — skip.
-      // Detect by declared $id suffix rather than enumerating filenames.
-      if (typeof schema.$id === 'string' && schema.$id.endsWith('-aliases.json')) {
-        continue;
-      }
       if (!schema.enum || !Array.isArray(schema.enum) || schema.enum.length === 0) {
         return `${path.basename(schemaPath)}: Missing or empty enum values`;
       }

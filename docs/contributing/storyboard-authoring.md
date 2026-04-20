@@ -108,7 +108,7 @@ validations:
 
 Every code used in `value:` or `allowed_values:` MUST exist in the canonical error-code enum at `static/schemas/source/enums/error-code.json`. The `lint:error-codes` script (wired into `npm run test`) walks every storyboard and rejects references to codes that aren't in the enum — a build failure before any test runs.
 
-When a rename is required, register the old code in `static/schemas/source/enums/error-code-aliases.json`. The file is checked in and has an empty `aliases` map by default:
+When a rename is required, register the old code in `scripts/error-code-aliases.json`. The file is pure data (it lives next to the lint script that reads it, not in the schema tree) and ships with an empty `aliases` map by default:
 
 ```json
 {
