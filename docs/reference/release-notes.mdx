@@ -110,7 +110,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 |--------|------|------|
 | Buyer references | `buyer_ref`, `buyer_campaign_ref`, `campaign_ref` on requests | Removed — seller-assigned `media_buy_id` and `package_id` are canonical |
 | Idempotency | `buyer_ref` as implicit dedup key | Explicit `idempotency_key` on all mutating requests |
-| Governance context | Structured `governance-context.json` schema | Opaque `governance_context` string |
+| Governance context | Structured `governance-context.json` schema | Signed-JWS `governance_context` string (opaque to forwarders, cryptographically verifiable by auditors — see [security.mdx](/docs/building/implementation/security#signed-governance-context)) |
 | `check_governance` binding | `binding` field on request | Removed — inferred from discriminating fields |
 | `sync_plans` mode | `mode` field (audit/advisory/enforce) | Removed — governance agent configuration |
 | `check_governance` status | `escalated` as possible status | Removed — use async task lifecycle |
