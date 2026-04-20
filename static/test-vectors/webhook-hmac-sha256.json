@@ -106,6 +106,14 @@
       "timestamp": 1700000000,
       "raw_body": "{\"name\":\"caf\\u00e9\",\"region\":\"\\u65e5\\u672c\"}",
       "expected_signature": "sha256=f079a1c8b2501ac4ac1ba22895853d1901730a3b6db8f3844dfcdb0b213b1c91"
+    },
+    {
+      "id": "duplicate-keys",
+      "description": "body contains a duplicate object key — the HMAC is mathematically valid over the raw bytes, so this is a positive signature-computation vector. Per the security.mdx legacy-scheme clause 'Signers SHOULD NOT emit duplicate object keys; verifiers MAY reject bodies containing duplicate keys', BOTH verifier outcomes are spec-conformant: (a) accept, because the signature matches the bytes on the wire and the verifier has no duty to parse the payload; or (b) reject, because parser behavior for duplicates is undefined per RFC 8259 §4 and the verifier treats the body as malformed. Conformance suites MUST assert the SDK produces one of these two outcomes and MUST NOT assert either specific outcome — an SDK that crashes or returns an uninitialized parse is non-conformant. Signers MUST NOT emit vectors like this in production; this vector exists only to probe verifier behavior.",
+      "timestamp": 1700000000,
+      "raw_body": "{\"status\":\"ok\",\"status\":\"ok\"}",
+      "expected_signature": "sha256=bb4a1d492d0f4e6d5d03096cdec8018465f02363b324dd04dd4b848da25bb96e",
+      "verifier_outcomes": ["accept", "reject-malformed"]
     }
   ],
   "rejection_vectors": [
