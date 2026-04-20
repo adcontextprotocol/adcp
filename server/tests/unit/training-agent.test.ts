@@ -958,7 +958,22 @@ describe('session state', () => {
       expect(key).toBe('open:acme.example');
     });
 
-    it('prefers top-level brand over plans[0].brand.domain', () => {
+    it('falls back to plans[0].account.brand.domain when identity is nested in account', () => {
+      const key = sessionKeyFromArgs(
+        {
+          plans: [
+            {
+              plan_id: 'p1',
+              account: { brand: { domain: 'acme.example' }, operator: 'pinnacle-agency.example' },
+            },
+          ],
+        },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('prefers top-level brand over plans[0]', () => {
       const key = sessionKeyFromArgs(
         {
           brand: { domain: 'acme.example' },

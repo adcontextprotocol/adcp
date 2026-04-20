@@ -104,8 +104,10 @@ phases:
           idempotency_key: "governance-delivery-monitor-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_delivery_monitor"
-              brand:
-                domain: "acmeoutdoor.example"
+              account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               objectives: "Delivery-phase governance with drift detection and rebalancing"
               budget:
                 total: 40000
@@ -165,8 +167,10 @@ phases:
           - monitoring: delivery phase governance is active
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:
@@ -279,8 +283,10 @@ phases:
           - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"

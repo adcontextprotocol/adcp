@@ -329,8 +329,10 @@ phases:
           - status: preview available
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creative_id: "display_trail_pro_300x250"
 
           context:
@@ -364,8 +366,10 @@ phases:
           - creative_id: matches the requested creative
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creative_id: "video_30s_trail_pro"
           output_format:
             agent_url: "https://your-platform.example.com"

@@ -218,8 +218,10 @@ phases:
           not a placeholder or empty template.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           request_type: "single"
           creative_manifest:
             format_id:

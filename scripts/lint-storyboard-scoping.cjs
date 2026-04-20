@@ -134,8 +134,16 @@ function iterSteps(doc) {
 
 /**
  * Check whether sample_request carries any valid tenant identity shape.
- * Accepts: account.account_id, account.brand.domain, top-level brand.domain,
- * or (for sync_plans) plans[0].brand.domain.
+ *
+ * Canonical: account { brand, operator } — required by AccountRef whenever
+ * the account natural-key form is used. Also accepts account_id form.
+ *
+ * Tolerated fallbacks (for tasks whose request schema has no `account` field
+ * at all — `check_governance`, `acquire_rights`, `preview_creative`, etc. —
+ * or where storyboards legitimately keep identity inside the payload array):
+ *   - top-level brand.domain (training-agent routes by it; no-op for schemas
+ *     that don't define the field)
+ *   - plans[0].{account.brand.domain | brand.domain} for sync_plans
  */
 function hasTenantIdentity(task, req) {
   if (!req || typeof req !== 'object') return false;
@@ -147,6 +155,7 @@ function hasTenantIdentity(task, req) {
   if (req.brand?.domain && typeof req.brand.domain === 'string') return true;
   if (task === 'sync_plans' && Array.isArray(req.plans) && req.plans.length > 0) {
     const first = req.plans[0];
+    if (first?.account?.brand?.domain && typeof first.account.brand.domain === 'string') return true;
     if (first?.brand?.domain && typeof first.brand.domain === 'string') return true;
   }
   return false;
@@ -207,11 +216,16 @@ function main() {
   for (const v of violations) {
     console.error(`  ${v.file}:${v.phaseId}/${v.stepId} (${v.task}) — sample_request missing brand/account`);
   }
-  console.error('\nFix: add one of');
-  console.error('  sample_request.account.account_id');
-  console.error('  sample_request.account.brand.domain');
-  console.error('  sample_request.brand.domain');
-  console.error('  sample_request.plans[0].brand.domain (sync_plans only)');
+  console.error('\nFix: add `account { brand, operator }` to sample_request, e.g.');
+  console.error('  sample_request:');
+  console.error('    account:');
+  console.error('      brand:');
+  console.error('        domain: "acmeoutdoor.example"');
+  console.error('      operator: "pinnacle-agency.example"');
+  console.error('\nAlternate identity shapes (accepted for back-compat):');
+  console.error('  sample_request.account.account_id                     # explicit-account form');
+  console.error('  sample_request.brand.domain                           # training-agent routing only — not a spec-canonical identity');
+  console.error('  sample_request.plans[0].account.brand.domain           # sync_plans — canonical');
   console.error('\nOr add `scoping: global` on the step if the probe is intentionally cross-tenant.');
   console.error('See docs/contributing/storyboard-authoring.md.');
   process.exit(1);

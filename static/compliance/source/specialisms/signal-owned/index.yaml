@@ -117,8 +117,10 @@ phases:
           For numeric signals, include the range (min/max).
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_spec: "High-value customers likely to purchase electronics, with loyalty program data"
 
           context:
@@ -160,8 +162,10 @@ phases:
           return an empty signals array — not an error.
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_spec: "Purchase behavior signals"
           filters:
             max_cpm: 5.00
@@ -211,8 +215,10 @@ phases:
           - estimated_activation_duration_minutes if not immediately live
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_agent_segment_id: "prism_high_ltv"
           pricing_option_id: "po_prism_flat_monthly"
           destinations:
@@ -270,8 +276,10 @@ phases:
           - deployed_at timestamp
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_agent_segment_id: "prism_cart_abandoner"
           pricing_option_id: "po_prism_abandoner_cpm"
           destinations:

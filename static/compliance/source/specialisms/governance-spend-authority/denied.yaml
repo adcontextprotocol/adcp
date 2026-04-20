@@ -101,8 +101,10 @@ phases:
           idempotency_key: "governance-spend-authority-denied-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_strict"
-              brand:
-                domain: "acmeoutdoor.example"
+              account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               objectives: "Acme Outdoor low-budget validation flight"
               budget:
                 total: 10000
@@ -163,8 +165,10 @@ phases:
           - No escalation instructions (plan has no escalation path)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:

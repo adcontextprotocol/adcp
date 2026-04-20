@@ -4,45 +4,46 @@ Compliance storyboards live under `static/compliance/source/`. Each step that in
 
 This rule is enforced at build time by `scripts/lint-storyboard-scoping.cjs`, which runs as part of `npm run build:compliance`.
 
-## Valid identity shapes
+## Canonical identity shape
 
-Any one of the following in `sample_request` satisfies the lint:
+Use `account { brand, operator }`. The `AccountRef` schema requires `operator` whenever the natural-key form (`brand`) is used — there is no "just a brand" shape at the spec level.
 
 ```yaml
 sample_request:
   account:
     brand:
       domain: "acmeoutdoor.example"
-    operator: "pinnacle-agency.example"   # buyer-side: prefer this shape
+    operator: "pinnacle-agency.example"
   # ...
 ```
+
+Explicit-account form (when the seller issued an `account_id` via `list_accounts`):
 
 ```yaml
 sample_request:
   account:
-    account_id: "acc_acme_001"   # explicit account (require_operator_auth: true)
+    account_id: "acc_acme_001"
   # ...
 ```
 
-```yaml
-sample_request:
-  brand:
-    domain: "acmeoutdoor.example"   # minimal shorthand — fine for probe-style steps
-  # ...
-```
-
-For `sync_plans` only, identity may live inside the plans array:
+For `sync_plans`, identity lives inside each plan entry:
 
 ```yaml
 sample_request:
   plans:
     - plan_id: "plan-001"
-      brand:
-        domain: "acmeoutdoor.example"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
       # ...
 ```
 
-The training agent's `sessionKeyFromArgs` falls back to `plans[0].brand.domain` when no top-level identity is present.
+## What about top-level `brand`?
+
+Some AdCP requests (`create_media_buy`, `get_products`, `build_creative`) have a top-level `brand` field. That is **the campaign's brand**, a separate schema field — not an identity shorthand. `create_media_buy` requires both `account` and `brand`; one does not substitute for the other.
+
+The lint still accepts a bare top-level `brand.domain` as a fallback because the training agent's `sessionKeyFromArgs` reads it — but that is a training-agent routing detail, not a spec-canonical shape. New storyboards should use `account { brand, operator }`.
 
 ## Which tasks are session-scoped?
 
@@ -79,9 +80,10 @@ Typical failure output:
 
   protocols/media-buy/scenarios/invalid_transitions.yaml:setup/create_buy (create_media_buy) — sample_request missing brand/account
 
-Fix: add one of
-  sample_request.account.account_id
-  sample_request.account.brand.domain
-  sample_request.brand.domain
-  sample_request.plans[0].brand.domain (sync_plans only)
+Fix: add `account { brand, operator }` to sample_request, e.g.
+  sample_request:
+    account:
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
 ```

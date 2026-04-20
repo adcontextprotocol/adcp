@@ -118,8 +118,10 @@ phases:
           includes a source discriminator.
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_spec: "Adults interested in electric vehicles"
           context:
             correlation_id: "signals_baseline--search_signals"
@@ -179,8 +181,10 @@ phases:
           `is_live: false` and `estimated_activation_duration_minutes`.
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_agent_segment_id: "$context.signal_agent_segment_id"
           pricing_option_id: "$context.pricing_option_id"
           destinations:
@@ -229,8 +233,10 @@ phases:
           `estimated_activation_duration_minutes`.
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           signal_agent_segment_id: "$context.signal_agent_segment_id"
           pricing_option_id: "$context.pricing_option_id"
           destinations:

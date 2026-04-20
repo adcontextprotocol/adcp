@@ -105,8 +105,10 @@ phases:
           - Status: active
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           scope:
             languages_any: ["en"]
             description: "Acme Outdoor creative quality standards"
@@ -163,8 +165,10 @@ phases:
           - Status of each standard set
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "content_standards--list_content_standards"
@@ -196,8 +200,10 @@ phases:
           - All rules with categories, descriptions, and severity
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
 
           context:
@@ -236,8 +242,10 @@ phases:
           - Confirmation of changes applied
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -299,8 +307,10 @@ phases:
           - Remediation guidance for failed rules
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -348,8 +358,10 @@ phases:
           - Remediation guidance explaining why the content was rejected
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -396,8 +408,10 @@ phases:
           - Confirmation of changes applied
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -445,8 +459,10 @@ phases:
           - Rule results reference the updated policy rules
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -501,8 +517,10 @@ phases:
           - Violations with rule references and evidence
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           standards_id: "$context.content_standards_id"
           records:
             - record_id: "delivery_display_001"

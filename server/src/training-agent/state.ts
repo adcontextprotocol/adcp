@@ -350,12 +350,12 @@ export function sessionKeyFromArgs(
     if (safe) return `open:${safe}`;
   }
   if (Array.isArray(args.plans) && args.plans.length > 0) {
-    const first = args.plans[0] as { brand?: BrandRef } | undefined;
-    const planDomain = first?.brand?.domain;
+    const first = args.plans[0] as { brand?: BrandRef; account?: AccountRef } | undefined;
+    const planDomain = first?.account?.brand?.domain ?? first?.brand?.domain;
     const safePlanDomain = safeKey(planDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
     if (safePlanDomain) return `open:${safePlanDomain.toLowerCase()}`;
     if (planDomain && !safePlanDomain) {
-      logger.debug({ domain: planDomain }, 'Rejected plans[0].brand.domain as session key; falling back');
+      logger.debug({ domain: planDomain }, 'Rejected plans[0] brand.domain as session key; falling back');
     }
   }
   return 'open:default';

@@ -147,8 +147,10 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
+                account:
+                  brand:
+                    domain: "acmeoutdoor.example"
+                  operator: "pinnacle-agency.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "https://governance.pinnacle-agency.example"
@@ -205,8 +207,10 @@ phases:
           idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_q2_2027"
-              brand:
-                domain: "acmeoutdoor.example"
+              account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
               budget:
                 total: 50000
@@ -272,8 +276,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
-          brand:
-            domain: "acmeoutdoor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -338,8 +340,10 @@ phases:
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           binding:
             type: "media_buy"
@@ -407,8 +411,10 @@ phases:
           - approved_at: timestamp of approval
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_escalated"
           binding:
@@ -490,8 +496,6 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          brand:
-            domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_q2_approved"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
@@ -550,8 +554,10 @@ phases:
           - status: recorded
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
@@ -612,8 +618,10 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
 
           context:

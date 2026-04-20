@@ -106,8 +106,10 @@ phases:
           idempotency_key: "governance-spend-authority-sync-plans-v1"
           plans:
             - plan_id: "gov_acme_conditional"
-              brand:
-                domain: "acmeoutdoor.example"
+              account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               objectives: "Full spending authority with conditional policies on CTV reporting and UGC brand safety"
               budget:
                 total: 100000
@@ -176,8 +178,10 @@ phases:
           - findings: may include warning-severity findings noting the conditions
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:
@@ -246,8 +250,6 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          brand:
-            domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_conditional_approved"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"

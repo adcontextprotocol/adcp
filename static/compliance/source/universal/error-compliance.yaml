@@ -110,8 +110,10 @@ phases:
           - field: packages[0].budget (optional but recommended)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-negative-budget"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -153,8 +155,10 @@ phases:
           - recovery: correctable
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-nonexistent-product"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -194,8 +198,10 @@ phases:
           structured error requesting the missing brief. Both are valid.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--missing_fields"
@@ -229,8 +235,10 @@ phases:
           - recovery: correctable
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-reversed-dates"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -280,8 +288,10 @@ phases:
           - recovery: correctable, transient, or fatal (optional)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-structure-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -337,8 +347,10 @@ phases:
           adcp_major_version: 99
           buying_mode: "brief"
           brief: "Version negotiation probe"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--unsupported_major_version"
@@ -373,8 +385,10 @@ phases:
           adcp_major_version: 3
           buying_mode: "brief"
           brief: "Display advertising for outdoor lifestyle campaign"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--supported_major_version"
@@ -415,8 +429,10 @@ phases:
           - content containing adcp_error (L2: JSON text, L3: structuredContent)
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-transport-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"

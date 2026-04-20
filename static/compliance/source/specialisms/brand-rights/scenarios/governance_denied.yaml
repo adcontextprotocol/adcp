@@ -58,8 +58,10 @@ phases:
         sample_request:
           plans:
             - plan_id: "comply-rights-gov-denied"
-              brand:
-                domain: "acmeoutdoor.example"
+              account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               objectives: "Restricted plan — rights licensing test"
               budget:
                 total: 50
@@ -113,8 +115,10 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
+                account:
+                  brand:
+                    domain: "acmeoutdoor.example"
+                  operator: "pinnacle-agency.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -162,8 +166,10 @@ phases:
           - findings propagated from the governance agent
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:
