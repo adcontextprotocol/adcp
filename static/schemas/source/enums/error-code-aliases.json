@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/error-code-aliases.json",
+  "title": "Error Code Aliases",
+  "description": "Registry of deprecated error-code aliases and their replacements. Used by scripts/lint-error-codes.cjs to allow storyboard assertions on renamed codes during a deprecation window. Each entry maps an old (deprecated) code to the new canonical code in error-code.json.\n\nThe lint emits a warning — not an error — on storyboard references to aliased codes, giving authors visibility without breaking the build. When the alias is removed from this file, references to the old code become lint errors.\n\nLifecycle:\n1. Land rename: add entry here, migrate new code to error-code.json, update SDK/docs.\n2. Deprecation window (typically one minor release): authors migrate storyboards; warnings surface in CI.\n3. Sunset: remove alias entry; stale references fail the build.\n\nThe file is checked into source but MAY be empty when no renames are in flight.",
+  "type": "object",
+  "properties": {
+    "aliases": {
+      "type": "object",
+      "description": "Map of deprecated error code → current canonical code. Both keys and values MUST be strings matching the /^[A-Z][A-Z0-9_]*$/ convention; values MUST exist in error-code.json.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      }
+    }
+  },
+  "required": ["aliases"],
+  "additionalProperties": true,
+  "aliases": {},
+  "$comment": "This file is intentionally empty at creation. Add entries here only when actively renaming a code — do not pre-register aliases 'just in case'."
+}

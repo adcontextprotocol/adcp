@@ -317,11 +317,18 @@ Controllers MUST use structured error codes so the storyboard runner can assert 
 
 | Error code | When |
 |---|---|
-| `INVALID_TRANSITION` | Transition violates the state machine rules |
+| `INVALID_TRANSITION` | Requested state-machine transition is not valid (e.g., `archived → processing`, `canceled → paused`) |
+| `INVALID_STATE` | Operation is not permitted for the resource's current status (e.g., re-seeding a fixture that already exists with a diverging shape) |
 | `NOT_FOUND` | Entity does not exist or caller does not have access (multi-tenant sandboxes SHOULD treat "not yours" as "not found") |
 | `UNKNOWN_SCENARIO` | Scenario not implemented by this seller |
 | `INVALID_PARAMS` | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
+| `FORBIDDEN` | Production account referenced from a sandbox connection |
 | `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
+
+<Note>
+**Controller-specific enum.** The `error` field on controller responses uses a controller-specific vocabulary defined in [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json), distinct from the canonical seller-response [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json) enum that governs task-level errors. `INVALID_TRANSITION` is controller-specific (state-machine primitives expose the transition-vs-state distinction that seller-level error codes collapse into `INVALID_STATE`). Storyboard assertions on controller responses use `path: "error"` or direct `field_value` checks, not `check: error_code` — the shape-agnostic `error_code` check is for task-response errors (`adcp_error` / payload `errors[]`), not the controller's own response schema.
+</Note>
+
 
 ### Idempotency
 
