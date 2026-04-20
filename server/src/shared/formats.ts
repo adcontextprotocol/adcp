@@ -617,4 +617,7 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   native_feed: ['social'],
   display_300x250_generative: ['display'],
   video_30s_generative: ['olv', 'ctv'],
+  video_30s: ['olv', 'ctv'],
+  native_post: ['social'],
+  native_content: ['display'],
 };

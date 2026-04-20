@@ -895,6 +895,20 @@ export function buildCatalog(): CatalogProduct[] {
           }),
         ]
       : alias.source.product.pricing_options;
+    // Product cards embed `click_url` pointing at the source product's id;
+    // rebuild with the alias id so the URL matches the new product_id.
+    // The catalog shape contract (buildCatalog unit tests) asserts that
+    // every product's click_url contains its product_id.
+    const rebuildCard = <T extends { manifest?: { assets?: Record<string, unknown> } } | undefined>(card: T): T => {
+      if (!card?.manifest?.assets) return card;
+      const assets = { ...card.manifest.assets };
+      const clickAsset = assets.click_url as { url?: string } | undefined;
+      if (clickAsset?.url) {
+        const sourceId = alias.source!.product.product_id;
+        assets.click_url = { ...clickAsset, url: clickAsset.url.replace(sourceId, alias.id) };
+      }
+      return { ...card, manifest: { ...card.manifest, assets } } as T;
+    };
     catalog.push({
       ...alias.source,
       product: {
@@ -902,6 +916,12 @@ export function buildCatalog(): CatalogProduct[] {
         product_id: alias.id,
         name: alias.name,
         ...(aliasedPricing && { pricing_options: aliasedPricing }),
+        ...('product_card' in alias.source.product && alias.source.product.product_card
+          ? { product_card: rebuildCard(alias.source.product.product_card) }
+          : {}),
+        ...('product_card_detailed' in alias.source.product && alias.source.product.product_card_detailed
+          ? { product_card_detailed: rebuildCard(alias.source.product.product_card_detailed) }
+          : {}),
       },
     });
   }
