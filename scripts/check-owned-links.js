@@ -2,28 +2,40 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { globSync } from 'glob';
 
-const LINK_HOST = 'agenticadvertising.org';
+const LINK_HOSTS = new Set(['agenticadvertising.org', 'docs.adcontextprotocol.org']);
 const SKIPPED_PATH_PREFIXES = ['/api/'];
 const ROOT = process.cwd();
 
 function getCandidateFiles() {
-  return globSync(['docs/**/*.{md,mdx}', 'dist/docs/**/*.{md,mdx}', 'README.md'], {
-    cwd: ROOT,
-    nodir: true,
-  });
+  return globSync(
+    [
+      'docs/**/*.{md,mdx}',
+      'dist/docs/**/*.{md,mdx}',
+      'README.md',
+      'server/src/addie/rules/*.md',
+      'server/src/addie/**/*.ts',
+    ],
+    { cwd: ROOT, nodir: true },
+  );
 }
 
+// Match http(s) URLs but stop at characters that typically wrap them in source:
+// whitespace, quotes, closing brackets, backticks, markdown/slack link syntax (|, ]),
+// template interpolation starts (${), and escape starts (\).
 function extractUrls(file) {
   const text = readFileSync(join(ROOT, file), 'utf8');
-  const matches = text.match(/https?:\/\/[^\s)"'>`]+/g) ?? [];
+  const matches = text.match(/https?:\/\/[^\s)"'>`\\|\]]+/g) ?? [];
 
-  return [...new Set(matches)].filter((url) => {
-    try {
-      return new URL(url).hostname === LINK_HOST;
-    } catch {
-      return false;
-    }
-  });
+  return [...new Set(matches)]
+    .map((url) => url.replace(/[.,;:!?]+$/, ''))
+    .filter((url) => !url.includes('${'))
+    .filter((url) => {
+      try {
+        return LINK_HOSTS.has(new URL(url).hostname);
+      } catch {
+        return false;
+      }
+    });
 }
 
 function shouldCheck(url) {
@@ -56,15 +68,21 @@ async function fetchStatus(url, method, retries = 3) {
   }
 }
 
+// 405 means the endpoint exists but rejects this HTTP method (e.g. MCP
+// Streamable-HTTP endpoints reject GET). Treat as reachable.
+function isReachableStatus(status) {
+  return status < 400 || status === 405;
+}
+
 async function checkUrl(url) {
   try {
     const headStatus = await fetchStatus(url, 'HEAD');
-    if (headStatus < 400) {
+    if (isReachableStatus(headStatus)) {
       return { ok: true, status: headStatus, method: 'HEAD' };
     }
 
     const getStatus = await fetchStatus(url, 'GET');
-    return { ok: getStatus < 400, status: getStatus, method: 'GET' };
+    return { ok: isReachableStatus(getStatus), status: getStatus, method: 'GET' };
   } catch (error) {
     return {
       ok: false,
@@ -100,11 +118,12 @@ async function main() {
   }
 
   if (broken.length === 0) {
-    console.log('All browser-facing agenticadvertising.org links are reachable.');
+    const hosts = [...LINK_HOSTS].join(', ');
+    console.log(`All browser-facing links are reachable (${hosts}).`);
     return;
   }
 
-  console.error('Broken browser-facing agenticadvertising.org links found:');
+  console.error('Broken browser-facing links found:');
   for (const { url, result, files } of broken) {
     const detail =
       'status' in result
