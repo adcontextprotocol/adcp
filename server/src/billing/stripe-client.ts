@@ -262,6 +262,32 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
 }
 
 /**
+ * Resolve a casual or aliased lookup key (e.g. "explorer", "explorer_annual",
+ * "professional_annual") to a canonical product like "aao_membership_explorer_50".
+ *
+ * Why: callers — especially Addie's LLM — sometimes invent intuitive keys
+ * derived from the tier name and billing interval rather than passing the
+ * exact lookup_key returned by find_membership_products.
+ */
+export function resolveLookupKeyAlias(input: string, products: BillingProduct[]): BillingProduct | undefined {
+  const normalized = input
+    .toLowerCase()
+    .replace(/^aao_/, '')
+    .replace(/^membership_/, '')
+    .replace(/_(annual|annually|monthly|yearly|year|month)$/i, '');
+
+  if (!normalized) return undefined;
+
+  return products.find(p => {
+    const key = (p.lookup_key || '').toLowerCase();
+    return key === `aao_membership_${normalized}`
+      || key.startsWith(`aao_membership_${normalized}_`)
+      || key === `aao_${normalized}`
+      || key.startsWith(`aao_${normalized}_`);
+  });
+}
+
+/**
  * Get a specific price by lookup key
  */
 export async function getPriceByLookupKey(lookupKey: string): Promise<string | null> {
@@ -291,6 +317,15 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     }
   } catch (error) {
     logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error in direct Stripe lookup');
+  }
+
+  const aliased = resolveLookupKeyAlias(lookupKey, cachedProducts);
+  if (aliased) {
+    logger.info(
+      { lookupKey, resolvedKey: aliased.lookup_key, priceId: aliased.price_id },
+      'getPriceByLookupKey: Resolved alias to canonical lookup key',
+    );
+    return aliased.price_id;
   }
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);

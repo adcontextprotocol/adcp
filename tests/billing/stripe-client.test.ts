@@ -804,4 +804,33 @@ describe('stripe-client', () => {
       expect(createCall.subscription_data).toBeUndefined();
     });
   });
+
+  describe('resolveLookupKeyAlias', () => {
+    const products = [
+      { lookup_key: 'aao_membership_explorer_50', price_id: 'price_explorer' },
+      { lookup_key: 'aao_membership_professional_250', price_id: 'price_professional' },
+      { lookup_key: 'aao_membership_builder_3000', price_id: 'price_builder' },
+      { lookup_key: 'aao_membership_individual', price_id: 'price_individual' },
+      { lookup_key: 'aao_membership_individual_discounted', price_id: 'price_individual_discounted' },
+    ] as any[];
+
+    test('resolves "<tier>_annual" to canonical key', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('explorer_annual', products)?.lookup_key)
+        .toBe('aao_membership_explorer_50');
+      expect(resolveLookupKeyAlias('professional_annual', products)?.lookup_key)
+        .toBe('aao_membership_professional_250');
+    });
+
+    test('resolves bare tier name to canonical key', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('builder', products)?.lookup_key)
+        .toBe('aao_membership_builder_3000');
+    });
+
+    test('returns undefined for unknown alias', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('nonexistent_tier', products)).toBeUndefined();
+    });
+  });
 });
