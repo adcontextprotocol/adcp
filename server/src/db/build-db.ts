@@ -290,24 +290,38 @@ export async function setBuildCoverImage(
   editionId: number,
   imageData: Buffer,
   promptUsed: string,
+  c2paSignedAt?: Date,
+  c2paManifestDigest?: string,
 ): Promise<boolean> {
   if (imageData.length > MAX_COVER_IMAGE_SIZE) {
     throw new Error(`Cover image too large: ${(imageData.length / 1024 / 1024).toFixed(1)} MB`);
   }
   const result = await query(
     `UPDATE build_editions
-     SET cover_image_data = $2, cover_prompt_used = $3
+     SET cover_image_data = $2, cover_prompt_used = $3,
+         cover_c2pa_signed_at = $4, cover_c2pa_manifest_digest = $5
      WHERE id = $1 AND status = 'draft'`,
-    [editionId, imageData, promptUsed],
+    [editionId, imageData, promptUsed, c2paSignedAt ?? null, c2paManifestDigest ?? null],
   );
   return (result.rowCount ?? 0) > 0;
 }
 
 export async function getBuildCoverImageWithPrompt(
   editionDate: string,
-): Promise<{ imageData: Buffer; promptUsed: string } | null> {
-  const result = await query<{ cover_image_data: Buffer; cover_prompt_used: string | null }>(
-    `SELECT cover_image_data, cover_prompt_used FROM build_editions
+): Promise<{
+  imageData: Buffer;
+  promptUsed: string;
+  c2paSignedAt: Date | null;
+  c2paManifestDigest: string | null;
+} | null> {
+  const result = await query<{
+    cover_image_data: Buffer;
+    cover_prompt_used: string | null;
+    cover_c2pa_signed_at: Date | null;
+    cover_c2pa_manifest_digest: string | null;
+  }>(
+    `SELECT cover_image_data, cover_prompt_used, cover_c2pa_signed_at, cover_c2pa_manifest_digest
+     FROM build_editions
      WHERE edition_date = $1 AND cover_image_data IS NOT NULL`,
     [editionDate],
   );
@@ -315,6 +329,8 @@ export async function getBuildCoverImageWithPrompt(
   return {
     imageData: result.rows[0].cover_image_data,
     promptUsed: result.rows[0].cover_prompt_used || 'Unknown',
+    c2paSignedAt: result.rows[0].cover_c2pa_signed_at,
+    c2paManifestDigest: result.rows[0].cover_c2pa_manifest_digest,
   };
 }
 

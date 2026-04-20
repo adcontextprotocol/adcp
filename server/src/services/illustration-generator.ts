@@ -6,11 +6,18 @@
  * authors can describe the subject matter they want depicted.
  */
 
+import { createHash } from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createLogger } from '../logger.js';
 import { withGeminiRetry } from '../utils/gemini-retry.js';
 import { getAllNewsletters } from '../newsletters/registry.js';
 import type { NewsletterConfig } from '../newsletters/config.js';
+import { signC2PA, isC2PASigningEnabled } from './c2pa.js';
+import { notifySystemError } from '../addie/error-notifier.js';
+
+const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+// Matches the -preview suffix above; bump together when promoting to a stable Gemini release.
+const GEMINI_IMAGE_VERSION = 'preview';
 
 function findNewsletterByCategory(category: string): NewsletterConfig | null {
   return getAllNewsletters().find((n) => n.perspectiveCategory === category) || null;
@@ -63,6 +70,16 @@ export interface GenerateIllustrationOptions {
 export interface GenerateIllustrationResult {
   imageBuffer: Buffer;
   promptUsed: string;
+  /**
+   * C2PA provenance metadata, present when signing is enabled and succeeded.
+   * The imageBuffer already carries the embedded manifest; these fields are
+   * for persisting alongside the row so admin tools can find unsigned rows
+   * without parsing every PNG.
+   */
+  c2pa?: {
+    signedAt: Date;
+    manifestDigest: string;
+  };
 }
 
 let genAI: GoogleGenerativeAI | null = null;
@@ -130,7 +147,7 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
   const ai = getGenAI();
   const model = ai.getGenerativeModel(
     {
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       generationConfig: {
         // @ts-expect-error - responseModalities not in SDK types yet
         responseModalities: ['TEXT', 'IMAGE'],
@@ -156,10 +173,58 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
         throw new Error(`Gemini returned non-image content: ${mimeType}`);
       }
       logger.info({ sizeKB: (imageBuffer.length / 1024).toFixed(0), mimeType }, 'Illustration generated');
-      return { imageBuffer, promptUsed: prompt };
+      return attachC2PAIfEnabled({ imageBuffer, promptUsed: prompt }, { title, category, editionDate });
     }
   }
 
   const text = response.text?.() || 'No response';
   throw new Error(`Gemini did not return an image. Response: ${text.slice(0, 200)}`);
+}
+
+/**
+ * Sign the generated PNG with an AAO C2PA manifest when signing is enabled.
+ *
+ * Failure policy is env-gated:
+ *   - `C2PA_STRICT=true` — rethrow so the generation fails (useful for canary
+ *     rollouts where we want to prove signing works end-to-end).
+ *   - otherwise — return the unsigned buffer so a transient C2PA failure
+ *     never blocks a newsletter send. The row lands with c2pa_signed_at NULL
+ *     and stage 5 backfill reconciles.
+ *
+ * Every failure fires a throttled system-error alert (one per 5 min per source,
+ * via notifySystemError) so sustained failures surface rather than hiding in logs.
+ */
+export function attachC2PAIfEnabled(
+  result: { imageBuffer: Buffer; promptUsed: string },
+  manifest: { title: string; category?: string; editionDate?: string },
+): GenerateIllustrationResult {
+  if (!isC2PASigningEnabled()) return result;
+  try {
+    const signed = signC2PA(result.imageBuffer, {
+      claimGenerator: 'AAO Illustration Generator',
+      title: manifest.title,
+      softwareAgent: { name: GEMINI_IMAGE_MODEL, version: GEMINI_IMAGE_VERSION },
+      attributes: {
+        ...(manifest.category ? { category: manifest.category } : {}),
+        ...(manifest.editionDate ? { edition_date: manifest.editionDate } : {}),
+        prompt_sha256: createHash('sha256').update(result.promptUsed).digest('hex'),
+      },
+    });
+    return {
+      imageBuffer: signed.signedBuffer,
+      promptUsed: result.promptUsed,
+      c2pa: { signedAt: new Date(), manifestDigest: signed.manifestDigest },
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error({ err, title: manifest.title }, 'C2PA signing failed');
+    notifySystemError({
+      source: 'c2pa-illustration-signing',
+      errorMessage: `Illustration signing failed for "${manifest.title}": ${errorMessage}`,
+    });
+    if (process.env.C2PA_STRICT === 'true') {
+      throw err;
+    }
+    return result;
+  }
 }

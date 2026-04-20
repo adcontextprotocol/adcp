@@ -133,8 +133,8 @@ const promptDB: NewsletterEditionDB = {
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
-  async setCoverImage(id, imageData, promptUsed) {
-    return setDigestCoverImage(id, imageData, promptUsed);
+  async setCoverImage(id, imageData, promptUsed, c2paSignedAt, c2paManifestDigest) {
+    return setDigestCoverImage(id, imageData, promptUsed, c2paSignedAt, c2paManifestDigest);
   },
   async getCoverImage(editionDate) {
     return getDigestCoverImage(editionDate);
