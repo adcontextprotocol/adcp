@@ -529,6 +529,9 @@
       <p>The event you're looking for doesn't exist or has been removed.</p>
       <a href="/events" class="btn btn-primary">View All Events</a>
     </div>
+    <div id="draftBanner" style="display: none; background: var(--color-warning-100, #fef3c7); border: 1px solid var(--color-warning-300, #fcd34d); color: var(--color-warning-800, #92400e); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;">
+      <strong>Draft preview</strong> — this event is not yet published. Only admins can see this page. Set status to <em>Published</em> in <a href="/admin/events" style="color: inherit; text-decoration: underline;">admin → events</a> to make it public.
+    </div>
     <div id="content" style="display: none;"></div>
   </div>
 
@@ -554,6 +557,9 @@
 
         renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration);
 
+        if (data.draft_preview) {
+          document.getElementById('draftBanner').style.display = 'block';
+        }
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
       } catch (error) {

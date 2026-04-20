@@ -512,7 +512,8 @@ export function createContentRouter(): Router {
       // Build query for pending content
       let query = `
         SELECT
-          p.id, p.title, p.excerpt, p.content, p.slug, p.content_type,
+          p.id, p.title, p.subtitle, p.excerpt, p.content, p.slug, p.content_type,
+          p.external_url, p.external_site_name,
           p.proposer_user_id, p.proposed_at, p.working_group_id,
           wg.name as committee_name, wg.slug as committee_slug,
           u.first_name, u.last_name, u.email as proposer_email,
@@ -547,10 +548,13 @@ export function createContentRouter(): Router {
       const items = result.rows.map(row => ({
         id: row.id,
         title: row.title,
+        subtitle: row.subtitle,
         slug: row.slug,
         excerpt: row.excerpt,
         content: row.content,
         content_type: row.content_type,
+        external_url: row.external_url,
+        external_site_name: row.external_site_name,
         proposer: {
           id: row.proposer_user_id,
           name: row.first_name && row.last_name
