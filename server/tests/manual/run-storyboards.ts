@@ -13,11 +13,43 @@
 
 import express from 'express';
 import http from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
   runStoryboard,
+  getComplianceCacheDir,
 } from '@adcp/client/testing';
-import type { StoryboardResult, Storyboard } from '@adcp/client/testing';
+import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
+import { SingleAgentClient } from '@adcp/client';
+
+// SDK workaround: `applyBrandInvariant` injects top-level `brand` on every
+// outgoing request, but `SingleAgentClient.validateRequest` calls
+// `schema.strict().parse(...)` — so every tool whose request schema doesn't
+// declare `brand` (list_creative_formats, get_signals, sync_creatives, …)
+// rejects the runner's own request. Replace with a non-strict parse: known
+// fields are still validated, unknown keys (like a brand injected on a tool
+// that doesn't care about it) are ignored. Tools that require brand still
+// enforce it because their schema declares it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ProtoAny = SingleAgentClient.prototype as unknown as {
+  getRequestSchema: (t: string) => unknown;
+  validateRequest: (t: string, p: Record<string, unknown>) => void;
+};
+ProtoAny.validateRequest = function (taskType: string, params: Record<string, unknown>): void {
+  const schema = this.getRequestSchema(taskType) as { parse?: (p: unknown) => unknown } | null | undefined;
+  if (!schema || typeof schema.parse !== 'function') return;
+  try {
+    // Strip the legacy compat fields the upstream validator also strips.
+    const { brand_manifest: _bm, buyer_ref: _br, ...rest } = params;
+    schema.parse(rest); // non-strict: unknown keys are ignored
+  } catch (err) {
+    const issues = (err as { issues?: Array<{ path: Array<string|number>; message: string }> }).issues
+      ?.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') ?? String(err);
+    throw new Error(`Request validation failed for ${taskType}: ${issues}`);
+  }
+};
 import {
   StaticJwksResolver,
   InMemoryReplayStore,
@@ -82,6 +114,30 @@ function isApplicable(sb: Storyboard): boolean {
   return true;
 }
 
+/**
+ * Resolve a storyboard's brand from its declared test_kit.
+ *
+ * Without this, `applyBrandInvariant` in the SDK's runner is a no-op: steps
+ * that omit `brand`/`account` land in `open:default` while branded steps
+ * (e.g. create_media_buy declaring `brand.domain`) land in
+ * `open:<domain>`. The session key divergence surfaces as
+ * `MEDIA_BUY_NOT_FOUND` on every subsequent read. Threading the test kit's
+ * brand into options.brand forces every outgoing request onto the same
+ * session key.
+ */
+function brandForStoryboard(sb: Storyboard): StoryboardRunOptions['brand'] | undefined {
+  const kitRef = sb.prerequisites?.test_kit;
+  if (!kitRef) return undefined;
+  const path = join(getComplianceCacheDir(), kitRef);
+  if (!existsSync(path)) return undefined;
+  const kit = YAML.parse(readFileSync(path, 'utf-8')) as {
+    brand?: { house?: { domain?: string }; brand_id?: string };
+  };
+  const domain = kit.brand?.house?.domain;
+  if (!domain) return undefined;
+  return { domain };
+}
+
 function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
   if (s.not_applicable) return 'not_applicable';
   if (s.skipped) return 'skipped';
@@ -129,6 +185,7 @@ async function main() {
   for (const sb of all) {
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
+      const brand = brandForStoryboard(sb);
       const result = await runStoryboard(agentUrl, sb, {
         auth: { type: 'bearer', token: AUTH_TOKEN },
         allow_http: true,
@@ -139,6 +196,7 @@ async function main() {
           replayStore: new InMemoryReplayStore(),
           revocationStore: new InMemoryRevocationStore(),
         },
+        ...(brand && { brand }),
       });
       const summary = summarize(sb, result);
       results.push(summary);

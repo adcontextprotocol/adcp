@@ -309,6 +309,32 @@ export function clearTaskStore(): void {
   sdkTaskStore = null;
 }
 
+/** Translate the agent's internal governance check shape into the wire-format
+ * details block carried on a GOVERNANCE_DENIED error. Storyboards assert
+ * `findings[]` and (when status is `conditions`) `conditions[]` on the error,
+ * so surfacing them here is load-bearing. */
+function governanceErrorDetails(check: import('./types.js').GovernanceCheckState): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    findings: check.findings.map(f => ({
+      category_id: f.categoryId,
+      severity: f.severity,
+      explanation: f.explanation,
+      ...(f.policyId && { policy_id: f.policyId }),
+      ...(f.confidence !== undefined && { confidence: f.confidence }),
+    })),
+    plan_id: check.planId,
+    check_id: check.checkId,
+  };
+  if (check.conditions?.length) {
+    details.conditions = check.conditions.map(c => ({
+      field: c.field,
+      ...(c.requiredValue !== undefined && { required_value: c.requiredValue }),
+      reason: c.reason,
+    }));
+  }
+  return details;
+}
+
 /** Map tool name → TaskType for webhook envelopes. Only tools that emit
  * webhooks need an entry — tools absent from this map never fire an emission
  * even if the caller supplies a push_notification_config.url. */
@@ -1199,7 +1225,7 @@ async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
   if (govCtx) {
     // Find the latest check for this governance_context (Map iterates in insertion order)
-    let latestCheck: { status: string; explanation: string } | undefined;
+    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
     for (const check of session.governanceChecks.values()) {
       if (check.governanceContext === govCtx) {
         latestCheck = check;
@@ -1210,6 +1236,7 @@ async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         errors: [{
           code: 'GOVERNANCE_DENIED',
           message: latestCheck.explanation || 'Governance check denied this purchase.',
+          details: governanceErrorDetails(latestCheck),
         }] as TaskError[],
       };
     }
@@ -1230,10 +1257,19 @@ async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       for (const plan of session.governancePlans.values()) {
         const remaining = plan.budget.total - plan.committedBudget;
         if (buyBudget > remaining) {
+          const msg = `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`;
           return {
             errors: [{
               code: 'GOVERNANCE_DENIED',
-              message: `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`,
+              message: msg,
+              details: {
+                findings: [{
+                  category_id: 'budget_authority',
+                  severity: 'critical',
+                  explanation: msg,
+                }],
+                plan_id: plan.planId,
+              },
             }] as TaskError[],
           };
         }
@@ -1242,10 +1278,19 @@ async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
           const typeCommitted = plan.committedByType?.media_buy ?? 0;
           const typeRemaining = typeAllocation.amount - typeCommitted;
           if (buyBudget > typeRemaining) {
+            const msg = `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`;
             return {
               errors: [{
                 code: 'GOVERNANCE_DENIED',
-                message: `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`,
+                message: msg,
+                details: {
+                  findings: [{
+                    category_id: 'budget_authority',
+                    severity: 'critical',
+                    explanation: msg,
+                  }],
+                  plan_id: plan.planId,
+                },
               }] as TaskError[],
             };
           }

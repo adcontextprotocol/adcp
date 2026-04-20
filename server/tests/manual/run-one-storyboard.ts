@@ -5,9 +5,32 @@
 
 import express from 'express';
 import http from 'node:http';
-import { listAllComplianceStoryboards, runStoryboard } from '@adcp/client/testing';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import YAML from 'yaml';
+import { listAllComplianceStoryboards, runStoryboard, getComplianceCacheDir } from '@adcp/client/testing';
+import type { Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
 import { StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
+import { SingleAgentClient } from '@adcp/client';
+
+// See run-storyboards.ts for why this monkey-patch is necessary.
+const ProtoAny = SingleAgentClient.prototype as unknown as {
+  getRequestSchema: (t: string) => unknown;
+  validateRequest: (t: string, p: Record<string, unknown>) => void;
+};
+ProtoAny.validateRequest = function (taskType: string, params: Record<string, unknown>): void {
+  const schema = this.getRequestSchema(taskType) as { parse?: (p: unknown) => unknown } | null | undefined;
+  if (!schema || typeof schema.parse !== 'function') return;
+  try {
+    const { brand_manifest: _bm, buyer_ref: _br, ...rest } = params;
+    schema.parse(rest);
+  } catch (err) {
+    const issues = (err as { issues?: Array<{ path: Array<string|number>; message: string }> }).issues
+      ?.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') ?? String(err);
+    throw new Error(`Request validation failed for ${taskType}: ${issues}`);
+  }
+};
 
 const AUTH_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN ?? 'storyboard-diag-token';
 process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
@@ -23,6 +46,18 @@ const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const sb = listAllComplianceStoryboards().find(s => s.id === id);
 if (!sb) { console.error(`storyboard ${id} not found`); process.exit(2); }
 
+function brandForStoryboard(s: Storyboard): StoryboardRunOptions['brand'] | undefined {
+  const kitRef = s.prerequisites?.test_kit;
+  if (!kitRef) return undefined;
+  const path = join(getComplianceCacheDir(), kitRef);
+  if (!existsSync(path)) return undefined;
+  const kit = YAML.parse(readFileSync(path, 'utf-8')) as {
+    brand?: { house?: { domain?: string } };
+  };
+  const domain = kit.brand?.house?.domain;
+  return domain ? { domain } : undefined;
+}
+
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use('/api/training-agent', createTrainingAgentRouter());
@@ -32,6 +67,7 @@ server.listen(0, '127.0.0.1', async () => {
   const url = `http://127.0.0.1:${port}/api/training-agent/mcp`;
   // Intentionally do not log agent URL to stdout — this script's stdout is
   // piped through `jq` / `python -c` by the storyboard debugging workflow.
+  const brand = brandForStoryboard(sb);
   const result = await runStoryboard(url, sb, {
     auth: { type: 'bearer', token: AUTH_TOKEN },
     allow_http: true,
@@ -42,6 +78,7 @@ server.listen(0, '127.0.0.1', async () => {
       replayStore: new InMemoryReplayStore(),
       revocationStore: new InMemoryRevocationStore(),
     },
+    ...(brand && { brand }),
   });
   console.log(JSON.stringify(result, null, 2));
   stopSessionCleanup();
