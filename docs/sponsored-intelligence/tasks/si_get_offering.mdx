@@ -4,6 +4,10 @@ description: "si_get_offering is the AdCP task for anonymous pre-session offerin
 "og:title": "AdCP — si_get_offering"
 ---
 
+<Note>
+**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Get offering details, availability, and optionally matching products before initiating a session. This allows hosts to show rich previews to users before asking for consent to engage with the brand.
 
 ## When to Use This Task

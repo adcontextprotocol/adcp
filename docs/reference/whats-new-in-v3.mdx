@@ -219,7 +219,7 @@ Campaign governance extends this with plan-level policy and budget enforcement v
 Conversational brand experiences in AI assistants. SI defines how AI assistants invoke brand agents for rich engagement (text, voice, UI components) without breaking the conversational flow. Sessions follow a consent-first model: user expresses interest, grants consent, then the brand agent engages conversationally with optional transaction handoff.
 
 <Note>
-Sponsored Intelligence is **pre-release** and will evolve after the 3.0 release.
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Sellers implementing SI MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract and the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201) for planned changes.
 </Note>
 
 <Card title="SI Chat Protocol" icon="arrow-right" href="/docs/sponsored-intelligence/si-chat-protocol">
@@ -298,13 +298,14 @@ Whether a format supports third-party measurement is determined by whether its a
 
 ### Experimental surfaces
 
-AdCP 3.0 ships a core of stable surfaces under the [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees), plus three surfaces that are part of the core protocol but not yet frozen. These three surfaces are being co-developed with design partners — **OpenAds, Scope3, Yahoo, ONX, and Triton Digital** — running them in production engagements that shape the graduation path. Experimental surfaces carry `x-status: experimental` in their schemas, and sellers implementing them declare the feature id in `experimental_features` on `get_adcp_capabilities`. They may change between 3.x releases with at least 6 weeks' notice.
+AdCP 3.0 ships a core of stable surfaces under the [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees), plus four surfaces that are part of the core protocol but not yet frozen. These surfaces are being co-developed with design partners — **OpenAds, Scope3, Yahoo, ONX, and Triton Digital** — running them in production engagements that shape the graduation path. Experimental surfaces carry `x-status: experimental` in their schemas, and sellers implementing them declare the feature id in `experimental_features` on `get_adcp_capabilities`. They may change between 3.x releases with at least 6 weeks' notice.
 
 | Surface | Feature id | Why experimental |
 |---|---|---|
 | [Brand rights lifecycle](/docs/brand-protocol/tasks/get_rights) | `brand.rights_lifecycle` | Legal-construct surface added late in the 3.0 cycle. First enterprise deployments will expose edge cases in partial rights, sublicensing, revocation, and dispute resolution. |
 | [Campaign governance](/docs/governance/campaign/specification) | `governance.campaign` | Multi-party governance semantics (approval conflicts, audit provenance, tie-breaking under Embedded Human Judgment) are not yet settled. |
 | [Trusted Match Protocol](/docs/trusted-match/) | `trusted_match.core` | Privacy architecture will evolve with regulator engagement; TMPX exposure tokens, country-partitioned identity, and Offer macros are expected to change. |
+| [Sponsored Intelligence](/docs/sponsored-intelligence/overview) | `sponsored_intelligence.core` | Conversational brand experiences are a new advertising model. Session lifecycle, UI components, identity/consent object shape, and capability negotiation are expected to evolve as first-party AI hosts and brand agents integrate. |
 
 The experimental label is deliberately scoped — everything else in 3.0 follows the normal 6-month deprecation notice. See [experimental status](/docs/reference/experimental-status) for the full contract, graduation criteria, and client guidance.
 

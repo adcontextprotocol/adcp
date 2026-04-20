@@ -4,6 +4,10 @@ description: "si_send_message is the AdCP task for exchanging messages in an act
 "og:title": "AdCP — si_send_message"
 ---
 
+<Note>
+**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Send a message within an active SI session. The host invokes this task to relay user messages and action responses to the brand agent.
 
 ## Request

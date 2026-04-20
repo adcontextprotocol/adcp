@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
   "title": "SI Initiate Session Request",
   "description": "Host initiates a session with a brand agent",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {
