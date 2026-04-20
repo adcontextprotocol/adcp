@@ -120,6 +120,28 @@
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
 # description: string (human-readable description of validation)
 #
+# Error-shape validation — use `check: error_code`:
+#   The `error_code` check is shape-agnostic. The runner resolves the code from
+#   any of the transport-binding locations defined by the client detection
+#   order (see docs/building/implementation/transport-errors#client-detection-order):
+#   - `adcp_error.code` (MCP structuredContent, A2A artifact DataPart, JSON-RPC
+#     error.data, MCP text-fallback content JSON)
+#   - `errors[0].code` (task-payload errors array, top-level or under payload)
+#   A storyboard SHOULD assert error shape via `check: error_code` rather than
+#   `check: field_present, path: "errors"` or `path: "adcp_error"` — pinning to
+#   a specific shape makes the validator flakey against conformant agents that
+#   surface errors on the other layer.
+#
+# Error-code vocabulary:
+#   Every code referenced in a `value:` or `allowed_values:` under `check: error_code`
+#   MUST exist in the canonical enum at `static/schemas/source/enums/error-code.json`
+#   (or be registered as a deprecation alias). The `lint:error-codes` script
+#   enforces this at build time — references to undefined codes fail the build.
+#   Sellers MAY emit vendor-specific codes outside the enum, but storyboards
+#   MUST NOT assert on them (that couples the conformance suite to a specific
+#   vendor's taxonomy). When a test needs to accept multiple possible codes,
+#   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
 # --- Runner output ---
 #
 # How a runner MUST report validation results — including which fields a

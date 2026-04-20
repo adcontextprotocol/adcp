@@ -37,7 +37,13 @@ const logger = createLogger('training-agent-request-signing');
 
 const TEST_REVOKED_KID = 'test-revoked-2026';
 
-let capabilityDeclaration: VerifierCapability | null = null;
+/** Operations that the grader-targeted strict route declares as requiring
+ *  a signed request. Kept narrow so the strict route can still run
+ *  discovery / list_tools / get_products without signing. */
+export const STRICT_REQUIRED_FOR: readonly string[] = ['create_media_buy'];
+
+let defaultCapability: VerifierCapability | null = null;
+let strictCapability: VerifierCapability | null = null;
 
 function loadTestJwks(): AdcpJsonWebKey[] {
   const path = join(getComplianceCacheDir(), 'test-vectors', 'request-signing', 'keys.json');
@@ -56,37 +62,44 @@ function loadTestJwks(): AdcpJsonWebKey[] {
 }
 
 /**
- * Operations for which the training agent requires RFC 9421 signatures.
+ * Capability block for the public sandbox `/mcp` route.
  *
- * Advertised via `required_for` on `get_adcp_capabilities` and enforced
- * in the auth chain (index.ts). Keeping this narrow — `create_media_buy`
- * is the canonical money-moving operation the `signed-requests`
- * conformance vectors target (vector 001 tests precisely this) — lets
- * the same agent serve signed and unsigned callers for every other
- * operation. Widening would require every storyboard that issues the
- * newly-required op to carry a bearer AND a valid signature, which
- * doubles the ceremony without changing the grading coverage.
- */
-export const REQUIRED_FOR_OPERATIONS: ReadonlyArray<string> = ['create_media_buy'];
-
-/**
- * Get the capability block we advertise on `get_adcp_capabilities`.
- *
- * `required_for` is narrow (see {@link REQUIRED_FOR_OPERATIONS}): the
- * specialism's conformance vectors assert rejection on unsigned calls to
- * listed operations, and the training agent enforces this in the auth
- * chain so grading is honest about the advertised contract.
+ * `required_for: []` so unsigned bearer callers keep working — this endpoint
+ * is a learning sandbox, not a conformance target. Signed callers are still
+ * verified end-to-end (signature composes via `anyOf(verifyApiKey, ...)`).
  */
 export function getRequestSigningCapability(): VerifierCapability {
-  if (!capabilityDeclaration) {
-    capabilityDeclaration = {
+  if (!defaultCapability) {
+    defaultCapability = {
       supported: true,
       covers_content_digest: 'either',
-      required_for: [...REQUIRED_FOR_OPERATIONS],
+      required_for: [],
       supported_for: [...MUTATING_TOOLS],
     };
   }
-  return capabilityDeclaration;
+  return defaultCapability;
+}
+
+/**
+ * Capability block for the grader-targeted `/mcp-strict` route.
+ *
+ * `required_for: STRICT_REQUIRED_FOR` so the conformance grader's vector 001
+ * (`request_signature_required`) fires. The strict route enforces presence-
+ * gated signing: invalid signatures 401 without falling through to bearer,
+ * unsigned calls to required ops 401 with the `request_signature_required`
+ * error code. Non-required ops still accept bearer so grader setup (list
+ * tools, discovery, get_products) works without signing infrastructure.
+ */
+export function getStrictRequestSigningCapability(): VerifierCapability {
+  if (!strictCapability) {
+    strictCapability = {
+      supported: true,
+      covers_content_digest: 'either',
+      required_for: [...STRICT_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS],
+    };
+  }
+  return strictCapability;
 }
 
 /**
@@ -160,5 +173,6 @@ function headerFirst(value: string | string[] | undefined): string | undefined {
 
 /** Reset state — tests only. */
 export function resetRequestSigning(): void {
-  capabilityDeclaration = null;
+  defaultCapability = null;
+  strictCapability = null;
 }

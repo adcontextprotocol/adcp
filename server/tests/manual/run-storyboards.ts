@@ -186,7 +186,18 @@ async function main() {
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
       const brand = brandForStoryboard(sb);
-      const result = await runStoryboard(agentUrl, sb, {
+      // The default `/mcp` route is the public sandbox (bearer OR signed,
+      // no `required_for` enforcement). The `/mcp-strict` route is the
+      // grader target with presence-gated signing + required_for. Point
+      // the signed_requests conformance storyboard at the strict route
+      // so vector 001 (`request_signature_required`) fires against a
+      // cap that actually advertises `required_for: [create_media_buy]`;
+      // every other storyboard stays on `/mcp` so bearer-authed unsigned
+      // calls keep working.
+      const targetUrl = sb.id === 'signed_requests'
+        ? agentUrl.replace(/\/mcp$/, '/mcp-strict')
+        : agentUrl;
+      const result = await runStoryboard(targetUrl, sb, {
         auth: { type: 'bearer', token: AUTH_TOKEN },
         allow_http: true,
         contracts: ['webhook_receiver_runner'],
