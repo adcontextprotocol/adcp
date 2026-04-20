@@ -49,7 +49,7 @@ Surfaces shipped in 3.x but not yet frozen are listed separately — see [Experi
 
 ## Conformance and testing
 
-- **No canonical conformance specification yet.** The compliance suite tests behavior; the formal spec naming every MUST that an "AdCP-compliant" implementation must satisfy is tracked in [#2380](https://github.com/adcontextprotocol/adcp/issues/2380). Reference test vectors are tracked in [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
+- **Reference test vectors are partial.** [Conformance](/docs/building/conformance) is defined by the storyboard suite, and the suite publishes request-signing and canonicalization vectors today — but a broader corpus of reference test vectors is tracked in [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
 - **No automated enforcement of platform agnosticism** beyond the `check:platform-agnostic` lint scanning property names. A richer check covering schema semantics is future work.
 - **No latency or response-time SLA.** The protocol has no normative expectations for how quickly an agent must respond (unlike OpenRTB's per-auction `tmax`). Buyers and sellers negotiate timing through the commercial relationship or through task-specific [accountability terms](/docs/media-buy/advanced-topics/accountability). A structured SLA declaration is deferred.
 
