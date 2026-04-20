@@ -253,6 +253,8 @@ phases:
                 image:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-native.png"
+                  width: 1200
+                  height: 628
                   mime_type: "image/png"
                 headline:
                   asset_type: "text"

@@ -223,7 +223,7 @@ phases:
             operator: "pinnacle-agency.example"
           catalogs:
             - catalog_id: "menu_spring_2026"
-              catalog_type: "product"
+              type: "product"
               name: "Spring 2026 Menu"
               items:
                 - item_id: "ribeye_36oz"
@@ -371,7 +371,7 @@ phases:
               budget: 5000
               catalogs:
                 - catalog_id: "menu_spring_2026"
-                  catalog_type: "product"
+                  type: "product"
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_create_buy_create_media_buy"
           context:

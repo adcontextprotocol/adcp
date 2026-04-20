@@ -163,8 +163,13 @@ phases:
             - creative_id: "acme-outdoor-display-q3"
               name: "Acme Outdoor Q3 display"
               format_id: "$context.format_id"
-              content:
-                media_url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
+                  width: 300
+                  height: 250
+                  mime_type: "image/jpeg"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_sync_creative"
           context:

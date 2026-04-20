@@ -730,6 +730,8 @@ phases:
                 image:
                   asset_type: 'image'
                   url: 'https://via.placeholder.com/300x250'
+                  width: 300
+                  height: 250
                   mime_type: 'image/png'
 
           idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_creative_sync_creative_for_state"

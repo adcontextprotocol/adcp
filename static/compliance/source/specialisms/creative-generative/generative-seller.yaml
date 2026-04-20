@@ -502,6 +502,7 @@ phases:
                 id: "display_300x250"
               assets:
                 image:
+                  asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
                   format: "png"
                   width: 300

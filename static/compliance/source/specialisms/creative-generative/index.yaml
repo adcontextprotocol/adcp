@@ -233,9 +233,11 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
@@ -304,12 +306,14 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
               cta:
                 asset_type: "text"
-                text: "Shop Now"
+                content: "Shop Now"
           target_format_ids:
             - agent_url: "https://your-agent.example.com"
               id: "display_300x250_generative"
@@ -376,12 +380,14 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
               cta:
                 asset_type: "text"
-                text: "Shop Now"
+                content: "Shop Now"
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
