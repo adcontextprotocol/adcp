@@ -48,7 +48,7 @@ Non-voting **observer** participation is available through Working Groups and th
 
 ### 4.1 Interim board
 
-The Foundation operates under an interim board appointed at incorporation. The interim board will be replaced by an elected board at the first Annual General Meeting (AGM), planned for **2026**. Interim directors (as of 2026-04-18):
+The Foundation operates under an interim board appointed at incorporation. The interim board will be replaced by an elected board at the first Annual General Meeting (AGM), scheduled for **May 6, 2026**. All voting members in good standing as of the AGM record date are eligible to vote. Interim directors (as of 2026-04-18):
 
 - Michael Blum — Scope3
 - Brian O'Kelley — Scope3
@@ -111,6 +111,7 @@ Day-to-day technical work happens in **Working Groups**, which are the Foundatio
 - **Financial reporting** — Annual financial reports are shared with the membership.
 - **Equal voice** — Each voting class has equal representation regardless of company size.
 - **Public protocol development** — AdCP specification work happens in this repository; all changes are auditable in Git history.
+- **Contributor credit** — Individuals and organizations who have shaped the protocol through issues, pull requests, and working-group participation are named in [CONTRIBUTORS.md](./CONTRIBUTORS.md).
 
 ---
 
