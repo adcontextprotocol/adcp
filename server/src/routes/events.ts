@@ -38,6 +38,7 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
+import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 
 /**
  * Zoom participant report CSV row structure.
@@ -1640,11 +1641,30 @@ export function createEventsRouter(): {
       const { slug } = req.params;
 
       const event = await eventsDb.getEventBySlug(slug);
-      if (!event || !["published", "completed"].includes(event.status)) {
+      if (!event) {
         return res.status(404).json({
           error: "Event not found",
           message: "No event found with that slug",
         });
+      }
+
+      // Allow admins to preview events that aren't yet published (draft/cancelled)
+      // so they can verify agendas and details before publishing. Non-admins still 404.
+      let isDraftPreview = false;
+      if (!["published", "completed"].includes(event.status)) {
+        const user = req.user;
+        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+        const isAdmin = !!user && (
+          adminEmails.includes(user.email.toLowerCase()) ||
+          await isWebUserAAOAdmin(user.id)
+        );
+        if (!isAdmin) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No event found with that slug",
+          });
+        }
+        isDraftPreview = true;
       }
 
       // invite_unlisted events are 404 for non-invited users
@@ -1743,6 +1763,7 @@ export function createEventsRouter(): {
           slack_channel_url: industryGathering.slack_channel_url,
         } : null,
         my_registration: myRegistration,
+        draft_preview: isDraftPreview,
       });
     } catch (error) {
       logger.error({ err: error }, "Error getting event");

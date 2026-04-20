@@ -373,4 +373,57 @@ describe('My Content — body, admin scope, status, delete', () => {
       await request(app).delete(`/api/me/content/${id}`).expect(403);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // #2539 — review modal needs enough fields to actually review a submission
+  // ---------------------------------------------------------------------------
+
+  describe('GET /api/content/pending', () => {
+    async function insertLinkPerspective(opts: {
+      slug: string;
+      title: string;
+      subtitle?: string;
+      externalUrl: string;
+      externalSiteName?: string;
+      workingGroupId?: string | null;
+    }) {
+      const result = await pool.query(
+        `INSERT INTO perspectives
+           (slug, content_type, title, subtitle, content, excerpt, category,
+            status, external_url, external_site_name, working_group_id,
+            content_origin, proposer_user_id, author_name, proposed_at)
+         VALUES ($1, 'link', $2, $3, NULL, 'link excerpt', 'Perspective',
+                 'pending_review', $4, $5, $6, 'member', $7, 'Author', NOW())
+         RETURNING id`,
+        [
+          opts.slug,
+          opts.title,
+          opts.subtitle ?? null,
+          opts.externalUrl,
+          opts.externalSiteName ?? null,
+          opts.workingGroupId ?? wgId,
+          USER_ID,
+        ]
+      );
+      return result.rows[0].id as string;
+    }
+
+    it('surfaces external_url and subtitle so reviewers can evaluate link submissions', async () => {
+      await insertLinkPerspective({
+        slug: 'mc-test-pending-link',
+        title: 'An external read',
+        subtitle: 'Why agents matter',
+        externalUrl: 'https://example.com/article',
+        externalSiteName: 'Example Blog',
+      });
+
+      const response = await request(app).get('/api/content/pending').expect(200);
+      const item = response.body.items.find((i: any) => i.slug === 'mc-test-pending-link');
+      expect(item).toBeDefined();
+      expect(item.external_url).toBe('https://example.com/article');
+      expect(item.external_site_name).toBe('Example Blog');
+      expect(item.subtitle).toBe('Why agents matter');
+      expect(item.content_type).toBe('link');
+    });
+  });
 });
