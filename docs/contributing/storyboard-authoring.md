@@ -63,7 +63,9 @@ Other exempt categories: payload-array-keyed sync tasks (`sync_accounts`, `sync_
 
 `check_governance`, `report_plan_outcome`, `acquire_rights`, `log_event`, `calibrate_content`, `validate_content_delivery`, and `validate_property_delivery` all require a globally-unique ID (`plan_id`, `rights_id`, `standards_id`, etc.) that was previously provisioned with brand context. At the spec level, a real seller resolves the ID → tenant via their own lookup; the envelope doesn't need to repeat the identity.
 
-The training agent's `sessionKeyFromArgs` today still routes by envelope identity, so a storyboard that **drops** identity on an ID-scoped task will silently land in `open:default` and fail to find the plan/rights/standards. Carry envelope identity anyway — the lint just won't enforce it. Spec-level alignment (runtime resolves by ID) is tracked in #2577.
+The training agent's `sessionKeyFromArgs` routes by envelope identity. A storyboard that **drops** identity on an ID-scoped task lands in `open:default` and fails to find the plan/rights/standards — so storyboards carry envelope identity anyway, and the lint just won't enforce it.
+
+This is a sandbox routing convention, not a spec claim. Production sellers resolve tenant from the authenticated principal (bearer/OAuth/HMAC), not from envelope payload — see [Tenant resolution](/docs/building/integration/authentication#tenant-resolution). They don't need envelope identity on ID-scoped tasks and wouldn't rely on it if present. Building a cross-session reverse index in the training agent just to move identity off the wire would be sandbox plumbing without spec meaning.
 
 ## Intentionally cross-tenant probes
 

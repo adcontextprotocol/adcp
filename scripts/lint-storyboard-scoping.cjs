@@ -97,10 +97,12 @@ const TENANT_SCOPED_TASKS = new Set([
  *       - `validate_property_delivery` — required `list_id` (schema also
  *                                         has optional `account`)
  *
- *     Storyboard authors may still carry envelope identity on these tasks for
- *     training-agent session routing; the lint simply doesn't require it.
- *     The training-agent runtime aligning its routing to resolve by ID is
- *     tracked as follow-up work in #2577.
+ *     Storyboard authors still carry envelope identity on these tasks as a
+ *     sandbox routing convention — `sessionKeyFromArgs` routes by envelope
+ *     identity, so a storyboard that drops it would land in `open:default`.
+ *     The lint simply doesn't require it. Production sellers resolve the ID
+ *     via the authenticated principal, not the envelope payload, so there is
+ *     no spec-level gap to close. See docs/contributing/storyboard-authoring.md.
  */
 const EXEMPT_FROM_LINT = new Set([
   // (a) Payload-array-keyed sync tasks
