@@ -108,13 +108,22 @@
       "expected_signature": "sha256=f079a1c8b2501ac4ac1ba22895853d1901730a3b6db8f3844dfcdb0b213b1c91"
     },
     {
-      "id": "duplicate-keys",
-      "description": "body contains a duplicate object key — the HMAC is mathematically valid over the raw bytes, so this is a positive signature-computation vector. Per the security.mdx legacy-scheme clause 'Signers SHOULD NOT emit duplicate object keys; verifiers MAY reject bodies containing duplicate keys', BOTH verifier outcomes are spec-conformant: (a) accept, because the signature matches the bytes on the wire and the verifier has no duty to parse the payload; or (b) reject, because parser behavior for duplicates is undefined per RFC 8259 §4 and the verifier treats the body as malformed. Conformance suites MUST assert the SDK produces one of these two outcomes and MUST NOT assert either specific outcome — an SDK that crashes or returns an uninitialized parse is non-conformant. Signers MUST NOT emit vectors like this in production; this vector exists only to probe verifier behavior.",
+      "id": "duplicate-keys-conflicting-values",
+      "description": "body contains a duplicate object key with conflicting values — see security.mdx §duplicate-object-keys for the normative conformance semantics. The HMAC is mathematically valid over the raw bytes; this vector probes verifier behavior when the parsed payload is semantically ambiguous (parser-differential attack class, cf. CVE-2017-12635).",
       "timestamp": 1700000000,
-      "raw_body": "{\"status\":\"ok\",\"status\":\"ok\"}",
-      "expected_signature": "sha256=bb4a1d492d0f4e6d5d03096cdec8018465f02363b324dd04dd4b848da25bb96e",
-      "verifier_outcomes": ["accept", "reject-malformed"]
+      "raw_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_123\",\"status\":\"approved\",\"status\":\"rejected\"}",
+      "expected_signature": "sha256=7fd84f13f71228b5c0dc24b58acafaa62855b26fe5477a31e88884ed24ae5b7f",
+      "acceptable_outcomes": ["accept", "reject-malformed"],
+      "recommended_outcome": "reject-malformed"
     }
+  ],
+  "outcome_values": {
+    "accept": "The verifier returns a success result. The HMAC matches the bytes on the wire; the verifier has no duty to parse the payload. Deterministic last-wins or first-wins JSON parsing downstream counts as 'accept' for conformance purposes — the verifier itself need not inspect duplicate-key state.",
+    "reject-malformed": "The verifier returns a failure result with a malformed-body class error (not a signature-mismatch error). This is the RECOMMENDED outcome for deployments that carry state-change or spend-committing payloads, because it closes the parser-differential gap between the signature verifier and downstream business-logic parsers. A verifier that fails closed by crashing the request path is conformant-but-suboptimal — it SHOULD instead return a structured malformed-body error."
+  },
+  "non_conformant_outcomes": [
+    "Silent accept where the signature verifier's parse of the payload diverges from the downstream consumer's parse (e.g., verifier sees status=approved, business logic sees status=rejected) — this is the CVE-class failure the 'verifiers MAY reject' clause guards against.",
+    "Returning a signature-mismatch error for a body whose HMAC is mathematically valid — the signature IS valid; the failure class is malformed-body, not signature-invalid."
   ],
   "rejection_vectors": [
     {

@@ -42,6 +42,38 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(/^[0-9a-f]{64}$/.test(data.secret), 'test secret MUST be lowercase hex');
   });
 
+  it('publishes the outcome-value enum used by dual-outcome vectors', () => {
+    assert.equal(typeof data.outcome_values, 'object',
+      'top-level outcome_values map MUST be present so SDK conformance suites can resolve acceptable_outcomes / recommended_outcome tokens without scraping description prose');
+    assert.ok(data.outcome_values.accept, 'outcome_values.accept MUST be defined');
+    assert.ok(data.outcome_values['reject-malformed'],
+      'outcome_values.reject-malformed MUST be defined');
+    assert.ok(Array.isArray(data.non_conformant_outcomes) && data.non_conformant_outcomes.length > 0,
+      'non_conformant_outcomes MUST enumerate outcomes that fail conformance (crash hierarchy, parser-divergence class)');
+  });
+
+  it('every dual-outcome vector has well-formed acceptable_outcomes / recommended_outcome', () => {
+    const enumKeys = Object.keys(data.outcome_values);
+    for (const vector of data.vectors) {
+      if (vector.acceptable_outcomes === undefined && vector.recommended_outcome === undefined) continue;
+      assert.ok(Array.isArray(vector.acceptable_outcomes),
+        `vector "${vector.id}": acceptable_outcomes MUST be an array`);
+      assert.ok(vector.acceptable_outcomes.length >= 2,
+        `vector "${vector.id}": acceptable_outcomes MUST list at least two outcomes — single-outcome vectors should omit the field`);
+      for (const outcome of vector.acceptable_outcomes) {
+        assert.ok(enumKeys.includes(outcome),
+          `vector "${vector.id}": acceptable_outcomes value "${outcome}" is not in outcome_values enum [${enumKeys.join(', ')}]`);
+      }
+      const unique = new Set(vector.acceptable_outcomes);
+      assert.equal(unique.size, vector.acceptable_outcomes.length,
+        `vector "${vector.id}": acceptable_outcomes MUST NOT contain duplicates`);
+      assert.ok(typeof vector.recommended_outcome === 'string',
+        `vector "${vector.id}": recommended_outcome MUST be present on dual-outcome vectors to guide SDK defaults`);
+      assert.ok(vector.acceptable_outcomes.includes(vector.recommended_outcome),
+        `vector "${vector.id}": recommended_outcome "${vector.recommended_outcome}" MUST be one of acceptable_outcomes`);
+    }
+  });
+
   it('includes secret-rejection vectors for weak configurations', () => {
     assert.ok(Array.isArray(data.secret_rejection_vectors),
       'secret_rejection_vectors must be present');
