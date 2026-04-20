@@ -1,49 +1,47 @@
 ---
 ---
 
-Follow-ups to PR #2522's duplicate-key MUST-reject tightening, landing the residuals security review flagged plus a round of expert re-review on this PR. Closes #2545, #2546, #2547.
+Five follow-ups to PR #2522's duplicate-key MUST-reject tightening, plus three rounds of expert review on this PR itself, all landing together. Closes #2545, #2546, #2547, #2549, #2551.
 
-**Admission-pressure baseline** (`security.mdx` webhook replay dedup sizing):
+## Admission-pressure — categories normative, numbers non-normative
 
-Previous rule: 3× 24-hr moving avg OR 2× 30-day P95 OR fixed 50-new-keyids-per-5-min ceiling. Review showed (a) 60–90 day attacker ramps drag the 30-day P95 up with them; (b) the fixed 50 ceiling is too loose for high-volume attackers (500 compromised keys at 10 new/5-min would saturate the 10M aggregate cap in ~3.5 days under the threshold); (c) the absolute ceiling is shape-wrong for operators of different sizes (50 is 0.5% of a 10k-keyid verifier, but 2.5× the entire fleet for a 20-keyid verifier). Rule now uses a quadruple-threshold shape, whichever triggers first:
+`security.mdx` webhook replay dedup sizing section specifies only the four **categories** (short-window ratio, medium-window ratio, long-window ratio, proportional ceiling) and the requirements that thresholds be operator-configurable, that the alarm payload name the triggering clause (a/b/c/d), and that alarms route to incident response not automatic revocation (auto-revocation creates a DoS vector — any legitimate onboarding can trip the alarm). Concrete threshold numbers live in the non-normative [Webhook Verifier Tuning Guide](/docs/building/implementation/webhook-verifier-tuning) at `docs/building/implementation/webhook-verifier-tuning.mdx`.
 
-- `3×` the 24-hour moving average (short-window spike)
-- `2×` the 30-day P95 (multi-week ramp resistance)
-- `1.5×` the 90-day P99 (multi-month ramp resistance — dominant tail over 90 days requires a multi-quarter staged compromise to drift)
-- **`max(20 distinct new keyids, 10% of the 30-day unique-keyid count) per 5-minute window`** — auto-scales proportionally with operator size, so a 10k-keyid verifier gets a floor of 1,000 and a 20-keyid verifier gets a floor of 20
+**Tuning guide** contains:
+- Starting-values table (3× / 2× / 1.5× / 20 / 10%) with explicit framing as starting points, not defaults.
+- **First-30-days oracle warning** — operators MUST tune within 30 days; implementations SHOULD randomize starting thresholds by ±30% on first deployment so no two deployments ship identical defaults.
+- Baselining methodology (30-day traffic survey, P50/P95/P99, onboarding-batch documentation).
+- **Ten attack-scenario walkthroughs**: sudden mass-compromise, multi-week ramp, multi-quarter ramp, sparse-traffic burst, enterprise-scale ceiling, onboarding-burst false positive, **key-rotation storm** (legitimate fleet rekey after peer CA compromise), **thin-history window** (days 1–90 post-deployment, clause degradation), **intermittent low-volume attack** (acknowledged rule-shape limitation — spike-detection rule, not slow-drip detector; mitigated by per-keyid cap and application-layer detection), **onboarding-window-timed attack** (attacker rides publicly-announced raised-floor windows; human-review escalation during raised windows).
+- Tuning-adjustments table.
+- **"DO NOT publish" three-audience split**: public disclosure prohibited (attacker oracle), attested disclosure under NDA to auditors permitted (SOC 2 / ISO 27001 may require it), internal runbooks required (incident response needs the values). Replaces the prior too-absolute "never disclose" rule.
 
-Alarm payload MUST name which clause (a/b/c/d) tripped so operator triage responds to the right threat shape. Spec makes explicit these are **defaults** operators SHOULD tune to their own traffic — published normative values themselves would be an attacker oracle.
+## Step 14b logging — Unicode-aware sanitization (SECURITY FIX)
 
-**Logging discipline at step 14b** (`security.mdx`):
+Prior implementation used ASCII-only `< 0x20 || === 0x7F`. Security review flagged this reopens the log-injection channel the sanitization rule exists to close: bidi overrides (U+202E reverses terminal rendering), line/paragraph separators (U+2028/U+2029 render as line breaks, enabling row-injection), zero-width chars (U+200B-200D, invisible obfuscation), C1 controls (U+0080-009F, terminal control semantics), and BOM (U+FEFF, parser corruption) all passed through.
 
-Previous rule: truncate to 64 bytes, replace non-printables with fixed `<non-printable>` placeholder, cap count at 8. Review found three weaknesses, all tightened:
+Fixed: `security.mdx` step 14b now normatively enumerates the minimum non-printable set (C0 controls, DEL, C1 controls, bidi controls and isolates, line/paragraph separators, zero-width characters, BOM) with rationale for each class. Implementations MAY extend to a broader Unicode non-printable classification but MUST NOT narrow it — an ASCII-only check is explicitly called out as non-conformant.
 
-- **Position leak**: the fixed placeholder preserved position within the key name, letting attackers encode bits via placement. Rule now **truncates at the first non-printable** and logs `<sanitized:N>` where N is the truncation byte length — elides position while preserving the "something was wrong here" signal.
-- **Truncation too loose**: 64 bytes allows 24 attacker-controlled bytes per key name beyond realistic AdCP field names (which top at ~24 characters: `signed_authorized_agents`). Tightened to **32 bytes**, with explicit "truncate at the last complete UTF-8 codepoint boundary at or below 32" so multi-byte sequences are not split mid-codepoint and invalid UTF-8 does not land in logs.
-- **Cap too permissive**: 8 key names × 32 bytes = 256 attacker-controlled bytes per frame, replay-slot-per-frame is meaningful SIEM pressure. Tightened to **4**. Diagnostic value of knowing 4 vs 8 vs 16 colliding keys is near zero.
+Reference signer in `tests/helpers/reference-webhook-signer.cjs` implements the correct Unicode-aware classification via `isNonPrintableCodepoint()`. Conformance tests in `tests/webhook-hmac-signer-conformance.test.cjs` unit-test every normative codepoint class (C0, DEL, C1, bidi, zero-width, line-sep, BOM) plus codepoint-boundary-safe UTF-8 truncation for multi-byte sequences (CJK, emoji, mixed-width).
 
-Signer-side clause now normatively requires the same (a)/(b)/(c) sanitization rules on any signer-surfaced key names — the channel shape is identical even though the wire direction is inverted.
+## Signer-side conformance fixtures
 
-**Signer-side conformance fixtures** (`static/test-vectors/webhook-hmac-sha256.json`):
+`signer_side` top-level object in `webhook-hmac-sha256.json`:
+- `action_values` enum defines `reject-input-before-sign` and `sign-and-emit`
+- `rejection_vectors` covers four shape-classes: top-level, plain-nested, **array-contained** (real-world AdCP payload shape: `packages[]`, `creative_assets[]`, `events[]` — blind spot in hand-rolled walkers that recurse into object values but not array members), and **three-deep** (catches walkers with shallow fixed-depth bounds)
+- `positive_vectors` has `signer-upstream-clean-input` so reject-everything signers cannot trivially pass
 
-Restructured from a flat `signer_input_rejection_vectors` array plus `signer_action_values` enum into a top-level `signer_side` object with `action_values`, `rejection_vectors`, and `positive_vectors` sub-fields. The partition makes the signer-side / verifier-side boundary explicit and gives future signer fixtures (canonicalization, serializer drift) a natural home without polluting the top-level namespace.
+## In-repo conformance harness
 
-Rejection vectors expanded from 2 to 4 shape-classes:
+Two test files now share a common helper:
 
-- `signer-upstream-duplicate-key-rejection` (top-level)
-- `signer-upstream-duplicate-key-deep-nested` (one-level-nested)
-- `signer-upstream-duplicate-key-array-contained` (duplicate inside an object inside an array — real-world AdCP payloads put state-change fields in array-contained objects like `packages[]`, `creative_assets[]`, `events[]`; signers that only recurse into plain object values ship the exact attack surface)
-- `signer-upstream-duplicate-key-three-deep` (three nesting levels — catches hand-rolled walkers with shallow fixed-depth bounds)
+**`tests/helpers/reference-webhook-signer.cjs`** — module exports `findDuplicateKeyNames`, `hasDuplicateKeyInAnyObjectScope` (delegates to the former), `isNonPrintableCodepoint`, `sanitizeKeyName`, `referenceSigner`. Carries an explicit CONTRACT BOUNDARY comment: the fixtures ARE the conformance contract; this file is one implementation; downstream SDK authors MUST match fixture behavior but MAY diverge in internal error-object shape. Comment also calls out that the duplicate-key tokenizer here is a test-time shortcut — production signers MUST use their language's strict-parse escape hatch per step 14a (Python `object_pairs_hook`, Node `stream-json`, Go `json.Decoder` token-walk or `goccy/go-json` with `DisallowDuplicateKey()`, Jackson `FAIL_ON_READING_DUP_TREE_KEY`, Ruby `Oj.load(strict_mode)`).
 
-New `positive_vectors` array with `signer-upstream-clean-input` — a well-formed vector with keys unique at every scope that the signer MUST sign. Prevents "reject-everything" signers from trivially passing conformance on the negative fixtures alone.
+**`tests/webhook-hmac-vectors.test.cjs`** — keeps structural assertions, signature-computation tests, fixture-shape checks; imports `hasDuplicateKeyInAnyObjectScope` from the helper (removes the earlier duplicate walker).
 
-Two new action tokens in `signer_side.action_values`: `reject-input-before-sign` (was already defined) and `sign-and-emit` (the positive-path action).
+**`tests/webhook-hmac-signer-conformance.test.cjs`** (new) — exercises `referenceSigner` against every `signer_side.rejection_vectors[i]` and `signer_side.positive_vectors[i]`. Asserts action matches `expected_signer_action`, rejection surfaces ≥1 sanitized key name capped at 4, positive signs MUST NOT carry an error field alongside the signed_frame, positive signatures verify against the test secret. Unit-tests `sanitizeKeyName` against ASCII controls, every normative Unicode non-printable class, UTF-8 codepoint-boundary truncation for CJK and emoji, and `isNonPrintableCodepoint` classification.
 
-**Test harness** (`tests/webhook-hmac-vectors.test.cjs`):
+75 tests total (52 structural + 23 signer-conformance).
 
-Nine structural assertions for the `signer_side` block — that all three sub-fields exist, that rejection vectors cover the four shape-classes by id (top-level, plain-nested, array-contained, three-deep), that `positive_vectors` has a clean-input case, that `action_values` defines both tokens, that every signer-side vector is well-formed against the enum, and a scope-aware duplicate-key detector (walks JSON tracking object vs array nesting so the check correctly distinguishes duplicate keys at the same object scope from the same key name appearing legitimately in distinct array-contained objects). The detector assertion: rejection vectors MUST have a duplicate at some scope; the clean-input positive vector MUST NOT have one at any scope.
+## What this close does NOT do
 
-**Two further follow-ups filed as separate issues** (out of scope for this PR):
-
-- **CI enforcement gap**: the spec language "interop harnesses MUST exercise both" is currently exhortation — the repo has no reference-signer harness that loads a signer implementation and asserts the expected action against these fixtures. Filed as follow-up for a dedicated signer-conformance harness PR.
-- **Threshold publication as attacker oracle**: publishing specific normative detection thresholds (the 3× / 2× / 1.5× / 20 / 50 numbers) gives attackers concrete values to tune against. The current spec frames the published values as defaults operators SHOULD override, but the stronger shape — move concrete thresholds to a non-normative operator guide and state only the structural shape (four-threshold OR, with categories) in the normative spec — is a larger discussion worth its own PR.
+The spec language still says "interop harnesses MUST exercise both" and the reference signer is one implementation. Downstream SDK authors run their own signers against the fixtures as part of their own CI. This PR ships the fixtures, the reference implementation, and the in-repo enforcement path; it does not run external SDK CI on behalf of SDK authors.

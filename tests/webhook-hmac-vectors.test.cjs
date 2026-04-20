@@ -152,46 +152,11 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
       });
     }
 
-    // Scope-aware duplicate-key detector. Walks the JSON string tracking `{` / `}` / `[` / `]`
-    // nesting and the in-string state, collecting object-scope key names per scope. Returns
-    // true if any object scope has a duplicate key name. This handles the two cases a flat
-    // regex gets wrong: (1) the same key name appearing in distinct array-contained objects
-    // (legitimate — different scopes), (2) a string value that contains literal `":` (not a
-    // key at all). Not a general JSON parser — assumes fixture JSON is well-formed — but
-    // correct for the shapes in this file.
-    function hasDuplicateKeyInAnyObjectScope(jsonStr) {
-      const scopeStack = []; // each entry: { type: 'object'|'array', keys?: Set<string> }
-      let i = 0;
-      while (i < jsonStr.length) {
-        const c = jsonStr[i];
-        if (c === '{') { scopeStack.push({ type: 'object', keys: new Set() }); i++; continue; }
-        if (c === '[') { scopeStack.push({ type: 'array' }); i++; continue; }
-        if (c === '}' || c === ']') { scopeStack.pop(); i++; continue; }
-        if (c === '"') {
-          // Read string from i+1 to the closing quote, handling backslash escapes.
-          let j = i + 1;
-          let value = '';
-          while (j < jsonStr.length) {
-            if (jsonStr[j] === '\\' && j + 1 < jsonStr.length) { value += jsonStr[j + 1]; j += 2; continue; }
-            if (jsonStr[j] === '"') break;
-            value += jsonStr[j]; j++;
-          }
-          // Now j points at the closing quote. Look for the next non-whitespace char.
-          let k = j + 1;
-          while (k < jsonStr.length && /\s/.test(jsonStr[k])) k++;
-          const isKey = jsonStr[k] === ':' && scopeStack.length > 0 && scopeStack[scopeStack.length - 1].type === 'object';
-          if (isKey) {
-            const scope = scopeStack[scopeStack.length - 1];
-            if (scope.keys.has(value)) return true;
-            scope.keys.add(value);
-          }
-          i = j + 1;
-          continue;
-        }
-        i++;
-      }
-      return false;
-    }
+    // Scope-aware duplicate-key detection lives in tests/helpers/reference-webhook-signer.cjs
+    // so the reference signer and these fixture-shape assertions share one parser. See the
+    // CONTRACT BOUNDARY comment at the top of that file — the fixtures ARE the conformance
+    // contract; the helper's functions are one implementation that passes them.
+    const { hasDuplicateKeyInAnyObjectScope } = require('./helpers/reference-webhook-signer.cjs');
 
     it('duplicate-keys signer rejection vectors actually contain duplicate keys in at least one object scope', () => {
       for (const vector of data.signer_side?.rejection_vectors || []) {
