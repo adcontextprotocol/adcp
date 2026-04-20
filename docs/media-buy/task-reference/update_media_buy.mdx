@@ -594,6 +594,21 @@ Cancel an entire media buy:
 }
 ```
 
+**`REQUOTE_REQUIRED` error response** (update changes the parameter envelope the quote was priced against):
+```json
+{
+  "errors": [{
+    "code": "REQUOTE_REQUIRED",
+    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of proposal prop_abc123",
+    "details": {
+      "proposal_id": "prop_abc123",
+      "envelope_field": ["packages[0].budget", "end_time"]
+    },
+    "suggestion": "Call get_products with buying_mode='refine' against proposal_id prop_abc123 to obtain a fresh quote, then resubmit this update against the new proposal_id"
+  }]
+}
+```
+
 ### Cancel a Package
 
 Cancel a single package while the media buy remains active:
@@ -663,6 +678,7 @@ Common errors and resolutions:
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:
