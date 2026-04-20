@@ -76,6 +76,39 @@ async function testSchemaValidation(schemaId, testData, description) {
   }
 }
 
+async function testSchemaRejection(schemaId, testData, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(ajv);
+
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+    const validate = await ajv.compileAsync(schema);
+    const valid = validate(testData);
+
+    if (!valid) {
+      log(`  \u2713 ${description}`, 'success');
+      passedTests++;
+      return true;
+    } else {
+      log(`  \u2717 ${description} — expected rejection, got pass`, 'error');
+      failedTests++;
+      return false;
+    }
+  } catch (error) {
+    log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -266,6 +299,46 @@ async function runTests() {
       ]
     },
     'Delivery response with aggregate metrics (allOf composition)'
+  );
+
+  log('');
+
+  // Idempotency capability: discriminated oneOf on supported
+  log('Get AdCP Capabilities Response (adcp.idempotency oneOf discriminator):', 'info');
+
+  const capabilitiesBase = {
+    adcp: { major_versions: [3] },
+    supported_protocols: ['media_buy']
+  };
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } } },
+    'IdempotencySupported: {supported: true, replay_ttl_seconds: 86400}'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } } },
+    'IdempotencyUnsupported: {supported: false}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false, replay_ttl_seconds: 3600 } } },
+    'Rejects TTL on unsupported branch: {supported: false, replay_ttl_seconds: 3600}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true } } },
+    'Rejects missing TTL on supported branch: {supported: true}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: {} } },
+    'Rejects empty idempotency block (missing discriminator)'
   );
 
   log('');
