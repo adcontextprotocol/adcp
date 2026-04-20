@@ -106,7 +106,25 @@
       "timestamp": 1700000000,
       "raw_body": "{\"name\":\"caf\\u00e9\",\"region\":\"\\u65e5\\u672c\"}",
       "expected_signature": "sha256=f079a1c8b2501ac4ac1ba22895853d1901730a3b6db8f3844dfcdb0b213b1c91"
+    },
+    {
+      "id": "duplicate-keys-conflicting-values",
+      "description": "body contains a duplicate object key with conflicting values; see security.mdx §duplicate-object-keys for the normative MUST-reject semantics, `verifier_action_values` for the required verifier action, and `non_conformant_outcomes` for forbidden failure modes",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_123\",\"status\":\"approved\",\"status\":\"rejected\"}",
+      "expected_signature": "sha256=7fd84f13f71228b5c0dc24b58acafaa62855b26fe5477a31e88884ed24ae5b7f",
+      "expected_verifier_action": "reject-malformed",
+      "rfc9421_error_code": "webhook_body_malformed"
     }
+  ],
+  "verifier_action_values": {
+    "accept": "Documentation only — NOT a conformant outcome for this fixture. Included so SDK harnesses that reuse this token across other vectors have a stable definition: the verifier returns a success result after HMAC verification. A verifier that returns `accept` on the `duplicate-keys-conflicting-values` fixture is non-conformant.",
+    "reject-malformed": "The verifier returns a failure result with a malformed-body error class, distinct from a signature-mismatch error (the signature IS valid; the body is malformed). This is the REQUIRED outcome for any vector whose `raw_body` contains duplicate object keys. A verifier that crashes / fails-closed is conformant-but-suboptimal — the request is not silently accepted, but senders receive no actionable error code; verifiers SHOULD return a structured malformed-body error instead."
+  },
+  "non_conformant_outcomes": [
+    "Silent accept where the signature verifier's parse of the payload diverges from the downstream consumer's parse (e.g., verifier sees status=approved, business logic sees status=rejected) — the CVE-2017-12635 attack class. This is now forbidden by security.mdx §duplicate-object-keys (MUST-reject).",
+    "Returning a signature-mismatch error for a body whose HMAC is mathematically valid — the signature IS valid; the failure class is malformed-body, not signature-invalid.",
+    "Using a last-wins or first-wins JSON parser that silently discards duplicate keys before the verifier can detect them — the verifier MUST use a parse mode that exposes duplicate-key state."
   ],
   "rejection_vectors": [
     {

@@ -42,6 +42,46 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(/^[0-9a-f]{64}$/.test(data.secret), 'test secret MUST be lowercase hex');
   });
 
+  it('publishes the verifier-action enum used by prescriptive vectors', () => {
+    assert.equal(typeof data.verifier_action_values, 'object',
+      'top-level verifier_action_values map MUST be present so SDK conformance suites can resolve expected_verifier_action tokens without scraping description prose');
+    assert.ok(data.verifier_action_values.accept, 'verifier_action_values.accept MUST be defined (documentation-only; see fixture description)');
+    assert.ok(data.verifier_action_values['reject-malformed'],
+      'verifier_action_values.reject-malformed MUST be defined');
+    assert.ok(Array.isArray(data.non_conformant_outcomes) && data.non_conformant_outcomes.length > 0,
+      'non_conformant_outcomes MUST enumerate outcomes that fail conformance (parser-divergence class, wrong error class, silent-discard parser modes)');
+  });
+
+  it('every vector with expected_verifier_action uses a known action token', () => {
+    const enumKeys = Object.keys(data.verifier_action_values);
+    for (const vector of data.vectors) {
+      if (vector.expected_verifier_action === undefined) continue;
+      assert.ok(typeof vector.expected_verifier_action === 'string',
+        `vector "${vector.id}": expected_verifier_action MUST be a string`);
+      assert.ok(enumKeys.includes(vector.expected_verifier_action),
+        `vector "${vector.id}": expected_verifier_action "${vector.expected_verifier_action}" is not in verifier_action_values enum [${enumKeys.join(', ')}]`);
+      if (vector.rfc9421_error_code !== undefined) {
+        assert.ok(typeof vector.rfc9421_error_code === 'string' && /^webhook_[a-z_]+$/.test(vector.rfc9421_error_code),
+          `vector "${vector.id}": rfc9421_error_code "${vector.rfc9421_error_code}" must match the webhook_* error taxonomy in security.mdx`);
+      }
+    }
+  });
+
+  it('at least one vector carries expected_verifier_action so the enum has a live consumer', () => {
+    const consumers = data.vectors.filter(v => v.expected_verifier_action !== undefined);
+    assert.ok(consumers.length > 0,
+      'at least one vector MUST carry expected_verifier_action — otherwise verifier_action_values drifts into an orphaned enum with no fixture exercising it');
+  });
+
+  it('duplicate-keys-conflicting-values fixture exists by id (security.mdx references this exact id)', () => {
+    const vector = data.vectors.find(v => v.id === 'duplicate-keys-conflicting-values');
+    assert.ok(vector, 'duplicate-keys-conflicting-values fixture MUST exist — security.mdx §duplicate-object-keys and the 9421 webhook verifier checklist (step 14) both reference this id; renaming without updating the spec breaks cross-SDK conformance suites');
+    assert.equal(vector.expected_verifier_action, 'reject-malformed',
+      'duplicate-keys-conflicting-values expected_verifier_action MUST be "reject-malformed" — this is the load-bearing assertion that the MUST-reject clause in security.mdx is actually probed by the fixture');
+    assert.equal(vector.rfc9421_error_code, 'webhook_body_malformed',
+      'duplicate-keys-conflicting-values rfc9421_error_code MUST be "webhook_body_malformed" — matches the error taxonomy row in security.mdx');
+  });
+
   it('includes secret-rejection vectors for weak configurations', () => {
     assert.ok(Array.isArray(data.secret_rejection_vectors),
       'secret_rejection_vectors must be present');
