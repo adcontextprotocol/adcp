@@ -22,6 +22,7 @@ import {
   PostgresStateStore,
   structuredSerialize,
   structuredDeserialize,
+  cleanupExpiredIdempotency,
   type AdcpStateStore,
 } from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
@@ -303,6 +304,15 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
  * Rejects malformed domain/account_id values — they become part of a Postgres
  * primary key, so we bound length and restrict charset to prevent bloating
  * the adcp_state table with arbitrary caller-supplied data.
+ *
+ * Open mode preference order: brand.domain (when present) > account.account_id
+ * > 'default'. Brand-domain-first matches what the @adcp/client storyboard
+ * runner injects via `applyBrandInvariant` on every request — so a chain
+ * like `create_media_buy(account.account_id+brand)` → `get_media_buys(brand only)`
+ * stays in one session instead of writing to `open:<account_id>` and then
+ * reading from `open:<brand.domain>`. Sandbox-style storyboards mix the two
+ * shapes across steps; production sellers that key by account_id should run
+ * outside this codepath (or set the spec's `account` invariant on every step).
  */
 export function sessionKeyFromArgs(
   args: { account?: AccountRef; brand?: BrandRef },
@@ -316,17 +326,20 @@ export function sessionKeyFromArgs(
     return `training:${safeUser}:${safeModule}`;
   }
   const account = args.account;
+  const domain = account?.brand?.domain ?? args.brand?.domain;
+  const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+  if (safeDomain) {
+    // DNS is case-insensitive — normalise so Example.com and example.com share a session.
+    return `open:${safeDomain.toLowerCase()}`;
+  }
+  if (domain && !safeDomain) {
+    logger.debug({ domain }, 'Rejected brand.domain as session key; falling back');
+  }
   if (account?.account_id) {
     const safe = safeKey(account.account_id, MAX_ACCOUNT_ID_LEN, SAFE_ACCOUNT_ID_RE);
     if (safe) return `open:${safe}`;
   }
-  const domain = account?.brand?.domain ?? args.brand?.domain;
-  const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
-  if (domain && !safeDomain) {
-    logger.debug({ domain }, 'Rejected brand.domain as session key; collapsing to open:default');
-  }
-  // DNS is case-insensitive — normalise so Example.com and example.com share a session.
-  return `open:${safeDomain ? safeDomain.toLowerCase() : 'default'}`;
+  return 'open:default';
 }
 
 // ── TTL cleanup ──────────────────────────────────────────────────
@@ -349,6 +362,10 @@ export function startSessionCleanup(): void {
         const taskDeleted = await cleanupExpiredTasks(getPool());
         if (taskDeleted > 0) {
           logger.info({ deleted: taskDeleted }, 'Cleaned up expired MCP tasks');
+        }
+        const idempDeleted = await cleanupExpiredIdempotency(getPool());
+        if (idempDeleted > 0) {
+          logger.info({ deleted: idempDeleted }, 'Cleaned up expired idempotency entries');
         }
       }
     } catch (err) {

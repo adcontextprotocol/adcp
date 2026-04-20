@@ -456,6 +456,90 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
           requirements: { mime_types: ['audio/wav', 'audio/mpeg'], max_file_size_bytes: 20000000 } },
       ],
     },
+
+    // ── Linear / broadcast TV ─────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'broadcast_30s' },
+      name: 'Broadcast TV 30s',
+      description: 'Linear broadcast TV spot, 30 seconds. Broadcast-quality video delivered per network trafficking specs.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video_file', asset_type: 'video', asset_role: 'broadcast_spot', required: true,
+          requirements: { mime_types: ['video/mp4', 'video/quicktime'], min_width: 1920, min_height: 1080, min_duration_ms: 30000, max_duration_ms: 30000, max_file_size_bytes: 500_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'broadcast_15s' },
+      name: 'Broadcast TV 15s',
+      description: 'Linear broadcast TV spot, 15 seconds. Broadcast-quality video delivered per network trafficking specs.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 15000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video_file', asset_type: 'video', asset_role: 'broadcast_spot', required: true,
+          requirements: { mime_types: ['video/mp4', 'video/quicktime'], min_width: 1920, min_height: 1080, min_duration_ms: 15000, max_duration_ms: 15000, max_file_size_bytes: 300_000_000 } },
+      ],
+    },
+
+    // ── CTV / streaming video ─────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'ssai_30s' },
+      name: 'SSAI video 30s',
+      description: 'Server-side ad insertion video spot, 30 seconds. CTV/OTT delivery via VAST/SSAI.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], min_width: 1280, min_height: 720, min_duration_ms: 30000, max_duration_ms: 30000, max_file_size_bytes: 200_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'preroll_15s' },
+      name: 'Pre-roll video 15s',
+      description: 'Online video pre-roll ad, 15 seconds.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 15000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], min_width: 1280, min_height: 720, min_duration_ms: 15000, max_duration_ms: 15000, max_file_size_bytes: 100_000_000 } },
+      ],
+    },
+
+    // ── Social ────────────────────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'native_feed' },
+      name: 'Native social feed',
+      description: 'Native in-feed social post with image, headline, and click URL.',
+      renders: [{ role: 'primary', dimensions: { width: 1080, height: 1080 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], min_width: 1080, min_height: 1080, max_file_size_bytes: 10_000_000 } },
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true,
+          requirements: { max_file_size_bytes: 40 } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'clickthrough', required: true, requirements: { url_type: 'clickthrough' } },
+      ],
+    },
+
+    // ── Generative creative ───────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'display_300x250_generative' },
+      name: 'Generative display 300x250',
+      description: 'Display ad generated from a creative brief, 300x250. Brief describes copy + visual direction; optional logo + click URL are seeded to the generator.',
+      renders: [{ role: 'primary', dimensions: { width: 300, height: 250 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'brief', asset_type: 'text', asset_role: 'creative_brief', required: true },
+        { item_type: 'individual', asset_id: 'logo', asset_type: 'image', asset_role: 'logo', required: false,
+          requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'clickthrough', required: false },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'video_30s_generative' },
+      name: 'Generative video 30s',
+      description: 'Video spot generated from a creative brief, 1920x1080 @30s. Brief describes the narrative; optional logo is seeded to the generator.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'brief', asset_type: 'text', asset_role: 'creative_brief', required: true },
+        { item_type: 'individual', asset_id: 'logo', asset_type: 'image', asset_role: 'logo', required: false,
+          requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
   ];
 }
 
@@ -490,4 +574,11 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   ai_sponsored_agent: ['display'],
   print_full_page: ['print'],
   radio_spot: ['radio'],
+  broadcast_30s: ['linear_tv'],
+  broadcast_15s: ['linear_tv'],
+  ssai_30s: ['ctv'],
+  preroll_15s: ['olv'],
+  native_feed: ['social'],
+  display_300x250_generative: ['display'],
+  video_30s_generative: ['olv', 'ctv'],
 };

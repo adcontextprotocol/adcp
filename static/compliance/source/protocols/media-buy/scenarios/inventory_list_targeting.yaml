@@ -159,6 +159,8 @@ phases:
           and .collection_list populated with the list_id values sent on create.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_ids:
             - "$context.media_buy_id"
 
@@ -198,6 +200,8 @@ phases:
           collection_list are replaced (not merged) with the new list_id values.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -230,6 +234,8 @@ phases:
           in persistent state just like fields on create_media_buy.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_ids:
             - "$context.media_buy_id"
 

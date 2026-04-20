@@ -3303,11 +3303,7 @@ export function createMemberToolHandlers(
     const docsVersion = index?.adcp_version || 'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
-    // Index emits both `protocols` (new) and `domains` (transitional alias) during the
-    // @adcp/client 5.x → 6.x coordinated release. Read whichever key is present.
-    const protocolEntries: Array<{ id: string }> | undefined =
-      (index as { protocols?: Array<{ id: string }> } | undefined)?.protocols ?? index?.domains;
-    const knownProtocolIds = protocolEntries?.map(d => d.id.replace(/-/g, '_')) ?? [
+    const knownProtocolIds = index?.protocols?.map(p => p.id.replace(/-/g, '_')) ?? [
       'media_buy', 'creative', 'signals', 'governance', 'brand', 'sponsored_intelligence',
     ];
     const protocolExamples = knownProtocolIds.map(id => `\`${id}\``).join(', ');

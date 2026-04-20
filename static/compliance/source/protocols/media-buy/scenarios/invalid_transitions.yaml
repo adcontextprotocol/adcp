@@ -177,6 +177,8 @@ phases:
           - context echoed unchanged
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "does-not-exist-package-invalid-transitions-v1"
@@ -216,6 +218,8 @@ phases:
           Seller acknowledges the cancellation and transitions the buy to canceled.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
@@ -242,6 +246,8 @@ phases:
           - context echoed unchanged
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"

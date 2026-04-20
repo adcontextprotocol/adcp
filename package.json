@@ -30,7 +30,7 @@
     "test:hmac-vectors": "node --test tests/webhook-hmac-vectors.test.cjs",
     "test:transport-errors": "node --test tests/transport-error-mapping.test.cjs",
     "test:targeting-overlay-vectors": "node --test tests/media-buy-targeting-overlay-vectors.test.cjs",
-    "test:unit": "vitest run --dir tests/",
+    "test:unit": "vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run server/tests/unit/",
     "test:openapi": "tsx scripts/generate-openapi.ts && git diff --exit-code static/openapi/registry.yaml || (echo 'OpenAPI spec is out of date. Run: npm run build:openapi' && exit 1)",
@@ -41,7 +41,7 @@
     "test:platform-agnostic": "node tests/check-platform-agnostic.cjs",
     "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:migrations && npm run test:hmac-vectors && npm run test:transport-errors && npm run test:targeting-overlay-vectors && npm run test:platform-agnostic && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
-    "precommit": "npm run test:unit && npm run typecheck",
+    "precommit": "bash scripts/with-timeout.sh 60 npm run test:unit && npm run typecheck",
     "prepare": "husky",
     "changeset": "changeset",
     "version": "changeset version && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
@@ -55,7 +55,7 @@
     "check:images": "bash scripts/check-image-quality.sh"
   },
   "dependencies": {
-    "@adcp/client": "^5.1.0",
+    "@adcp/client": "^5.2.0",
     "@anthropic-ai/sdk": "^0.90.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
