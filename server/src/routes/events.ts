@@ -42,6 +42,50 @@ import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 
 /**
+ * Validate a speakers array. Returns an error response object if invalid, or
+ * null if valid. Used by both POST (create) and PUT (update) event routes.
+ */
+function validateSpeakers(speakers: unknown): { error: string; message: string } | null {
+  if (!Array.isArray(speakers)) {
+    return { error: 'Invalid speakers', message: 'speakers must be an array' };
+  }
+  if (speakers.length > 200) {
+    return { error: 'Too many speakers', message: 'An event can have at most 200 speakers' };
+  }
+  for (const sp of speakers as EventSpeakerInput[]) {
+    if (!sp || typeof sp.name !== 'string' || sp.name.trim().length === 0 || sp.name.length > 255) {
+      return { error: 'Invalid speaker', message: 'Each speaker needs a name (1–255 chars)' };
+    }
+    for (const field of ['title', 'company'] as const) {
+      const v = sp[field];
+      if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 255)) {
+        return { error: `Invalid speaker ${field}`, message: `${field} must be a string under 255 chars` };
+      }
+    }
+    if (sp.bio !== undefined && sp.bio !== null && (typeof sp.bio !== 'string' || sp.bio.length > 5000)) {
+      return { error: 'Invalid speaker bio', message: 'bio must be a string under 5000 chars' };
+    }
+    for (const field of ['headshot_url', 'link_url'] as const) {
+      const v = sp[field];
+      if (v !== undefined && v !== null && v !== '') {
+        if (typeof v !== 'string') {
+          return { error: `Invalid speaker ${field}`, message: `${field} must be a string` };
+        }
+        try {
+          const parsed = new URL(v);
+          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return { error: `Invalid speaker ${field}`, message: `${field} must be http(s)` };
+          }
+        } catch {
+          return { error: `Invalid speaker ${field}`, message: `${field} must be a valid URL` };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Zoom participant report CSV row structure.
  * Exported from Zoom admin → Reports → Usage → Participants.
  * Column names vary by Zoom version; we normalize in the parser.
@@ -224,8 +268,9 @@ export function createEventsRouter(): {
   adminApiRouter.post("/", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
+      const { speakers: speakersInput, ...body } = req.body as CreateEventInput & { speakers?: EventSpeakerInput[] };
       const input: CreateEventInput = {
-        ...req.body,
+        ...body,
         created_by_user_id: user.id,
       };
 
@@ -244,6 +289,12 @@ export function createEventsRouter(): {
           error: "Slug already in use",
           message: "Please choose a different slug",
         });
+      }
+
+      // Validate speakers early (before side effects like Stripe product creation)
+      if (speakersInput !== undefined) {
+        const err = validateSpeakers(speakersInput);
+        if (err) return res.status(400).json(err);
       }
 
       // Validate sponsorship tiers if provided
@@ -314,9 +365,14 @@ export function createEventsRouter(): {
         }
       }
 
+      let speakers: Awaited<ReturnType<typeof eventsDb.replaceEventSpeakers>> | undefined;
+      if (speakersInput && speakersInput.length > 0) {
+        speakers = await eventsDb.replaceEventSpeakers(event.id, speakersInput);
+      }
+
       logger.info({ eventId: event.id, slug: event.slug, userId: user.id }, "Event created");
 
-      res.status(201).json({ event });
+      res.status(201).json({ event, ...(speakers !== undefined ? { speakers } : {}) });
     } catch (error) {
       logger.error({ err: error }, "Error creating event");
       res.status(500).json({
@@ -440,42 +496,8 @@ export function createEventsRouter(): {
 
       // Validate speakers if provided
       if (speakersUpdate !== undefined) {
-        if (!Array.isArray(speakersUpdate)) {
-          return res.status(400).json({ error: 'Invalid speakers', message: 'speakers must be an array' });
-        }
-        if (speakersUpdate.length > 200) {
-          return res.status(400).json({ error: 'Too many speakers', message: 'An event can have at most 200 speakers' });
-        }
-        for (const sp of speakersUpdate) {
-          if (!sp || typeof sp.name !== 'string' || sp.name.trim().length === 0 || sp.name.length > 255) {
-            return res.status(400).json({ error: 'Invalid speaker', message: 'Each speaker needs a name (1–255 chars)' });
-          }
-          for (const field of ['title', 'company'] as const) {
-            const v = sp[field];
-            if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 255)) {
-              return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a string under 255 chars` });
-            }
-          }
-          if (sp.bio !== undefined && sp.bio !== null && (typeof sp.bio !== 'string' || sp.bio.length > 5000)) {
-            return res.status(400).json({ error: 'Invalid speaker bio', message: 'bio must be a string under 5000 chars' });
-          }
-          for (const field of ['headshot_url', 'link_url'] as const) {
-            const v = sp[field];
-            if (v !== undefined && v !== null && v !== '') {
-              if (typeof v !== 'string') {
-                return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a string` });
-              }
-              try {
-                const parsed = new URL(v);
-                if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-                  return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be http(s)` });
-                }
-              } catch {
-                return res.status(400).json({ error: `Invalid speaker ${field}`, message: `${field} must be a valid URL` });
-              }
-            }
-          }
-        }
+        const err = validateSpeakers(speakersUpdate);
+        if (err) return res.status(400).json(err);
       }
 
       // Auto-create Stripe product if sponsorship is being enabled with tiers

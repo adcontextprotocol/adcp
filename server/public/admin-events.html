@@ -1315,13 +1315,8 @@
         },
         recap_html: recapEditor?.getHTML() || null,
         recap_video_url: document.getElementById('recapVideoUrl').value || null,
+        speakers: getSpeakers(),
       };
-
-      // Speakers are only sent on update (PUT); create doesn't have an event id yet.
-      // After create, the admin re-opens the new event and adds speakers via PUT.
-      if (editingEventId) {
-        eventData.speakers = getSpeakers();
-      }
 
       try {
         const url = editingEventId

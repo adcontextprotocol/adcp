@@ -200,4 +200,54 @@ describe('Event speakers (#2552)', () => {
       .send({ speakers: [{ name: 'Alice', headshot_url: 'javascript:alert(1)' }] })
       .expect(400);
   });
+
+  it('POST /api/admin/events accepts speakers and saves them with the new event', async () => {
+    const slug = `evt-speakers-create-${Date.now()}`;
+    try {
+      const createRes = await request(app)
+        .post(`/api/admin/events`)
+        .send({
+          slug,
+          title: 'Created With Speakers',
+          event_type: 'summit',
+          event_format: 'in_person',
+          start_time: new Date(Date.now() + 14 * 86400000).toISOString(),
+          status: 'published',
+          visibility: 'public',
+          speakers: [
+            { name: 'Creator One', title: 'Host' },
+            { name: 'Creator Two', title: 'Co-host' },
+          ],
+        })
+        .expect(201);
+
+      expect(createRes.body.speakers).toHaveLength(2);
+      const newId = createRes.body.event.id;
+
+      const adminRes = await request(app).get(`/api/admin/events/${newId}`).expect(200);
+      expect(adminRes.body.speakers).toHaveLength(2);
+      expect(adminRes.body.speakers[0].name).toBe('Creator One');
+      expect(adminRes.body.speakers[1].name).toBe('Creator Two');
+    } finally {
+      await pool.query(`DELETE FROM events WHERE slug = $1`, [slug]);
+    }
+  });
+
+  it('POST rejects invalid speakers before creating the event', async () => {
+    const slug = `evt-speakers-bad-${Date.now()}`;
+    await request(app)
+      .post(`/api/admin/events`)
+      .send({
+        slug,
+        title: 'Should Not Create',
+        event_type: 'summit',
+        event_format: 'in_person',
+        start_time: new Date(Date.now() + 14 * 86400000).toISOString(),
+        speakers: [{ name: '' }],
+      })
+      .expect(400);
+
+    const check = await pool.query(`SELECT id FROM events WHERE slug = $1`, [slug]);
+    expect(check.rows).toHaveLength(0);
+  });
 });
