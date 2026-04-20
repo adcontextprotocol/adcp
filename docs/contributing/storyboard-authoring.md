@@ -12,16 +12,38 @@ This page documents the conventions the scoping lint enforces (`scripts/lint-sto
 
 ## Tenant scoping invariant
 
-Any seller that isolates tenants by brand (spec-required for multi-tenant deployments) derives a session key from the request's identity fields. If two steps in the same storyboard target different session keys, the second step can't see state the first wrote.
+Sellers that isolate tenants by brand derive a session key from the request's identity fields. If two steps in the same storyboard target different session keys, the second step can't see state the first wrote.
 
 **Every step that invokes a tenant-scoped task must carry one of these identity shapes in `sample_request`:**
 
-- `brand.domain`
-- `account.brand.domain`
-- `account.account_id`
+- `brand.domain` (minimal-identity shorthand)
+- `account.brand.domain` with a sibling `account.operator` (canonical — required together by the `AccountRef` schema at `static/schemas/source/core/account-ref.json`)
+- `account.account_id` (post-`sync_accounts`, when the seller has assigned an ID)
 - `plans[*].brand.domain` (for `sync_plans` batch shape)
 
 Tenant-scoped tasks are those whose reference implementation in `server/src/training-agent/` derives session state from the request — see `TENANT_SCOPED_TASKS` in `scripts/lint-storyboard-scoping.cjs`.
+
+## Running the lint locally
+
+```bash
+node scripts/lint-storyboard-scoping.cjs
+# or, as part of the full compliance build:
+npm run build:compliance
+```
+
+The lint exits non-zero on violations. A failure looks like:
+
+```
+Storyboard scoping lint — 1 violation:
+
+  static/compliance/source/protocols/media-buy/scenarios/demo.yaml
+    step "read_back" (task=get_media_buys) — no tenant identity in sample_request.
+    Accepted shapes: brand.domain, account.brand.domain (+ account.operator),
+    account.account_id, plans[*].brand.domain, or add `scoping: global` to the step
+    if it is a cross-tenant probe.
+```
+
+Fix by adding one of the identity shapes above, or `scoping: global` if the step is a cross-tenant probe (next section).
 
 ## Example
 
@@ -77,7 +99,7 @@ Some tasks are administrative or tenant-agnostic by design. The lint ignores the
 
 - `get_adcp_capabilities`, `list_creative_formats` — capability / format discovery.
 - `get_brand_identity`, `get_rights`, `acquire_rights`, `update_rights`, `creative_approval` — brand-identity agent surfaces (separate agent, not the seller's session).
-- `sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources` — bulk administrative sync from a control plane. Identity travels in the array payload (`accounts[*].brand`, `governance[*]`, etc.), not at the envelope, so the envelope-level lint can't validate it — exemption is structural, not semantic.
+- `sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources` — bulk administrative sync. These tools carry their tenant identity inside the payload array (`accounts[*].brand.domain`, `governance[*].plans[*].brand.domain`, etc.) rather than at the envelope. Requiring envelope identity on a call whose job is to *register* accounts or governance plans would be circular, so the lint skips them. The reference seller's `sessionKeyFromArgs` still honors envelope identity when present — storyboards that thread it get per-tenant isolation, storyboards that don't share `open:default`.
 - `comply_test_controller` — the test-harness admin channel.
 
 If you add a new tool to the AdCP spec, classify it explicitly in `TENANT_SCOPED_TASKS` or `EXEMPT_FROM_LINT` when you wire it into the training agent.
