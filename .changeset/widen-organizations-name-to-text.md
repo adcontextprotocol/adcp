@@ -1,4 +1,4 @@
 ---
 ---
 
-Widen `organizations.name` from `VARCHAR(255)` to `TEXT` so WorkOS org names longer than 255 chars no longer crash `syncFromWorkOS`. Unblocks re-landing #2484 (paginated WorkOS sync + lazy local-org creation).
+Truncate WorkOS org names to 255 chars in `syncFromWorkOS` / `ensureOrganizationExists` so one upstream org with an oversized name no longer aborts the whole sync with `value too long for type character varying(255)`.

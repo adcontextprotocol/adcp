@@ -1451,12 +1451,15 @@ export class OrganizationDatabase {
           const localOrg = await this.getOrganization(workosOrg.id);
 
           if (!localOrg) {
+            // organizations.name is VARCHAR(255); a few WorkOS orgs have
+            // longer names and would crash the whole sync on INSERT.
+            const name = workosOrg.name.slice(0, 255);
             await this.createOrganization({
               workos_organization_id: workosOrg.id,
-              name: workosOrg.name,
+              name,
             });
             synced++;
-            logger.info({ orgId: workosOrg.id, name: workosOrg.name }, 'Synced organization from WorkOS');
+            logger.info({ orgId: workosOrg.id, name }, 'Synced organization from WorkOS');
           } else {
             existing++;
           }
@@ -1490,12 +1493,13 @@ export class OrganizationDatabase {
 
     const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
     try {
+      const name = workosOrg.name.slice(0, 255);
       const created = await this.createOrganization({
         workos_organization_id,
-        name: workosOrg.name,
+        name,
       });
       logger.info(
-        { orgId: workos_organization_id, name: workosOrg.name },
+        { orgId: workos_organization_id, name },
         'Lazily created local organization row from WorkOS'
       );
       return created;
