@@ -103,9 +103,12 @@ phases:
         comply_scenario: capability_discovery
         stateful: false
         expected: |
-          Return capabilities block declaring at least one async operation that
-          accepts push_notification_config. If none, grading returns a stable
-          not_applicable marker.
+          Return a capabilities block including supported_protocols. Webhook-
+          emitting operations are discovered via the transport handshake
+          (MCP tools/list, A2A skills), not the capabilities body; grading
+          returns a stable not_applicable marker downstream when no webhook-
+          emitting operation resolves through
+          $test_kit.operations.primary_webhook_emitter.
         sample_request:
           context:
             correlation_id: "webhook_emission--get_capabilities"
