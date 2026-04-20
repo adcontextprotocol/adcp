@@ -109,7 +109,7 @@
     },
     {
       "id": "duplicate-keys-conflicting-values",
-      "description": "body contains a duplicate object key with conflicting values — see security.mdx §duplicate-object-keys for the normative MUST-reject semantics. The HMAC is mathematically valid over the raw bytes; verifiers MUST nonetheless reject this body as malformed after HMAC verification succeeds. Parser-differential attack class (cf. CVE-2017-12635). The rejection error class is distinct from a signature-mismatch: the signature IS valid; the body is malformed. In the 9421 webhook profile, the error code is `webhook_body_malformed`; the legacy HMAC scheme has no enumerated error codes but the same rejection semantics apply.",
+      "description": "body contains a duplicate object key with conflicting values; see security.mdx §duplicate-object-keys for the normative MUST-reject semantics, `verifier_action_values` for the required verifier action, and `non_conformant_outcomes` for forbidden failure modes",
       "timestamp": 1700000000,
       "raw_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_123\",\"status\":\"approved\",\"status\":\"rejected\"}",
       "expected_signature": "sha256=7fd84f13f71228b5c0dc24b58acafaa62855b26fe5477a31e88884ed24ae5b7f",

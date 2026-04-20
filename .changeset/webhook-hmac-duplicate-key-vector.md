@@ -1,21 +1,31 @@
 ---
 ---
 
-Tighten duplicate-object-key handling on signed webhook bodies from MAY-reject to MUST-reject, for both the legacy HMAC scheme and the RFC 9421 webhook profile. Closes the parser-differential attack class (CVE-2017-12635 family) that the previous MAY clause permitted by spec.
+Tighten duplicate-object-key handling on signed webhook bodies from MAY-reject to MUST-reject, close the DoS amplifier in the 9421 verifier-checklist ordering, add per-language strict-parse implementation guidance for both signers and verifiers, and formally flag the parallel request-signing gap to SDK implementers. Closes the parser-differential attack class (CVE-2017-12635 family) on the webhook surface and prevents SDK authors from reading the webhook MUST as exhaustive.
 
 **Spec (`docs/building/implementation/security.mdx`):**
-- Legacy HMAC scheme, duplicate-object-keys bullet: verifiers **MUST** reject bodies containing duplicate object keys after HMAC verification succeeds, returning a structured malformed-body error (distinct from signature-mismatch — the signature IS valid; the body is malformed). Previously a MAY with a SHOULD for state-change bodies. Every body carried on the legacy HMAC webhook scheme is a state-change notification, so the MUST applies unconditionally to this scheme.
-- RFC 9421 webhook verifier checklist (previously 14 checks, now 15): new step **11a** (body well-formedness) runs after `content-digest` verification succeeds and before the replay-cache check. Verifiers MUST reject duplicate-key bodies with `webhook_body_malformed`. The step explicitly requires a parse mode that exposes duplicate keys (strict-parse), not a last-wins/first-wins default that silently discards them.
-- New error code `webhook_body_malformed` added to the webhook error taxonomy, distinct from `webhook_signature_digest_mismatch` (the signature IS valid; the body is malformed).
-- Verifier-checklist preamble updated: three substitutions from the request-signing checklist instead of two (added the 11a body-well-formedness check, which the request-signing profile does not carry — that surface is covered by #2523 follow-up audit).
 
-**Test vectors (`static/test-vectors/webhook-hmac-sha256.json`):**
-- Vector `duplicate-keys-conflicting-values`: `raw_body={"event":"creative.status_changed","creative_id":"creative_123","status":"approved","status":"rejected"}`. Conflicting values (not identical) so the parser-differential attack surface is actually testable — the CVE-2017-12635 class requires divergent values, not duplicates.
-- Single-outcome shape: `expected_verifier_action: "reject-malformed"` plus `rfc9421_error_code: "webhook_body_malformed"`. Replaces the dual-outcome `acceptable_outcomes` / `recommended_outcome` shape from the prior revision — with MUST-reject, there is no dual-outcome world.
-- `verifier_action_values` enum map documents both tokens; the `accept` token is preserved as documentation-only so SDK harnesses have a stable definition, but a verifier that returns `accept` on this fixture is explicitly non-conformant.
-- `non_conformant_outcomes` array names the three forbidden failure modes: silent accept with parser divergence, returning signature-mismatch for a valid-HMAC body, and using a last-wins/first-wins parser that discards duplicate keys before detection.
+*Legacy HMAC scheme (duplicate-object-keys bullet):*
+- MAY → **MUST-reject** on the verifier side. Every body carried on the legacy HMAC scheme is a state-change notification, so the MUST applies unconditionally.
+- **Signer-side clause** — signers SHOULD reject duplicate-key input from upstream callers before serialization. Closes the pre-verification parse residual where a signer silently collapses a duplicate-key payload and emits a signed frame whose semantics differ from the caller's intent.
+- **Per-language strict-parse enumeration** (non-exhaustive): Python `object_pairs_hook`, Node `secure-json-parse`, Go `json.Decoder` token-walk or `goccy/go-json`/`tidwall/gjson`, Java Jackson `FAIL_ON_READING_DUP_TREE_KEY`, Ruby `Oj.load(strict_mode)`. Called out explicitly because Go `encoding/json` has no strict mode and SDK authors reading a MUST without escape hatches silently ship non-conformant verifiers.
+
+*9421 webhook profile (verifier checklist):*
+- **Step reordering** (DoS fix): body-well-formedness moved from 11a to step **14**, AFTER the replay-cache insert at step 13. Previously an attacker holding one `(keyid, nonce, valid-signature, malformed-body)` tuple could replay indefinitely — each replay burning crypto verify + strict-parse because step 11a short-circuited before the replay insert at step 13. The nonce is now burned on first sighting of any cryptographically-valid frame, regardless of body shape. Step 13's rationale expanded inline to document the invariant.
+- Step 14 carries the same per-language strict-parse enumeration plus explicit crash-hierarchy language (verifiers SHOULD return `webhook_body_malformed`; crash is conformant-but-suboptimal).
+- Preamble fixed: **"two substitutions plus one added step"** (was "three substitutions" — step 14 is an addition, not a substitution).
+- Error code `webhook_body_malformed` added to the webhook error taxonomy.
+
+*9421 request-signing profile — explicit known-gap paragraph:*
+- New paragraph after the request-verifier-checklist summary: the checklist does NOT include the duplicate-object-keys body-well-formedness check. Request bodies carry `create_media_buy`, `update_media_buy_delivery`, etc. — parser-differential blast radius larger than webhooks' status flip. Extension deferred to [#2523](https://github.com/adcontextprotocol/adcp/issues/2523) pending audit of the error taxonomy and cap-invariant ordering interaction at step 13. Implementers SHOULD adopt the same posture now; the paragraph exists specifically so SDK authors do not read the checklist as exhaustive.
+
+**Test vector (`static/test-vectors/webhook-hmac-sha256.json`):**
+- Single-outcome shape: `expected_verifier_action: "reject-malformed"` + `rfc9421_error_code: "webhook_body_malformed"`.
+- Vector `description` reduced to one sentence — normative prose (CVE anchor, error-class distinction, MUST framing) moved out of revisable description into the structured `verifier_action_values` enum map and `non_conformant_outcomes` array.
+- `verifier_action_values` retains `accept` as documentation-only with an explicit non-conformant note for this fixture.
+- `non_conformant_outcomes` enumerates three forbidden modes: silent accept with parser divergence; wrong error class (signature-mismatch for a valid-HMAC body); silent-discard parser modes.
 
 **CI (`tests/webhook-hmac-vectors.test.cjs`):**
-- Structural assertions: `verifier_action_values` map present with both enum keys defined; every vector carrying `expected_verifier_action` uses a token from the enum; `rfc9421_error_code`, when present, matches the `webhook_*` error taxonomy pattern. A typo now fails CI instead of shipping silently.
+- Structural assertions: top-level enum map required; every vector with `expected_verifier_action` uses an enum token; `rfc9421_error_code` matches `webhook_*` taxonomy; **at least one vector MUST carry `expected_verifier_action`** (catches accidental removal that would leave the enum orphaned); **`duplicate-keys-conflicting-values` id MUST exist** with the exact `expected_verifier_action` and `rfc9421_error_code` values security.mdx references (prevents silent rename-drift between the vector and the spec text that cites it).
 
-Closes #2483. Addresses the webhook portion of #2523; other signed-body surfaces (request signing, TMP signed bodies, adagents.json manifests) remain open in #2523 pending the one-pass audit that issue calls for before extending MUST-reject to them.
+Closes #2483. Addresses the webhook portion of #2523; request signing, TMP signed bodies, adagents.json manifests, governance-signing remain open in #2523 pending the one-pass audit (now explicitly flagged in security.mdx as a known gap, not a discoverability problem).

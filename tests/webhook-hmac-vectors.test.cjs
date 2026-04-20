@@ -67,6 +67,21 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     }
   });
 
+  it('at least one vector carries expected_verifier_action so the enum has a live consumer', () => {
+    const consumers = data.vectors.filter(v => v.expected_verifier_action !== undefined);
+    assert.ok(consumers.length > 0,
+      'at least one vector MUST carry expected_verifier_action — otherwise verifier_action_values drifts into an orphaned enum with no fixture exercising it');
+  });
+
+  it('duplicate-keys-conflicting-values fixture exists by id (security.mdx references this exact id)', () => {
+    const vector = data.vectors.find(v => v.id === 'duplicate-keys-conflicting-values');
+    assert.ok(vector, 'duplicate-keys-conflicting-values fixture MUST exist — security.mdx §duplicate-object-keys and the 9421 webhook verifier checklist (step 14) both reference this id; renaming without updating the spec breaks cross-SDK conformance suites');
+    assert.equal(vector.expected_verifier_action, 'reject-malformed',
+      'duplicate-keys-conflicting-values expected_verifier_action MUST be "reject-malformed" — this is the load-bearing assertion that the MUST-reject clause in security.mdx is actually probed by the fixture');
+    assert.equal(vector.rfc9421_error_code, 'webhook_body_malformed',
+      'duplicate-keys-conflicting-values rfc9421_error_code MUST be "webhook_body_malformed" — matches the error taxonomy row in security.mdx');
+  });
+
   it('includes secret-rejection vectors for weak configurations', () => {
     assert.ok(Array.isArray(data.secret_rejection_vectors),
       'secret_rejection_vectors must be present');
