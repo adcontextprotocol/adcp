@@ -133,8 +133,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
@@ -185,8 +185,8 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "https://governance.pinnacle-agency.example"
                   authentication:
@@ -258,12 +258,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -373,12 +371,12 @@ phases:
           - Used only when the seller needs the buyer to respond (e.g., confirm a budget). If the blocker is account-level (credit application, funding), the resolution path is list_accounts / sync_accounts, where account.setup.url surfaces on the pending_approval account
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -444,8 +442,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_acme_q2_2026"
           context:
@@ -554,8 +552,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -629,8 +627,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_acme_q2_2026"
           include_package_daily_breakdown: true

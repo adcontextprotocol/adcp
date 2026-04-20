@@ -147,9 +147,6 @@ phases:
           - Pending accounts with accounts[].setup.url populated if verification is needed
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
-
           context:
             correlation_id: "sales_social--list_accounts"
         validations:

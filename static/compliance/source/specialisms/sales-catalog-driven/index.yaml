@@ -113,9 +113,9 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "amsterdam-steakhouse.com"
+                domain: "amsterdam-steakhouse.example"
                 name: "Amsterdam Steakhouse"
-              operator: "pinnacle-agency.com"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               sandbox: true
 
@@ -219,8 +219,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "amsterdam-steakhouse.com"
-            operator: "pinnacle-agency.com"
+              domain: "amsterdam-steakhouse.example"
+            operator: "pinnacle-agency.example"
           catalogs:
             - catalog_id: "menu_spring_2026"
               catalog_type: "product"
@@ -229,24 +229,24 @@ phases:
                 - item_id: "ribeye_36oz"
                   title: "36oz Tomahawk Ribeye"
                   description: "Dry-aged 45 days, served with truffle butter and roasted bone marrow"
-                  url: "https://amsterdam-steakhouse.com/menu/ribeye-36oz"
-                  image_url: "https://cdn.amsterdam-steakhouse.com/menu/ribeye-36oz-hero.jpg"
+                  url: "https://amsterdam-steakhouse.example/menu/ribeye-36oz"
+                  image_url: "https://cdn.amsterdam-steakhouse.example/menu/ribeye-36oz-hero.jpg"
                   price:
                     amount: 89.00
                     currency: "USD"
                 - item_id: "seafood_tower"
                   title: "Grand Seafood Tower"
                   description: "Oysters, king crab, lobster tail, shrimp cocktail, tuna tartare"
-                  url: "https://amsterdam-steakhouse.com/menu/seafood-tower"
-                  image_url: "https://cdn.amsterdam-steakhouse.com/menu/seafood-tower-hero.jpg"
+                  url: "https://amsterdam-steakhouse.example/menu/seafood-tower"
+                  image_url: "https://cdn.amsterdam-steakhouse.example/menu/seafood-tower-hero.jpg"
                   price:
                     amount: 145.00
                     currency: "USD"
                 - item_id: "wagyu_flight"
                   title: "A5 Wagyu Tasting Flight"
                   description: "Three cuts of Japanese A5 Wagyu — striploin, ribeye cap, tenderloin"
-                  url: "https://amsterdam-steakhouse.com/menu/wagyu-flight"
-                  image_url: "https://cdn.amsterdam-steakhouse.com/menu/wagyu-flight-hero.jpg"
+                  url: "https://amsterdam-steakhouse.example/menu/wagyu-flight"
+                  image_url: "https://cdn.amsterdam-steakhouse.example/menu/wagyu-flight-hero.jpg"
                   price:
                     amount: 195.00
                     currency: "USD"
@@ -304,12 +304,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Dynamic product ads for a high-end steakhouse. Geo-targeted to 10 miles around Amsterdam location. Drive reservations and foot traffic."
-          brand:
-            domain: "amsterdam-steakhouse.com"
           account:
             brand:
-              domain: "amsterdam-steakhouse.com"
-            operator: "pinnacle-agency.com"
+              domain: "amsterdam-steakhouse.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_catalog_driven--get_products"
@@ -359,12 +357,12 @@ phases:
           - packages with catalog references preserved
 
         sample_request:
+          brand:
+            domain: "amsterdam-steakhouse.example"
           account:
             brand:
-              domain: "amsterdam-steakhouse.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "amsterdam-steakhouse.com"
+              domain: "amsterdam-steakhouse.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-07T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -421,13 +419,13 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "amsterdam-steakhouse.com"
-            operator: "pinnacle-agency.com"
+              domain: "amsterdam-steakhouse.example"
+            operator: "pinnacle-agency.example"
           event_sources:
             - event_source_id: "amsterdam_website"
               name: "Amsterdam Steakhouse Website"
               event_types: ["purchase", "add_to_cart", "page_view", "lead"]
-              allowed_domains: ["amsterdam-steakhouse.com", "book.amsterdam-steakhouse.com"]
+              allowed_domains: ["amsterdam-steakhouse.example", "book.amsterdam-steakhouse.example"]
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_event_setup_sync_event_sources"
           context:
@@ -590,8 +588,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "amsterdam-steakhouse.com"
-            operator: "pinnacle-agency.com"
+              domain: "amsterdam-steakhouse.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_amsterdam_spring_2026"
           include_package_daily_breakdown: true

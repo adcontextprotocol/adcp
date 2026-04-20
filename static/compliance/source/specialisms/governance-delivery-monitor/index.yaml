@@ -105,7 +105,7 @@ phases:
           plans:
             - plan_id: "gov_acme_delivery_monitor"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Delivery-phase governance with drift detection and rebalancing"
               budget:
                 total: 40000
@@ -170,8 +170,8 @@ phases:
           payload:
             account:
               brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
             total_budget: 40000
             packages:
               - product_id: "sports_ctv_q2"
@@ -223,8 +223,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_acme_q2_2026"
           include_package_daily_breakdown: true
