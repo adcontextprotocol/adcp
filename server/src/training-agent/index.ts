@@ -27,7 +27,8 @@ import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import { buildRequestSigningAuthenticator } from './request-signing.js';
+import { buildRequestSigningAuthenticator, STRICT_REQUIRED_FOR } from './request-signing.js';
+import { strictSignatureAuthenticator, RequestSignatureRequiredError } from './strict-auth.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -65,7 +66,7 @@ function setCORSHeaders(res: Response): void {
  * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
  * or layer an `anyOf` with a separate scope-aware authenticator.
  */
-function buildAuthenticator(): Authenticator | null {
+function buildBearerAuthenticator(): Authenticator | null {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     return null; // dev mode: open
   }
@@ -90,11 +91,6 @@ function buildAuthenticator(): Authenticator | null {
       },
     }));
   }
-  // Signed requests: valid RFC 9421 signatures authenticate without a bearer.
-  // `signed-requests` specialism vectors POST signed-but-bearerless requests;
-  // this composition lets them reach the verifier instead of dying at the
-  // bearer gate. 5.5+ feature.
-  authenticators.push(verifySignatureAsAuthenticator_());
   if (authenticators.length === 0) return null;
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
@@ -103,50 +99,96 @@ function buildAuthenticator(): Authenticator | null {
 // avoids reading the compliance test JWKS at module import time, which would
 // break test setups that mock the compliance cache.
 let _signingAuth: Authenticator | null = null;
-function verifySignatureAsAuthenticator_(): Authenticator {
+function lazySigningAuth(): Authenticator {
   return (req) => {
     if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
     return _signingAuth(req);
   };
 }
 
-const authenticator = buildAuthenticator();
-
-async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!authenticator) {
-    // No tokens configured and no WorkOS = dev mode, allow all
-    res.locals.trainingPrincipal = 'anonymous';
-    return next();
-  }
-  // The SDK's authenticators read from a raw Node IncomingMessage — Express's
-  // Request extends it, so we pass `req` directly.
-  let principal: AuthPrincipal | null;
-  try {
-    principal = await authenticator(req);
-  } catch (err) {
-    const publicMessage = err instanceof AuthError
-      ? err.publicMessage
-      : 'Authentication failed';
-    logger.warn({ err }, 'Training agent: authentication error');
-    respondUnauthorized(req, res, {
-      error: 'invalid_token',
-      errorDescription: publicMessage,
-    });
-    return;
-  }
-  if (!principal) {
-    const hasCredentials = !!extractBearerToken(req);
-    respondUnauthorized(req, res, {
-      error: hasCredentials ? 'invalid_token' : 'invalid_request',
-      errorDescription: hasCredentials
-        ? 'Invalid bearer token. Use an AAO API key (from your dashboard) or a static test token.'
-        : 'Missing bearer token. Use an AAO API key (from your dashboard) or a static test token.',
-    });
-    return;
-  }
-  res.locals.trainingPrincipal = principal.principal;
-  next();
+/**
+ * Default `/mcp` route: bearer OR valid signature. Unsigned bearer callers
+ * pass through verifyApiKey; signed requests compose via anyOf. Present-but-
+ * invalid signatures fall through to bearer (a known gap — closed on the
+ * strict route, tracked upstream as adcp-client#659).
+ */
+function buildDefaultAuthenticator(): Authenticator | null {
+  const bearerAuth = buildBearerAuthenticator();
+  if (!bearerAuth) return null;
+  return anyOf(bearerAuth, lazySigningAuth());
 }
+
+/**
+ * Strict `/mcp-strict` route (grader target): presence-gated signature
+ * with `required_for: ['create_media_buy']`. See `strict-auth.ts` for the
+ * full behaviour matrix.
+ */
+function buildStrictAuthenticator(): Authenticator | null {
+  const bearerAuth = buildBearerAuthenticator();
+  if (!bearerAuth) return null;
+  return strictSignatureAuthenticator({
+    bearerAuth,
+    signingAuth: lazySigningAuth(),
+    requiredFor: STRICT_REQUIRED_FOR,
+  });
+}
+
+const defaultAuthenticator = buildDefaultAuthenticator();
+const strictAuthenticator = buildStrictAuthenticator();
+
+function buildRequireToken(authenticator: Authenticator | null) {
+  return async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    if (!authenticator) {
+      // No tokens configured and no WorkOS = dev mode, allow all
+      res.locals.trainingPrincipal = 'anonymous';
+      return next();
+    }
+    let principal: AuthPrincipal | null;
+    try {
+      principal = await authenticator(req);
+    } catch (err) {
+      // The strict authenticator throws this sentinel when an unsigned
+      // request targets an op in `required_for`. Surface the canonical
+      // spec error code so grader vector 001 sees what it expects.
+      // `respondUnauthorized`'s `error` field is typed to RFC 6750 codes
+      // only — `request_signature_required` is an AdCP-specific code that
+      // needs to land in the JSON body, so we write the 401 directly.
+      if (err instanceof RequestSignatureRequiredError) {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('WWW-Authenticate', 'Bearer realm="mcp", error="invalid_token"');
+        res.status(401).json({
+          error: 'request_signature_required',
+          error_description: err.publicMessage,
+        });
+        return;
+      }
+      const publicMessage = err instanceof AuthError
+        ? err.publicMessage
+        : 'Authentication failed';
+      logger.warn({ err }, 'Training agent: authentication error');
+      respondUnauthorized(req, res, {
+        error: 'invalid_token',
+        errorDescription: publicMessage,
+      });
+      return;
+    }
+    if (!principal) {
+      const hasCredentials = !!extractBearerToken(req);
+      respondUnauthorized(req, res, {
+        error: hasCredentials ? 'invalid_token' : 'invalid_request',
+        errorDescription: hasCredentials
+          ? 'Invalid bearer token. Use an AAO API key (from your dashboard) or a static test token.'
+          : 'Missing bearer token. Use an AAO API key (from your dashboard) or a static test token.',
+      });
+      return;
+    }
+    res.locals.trainingPrincipal = principal.principal;
+    next();
+  };
+}
+
+const requireTokenDefault = buildRequireToken(defaultAuthenticator);
+const requireTokenStrict = buildRequireToken(strictAuthenticator);
 
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -248,50 +290,73 @@ export function createTrainingAgentRouter(): Router {
     },
   });
 
-  // MCP endpoint
-  // Auth is composed in `buildAuthenticator`:
-  //   anyOf(verifyApiKey(static), verifyApiKey(workos), verifySignatureAsAuthenticator(...))
-  // Bearer-OR-signature is accepted; neither short-circuits the other.
-  router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
+  // MCP endpoint factory. Two routes share the same body:
+  //   /mcp — sandbox. anyOf(bearers, signing). required_for=[].
+  //   /mcp-strict — grader target. presence-gated signing. required_for=['create_media_buy'].
+  // The `strict` flag flows into TrainingContext so get_adcp_capabilities
+  // advertises the correct request_signing block per route.
+  function mcpHandler(strict: boolean) {
+    return async (req: Request, res: Response) => {
+      setCORSHeaders(res);
 
-    // The framework returns `AdcpServer` (5.4+); the legacy factory returns
-    // the SDK's `Server`. Both satisfy the transport contract at runtime
-    // but have incompatible nominal types (different private fields).
-    // `any` stays until the flip-default PR deletes the legacy path.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let server: any = null;
-    try {
-      // Build training context (open mode for now; training mode in Stage 2).
-      // Principal is set by requireToken; defaults to 'anonymous' in dev mode
-      // when no tokens are configured.
-      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-      const ctx: TrainingContext = { mode: 'open', principal };
+      // The framework returns `AdcpServer` (5.4+); the legacy factory returns
+      // the SDK's `Server`. Both satisfy the transport contract at runtime
+      // but have incompatible nominal types (different private fields).
+      // `any` stays until the flip-default PR deletes the legacy path.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let server: any = null;
+      try {
+        // Principal is set by requireToken; defaults to 'anonymous' in dev mode
+        // when no tokens are configured.
+        const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
+        const ctx: TrainingContext = { mode: 'open', principal, strict };
 
-      server = useFrameworkServer()
-        ? createFrameworkTrainingAgentServer(ctx)
-        : createTrainingAgentServer(ctx);
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // Stateless
-      });
-
-      await server.connect(transport);
-
-      logger.debug({ method: req.body?.method, ip: req.ip }, 'Training agent: handling request');
-
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      logger.error({ error }, 'Training agent: request error');
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32603, message: 'Internal server error' },
+        server = useFrameworkServer()
+          ? createFrameworkTrainingAgentServer(ctx)
+          : createTrainingAgentServer(ctx);
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // Stateless
         });
+
+        await server.connect(transport);
+
+        logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
+
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        logger.error({ error, strict }, 'Training agent: request error');
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32603, message: 'Internal server error' },
+          });
+        }
+      } finally {
+        await server?.close().catch(() => {});
       }
-    } finally {
-      await server?.close().catch(() => {});
-    }
+    };
+  }
+
+  router.post('/mcp', mcpRateLimiter, requireTokenDefault, mcpHandler(false));
+
+  // Strict endpoint for `adcp grade request-signing` and the AAO Verified
+  // compliance dashboard. Enforces `required_for: ['create_media_buy']` with
+  // presence-gated auth so vector 001 (`request_signature_required`) fires
+  // instead of being swallowed by the bearer fallthrough on /mcp.
+  router.options('/mcp-strict', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+  router.post('/mcp-strict', mcpRateLimiter, requireTokenStrict, mcpHandler(true));
+  router.get('/mcp-strict', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+    });
   });
 
   // GET/DELETE not supported in stateless mode
@@ -338,7 +403,7 @@ export function createTrainingAgentRouter(): Router {
     res.status(204).end();
   });
 
-  router.get('/sse', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+  router.get('/sse', mcpRateLimiter, requireTokenDefault, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
     if (sseSessions.size >= SSE_MAX_SESSIONS) {
@@ -388,7 +453,7 @@ export function createTrainingAgentRouter(): Router {
     }
   });
 
-  router.post('/message', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+  router.post('/message', mcpRateLimiter, requireTokenDefault, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
     const sessionId = req.query.sessionId as string;

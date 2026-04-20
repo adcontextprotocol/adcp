@@ -24,6 +24,11 @@ export interface TrainingContext {
    *  Derived from the bearer token in the MCP route; defaults to `anonymous`
    *  when no auth is configured (dev / test). */
   principal?: string;
+  /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
+   *  `required_for: ['create_media_buy']` in capabilities and enforces
+   *  presence-gated signing at the auth layer. Default `/mcp` leaves
+   *  `required_for` empty so unsigned bearer callers keep working. */
+  strict?: boolean;
 }
 
 export interface ShowSpecial {
