@@ -21,7 +21,7 @@
  */
 
 import { createAdcpServer } from '@adcp/client/server';
-import type { HandlerContext, AdcpServerToolName } from '@adcp/client/server';
+import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
@@ -236,18 +236,43 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
 // ── Server factory ──────────────────────────────────────────────
 
 /**
- * Build the framework-based training-agent MCP server.
- *
- * Return type is `unknown` at the TS level and cast at the boundary —
- * `createAdcpServer` returns an `McpServer` typed through the SDK's
- * CJS build, while downstream consumers resolve the same symbol through
- * ESM. The two types are structurally identical but TypeScript treats
- * them as distinct (private `_serverInfo` field). Remove this escape
- * hatch when the SDK fixes its dual-package hazard (upstream issue).
+ * Build the framework-based training-agent MCP server. Returns the
+ * opaque `AdcpServer` handle from `@adcp/client/server` — no SDK types
+ * escape our module boundary.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): any {
+export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): AdcpServer {
   const signingCap = getRequestSigningCapability();
+
+  // ── Custom tools outside AdcpToolMap ─────────────────────────
+  // Registered through the framework's `customTools` config (5.4). Each
+  // is a passthrough-input tool — real validation lives inside the
+  // legacy handler. A thin wrapper constructs TrainingContext from the
+  // MCP SDK's auth extra and produces the same AdaptedResponse shape
+  // the domain adapter emits.
+  const passthroughInput = { _passthrough: z.any().optional() };
+
+  function customToolFor(name: string, description: string, handler: LegacyHandler): AdcpCustomToolConfig<typeof passthroughInput, undefined> {
+    return {
+      description,
+      inputSchema: passthroughInput,
+      handler: async (args, extra) => {
+        const params = (args as Record<string, unknown>) ?? {};
+        const authInfo = (extra?.authInfo ?? undefined) as { clientId?: string } | undefined;
+        const trainingCtx: TrainingContext = {
+          mode: 'open',
+          principal: authInfo?.clientId ?? 'anonymous',
+        };
+        const { context: callerContext, _passthrough: _pt, ...handlerArgs } = params;
+        try {
+          const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+          return toAdaptedResponse(result, callerContext);
+        } catch (err) {
+          logger.error({ err, tool: name }, 'framework custom-tool handler threw');
+          return serviceUnavailable(err, callerContext);
+        }
+      },
+    };
+  }
 
   const server = createAdcpServer({
     name: 'adcp-training-agent',
@@ -326,57 +351,19 @@ export function createFrameworkTrainingAgentServer(_ctx: TrainingContext): any {
       getRights: adapt(handleGetRights),
       acquireRights: adapt(handleAcquireRights),
     },
+
+    customTools: {
+      creative_approval: customToolFor('creative_approval', 'Approve or reject a creative asset for a media buy.', handleCreativeApproval),
+      update_rights: customToolFor('update_rights', 'Update the terms of an active rights grant.', handleUpdateRights),
+      validate_property_delivery: customToolFor('validate_property_delivery', 'Validate that delivered properties comply with a property list.', handleValidatePropertyDelivery),
+      create_collection_list: customToolFor('create_collection_list', 'Create a collection list of property list references.', handleCreateCollectionList),
+      get_collection_list: customToolFor('get_collection_list', 'Fetch a collection list by id.', handleGetCollectionList),
+      update_collection_list: customToolFor('update_collection_list', 'Update a collection list\'s member references.', handleUpdateCollectionList),
+      list_collection_lists: customToolFor('list_collection_lists', 'List all collection lists in the session.', handleListCollectionLists),
+      delete_collection_list: customToolFor('delete_collection_list', 'Delete a collection list by id.', handleDeleteCollectionList),
+      comply_test_controller: customToolFor('comply_test_controller', 'Training-agent compliance helper for forcing statuses and simulating delivery/spend.', handleComplyTestController),
+    },
   });
-
-  // NOTE: `get_adcp_capabilities` is auto-registered by the framework and
-  // `registerTool` rejects duplicate names. We drive what we can via the
-  // `capabilities:` config above; training-agent-specific fields
-  // (publisher_domains, compliance_testing.scenarios, etc.) are absent on
-  // the framework path. If storyboards depend on them, we'll need an SDK
-  // escape hatch (either `capabilities.extensions_supported` on the
-  // declaration or a `replaceTool` API on `McpServer`). Tracked in
-  // FRAMEWORK_MIGRATION.md.
-
-  // ── Custom tools outside AdcpToolMap ─────────────────────────
-  // Each is a minimal passthrough-input tool — validation happens inside
-  // the handler (as it does in the legacy dispatch path).
-  const passthroughInput = { _passthrough: z.any().optional() };
-
-  function registerCustom(name: string, description: string, handler: LegacyHandler) {
-    server.registerTool(
-      name,
-      { description, inputSchema: passthroughInput },
-      async (args, extra) => {
-        // MCP SDK parses the caller's raw args against our passthrough
-        // schema — the schema allows any shape, so `args` is effectively
-        // the caller-supplied object. Extract our conventional fields.
-        const params = (args as Record<string, unknown>) ?? {};
-        const authInfo = (extra?.authInfo ?? undefined) as { clientId?: string } | undefined;
-        const trainingCtx: TrainingContext = {
-          mode: 'open',
-          principal: authInfo?.clientId ?? 'anonymous',
-        };
-        const { context: callerContext, _passthrough: _pt, ...handlerArgs } = params;
-        try {
-          const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
-          return toAdaptedResponse(result, callerContext);
-        } catch (err) {
-          logger.error({ err, tool: name }, 'framework custom-tool handler threw');
-          return serviceUnavailable(err, callerContext);
-        }
-      },
-    );
-  }
-
-  registerCustom('creative_approval', 'Approve or reject a creative asset for a media buy.', handleCreativeApproval);
-  registerCustom('update_rights', 'Update the terms of an active rights grant.', handleUpdateRights);
-  registerCustom('validate_property_delivery', 'Validate that delivered properties comply with a property list.', handleValidatePropertyDelivery);
-  registerCustom('create_collection_list', 'Create a collection list of property list references.', handleCreateCollectionList);
-  registerCustom('get_collection_list', 'Fetch a collection list by id.', handleGetCollectionList);
-  registerCustom('update_collection_list', 'Update a collection list\'s member references.', handleUpdateCollectionList);
-  registerCustom('list_collection_lists', 'List all collection lists in the session.', handleListCollectionLists);
-  registerCustom('delete_collection_list', 'Delete a collection list by id.', handleDeleteCollectionList);
-  registerCustom('comply_test_controller', 'Training-agent compliance helper for forcing statuses and simulating delivery/spend.', handleComplyTestController);
 
   logger.info({ signingCap: signingCap.supported }, 'Framework training agent server constructed');
 

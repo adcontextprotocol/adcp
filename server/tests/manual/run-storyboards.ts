@@ -28,34 +28,6 @@ import {
   InMemoryRevocationStore,
 } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
-import { SingleAgentClient } from '@adcp/client';
-
-// SDK workaround: `applyBrandInvariant` in 5.3 injects top-level `brand` on
-// every request AND now constructs `account` when missing. Tools whose
-// request schemas declare neither (`list_creative_formats`, `get_signals`,
-// `activate_signal`, `sync_creatives`, …) then fail the SDK's
-// `schema.strict().parse()` validator with "Unrecognized keys: brand, account".
-// Replace with a non-strict parse: declared fields are still validated,
-// injected invariant fields are ignored. Tools that require a specific field
-// still enforce it because their own schema declares it as required.
-// Filed as @adcp/client issue; remove this patch when the SDK either relaxes
-// strict parsing or scopes brand injection to tools that declare it.
-const ProtoAny = SingleAgentClient.prototype as unknown as {
-  getRequestSchema: (t: string) => unknown;
-  validateRequest: (t: string, p: Record<string, unknown>) => void;
-};
-ProtoAny.validateRequest = function (taskType: string, params: Record<string, unknown>): void {
-  const schema = this.getRequestSchema(taskType) as { parse?: (p: unknown) => unknown } | null | undefined;
-  if (!schema || typeof schema.parse !== 'function') return;
-  try {
-    const { brand_manifest: _bm, buyer_ref: _br, ...rest } = params;
-    schema.parse(rest);
-  } catch (err) {
-    const issues = (err as { issues?: Array<{ path: Array<string|number>; message: string }> }).issues
-      ?.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') ?? String(err);
-    throw new Error(`Request validation failed for ${taskType}: ${issues}`);
-  }
-};
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -196,6 +168,7 @@ async function main() {
           replayStore: new InMemoryReplayStore(),
           revocationStore: new InMemoryRevocationStore(),
         },
+        request_signing: { transport: 'mcp' },
         ...(brand && { brand }),
       });
       const summary = summarize(sb, result);

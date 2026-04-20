@@ -240,9 +240,10 @@ export function createTrainingAgentRouter(): Router {
   router.post('/mcp', mcpRateLimiter, requireToken, requestSigningMiddleware, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
-    // Explicit `any` because the framework and legacy servers differ in
-    // their TypeScript types (CJS-resolved McpServer vs. legacy Server),
-    // even though both satisfy the `Transport` contract at runtime.
+    // The framework returns `AdcpServer` (5.4+); the legacy factory returns
+    // the SDK's `Server`. Both satisfy the transport contract at runtime
+    // but have incompatible nominal types (different private fields).
+    // `any` stays until the flip-default PR deletes the legacy path.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let server: any = null;
     try {
