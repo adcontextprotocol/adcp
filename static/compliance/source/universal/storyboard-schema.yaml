@@ -114,7 +114,8 @@
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
 #                "status_code", "http_status", "http_status_in", "error_code",
-#                "on_401_require_header", "resource_equals_agent_url", "any_of")
+#                "on_401_require_header", "resource_equals_agent_url", "any_of",
+#                "refs_resolve")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value")
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
@@ -141,6 +142,69 @@
 #   MUST NOT assert on them (that couples the conformance suite to a specific
 #   vendor's taxonomy). When a test needs to accept multiple possible codes,
 #   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
+# Cross-step integrity — use `check: refs_resolve`:
+#   `refs_resolve` asserts every ref in a source set resolves to a member of a
+#   target set, matched on declared keys. Use it when one step's response
+#   contains references (e.g., `format_ids` on `products`) that MUST exist in
+#   another step's response (e.g., `formats` from `list_creative_formats`).
+#   Without this primitive, broken references are silent until a later call
+#   (e.g., `sync_creatives`) fails at runtime, after commitments are already
+#   made.
+#
+#   Fields:
+#     source:
+#       from: current_step | context
+#           # `current_step` reads the step's task-result data;
+#           # `context` reads values captured by prior steps.
+#       path: <string>              # supports `[*]` wildcards — see below.
+#     target:
+#       from: current_step | context
+#       path: <string>
+#     match_keys: [<key>, ...]      # keys compared on each ref — e.g. [agent_url, id].
+#                                   # A ref missing any declared key is NEVER a match
+#                                   # (agents that drop a key don't fuzzy-match others
+#                                   # that also dropped it).
+#     scope:                        # optional — restrict integrity to in-scope refs.
+#       key: <string>               # e.g. `agent_url`.
+#       equals: <string>            # literal value, or `$agent_url` for the
+#                                   # runner target URL. Keys ending in `url`
+#                                   # get trailing-slash / case normalization
+#                                   # on both sides before compare.
+#     on_out_of_scope: warn | ignore | fail
+#                                   # how refs outside `scope` are graded.
+#                                   # default `warn`: pass the check, attach
+#                                   # observations naming the skipped refs.
+#                                   # `ignore`: silent. `fail`: promote to
+#                                   # missing so reports name them.
+#
+#   Path wildcards:
+#     `[*]` in a `source.path` or `target.path` flattens over arrays. So
+#     `products[*].format_ids[*]` walks every product and flattens every
+#     `format_ids` array into a single list of refs. Runners cap terminal
+#     fan-out at 10,000 values to bound malicious agent responses; paths
+#     realistic for any catalog size are well under the cap.
+#
+#   Grading output:
+#     A failing `refs_resolve` check names the specific unresolved ref tuples
+#     in `actual.missing` (projected to `match_keys`). Duplicates are collapsed
+#     on the projected tuple so one broken ref across 50 products shows up
+#     once — compliance reports stay readable.
+#
+#   Example — every `format_id` on products resolves to a format on this agent:
+#     - check: refs_resolve
+#       description: "Every format_id on products resolves to a format returned by list_creative_formats"
+#       source:
+#         from: context
+#         path: "products[*].format_ids[*]"
+#       target:
+#         from: current_step
+#         path: "formats[*].format_id"
+#       match_keys: [agent_url, id]
+#       scope:
+#         key: agent_url
+#         equals: $agent_url
+#       on_out_of_scope: warn
 #
 # --- Runner output ---
 #
