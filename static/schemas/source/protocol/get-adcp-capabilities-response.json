@@ -38,7 +38,7 @@
                 },
                 "account_id_is_opaque": {
                   "type": "boolean",
-                  "description": "When true, the seller derives `account_id` via an HKDF-based one-way transform of the buyer's natural account key rather than echoing the natural key on the wire. Buyers MUST NOT attempt to invert the opaque id and MUST treat it as a blind handle scoped to this seller. Absent or false, callers should assume account_id is the natural key (or a server-assigned but non-opaque id). Advisory capability — does not change the wire shape.",
+                  "description": "When true, the seller derives `account_id` via an HKDF-based one-way transform of the buyer's natural account key rather than echoing the natural key on the wire. Buyers MUST NOT attempt to invert the opaque id and MUST treat it as a blind handle scoped to this seller. Absent or false, callers should assume `account_id` is the natural key (or a server-assigned but non-opaque id). This flag does not change the wire shape, but it DOES change buyer behavior — buyers MUST NOT cache, log, or treat `account_id` as a natural-key analog when this flag is true. Migration note for sellers already returning an opaque id without this flag: set it to true at the next capabilities refresh so buyers stop inferring natural-key semantics; until set, new-buyer replay/retry logic will misclassify these ids as natural keys.",
                   "default": false
                 }
               },
@@ -870,7 +870,8 @@
         },
         "profile": {
           "type": "string",
-          "description": "Identifier of the webhook-signing profile version the agent emits. The 3.0 profile id is 'adcp-webhook-9421-v1'. Receivers use this to select a parser compatible with any future profile revisions."
+          "enum": ["adcp-webhook-9421-v1"],
+          "description": "Identifier of the webhook-signing profile version the agent emits. Closed enum so receivers can statically validate the declared profile; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
           "type": "array",
@@ -892,7 +893,7 @@
     },
     "identity": {
       "type": "object",
-      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident.",
+      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
       "properties": {
         "per_principal_key_isolation": {
           "type": "boolean",
