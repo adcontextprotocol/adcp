@@ -231,5 +231,24 @@
       "secret": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "reason": "32 'a' characters meets the byte-length bar but has no entropy. Implementations SHOULD reject."
     }
-  ]
+  ],
+  "signer_input_rejection_vectors": [
+    {
+      "id": "signer-upstream-duplicate-key-rejection",
+      "description": "signer received a pre-serialized body from an upstream caller with duplicate object keys; signer MUST reject before signing and MUST NOT emit a signed frame",
+      "signer_input_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_123\",\"status\":\"approved\",\"status\":\"rejected\"}",
+      "expected_signer_action": "reject-input-before-sign",
+      "rationale": "Signer-side MUST per security.mdx §duplicate-object-keys. A signer that silently collapses duplicate-key input produces a cryptographically-clean signed frame whose parsed semantics differ from caller intent — verifiers cannot detect the upstream divergence from the wire, so the MUST applies at the signer even though it is unverifiable on-wire. This fixture probes signer implementations that accept pre-serialized bodies; signers that accept structured objects (dicts / structs where duplicate keys cannot exist) MUST apply the equivalent check to any duplicate-tolerant upstream structure (Python list-of-tuples with repeated first elements, ordered-dict variants that permit duplicates). Conformance is out-of-band: an interop harness asserts the signer returns an error on this input rather than a signed frame."
+    },
+    {
+      "id": "signer-upstream-duplicate-key-deep-nested",
+      "description": "signer received a pre-serialized body where the duplicate object key appears in a nested object; signer MUST reject at any nesting depth, not only at the top level",
+      "signer_input_body": "{\"event\":\"creative.status_changed\",\"result\":{\"media_buy_id\":\"mb_001\",\"media_buy_id\":\"mb_evil\"}}",
+      "expected_signer_action": "reject-input-before-sign",
+      "rationale": "Signer-side check MUST recurse into nested objects. A signer that only checks top-level keys would accept this input and emit a signed frame carrying semantic ambiguity on the nested `media_buy_id` — the same parser-differential attack class that motivates the top-level rule. Interop harnesses that only exercise flat-body vectors would silently pass a signer with shallow checking; this vector catches the gap."
+    }
+  ],
+  "signer_action_values": {
+    "reject-input-before-sign": "The signer returns a failure result to its caller without producing a signed frame. The signer MUST NOT emit headers, MUST NOT compute the HMAC, and MUST surface an error distinguishable from network or configuration failures (the caller needs to fix the upstream input, not retry). Typical shapes: language-idiomatic exception / error-return with a `duplicate_key_input` discriminator and optionally the offending key names (subject to the same 14b sanitization rules when logging — truncate, strip non-printables, cap count)."
+  }
 }

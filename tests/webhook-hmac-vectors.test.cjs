@@ -93,6 +93,45 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
     assert.ok(shortSecret, 'must include a sub-32-byte secret rejection vector');
   });
 
+  describe('signer-side input-rejection vectors', () => {
+    it('signer_input_rejection_vectors array is present and non-empty', () => {
+      assert.ok(Array.isArray(data.signer_input_rejection_vectors),
+        'signer_input_rejection_vectors MUST be present — the signer-side MUST in security.mdx §duplicate-object-keys is unverifiable on the wire, so conformance suites rely on these fixtures for out-of-band interop testing');
+      assert.ok(data.signer_input_rejection_vectors.length >= 2,
+        'MUST cover at least top-level and nested duplicate-key cases — a signer that only checks top-level keys would silently pass a shallow-check conformance test');
+    });
+
+    it('signer_action_values enum is defined with the expected-action token', () => {
+      assert.equal(typeof data.signer_action_values, 'object',
+        'signer_action_values enum map MUST be defined so downstream harnesses resolve expected_signer_action tokens from a single source of truth');
+      assert.ok(data.signer_action_values['reject-input-before-sign'],
+        'signer_action_values["reject-input-before-sign"] MUST be defined — the load-bearing signer-side action');
+    });
+
+    for (const vector of data.signer_input_rejection_vectors || []) {
+      it(`well-formed signer-input rejection vector: ${vector.id}`, () => {
+        const enumKeys = Object.keys(data.signer_action_values || {});
+        assert.equal(typeof vector.id, 'string', 'signer-input vector MUST have a kebab-case id');
+        assert.match(vector.id, /^[a-z0-9]+(-[a-z0-9]+)*$/, `id "${vector.id}" MUST be kebab-case`);
+        assert.equal(typeof vector.signer_input_body, 'string',
+          `vector "${vector.id}": signer_input_body MUST be a string (the pre-serialized bytes the upstream caller passed to the signer)`);
+        assert.ok(enumKeys.includes(vector.expected_signer_action),
+          `vector "${vector.id}": expected_signer_action "${vector.expected_signer_action}" is not in signer_action_values enum [${enumKeys.join(', ')}]`);
+      });
+    }
+
+    it('duplicate-keys signer vectors actually contain duplicate keys in the on-wire bytes', () => {
+      for (const vector of data.signer_input_rejection_vectors || []) {
+        if (!/duplicate/.test(vector.id)) continue;
+        const keyMatches = vector.signer_input_body.match(/"([^"\\]|\\.)*":/g) || [];
+        const keyNames = keyMatches.map(m => m.slice(1, -2));
+        const uniqueKeys = new Set(keyNames);
+        assert.ok(keyNames.length > uniqueKeys.size,
+          `vector "${vector.id}": signer_input_body MUST contain at least one duplicate object key (found ${keyNames.length} keys, ${uniqueKeys.size} unique) — otherwise the fixture does not probe the rule it claims to probe`);
+      }
+    });
+  });
+
   for (const vector of data.vectors) {
     if (vector.expect_mismatch) {
       it(`should reject tampered body: ${vector.description}`, () => {
