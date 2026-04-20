@@ -1,9 +1,4 @@
-<!--
-Canonical source: https://agenticadvertising.org/api/agreement?type=membership
-This file mirrors version 1.1, effective 2025-12-12, exported 2026-04-20.
-The Foundation website is authoritative; if this copy and the website diverge, the website governs.
-Refresh: curl -sL 'https://agenticadvertising.org/api/agreement?type=membership&format=json' | jq -r .text > governance/membership-agreement.md (re-add this header)
--->
+> **Mirror notice.** Canonical source: [`/api/agreement?type=membership`](https://agenticadvertising.org/api/agreement?type=membership). This file mirrors version 1.1, effective 2025-12-12, exported 2026-04-20. The Foundation website is authoritative; if this copy and the website diverge, the website governs. See [`governance/README.md`](./README.md) for the refresh procedure.
 
 # AgenticAdvertising.Org Membership Agreement
 
