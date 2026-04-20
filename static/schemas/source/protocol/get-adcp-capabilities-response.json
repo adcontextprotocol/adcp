@@ -20,17 +20,46 @@
         },
         "idempotency": {
           "type": "object",
-          "description": "Idempotency semantics for mutating requests. Sellers MUST declare their replay window so buyers can reason about safe retry behavior. Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
-          "properties": {
-            "replay_ttl_seconds": {
-              "type": "integer",
-              "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
-              "minimum": 3600,
-              "maximum": 604800
+          "description": "Idempotency semantics for mutating requests. Sellers MUST declare whether they honor idempotency_key replay protection so buyers can reason about safe retry behavior. Modeled as a discriminated union on the supported boolean so that code generators produce two named types (IdempotencySupported, IdempotencyUnsupported) with the replay_ttl_seconds invariant enforced at the type level — draft-07 if/then would be dropped by most generators (openapi-typescript, zod-to-json-schema, datamodel-code-generator pre-0.25, quicktype). Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
+          "oneOf": [
+            {
+              "title": "IdempotencySupported",
+              "description": "Seller honors idempotency_key replay protection on mutating requests. Replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence); replays past the window return IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'.",
+              "properties": {
+                "supported": {
+                  "const": true,
+                  "description": "Discriminator. True means the seller deduplicates replays — a repeat of the same idempotency_key within replay_ttl_seconds returns the cached response without re-executing side effects."
+                },
+                "replay_ttl_seconds": {
+                  "type": "integer",
+                  "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
+                  "minimum": 3600,
+                  "maximum": 604800
+                }
+              },
+              "required": [
+                "supported",
+                "replay_ttl_seconds"
+              ]
+            },
+            {
+              "title": "IdempotencyUnsupported",
+              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds MUST be absent — it has no meaning without replay support.",
+              "properties": {
+                "supported": {
+                  "const": false,
+                  "description": "Discriminator. False means the seller does not deduplicate retries."
+                }
+              },
+              "required": [
+                "supported"
+              ],
+              "not": {
+                "required": [
+                  "replay_ttl_seconds"
+                ]
+              }
             }
-          },
-          "required": [
-            "replay_ttl_seconds"
           ]
         }
       },
@@ -656,6 +685,7 @@
     "sponsored_intelligence": {
       "type": "object",
       "description": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+      "x-status": "experimental",
       "properties": {
         "endpoint": {
           "type": "object",

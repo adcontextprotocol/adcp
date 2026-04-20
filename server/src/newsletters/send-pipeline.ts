@@ -162,9 +162,13 @@ async function reuseOrGenerateCoverImage(
   const existing = await config.db.getCoverImageWithPrompt?.(editionDate) ?? null;
   let imageBuffer: Buffer;
   let promptUsed: string;
+  let c2paSignedAt: Date | undefined;
+  let c2paManifestDigest: string | undefined;
   if (existing) {
     imageBuffer = existing.imageData;
     promptUsed = existing.promptUsed;
+    c2paSignedAt = existing.c2paSignedAt ?? undefined;
+    c2paManifestDigest = existing.c2paManifestDigest ?? undefined;
   } else {
     const generated = await generateIllustration({
       title,
@@ -173,6 +177,8 @@ async function reuseOrGenerateCoverImage(
     });
     imageBuffer = generated.imageBuffer;
     promptUsed = generated.promptUsed;
+    c2paSignedAt = generated.c2pa?.signedAt;
+    c2paManifestDigest = generated.c2pa?.manifestDigest;
   }
 
   const illustration = await createIllustration({
@@ -180,6 +186,8 @@ async function reuseOrGenerateCoverImage(
     image_data: imageBuffer,
     prompt_used: promptUsed,
     status: 'generated',
+    c2pa_signed_at: c2paSignedAt,
+    c2pa_manifest_digest: c2paManifestDigest,
   });
 
   await approveIllustration(illustration.id, perspectiveId);

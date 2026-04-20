@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-terminate-session-response.json",
   "title": "SI Terminate Session Response",
   "description": "Confirmation of session termination",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "session_id": {

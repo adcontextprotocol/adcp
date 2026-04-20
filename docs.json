@@ -118,6 +118,7 @@
                   "docs/building/validate-your-agent",
                   "docs/building/operating-an-agent",
                   "docs/building/compliance-catalog",
+                  "docs/building/conformance",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -614,6 +615,7 @@
               "docs/building/validate-your-agent",
               "docs/building/operating-an-agent",
               "docs/building/compliance-catalog",
+              "docs/building/conformance",
               {
                 "group": "Foundations",
                 "pages": [

@@ -96,6 +96,7 @@ const CODE_RECOVERY = {
   PRODUCT_NOT_FOUND: 'correctable',
   PRODUCT_UNAVAILABLE: 'correctable',
   PROPOSAL_EXPIRED: 'correctable',
+  REQUOTE_REQUIRED: 'correctable',
   BUDGET_TOO_LOW: 'correctable',
   CREATIVE_REJECTED: 'correctable',
   UNSUPPORTED_FEATURE: 'correctable',

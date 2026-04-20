@@ -1,5 +1,4 @@
-# Use Node.js 22 Alpine for building
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -82,17 +81,21 @@ CLONE
 RUN sh /repos/clone.sh
 
 # Production stage
-FROM node:22-alpine
+FROM node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# unzip is used by the Tranco ingestion path at runtime. Alpine bundled it via
+# busybox; Debian slim does not. ca-certificates is present in the base image
+# but reinstalled here as belt-and-suspenders for TLS trust.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends unzip ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 
-# Install only production dependencies
-# --ignore-scripts is used to skip arbitrary lifecycle scripts, but sharp
-# needs its install script to download platform-specific native binaries.
+# --ignore-scripts blocks arbitrary postinstall lifecycle scripts from the full
+# dep tree; native deps are rebuilt explicitly per-package.
 RUN npm ci --omit=dev --ignore-scripts && npm rebuild sharp
 
 # Copy built files from builder
@@ -110,6 +113,7 @@ COPY --from=repos /repos ./.addie-repos
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV TZ=UTC
 
 # Expose port
 EXPOSE 8080

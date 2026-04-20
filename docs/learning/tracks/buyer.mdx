@@ -194,7 +194,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 - **Cross-platform adaptation** — agents adapt assets across display, video, audio, native, and broadcast formats. Broadcast manifests carry `industry_identifiers[]` (Ad-ID, ISCI) — S2 goes deep
 - **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
 - **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
-- **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
+- **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control. SI is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `sponsored_intelligence.core`); session lifecycle and UI components may change between 3.x releases with at least 6 weeks' notice.
 
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module C3."

@@ -23,6 +23,10 @@ SEO for AI (sometimes called GAIO or generative AI optimization) focuses on gett
 
 </AccordionGroup>
 
+<Note>
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent object shape, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Pilot implementations are encouraged; regulated or compliance-sensitive workflows should wait for graduation to stable. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 For a practical guide to buying ads on AI platforms, see the [monetizing AI guide](/docs/sponsored-intelligence/monetizing-ai). For the technical protocol walkthrough, see the [Sponsored Intelligence overview](/docs/sponsored-intelligence/overview).
 
 ## Buying AI media
@@ -76,7 +80,11 @@ AdCP is a specification — not a product, platform, or company. Anyone can impl
 </Accordion>
 
 <Accordion title="Who created AdCP?">
-AdCP is developed and maintained by [AgenticAdvertising.org](https://agenticadvertising.org), an open member organization. It is not owned by or affiliated with Google, Meta, The Trade Desk, or any other single company. Members include platform providers, advertisers, agencies, and developers. Governance decisions are made by member working groups and committees.
+AdCP is developed and maintained by [AgenticAdvertising.org](https://agenticadvertising.org) (AAO), a Delaware nonprofit trade association (501(c)(6) status pending with the IRS) with four equal voting classes — Brands, Agencies, Publishers, and Technology Providers — and a target of ten elected seats per class at steady state.
+
+The Foundation currently operates under an interim board appointed at incorporation: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The interim board is replaced by the elected board at the first Annual General Meeting on **May 6, 2026**. Two of four interim seats are Scope3-affiliated, reflecting Scope3's seed contributions; see [How is AAO related to Scope3?](#how-is-aao-related-to-scope3) for the full relationship, named recusal areas, and the transition to equal voting-class representation.
+
+Day-to-day protocol work happens in public working groups on [GitHub](https://github.com/adcontextprotocol/adcp), with every change auditable in Git history. Contributors and organizations who have shaped the protocol through issues, pull requests, and working-group participation are named in [CONTRIBUTORS.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTORS.md).
 </Accordion>
 
 <Accordion title="What is AgenticAdvertising.org's mission?">
@@ -90,7 +98,7 @@ Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/l
 </Accordion>
 
 <Accordion title="How mature is the protocol?">
-AdCP is in the 3.0 release-candidate cycle, with 3.0 GA targeted for April 2026. The protocol design is stable and suitable for pilot implementations; schemas may still receive minor refinements based on implementer feedback before GA.
+AdCP is in the 3.0 release-candidate cycle (current: **3.0.0-rc.4**), with 3.0 GA targeted for April 2026. See [Release notes](/docs/reference/release-notes) for the per-RC change log. The protocol design is stable and suitable for pilot implementations; schemas may still receive minor refinements based on implementer feedback before GA.
 
 The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. For production use prior to 3.0 GA, we recommend implementing against [v2.5](/docs/reference/v2-sunset).
 </Accordion>
@@ -123,17 +131,22 @@ AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
-AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). AdCP and AAMP overlap in ambition (both target AI agents in advertising) and differ in several ways today. As of April 2026:
+AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). Based on AAMP materials published to date, AdCP and AAMP appear to operate at different layers of the stack and can coexist.
+
+Our read of the distinction: AdCP describes how a buyer agent and a seller agent negotiate, transact, and govern a media buy — product discovery, pricing, creative, governance, and execution. AAMP's work streams, as currently described, address impression-level concerns: how agents are discovered and identified inside the existing programmatic auction, and how agentic audiences move across that layer. A platform could implement both, with AdCP handling the buyer/seller workflow and AAMP's components plugging into the impression-level layer alongside OpenRTB.
+
+As of April 2026:
 
 | | AAMP | AdCP |
 |---|---|---|
-| **Maintainer** | IAB Tech Lab | AgenticAdvertising.org (open 501(c)(6), four equal voting classes) |
-| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 release candidate, 3.0 GA targeted April 2026 |
+| **Layer** | Impression-level (within the RTB stack, per published work streams) | Buyer/seller workflow (product discovery, media buy, creative, governance, execution) |
+| **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
+| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 release candidate (3.0.0-rc.4), 3.0 GA targeted April 2026 |
 | **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
 | **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/understanding/security-model)) |
 | **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/latest/), Apache 2.0 |
 
-We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize. AdCP and AAMP are not mutually exclusive — a platform could implement both if scopes remain distinct.
+We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
 </Accordion>
 
 <Accordion title="Why not just roll our own protocol?">
@@ -171,19 +184,21 @@ AdCP 3.0 GA will require campaigns declaring a regulated policy category to run 
 </Accordion>
 
 <Accordion title="Who governs AdCP?">
-AdCP is governed by AgenticAdvertising.Org, a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+AdCP is governed by AgenticAdvertising.Org (AAO), a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
 
-The Foundation has four voting member classes with equal representation on the Board — Brands, Agencies, Publishers, and Technology Providers — targeting ten seats per class at the first elected board, replacing the current interim board at the 2026 Annual General Meeting. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
+The interim board (as of 2026-04-18) has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The elected board — first Annual General Meeting on **May 6, 2026** — has equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers), with a target of ten seats per class. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
 </Accordion>
 
-<Accordion title="Is Scope3 getting preferential treatment?">
-Scope3 contributed foundational IP and early funding to AgenticAdvertising.Org. Specifically:
+<Accordion title="How is AAO related to Scope3?">
+**Two of four interim board seats are Scope3-affiliated.** The interim board has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). This composition reflects Scope3's seed contributions to AAO and transitions to an elected board at the first Annual General Meeting on **May 6, 2026**, which carries equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers) — ten seats per class at steady state.
+
+Scope3 contributed foundational IP and early funding. Specifically:
 
 - **CSBS (Common Sense Brand Standards)** — formerly "Scope3 Common Sense" — was donated to AAO and is now governed by AAO. The formal donation and rename are tracked in [#2305](https://github.com/adcontextprotocol/adcp/issues/2305).
 - **Property registry seed data** — the initial property universe and ad-infrastructure knowledge graph seeding the AAO property catalog was donated by Scope3.
-- **Seed funding loan** — Scope3 provided a seed funding loan to AAO, which is in the process of being repaid.
+- **Seed funding loan** — Scope3 provided a seed funding loan to AAO, repaid from membership revenue on a scheduled basis. Terms are disclosed in the annual financial report to members.
 
-The interim board has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). Two of four interim directors are Scope3-affiliated; this composition transitions to an elected board at the 2026 Annual General Meeting, targeting equal representation across four voting classes. Brian co-founded both Scope3 and AAO and serves as AdCP lead architect; he does not hold executive authority at AAO, and Scope3 holds no voting rights, veto, or protocol-control privileges beyond those of any other member. Because of the dual role, he recuses from AAO decisions where Scope3 has a direct commercial interest — including any change to the default brand-safety framework, property-catalog data governance, and the terms of the seed-loan repayment.
+Brian co-founded both Scope3 and AAO and serves as AdCP lead architect; he does not hold executive authority at AAO, and Scope3 holds no voting rights, veto, or protocol-control privileges beyond those of any other member. Because of the dual role, he recuses from AAO decisions where Scope3 has a direct commercial interest — including any change to the default brand-safety framework, property-catalog data governance, and the terms of the seed-loan repayment.
 
 See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) for the governance framework and [agenticadvertising.org/governance](https://agenticadvertising.org/governance) for the authoritative board list, funding disclosures, and recusal rules.
 </Accordion>
@@ -198,6 +213,8 @@ Governance decisions will also be signed so that a seller or regulator can verif
 
 <Accordion title="Does AdCP support AI platforms and AI ad networks?">
 Yes. AdCP's `sponsored_intelligence` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via SI Chat Protocol. AI platforms and ad networks implement AdCP the same way any seller does: publish [`adagents.json`](/docs/governance/property/adagents), implement [`get_products`](/docs/media-buy/task-reference/get_products) with `channels: ["sponsored_intelligence"]`, and accept media buys. See the [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview) for product modeling, workflows, and measurement.
+
+Sponsored Intelligence is an [experimental surface](/docs/reference/experimental-status) in 3.0 (feature id `sponsored_intelligence.core`) — sellers implementing it MUST declare `sponsored_intelligence.core` in `experimental_features`, and buyers SHOULD check that declaration before relying on SI tasks. The surface may change between 3.x releases with at least 6 weeks' notice.
 </Accordion>
 
 <Accordion title="How does AdCP relate to MCP and A2A?">

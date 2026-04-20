@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-identity.json",
   "title": "SI Identity",
   "description": "User identity shared with brand agent (with explicit consent)",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "consent_granted": {

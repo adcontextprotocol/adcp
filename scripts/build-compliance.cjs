@@ -178,6 +178,7 @@ function discoverProtocols(sourceDir, specialisms) {
 
 function loadMutatingSchemaRefs(schemasDir) {
   const refs = new Set();
+  const tools = new Set();
   function walk(d) {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, entry.name);
@@ -189,16 +190,19 @@ function loadMutatingSchemaRefs(schemasDir) {
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) {
         refs.add(path.relative(schemasDir, p));
+        // Task name ↔ filename: "create-media-buy-request.json" → "create_media_buy"
+        tools.add(entry.name.replace(/-request\.json$/, '').replace(/-/g, '_'));
       }
     }
   }
   walk(schemasDir);
-  return refs;
+  return { refs, tools };
 }
 
 function lintStoryboardIdempotency(sourceDir, schemasDir) {
-  const mutatingRefs = loadMutatingSchemaRefs(schemasDir);
+  const { refs: mutatingRefs, tools: mutatingTools } = loadMutatingSchemaRefs(schemasDir);
   const violations = [];
+  const missingSchemaRefs = [];
 
   function lintFile(p) {
     const rel = path.relative(sourceDir, p);
@@ -222,7 +226,17 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
         // synthetic invocations (e.g., comply_test_controller's
         // simulate_budget scenarios, universal/security.yaml's probe steps)
         // that don't send a task request schema. They're out of scope for
-        // this lint.
+        // this lint — UNLESS the task name itself is a known mutating tool,
+        // in which case the missing schema_ref is itself a storyboard bug
+        // (the step would bypass the idempotency_key lint above). Positive
+        // check per red-team I-9 / security.mdx storyboard hygiene.
+        if (step.task && mutatingTools.has(step.task) && !step.schema_ref) {
+          missingSchemaRefs.push({
+            file: rel,
+            step: step.id,
+            msg: `Step uses mutating tool "${step.task}" but has no schema_ref`,
+          });
+        }
         const schemaRef = step.schema_ref;
         if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
         const hasKey =
@@ -263,6 +277,15 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       `static/compliance/source/universal/idempotency.yaml for the convention, ` +
       `and note the deliberate alias-reuse pattern there when two steps must ` +
       `share a key (replay tests).`
+    );
+  }
+
+  if (missingSchemaRefs.length > 0) {
+    const lines = missingSchemaRefs.map(v => `  ${v.file} step=${v.step}: ${v.msg}`);
+    throw new Error(
+      `Storyboard schema_ref lint: ${missingSchemaRefs.length} step(s) call a mutating tool without a schema_ref, which would silently skip the idempotency_key check.\n\n` +
+      lines.join('\n') +
+      `\n\nAdd the matching \`schema_ref:\` (e.g. "media-buy/create-media-buy-request.json") to each step.`
     );
   }
 }

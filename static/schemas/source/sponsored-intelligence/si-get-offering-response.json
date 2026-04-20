@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-get-offering-response.json",
   "title": "SI Get Offering Response",
   "description": "Offering details, availability status, and optionally matching products. Use the offering_token in si_initiate_session for correlation.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "available": {

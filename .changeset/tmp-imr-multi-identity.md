@@ -20,4 +20,4 @@ Privacy documentation now explicitly states the router's trust boundary for iden
 
 TMPX truncation policy when resolved identities exceed the ~120-byte plaintext budget is buyer deployment configuration, not protocol-level. Buyers MUST configure an explicit priority list; the default implementation MUST NOT truncate arbitrarily.
 
-Breaking change relative to prior pre-release TMP drafts. TMP remains pre-release in AdCP 3.0; see the 3.1.0 roadmap for the stable surface.
+Breaking change relative to prior TMP drafts. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`) — it may change between 3.x releases with at least 6 weeks' notice; see the 3.1.0 roadmap for planned changes on the path to stable.

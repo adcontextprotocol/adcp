@@ -76,6 +76,38 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
+| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
+
+#### idempotency
+
+Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  }
+}
+```
+
+Sellers that do not support replay dedup declare it explicitly:
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": false }
+  }
+}
+```
+
+**Verifying the declaration.** `idempotency.supported: true` is a trust-bearing claim that enables buyers to safely retry spend-committing operations. A compromised or buggy seller could advertise `true` while silently ignoring keys, causing buyer double-spend on retry. Buyers and conformance runners SHOULD probe the declaration with a deliberate payload-mutation replay: send two requests with the same `idempotency_key` but different canonical payloads — a conformant seller MUST return `IDEMPOTENCY_CONFLICT` on the second. Sellers declaring `supported: true` MUST pass this probe as part of the baseline compliance storyboard before the declaration is considered verified.
 
 ### supported_protocols
 
@@ -371,7 +403,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["governance"],
   "governance": {
@@ -438,7 +470,7 @@ Array of experimental AdCP surfaces this agent implements. A surface is experime
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 
@@ -692,7 +724,7 @@ const buy = await client.createMediaBuy({
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
   "account": {
@@ -785,7 +817,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy", "creative"],
   "account": {

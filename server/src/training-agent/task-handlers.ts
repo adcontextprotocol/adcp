@@ -2111,7 +2111,7 @@ async function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext)
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
-      idempotency: { replay_ttl_seconds: 86400 },
+      idempotency: { supported: true, replay_ttl_seconds: 86400 },
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
     protocol_version: '3.0',
