@@ -73,7 +73,7 @@ Scope3 engineers and staff who have committed code, reviewed pull requests, or s
 - Brian O'Kelley ([@bokelley](https://github.com/bokelley))
 - Emma Mulitz ([@EmmaLouise2018](https://github.com/EmmaLouise2018))
 - Kristen Moegling ([@kmoegling-scope3](https://github.com/kmoegling-scope3))
-- Liam Lawlor ([@llawlor-scope3](https://github.com/llawlor-scope3))
+- Lizzie Lawlor ([@llawlor-scope3](https://github.com/llawlor-scope3))
 
 ## AI assistants
 
