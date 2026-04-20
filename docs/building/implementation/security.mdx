@@ -884,6 +884,8 @@ Verifier requirements:
 
 Request-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry (or the `adagents.json` equivalent for seller-side agents publishing keys for webhook callbacks). Every agent that signs — of any `type` — uses the same publication pattern.
 
+**Publisher pin precedence.** When a publisher's `adagents.json` entry for an authorized agent carries a `signing_keys` pin (see [`adagents.json` §`signing_keys`](/docs/governance/property/adagents#signing_keys)), that pin is authoritative: verifiers MUST reject any signature whose `keyid` is not in the pinned set, regardless of `jwks_uri` contents. The agent-hosted JWKS is advisory whenever a publisher pin exists. This closes the agent-domain-compromise window — an attacker who takes over the agent's domain cannot silently swap both the endpoint and its advertised keys because the publisher's pin still governs acceptance. Publishers are required to pin for any agent whose delegated scopes include mutating operations; see the adagents.json rule for rotation and cache semantics.
+
 Each request-signing JWK entry MUST declare:
 
 | Member | Value | Notes |

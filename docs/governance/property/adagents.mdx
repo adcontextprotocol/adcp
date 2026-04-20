@@ -472,6 +472,20 @@ Use `signing_keys` when the publisher wants to pin the public keys an authorized
 - Buyers should verify signed agent responses against the pinned keys in `adagents.json`
 - If an agent domain is compromised, pinned keys prevent the attacker from silently swapping both the endpoint and its advertised keys
 
+Publishers MUST populate `signing_keys` for any authorized agent whose delegated scopes include **mutating operations** — any AdCP task that writes state on behalf of the publisher. In the 3.x catalog this means the media-buy task set (`create_media_buy`, `update_media_buy`, `sync_creatives`, `update_performance_index`) and any future task flagged as mutating in the [media-buy task reference](/docs/media-buy/task-reference/update_media_buy). Read-only discovery tasks (`get_products`, `get_signals`, `list_creative_formats`) are out of scope for this requirement. Leaving `signing_keys` empty for a mutating-scope authorization reduces the trust chain to counterparty-controlled `jwks_uri` discovery and forfeits the publisher's pin as a cross-check.
+
+Verifier requirement: if the publisher's `adagents.json` entry for an agent contains `signing_keys`, the verifier MUST reject any signature whose `keyid` is not in that pinned set, regardless of `jwks_uri` contents. The pin is authoritative; the agent-hosted JWKS is advisory and MUST NOT override it.
+
+**Key rotation and cache semantics.** To keep the pin usable across rotations without opening a DoS-by-rotation window:
+
+- Verifiers SHOULD cache the pinned `signing_keys` for at most the `Cache-Control` `max-age` the publisher serves on `adagents.json`, defaulting to **one hour** when no directive is present. Longer caching risks rejecting a legitimate rotated key.
+- On encountering an **unknown `keyid`**, the verifier MUST force-refresh the publisher's `adagents.json` (bypassing cache) before final rejection. This prevents a stale cache from locking out a legitimately rotated key.
+- Publishers MAY carry **overlapping keys** in `signing_keys` during a rotation window so verifiers can accept signatures produced under either the old or the new key. The pinned set is unordered: presence in the set is sufficient for acceptance. Operators SHOULD remove the retired key from the pin once they are confident no in-flight traffic is still signing with it (hours, not days).
+
+**Bootstrap scope.** The pin protects against **agent-domain** compromise: if the agent domain is taken over, an attacker cannot silently swap both the endpoint and its advertised keys because the publisher's pin still governs acceptance. It does **not** protect against publisher-domain compromise (an attacker who controls `adagents.json` can rewrite the pin itself). First-ever retrieval of `adagents.json` is TLS-trust-only; the R-1 root-of-trust / key-transparency work (tracked in `specs/registry-change-feed.md` §Feed-event content signing) is the track that will strengthen this boundary.
+
+A follow-up is tracked to promote `signing_keys` from optional to required at the schema level for mutating-scope authorizations; the prose requirement above is the normative floor until that schema change lands.
+
 ### `countries`
 
 Use ISO 3166-1 alpha-2 country codes to constrain authorization geographically. This avoids ambiguous regional shorthands such as "LATAM" or "EMEA" and gives buyer agents a precise machine-readable scope.
