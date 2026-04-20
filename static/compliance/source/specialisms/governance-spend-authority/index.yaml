@@ -176,6 +176,8 @@ phases:
           - findings: may include warning-severity findings noting the conditions
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.com"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:

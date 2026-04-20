@@ -87,8 +87,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display on sports and outdoor lifestyle. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -136,8 +134,6 @@ phases:
             - scope: "product"
               product_id: "sports_preroll_q2"
               ask: "Increase budget allocation to $30K"
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"

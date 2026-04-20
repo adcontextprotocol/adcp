@@ -270,8 +270,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
               domain: "acmeoutdoor.com"
@@ -336,6 +334,10 @@ phases:
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           plan_id: "$context.plan_id"
           binding:
             type: "media_buy"
@@ -403,6 +405,10 @@ phases:
           - approved_at: timestamp of approval
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_escalated"
           binding:
@@ -484,8 +490,6 @@ phases:
             brand:
               domain: "acmeoutdoor.com"
             operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
           governance_context: "gov_ctx_acme_q2_approved"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
@@ -543,6 +547,10 @@ phases:
           - status: recorded
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
@@ -602,6 +610,10 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           plan_id: "$context.plan_id"
 
           context:

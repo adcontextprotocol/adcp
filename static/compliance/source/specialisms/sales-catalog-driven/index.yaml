@@ -306,8 +306,6 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Dynamic product ads for a high-end steakhouse. Geo-targeted to 10 miles around Amsterdam location. Drive reservations and foot traffic."
-          brand:
-            domain: "amsterdam-steakhouse.com"
           account:
             brand:
               domain: "amsterdam-steakhouse.com"
@@ -365,8 +363,6 @@ phases:
             brand:
               domain: "amsterdam-steakhouse.com"
             operator: "pinnacle-agency.com"
-          brand:
-            domain: "amsterdam-steakhouse.com"
           start_time: "2026-04-07T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -478,6 +474,10 @@ phases:
           - match_quality: how well events matched to ad exposures (0.0-1.0)
 
         sample_request:
+          account:
+            brand:
+              domain: "amsterdam-steakhouse.com"
+            operator: "pinnacle-agency.com"
           event_source_id: "amsterdam_website"
           events:
             - event_id: "evt_001"
@@ -542,6 +542,10 @@ phases:
           based on the performance_index signal.
 
         sample_request:
+          account:
+            brand:
+              domain: "amsterdam-steakhouse.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "mb_amsterdam_spring_2026"
           measurement_period:
             start: "2026-04-07T00:00:00Z"

@@ -119,6 +119,10 @@ phases:
           - signal_type: "marketplace"
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.com"
           signal_spec: "In-market EV buyers with high purchase propensity, near auto dealerships"
 
           context:
@@ -178,6 +182,10 @@ phases:
           If a signal_id doesn't exist, omit it from results — don't error.
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.com"
           signal_ids:
             - "$context.first_signal_id"
 
@@ -232,6 +240,10 @@ phases:
           your agent is listed in authorized_agents.
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.com"
           signal_ids:
             - "$context.first_signal_id"
 
@@ -288,6 +300,10 @@ phases:
           - deployed_at timestamp
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.com"
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:
@@ -358,6 +374,10 @@ phases:
           in place.
 
         sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.com"
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:

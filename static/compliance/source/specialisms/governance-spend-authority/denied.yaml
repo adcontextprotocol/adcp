@@ -163,6 +163,8 @@ phases:
           - No escalation instructions (plan has no escalation path)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:

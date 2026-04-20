@@ -107,8 +107,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -130,8 +132,10 @@ phases:
           Media buy created with media_buy_id and at least one package.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           idempotency_key: "invalid-transitions-setup-v1"
           start_time: "2026-08-01T00:00:00Z"
           end_time: "2026-08-31T23:59:59Z"
@@ -177,8 +181,10 @@ phases:
           - context echoed unchanged
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "does-not-exist-package-invalid-transitions-v1"
@@ -218,8 +224,10 @@ phases:
           Seller acknowledges the cancellation and transitions the buy to canceled.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
@@ -245,8 +253,10 @@ phases:
           - context echoed unchanged
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"

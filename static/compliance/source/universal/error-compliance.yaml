@@ -90,6 +90,7 @@ phases:
 
     steps:
       - id: negative_budget
+        scoping: global
         title: "Reject negative budget"
         narrative: |
           A negative budget is never valid. The agent must reject this with a structured
@@ -133,6 +134,7 @@ phases:
             value: "error_compliance--negative_budget"
             description: "Context correlation_id returned unchanged"
       - id: nonexistent_product
+        scoping: global
         title: "Reject nonexistent product ID"
         narrative: |
           The buyer references a product ID that does not exist on this platform.
@@ -207,6 +209,7 @@ phases:
             value: "error_compliance--missing_fields"
             description: "Context correlation_id returned unchanged"
       - id: reversed_dates_error
+        scoping: global
         title: "Reject reversed dates with error code"
         narrative: |
           Send a create_media_buy with end_time before start_time. This is a business-rule
@@ -255,6 +258,7 @@ phases:
 
     steps:
       - id: validate_error_shape
+        scoping: global
         title: "Validate error response structure"
         narrative: |
           Trigger an error and inspect the response structure. The adcp_error object
@@ -390,6 +394,7 @@ phases:
 
     steps:
       - id: validate_transport_binding
+        scoping: global
         title: "Validate error transport binding"
         narrative: |
           Trigger an error and verify the MCP transport binding: isError flag must be

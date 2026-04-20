@@ -101,9 +101,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display advertising products for state machine testing"
-          brand:
-            domain: "acmeoutdoor.com"
-
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           context:
             correlation_id: "media_buy_state_machine--discover_products"
         context_outputs:
@@ -151,8 +152,10 @@ phases:
           - status: active
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
           packages:
@@ -205,6 +208,10 @@ phases:
           Media buy status transitions to paused.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           paused: true
 
@@ -236,6 +243,10 @@ phases:
           Media buy status transitions back to active.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           paused: false
 
@@ -268,6 +279,10 @@ phases:
           Media buy status transitions to canceled. This is terminal.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
@@ -308,6 +323,10 @@ phases:
           Reject with INVALID_STATE_TRANSITION — cannot pause a canceled buy.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           paused: true
 
@@ -341,6 +360,10 @@ phases:
           Reject with INVALID_STATE_TRANSITION — cannot resume a canceled buy.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           paused: false
 
@@ -376,6 +399,10 @@ phases:
           Both behaviors are valid.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.com"
+            operator: "pinnacle-agency.com"
           media_buy_id: "$context.media_buy_id"
           canceled: true
 

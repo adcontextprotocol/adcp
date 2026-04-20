@@ -33,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { execSync } = require('child_process');
+const { lintScoping, formatReport } = require('./lint-storyboard-scoping.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/compliance/source');
 const DIST_DIR = path.join(__dirname, '../dist/compliance');
@@ -277,6 +278,13 @@ function main() {
   console.log(`   Source: ${SOURCE_DIR}`);
   console.log(`   Target: ${DIST_DIR}`);
   console.log('');
+
+  // Lint storyboard scoping (fail fast before copying anything to dist).
+  const violations = lintScoping(SOURCE_DIR);
+  if (violations.length > 0) {
+    process.stderr.write(formatReport(violations));
+    process.exit(1);
+  }
 
   ensureDir(DIST_DIR);
 

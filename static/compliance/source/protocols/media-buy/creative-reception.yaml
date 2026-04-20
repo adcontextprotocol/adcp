@@ -134,6 +134,10 @@ phases:
           - Validation errors for rejected creatives
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           creatives:
             - creative_id: "acme_summer_native_001"
               format_id:
@@ -193,6 +197,10 @@ phases:
           raw assets, but how they'll actually appear to users.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.com"
           request_type: "single"
           creative_manifest:
             creative_id: "acme_summer_native_001"
