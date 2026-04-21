@@ -1144,8 +1144,11 @@
           });
         }
 
-        // Redirect to OAuth flow
-        window.location.href = '/api/oauth/agent/start?agent_context_id=' + encodeURIComponent(agentContextId);
+        // Redirect to OAuth flow, asking it to return us here after completion
+        const returnTo = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = '/api/oauth/agent/start'
+          + '?agent_context_id=' + encodeURIComponent(agentContextId)
+          + '&return_to=' + encodeURIComponent(returnTo);
       } catch (err) {
         btn.disabled = false;
         btn.textContent = 'Authorize';
