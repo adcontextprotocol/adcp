@@ -80,10 +80,11 @@ phases:
           catalogs:
             - catalog_id: "summit_foods_pantry_2026"
               type: "product"
+              content_id_type: "sku"
               name: "Summit Foods — Pantry Staples 2026"
               items:
-                - item_id: "organic_oats_1kg"
-                  sku: "SF-OAT-1000"
+                # item_id IS the SKU per content_id_type: "sku" above.
+                - item_id: "SF-OAT-1000"
                   title: "Organic Rolled Oats, 1kg"
                   description: "Whole-grain rolled oats, single-origin, no additives."
                   url: "https://summitfoods.example/shop/organic-oats-1kg"
@@ -91,8 +92,7 @@ phases:
                   price:
                     amount: 8.99
                     currency: "USD"
-                - item_id: "wild_honey_500g"
-                  sku: "SF-HNY-500"
+                - item_id: "SF-HNY-500"
                   title: "Wild Wildflower Honey, 500g"
                   description: "Raw unfiltered honey from regional wildflower meadows."
                   url: "https://summitfoods.example/shop/wild-honey-500g"

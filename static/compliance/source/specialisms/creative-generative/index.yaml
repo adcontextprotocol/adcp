@@ -6,7 +6,10 @@ category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
 required_tools:
   - build_creative
-  - sync_catalogs
+# Note: sync_catalogs is NOT in required_tools. The catalog_augmented_generation
+# phase below is additive — brief-only generative agents (pure-prompt DSPs) pass
+# the other phases without claiming catalog support. Agents that do not implement
+# sync_catalogs grade that phase not_applicable rather than fail the specialism.
 
 narrative: |
   You run a generative creative platform — an AI ad network, a generative DSP, or any system
@@ -459,6 +462,7 @@ phases:
           catalogs:
             - catalog_id: "acme_generative_source"
               type: "product"
+              content_id_type: "sku"
               name: "Acme Outdoor — Generative source feed"
               items:
                 - item_id: "peak_jacket_x"

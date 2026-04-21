@@ -283,13 +283,19 @@ phases:
       TikTok Dynamic Showcase): the buyer pushes a product catalog and the platform
       renders per-impression creative pulling product images, titles, and tracker URLs
       from catalog items. The creative template references catalog-item macros
-      (`{SKU}`, `{GTIN}`, `{JOB_ID}`, etc.) whose values resolve to the specific item
-      shown at impression time.
+      (`{SKU}`, `{GTIN}`) whose values resolve to the specific item shown at
+      impression time.
 
       This phase exercises the catalog-acceptance leg of that flow: push a small inline
-      catalog, then push a DPA creative whose tracker URL includes catalog-item
-      macros. Runtime substitution-safety checks (that the emitted tracker URLs
-      percent-encode the macro values per `docs/creative/universal-macros#substitution-safety-catalog-item-macros`)
+      product catalog (with `content_id_type: "sku"` declared so macro resolution binds
+      to the right field), then push a DPA creative template using the AdCP-native
+      `product_carousel_3_to_10` format on `creative.adcontextprotocol.org`. Real
+      social-platform formats (Meta `native_carousel`, Snap dynamic ad set, TikTok
+      dynamic showcase) are platform-specific refinements tracked as follow-ups on
+      #2640; the AdCP-native format is the interop baseline.
+
+      Runtime substitution-safety checks (that the emitted tracker URLs percent-encode
+      the macro values per `docs/creative/universal-macros#substitution-safety-catalog-item-macros`)
       require the substitution-observer contract tracked in #2638; phases gated on
       that contract activate when runners advertise it.
 
@@ -317,6 +323,7 @@ phases:
           catalogs:
             - catalog_id: "acme_gear_spring_2026"
               type: "product"
+              content_id_type: "sku"
               name: "Acme Outdoor — Spring 2026 Gear"
               items:
                 - item_id: "trail_pro_3000"
@@ -359,15 +366,17 @@ phases:
       - id: sync_dpa_creative
         title: "Push a dynamic product ad creative with catalog-item macros"
         narrative: |
-          The buyer pushes a creative template whose tracker URL references catalog-item
-          macros (`{SKU}`, `{GTIN}`). At impression time, your platform substitutes
-          each catalog item's values into the template to render the per-impression ad.
+          The buyer pushes a creative template whose tracker URLs reference
+          catalog-item macros (`{SKU}`, `{GTIN}`). At impression time, your platform
+          substitutes each catalog item's values into the template to render the
+          per-impression ad.
 
-          Per #2620, values substituted into URL contexts MUST be percent-encoded
-          such that only RFC 3986 unreserved characters remain unescaped; nested
-          macro expansion is prohibited. This step validates that the template is
-          accepted into the library; runtime substitution validation is tracked
-          under #2638.
+          The template uses the AdCP-native `product_carousel_3_to_10` format
+          (see `docs/creative/channels/carousels.mdx`). Per #2620, values substituted
+          into URL contexts MUST be percent-encoded such that only RFC 3986 unreserved
+          characters remain unescaped; nested macro expansion is prohibited. This step
+          validates that the template is accepted into the library; runtime
+          substitution validation is tracked under #2638.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
@@ -386,13 +395,13 @@ phases:
             - creative_id: "acme_dpa_spring_2026"
               name: "Acme Outdoor — Spring DPA template"
               format_id:
-                agent_url: "https://social-platform.example.com"
-                id: "dynamic_product_feed"
+                agent_url: "https://creative.adcontextprotocol.org"
+                id: "product_carousel_3_to_10"
               assets:
-                impression_tracker:
+                impression_pixel:
                   asset_type: "url"
                   url: "https://track.acmeoutdoor.example/imp?sku={SKU}&gtin={GTIN}&mb={MEDIA_BUY_ID}"
-                click_tracker:
+                click_url:
                   asset_type: "url"
                   url: "https://track.acmeoutdoor.example/click?sku={SKU}"
 
