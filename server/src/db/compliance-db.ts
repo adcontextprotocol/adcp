@@ -546,16 +546,34 @@ export class ComplianceDatabase {
    * Resolve auth credentials for an agent from the owning organization's
    * saved tokens in agent_contexts. Only uses credentials from the org
    * that owns the agent (via member_profiles.agents), not arbitrary orgs.
+   *
+   * For OAuth: returns the full `oauth` shape (tokens + client) so the
+   * @adcp/client SDK can auto-refresh on 401. Returning a raw bearer would
+   * drop auth entirely once the access token drifted near expiry, which is
+   * exactly when the UI surfaces "Missing Authorization header" on the
+   * dashboard's Test-your-agent flow right after an authorize.
    */
   async resolveOwnerAuth(
     agentUrl: string,
-  ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
+  ): Promise<
+    | { type: 'bearer'; token: string }
+    | { type: 'basic'; username: string; password: string }
+    | {
+        type: 'oauth';
+        tokens: { access_token: string; refresh_token?: string; expires_at?: string };
+        client?: { client_id: string; client_secret?: string };
+      }
+    | undefined
+  > {
     try {
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
-                ac.oauth_token_expires_at
+                ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
+                ac.oauth_token_expires_at,
+                ac.oauth_client_id,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
@@ -568,7 +586,10 @@ export class ComplianceDatabase {
       );
 
       const row = result.rows[0];
-      if (!row) return undefined;
+      if (!row) {
+        logger.info({ agentUrl }, 'resolveOwnerAuth: no owning-org credentials found');
+        return undefined;
+      }
 
       // Prefer static token when available
       if (row.auth_token_encrypted) {
@@ -585,26 +606,65 @@ export class ComplianceDatabase {
         return { type: 'bearer', token };
       }
 
-      // Fall back to OAuth access token
+      // Fall back to OAuth. Hand the SDK the full token+client pair so it
+      // can refresh via the saved refresh_token instead of silently failing.
       if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {
-        // Check expiration with 5-minute buffer
-        if (row.oauth_token_expires_at) {
-          const expiresAt = new Date(row.oauth_token_expires_at);
-          if (expiresAt.getTime() - Date.now() <= 5 * 60 * 1000) {
-            logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon for compliance auth');
-            return undefined;
-          }
-        } else {
-          logger.debug({ agentUrl }, 'OAuth token has no expiration recorded');
+        const accessToken = decryptToken(
+          row.oauth_access_token_encrypted,
+          row.oauth_access_token_iv,
+          row.organization_id,
+        );
+
+        const tokens: { access_token: string; refresh_token?: string; expires_at?: string } = {
+          access_token: accessToken,
+        };
+
+        if (row.oauth_refresh_token_encrypted && row.oauth_refresh_token_iv) {
+          tokens.refresh_token = decryptToken(
+            row.oauth_refresh_token_encrypted,
+            row.oauth_refresh_token_iv,
+            row.organization_id,
+          );
         }
 
-        const token = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, row.organization_id);
-        return { type: 'bearer', token };
+        if (row.oauth_token_expires_at) {
+          tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
+        }
+
+        // No refresh token available — fall back to raw bearer. If the
+        // access token is already expired, a refresh can't save us; send it
+        // anyway so the agent returns a clear 401 rather than swallowing the
+        // request with no Authorization header at all.
+        if (!tokens.refresh_token) {
+          return { type: 'bearer', token: accessToken };
+        }
+
+        const oauth: {
+          type: 'oauth';
+          tokens: typeof tokens;
+          client?: { client_id: string; client_secret?: string };
+        } = { type: 'oauth', tokens };
+
+        if (row.oauth_client_id) {
+          const client: { client_id: string; client_secret?: string } = {
+            client_id: row.oauth_client_id,
+          };
+          if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
+            client.client_secret = decryptToken(
+              row.oauth_client_secret_encrypted,
+              row.oauth_client_secret_iv,
+              row.organization_id,
+            );
+          }
+          oauth.client = client;
+        }
+
+        return oauth;
       }
 
       return undefined;
     } catch (error) {
-      logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
+      logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
   }
