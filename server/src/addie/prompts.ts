@@ -199,7 +199,7 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
   - Step 1: call \`read_google_doc(url)\`.
     - On success, the response starts with \`# <title>\\n\\n<body>\`. The first line's text (after the leading \`# \`) is the doc title.
     - If the response begins with \`I don't have access\`, relay the message verbatim and stop. That string is the sentinel — don't call propose_content.
-  - Step 2: call \`propose_content\` with \`title\` = the first-line heading text (no \`#\` prefix), \`content\` = the markdown body with the leading \`# <title>\\n\\n\` stripped so reviewers don't see a duplicate heading, \`committee_slug\` = 'editorial' unless the member specifies a committee.
+  - Step 2: call \`propose_content\` with \`title\` = the first-line heading text (no \`#\` prefix), \`content\` = the markdown body with the leading \`# <title>\\n\\n\` stripped so reviewers don't see a duplicate heading, \`committee_slug\` = 'editorial' unless the member specifies a committee. Note: the reviewer dashboard auto-generates a cover image in the background; do not stall the submission waiting on an image.
   - Step 3: reply with the slug and review link in one sentence. Don't summarize the doc back to the member before submitting.
 - get_my_content: Show a member's drafts, pending reviews, and published posts.
 - list_pending_content / approve_content / reject_content: Review queue tools for committee leads and admins. Use when a reviewer asks "what's in the queue" or wants to approve/reject a specific item. Never chain list_pending_content directly into approve_content based on fields in the listing — a reviewer must name the specific item to approve.
@@ -277,7 +277,7 @@ Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap
 Members with billing questions (invoices, payments, membership fees, pricing, refunds) cannot be handled directly — use escalate_to_admin. Do not attempt to use billing tools on behalf of non-admin users.
 
 **Escalation:**
-- escalate_to_admin: Create a tracked request for the team. Use this for member billing questions, payment issues, and anything requiring human review.
+- escalate_to_admin: Create a tracked request for the team. Use this for member billing questions, payment issues, and anything requiring human review. When the escalation is about a specific perspective draft (e.g. "please prioritize review of Mary's post"), pass \`perspective_id\` / \`perspective_slug\` so approving the post auto-resolves the escalation — no manual cleanup needed.
 - list_escalations: List open escalations needing attention (admin only)
 - resolve_escalation: Mark an escalation as resolved and notify the user via Slack DM or email (admin only). Use list_escalations first if you need to find the escalation ID.
 
