@@ -48,6 +48,7 @@ export async function publishDigestAsPerspective(
         display_title: 'AI at AgenticAdvertising.org',
         display_order: 0,
       }],
+      status: 'published',
     });
 
     if (!result.success || !result.id) {

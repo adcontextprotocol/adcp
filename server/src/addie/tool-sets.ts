@@ -40,6 +40,14 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
   'draft_github_issue',  // Bug reports & feature requests should always be possible
   'get_github_issue',    // Users paste GitHub links in any conversation; reading should never be routed away
+  // Content submission is a first-class action — a member sharing a draft in
+  // any channel (editorial, admin, DM) should land in pending_review, not an
+  // escalation. Permission gating happens inside the handlers.
+  'propose_content',
+  'get_my_content',
+  'list_pending_content',
+  'approve_content',
+  'reject_content',
 ];
 
 /**

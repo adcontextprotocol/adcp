@@ -257,18 +257,25 @@ export async function proposeContentForUser(
     .substring(0, 100);
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  // Determine initial status. Honor the caller's requested status when it's
-  // allowed for their role, so leads who choose "Submit for Review" or "Save
-  // as Draft" don't get silently auto-published.
-  //   - Leads/admins: may request draft, pending_review, or published
-  //     (default: published, preserving historical behavior)
-  //   - Everyone else: may request draft or pending_review
-  //     (default: pending_review). A request for 'published' is demoted.
+  // Determine initial status. Default is always `pending_review` — callers must
+  // opt in to publishing by passing an explicit `status`. Leads and admins can
+  // choose draft/pending_review/published; members can choose draft or
+  // pending_review (a published request is demoted).
+  //
+  // The explicit-opt-in default prevents programmatic callers (Addie, Share-a-
+  // Link, scripts) from silently bypassing editorial review when the caller is
+  // incidentally a lead or admin.
   const status: 'draft' | 'pending_review' | 'published' = canPublishDirectly
-    ? (requestedStatus === 'draft' || requestedStatus === 'pending_review'
-        ? requestedStatus
-        : 'published')
+    ? (requestedStatus ?? 'pending_review')
     : (requestedStatus === 'draft' ? 'draft' : 'pending_review');
+
+  if (requestedStatus === undefined && status === 'pending_review' && canPublishDirectly) {
+    logger.info({
+      userId: user.id,
+      committeeSlug,
+      contentOrigin: effectiveOrigin,
+    }, 'Content defaulting to pending_review (no explicit status requested)');
+  }
   const publishedAt = status === 'published' ? new Date().toISOString() : null;
   const proposedAt = new Date().toISOString();
 
@@ -380,6 +387,320 @@ export async function proposeContentForUser(
 }
 
 /**
+ * Pending content item as returned to reviewers.
+ */
+export interface PendingContentItem {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  slug: string;
+  excerpt: string | null;
+  content: string | null;
+  content_type: string;
+  external_url: string | null;
+  external_site_name: string | null;
+  proposer: { id: string; name: string };
+  proposed_at: string;
+  collection: {
+    type: 'committee' | 'personal';
+    committee_name: string | null;
+    committee_slug: string | null;
+  };
+  authors: Array<{ user_id: string; display_name: string }>;
+}
+
+export interface PendingContentResult {
+  items: PendingContentItem[];
+  summary: {
+    total: number;
+    by_collection: Record<string, number>;
+  };
+}
+
+/**
+ * List pending content the user is permitted to review - direct function call (no HTTP required).
+ * Admins see all pending content; committee leads see only their committees' pending items.
+ */
+export async function listPendingContentForUser(
+  user: ContentUser,
+  opts: { committeeSlug?: string } = {}
+): Promise<PendingContentResult> {
+  const pool = getPool();
+  const { committeeSlug } = opts;
+
+  // Committees this user leads (direct workos_user_id or via slack mapping)
+  const leaderResult = await pool.query(
+    `SELECT wg.id
+     FROM working_group_leaders wgl
+     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+     JOIN working_groups wg ON wg.id = wgl.working_group_id
+     WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
+    [user.id]
+  );
+  const ledCommitteeIds = leaderResult.rows.map(c => c.id);
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+
+  if (!userIsAdmin && ledCommitteeIds.length === 0) {
+    return { items: [], summary: { total: 0, by_collection: {} } };
+  }
+
+  let query = `
+    SELECT
+      p.id, p.title, p.subtitle, p.excerpt, p.content, p.slug, p.content_type,
+      p.external_url, p.external_site_name,
+      p.proposer_user_id, p.proposed_at, p.working_group_id,
+      wg.name as committee_name, wg.slug as committee_slug,
+      u.first_name, u.last_name, u.email as proposer_email,
+      (SELECT json_agg(json_build_object(
+        'user_id', ca.user_id,
+        'display_name', ca.display_name
+      ) ORDER BY ca.display_order)
+      FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
+    FROM perspectives p
+    LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+    LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
+    WHERE p.status = 'pending_review'
+  `;
+  const params: (string | string[])[] = [];
+
+  if (!userIsAdmin) {
+    params.push(ledCommitteeIds);
+    query += ` AND p.working_group_id = ANY($${params.length})`;
+  }
+  if (committeeSlug) {
+    params.push(committeeSlug);
+    query += ` AND wg.slug = $${params.length}`;
+  }
+  query += ` ORDER BY p.proposed_at ASC`;
+
+  const result = await pool.query(query, params);
+
+  const items: PendingContentItem[] = result.rows.map(row => ({
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle,
+    slug: row.slug,
+    excerpt: row.excerpt,
+    content: row.content,
+    content_type: row.content_type,
+    external_url: row.external_url,
+    external_site_name: row.external_site_name,
+    proposer: {
+      id: row.proposer_user_id,
+      name: row.first_name && row.last_name
+        ? `${row.first_name} ${row.last_name}`
+        : row.proposer_email?.split('@')[0] || 'Unknown',
+    },
+    proposed_at: row.proposed_at,
+    collection: {
+      type: row.working_group_id ? 'committee' : 'personal',
+      committee_name: row.committee_name,
+      committee_slug: row.committee_slug,
+    },
+    authors: row.authors || [],
+  }));
+
+  const byCollection: Record<string, number> = {};
+  for (const item of items) {
+    const key = item.collection.committee_slug || 'personal';
+    byCollection[key] = (byCollection[key] || 0) + 1;
+  }
+
+  return { items, summary: { total: items.length, by_collection: byCollection } };
+}
+
+export type ContentReviewError =
+  | 'not_found'
+  | 'invalid_status'
+  | 'permission_denied'
+  | 'missing_reason';
+
+export interface ContentReviewResult {
+  success: boolean;
+  status?: 'published' | 'draft' | 'rejected';
+  message?: string;
+  error?: ContentReviewError;
+  error_message?: string;
+}
+
+/**
+ * Approve pending content - direct function call (no HTTP required).
+ */
+export async function approveContentForUser(
+  user: ContentUser,
+  contentId: string,
+  opts: { publishImmediately?: boolean } = {}
+): Promise<ContentReviewResult> {
+  const publishImmediately = opts.publishImmediately ?? true;
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT p.*, wg.slug as committee_slug, wg.name as committee_name, wg.slack_channel_id
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'pending_review') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Content is not pending review (current status: ${content.status})`,
+    };
+  }
+
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsLead = content.working_group_id
+    ? await isCommitteeLead(content.working_group_id, user.id)
+    : false;
+
+  if (!userIsAdmin && !userIsLead) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'You do not have permission to approve this content',
+    };
+  }
+
+  const newStatus: 'published' | 'draft' = publishImmediately ? 'published' : 'draft';
+  const publishedAt = publishImmediately ? new Date().toISOString() : null;
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = $1, published_at = $2,
+         reviewed_by_user_id = $3, reviewed_at = NOW()
+     WHERE id = $4`,
+    [newStatus, publishedAt, user.id, contentId]
+  );
+
+  logger.info({
+    contentId,
+    reviewerId: user.id,
+    newStatus,
+    committeeSlug: content.committee_slug,
+  }, 'Content approved');
+
+  if (newStatus === 'published' && content.committee_slug) {
+    notifyPublishedPost({
+      slackChannelId: content.slack_channel_id ?? undefined,
+      workingGroupName: content.committee_name,
+      workingGroupSlug: content.committee_slug,
+      postTitle: content.title,
+      postSlug: content.slug,
+      authorName: content.author_name || 'Unknown',
+      contentType: content.content_type || 'article',
+      excerpt: content.excerpt || undefined,
+      externalUrl: content.external_url || undefined,
+      category: content.category || undefined,
+      isMembersOnly: content.is_members_only || false,
+    }).catch(err => {
+      logger.warn({ err }, 'Failed to send Slack channel notification for approved content');
+    });
+
+    if (content.proposer_user_id) {
+      sendSocialAmplificationDM({
+        proposerUserId: content.proposer_user_id,
+        title: content.title,
+        excerpt: content.excerpt || undefined,
+        subtitle: content.subtitle || undefined,
+        workingGroupSlug: content.committee_slug,
+        postSlug: content.slug,
+        contentType: content.content_type || 'article',
+        isMembersOnly: content.is_members_only || false,
+      }).catch(err => {
+        logger.warn({ err }, 'Failed to send social amplification DM for approved content');
+      });
+    }
+  }
+
+  return {
+    success: true,
+    status: newStatus,
+    message: publishImmediately
+      ? 'Content approved and published'
+      : 'Content approved and saved as draft',
+  };
+}
+
+/**
+ * Reject pending content - direct function call (no HTTP required).
+ */
+export async function rejectContentForUser(
+  user: ContentUser,
+  contentId: string,
+  reason: string
+): Promise<ContentReviewResult> {
+  if (!reason) {
+    return {
+      success: false,
+      error: 'missing_reason',
+      error_message: 'A reason is required when rejecting content',
+    };
+  }
+
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT p.*, wg.slug as committee_slug
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'pending_review') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Content is not pending review (current status: ${content.status})`,
+    };
+  }
+
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsLead = content.working_group_id
+    ? await isCommitteeLead(content.working_group_id, user.id)
+    : false;
+
+  if (!userIsAdmin && !userIsLead) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'You do not have permission to reject this content',
+    };
+  }
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = 'rejected', rejection_reason = $1,
+         reviewed_by_user_id = $2, reviewed_at = NOW()
+     WHERE id = $3`,
+    [reason, user.id, contentId]
+  );
+
+  logger.info({
+    contentId,
+    reviewerId: user.id,
+    reason,
+    committeeSlug: content.committee_slug,
+  }, 'Content rejected');
+
+  return { success: true, status: 'rejected', message: 'Content rejected' };
+}
+
+/**
  * Create content routes
  * Returns a router to be mounted at /api/content
  */
@@ -484,106 +805,11 @@ export function createContentRouter(): Router {
     try {
       const user = req.user!;
       const committeeSlug = req.query.committee_slug as string | undefined;
-      const pool = getPool();
-
-      // Get committees user leads
-      // Join with slack_user_mappings to handle users who were added as leader via Slack ID
-      const leaderResult = await pool.query(
-        `SELECT wg.id, wg.name, wg.slug
-         FROM working_group_leaders wgl
-         LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
-         JOIN working_groups wg ON wg.id = wgl.working_group_id
-         WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
-        [user.id]
+      const result = await listPendingContentForUser(
+        { id: user.id, email: user.email },
+        { committeeSlug }
       );
-      const ledCommittees = leaderResult.rows;
-      const ledCommitteeIds = ledCommittees.map(c => c.id);
-
-      // Check if admin
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
-
-      if (!userIsAdmin && ledCommitteeIds.length === 0) {
-        return res.json({
-          items: [],
-          summary: { total: 0, by_collection: {} },
-        });
-      }
-
-      // Build query for pending content
-      let query = `
-        SELECT
-          p.id, p.title, p.subtitle, p.excerpt, p.content, p.slug, p.content_type,
-          p.external_url, p.external_site_name,
-          p.proposer_user_id, p.proposed_at, p.working_group_id,
-          wg.name as committee_name, wg.slug as committee_slug,
-          u.first_name, u.last_name, u.email as proposer_email,
-          (SELECT json_agg(json_build_object(
-            'user_id', ca.user_id,
-            'display_name', ca.display_name
-          ) ORDER BY ca.display_order)
-          FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
-        FROM perspectives p
-        LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-        LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
-        WHERE p.status = 'pending_review'
-      `;
-      const params: (string | string[])[] = [];
-
-      if (!userIsAdmin) {
-        // Non-admins only see pending for committees they lead
-        params.push(ledCommitteeIds);
-        query += ` AND p.working_group_id = ANY($${params.length})`;
-      }
-
-      if (committeeSlug) {
-        params.push(committeeSlug);
-        query += ` AND wg.slug = $${params.length}`;
-      }
-
-      query += ` ORDER BY p.proposed_at ASC`;
-
-      const result = await pool.query(query, params);
-
-      // Format response
-      const items = result.rows.map(row => ({
-        id: row.id,
-        title: row.title,
-        subtitle: row.subtitle,
-        slug: row.slug,
-        excerpt: row.excerpt,
-        content: row.content,
-        content_type: row.content_type,
-        external_url: row.external_url,
-        external_site_name: row.external_site_name,
-        proposer: {
-          id: row.proposer_user_id,
-          name: row.first_name && row.last_name
-            ? `${row.first_name} ${row.last_name}`
-            : row.proposer_email?.split('@')[0] || 'Unknown',
-        },
-        proposed_at: row.proposed_at,
-        collection: {
-          type: row.working_group_id ? 'committee' : 'personal',
-          committee_name: row.committee_name,
-          committee_slug: row.committee_slug,
-        },
-        authors: row.authors || [],
-      }));
-
-      // Calculate summary
-      const byCollection: Record<string, number> = {};
-      for (const item of items) {
-        const key = item.collection.committee_slug || 'personal';
-        byCollection[key] = (byCollection[key] || 0) + 1;
-      }
-
-      res.json({
-        items,
-        summary: {
-          total: items.length,
-          by_collection: byCollection,
-        },
-      });
+      res.json(result);
     } catch (error) {
       logger.error({ err: error }, 'GET /api/content/pending error');
       res.status(500).json({
@@ -598,106 +824,29 @@ export function createContentRouter(): Router {
       const user = req.user!;
       const { id } = req.params;
       const { publish_immediately = true } = req.body;
-      const pool = getPool();
 
-      // Get the content with working group details
-      const contentResult = await pool.query(
-        `SELECT p.*, wg.slug as committee_slug, wg.name as committee_name, wg.slack_channel_id
-         FROM perspectives p
-         LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-         WHERE p.id = $1`,
-        [id]
+      const result = await approveContentForUser(
+        { id: user.id, email: user.email },
+        id,
+        { publishImmediately: publish_immediately }
       );
 
-      if (contentResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'Content not found',
-          message: `No content found with id: ${id}`,
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : 'Invalid status',
+          message: result.error_message,
         });
-      }
-
-      const content = contentResult.rows[0];
-
-      if (content.status !== 'pending_review') {
-        return res.status(400).json({
-          error: 'Invalid status',
-          message: `Content is not pending review (current status: ${content.status})`,
-        });
-      }
-
-      // Check permission
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
-      const userIsLead = content.working_group_id
-        ? await isCommitteeLead(content.working_group_id, user.id)
-        : false;
-
-      if (!userIsAdmin && !userIsLead) {
-        return res.status(403).json({
-          error: 'Permission denied',
-          message: 'You do not have permission to approve this content',
-        });
-      }
-
-      // Update status
-      const newStatus = publish_immediately ? 'published' : 'draft';
-      const publishedAt = publish_immediately ? new Date().toISOString() : null;
-
-      await pool.query(
-        `UPDATE perspectives
-         SET status = $1, published_at = $2,
-             reviewed_by_user_id = $3, reviewed_at = NOW()
-         WHERE id = $4`,
-        [newStatus, publishedAt, user.id, id]
-      );
-
-      logger.info({
-        contentId: id,
-        reviewerId: user.id,
-        newStatus,
-        committeeSlug: content.committee_slug,
-      }, 'Content approved');
-
-      // Send Slack notification when content is published
-      if (newStatus === 'published' && content.committee_slug) {
-        notifyPublishedPost({
-          slackChannelId: content.slack_channel_id ?? undefined,
-          workingGroupName: content.committee_name,
-          workingGroupSlug: content.committee_slug,
-          postTitle: content.title,
-          postSlug: content.slug,
-          authorName: content.author_name || 'Unknown',
-          contentType: content.content_type || 'article',
-          excerpt: content.excerpt || undefined,
-          externalUrl: content.external_url || undefined,
-          category: content.category || undefined,
-          isMembersOnly: content.is_members_only || false,
-        }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack channel notification for approved content');
-        });
-
-        // DM the author with social media copy (fire-and-forget)
-        if (content.proposer_user_id) {
-          sendSocialAmplificationDM({
-            proposerUserId: content.proposer_user_id,
-            title: content.title,
-            excerpt: content.excerpt || undefined,
-            subtitle: content.subtitle || undefined,
-            workingGroupSlug: content.committee_slug,
-            postSlug: content.slug,
-            contentType: content.content_type || 'article',
-            isMembersOnly: content.is_members_only || false,
-          }).catch(err => {
-            logger.warn({ err }, 'Failed to send social amplification DM for approved content');
-          });
-        }
       }
 
       res.json({
         success: true,
-        status: newStatus,
-        message: publish_immediately
-          ? 'Content approved and published'
-          : 'Content approved and saved as draft',
+        status: result.status,
+        message: result.message,
       });
     } catch (error) {
       logger.error({ err: error }, 'POST /api/content/:id/approve error');
@@ -800,73 +949,30 @@ export function createContentRouter(): Router {
       const user = req.user!;
       const { id } = req.params;
       const { reason } = req.body;
-      const pool = getPool();
 
-      if (!reason) {
-        return res.status(400).json({
-          error: 'Missing reason',
-          message: 'A reason is required when rejecting content',
-        });
-      }
-
-      // Get the content
-      const contentResult = await pool.query(
-        `SELECT p.*, wg.slug as committee_slug
-         FROM perspectives p
-         LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-         WHERE p.id = $1`,
-        [id]
+      const result = await rejectContentForUser(
+        { id: user.id, email: user.email },
+        id,
+        reason
       );
 
-      if (contentResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'Content not found',
-          message: `No content found with id: ${id}`,
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : result.error === 'missing_reason' ? 'Missing reason'
+               : 'Invalid status',
+          message: result.error_message,
         });
       }
-
-      const content = contentResult.rows[0];
-
-      if (content.status !== 'pending_review') {
-        return res.status(400).json({
-          error: 'Invalid status',
-          message: `Content is not pending review (current status: ${content.status})`,
-        });
-      }
-
-      // Check permission
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
-      const userIsLead = content.working_group_id
-        ? await isCommitteeLead(content.working_group_id, user.id)
-        : false;
-
-      if (!userIsAdmin && !userIsLead) {
-        return res.status(403).json({
-          error: 'Permission denied',
-          message: 'You do not have permission to reject this content',
-        });
-      }
-
-      // Update status
-      await pool.query(
-        `UPDATE perspectives
-         SET status = 'rejected', rejection_reason = $1,
-             reviewed_by_user_id = $2, reviewed_at = NOW()
-         WHERE id = $3`,
-        [reason, user.id, id]
-      );
-
-      logger.info({
-        contentId: id,
-        reviewerId: user.id,
-        reason,
-        committeeSlug: content.committee_slug,
-      }, 'Content rejected');
 
       res.json({
         success: true,
-        status: 'rejected',
-        message: 'Content rejected',
+        status: result.status,
+        message: result.message,
       });
     } catch (error) {
       logger.error({ err: error }, 'POST /api/content/:id/reject error');
