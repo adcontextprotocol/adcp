@@ -282,10 +282,14 @@ phases:
       RFC 3986 `unreserved` characters remain unescaped before substituting them
       into a URL context. Nested macro expansion is prohibited.
 
-      This phase exercises the rule with attacker-shaped catalog values drawn
-      from the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`:
-      reserved-char breakout, nested-expansion preservation, CRLF injection,
-      non-ASCII UTF-8, mixed path/query, and bidi-override neutralization.
+      This phase exercises the rule with three attacker-shaped catalog values
+      drawn from the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`:
+      reserved-char breakout, nested-expansion preservation, and non-ASCII
+      UTF-8. The remaining canonical vectors (CRLF injection, bidi-override,
+      mixed path/query, url-scheme injection) are exercised at the unit-test
+      layer and, where a specialism's template shape supports them, in
+      specialism-specific substitution-safety phases (see
+      `creative-generative/index.yaml` for CRLF + bidi coverage).
 
       The `expect_substitution_safe` step is gated on the
       `substitution_observer_runner` test-kit contract (see
