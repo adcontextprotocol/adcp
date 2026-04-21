@@ -62,11 +62,11 @@ Each entry is tagged:
 
 ## Idempotency `missing_key` vector unreachable through SDK
 
-**Status.** Tracked — [#2607](https://github.com/adcontextprotocol/adcp/issues/2607).
+**Status.** Tracked — [adcp#2607](https://github.com/adcontextprotocol/adcp/issues/2607) (spec), [adcp-client#678](https://github.com/adcontextprotocol/adcp-client/issues/678) (runner fix).
 
 **The ambiguity.** The storyboard `idempotency > create_media_buy_missing_key` asserts that agents reject a mutating request missing `idempotency_key` with `INVALID_REQUEST` or `VALIDATION_ERROR`. But the reference `@adcp/client` SDK auto-injects `idempotency_key` client-side, so the vector body leaves the client with the key populated — the agent never sees the malformed request.
 
-**Interim guidance.** Implement missing-key rejection in your agent anyway — the spec MUST still stands. Don't rely on the storyboard to verify it; unit-test directly against a raw-HTTP request. The planned fix (raw-HTTP probe, parallel to signing vectors) will land in the storyboard runner before 3.0 GA.
+**Interim guidance.** Implement missing-key rejection in your agent anyway — the spec MUST still stands. Don't rely on the storyboard to verify it; unit-test directly against a raw-HTTP request. The planned fix (`probeRawRequest`, parallel to the existing `probeSignedRequest` for signing vectors) is tracked in [adcp-client#678](https://github.com/adcontextprotocol/adcp-client/issues/678) for 3.0 GA.
 
 **How it bites.** The vector passes vacuously today — your agent appears conformant on this assertion regardless of whether it actually rejects missing-key inputs.
 

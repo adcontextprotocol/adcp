@@ -80,7 +80,7 @@ If the capability IS declared and the vector still runs and fails, the storyboar
 
 **What is actually happening.** The storyboard is supposed to send a `create_media_buy` with no `idempotency_key` and assert your agent rejects it with `INVALID_REQUEST`. But the reference `@adcp/client` SDK auto-injects an `idempotency_key` before the request leaves the client — so your agent sees a populated key and correctly doesn't reject, and the vector has nothing to probe.
 
-**What to know.** This is a known SDK-layer/agent-layer inversion ([#2607](https://github.com/adcontextprotocol/adcp/issues/2607)). Until the runner adopts a raw-HTTP probe for this vector (parallel to how signing vectors bypass the SDK), "missing key rejection" is an SDK-layer concern: the SDK enforces client-side, the agent never sees the malformed request.
+**What to know.** This is a known SDK-layer/agent-layer inversion — tracked upstream as [adcp#2607](https://github.com/adcontextprotocol/adcp/issues/2607) and the runner-side fix as [adcp-client#678](https://github.com/adcontextprotocol/adcp-client/issues/678). Until the runner adopts a raw-HTTP probe for this vector (parallel to how signing vectors bypass the SDK), "missing key rejection" is an SDK-layer concern: the SDK enforces client-side, the agent never sees the malformed request.
 
 **Fix.** For your own agent, implement missing-key rejection anyway — the spec MUST still stands. Don't rely on the storyboard to verify it; unit-test it directly against a raw-HTTP request.
 
