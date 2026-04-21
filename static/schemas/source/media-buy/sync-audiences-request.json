@@ -31,7 +31,8 @@
         "properties": {
           "audience_id": {
             "type": "string",
-            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays."
+            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays.",
+            "x-entity": "audience"
           },
           "name": {
             "type": "string",

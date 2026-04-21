@@ -19,7 +19,8 @@
       "type": "array",
       "description": "Array of media buy IDs to get delivery data for",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "media_buy"
       },
       "minItems": 1
     },

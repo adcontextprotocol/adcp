@@ -11,7 +11,8 @@
     },
     "task_id": {
       "type": "string",
-      "description": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      "description": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete.",
+      "x-entity": "task"
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",

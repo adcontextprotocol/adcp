@@ -161,7 +161,8 @@
         "properties": {
           "media_buy_id": {
             "type": "string",
-            "description": "Seller's media buy identifier"
+            "description": "Seller's media buy identifier",
+            "x-entity": "media_buy"
           },
           "status": {
             "type": "string",
@@ -226,7 +227,8 @@
                   "properties": {
                     "package_id": {
                       "type": "string",
-                      "description": "Seller's package identifier"
+                      "description": "Seller's package identifier",
+                      "x-entity": "package"
                     },
                     "pacing_index": {
                       "type": "number",
@@ -320,7 +322,8 @@
                             "properties": {
                               "creative_id": {
                                 "type": "string",
-                                "description": "Creative identifier matching the creative assignment"
+                                "description": "Creative identifier matching the creative assignment",
+                                "x-entity": "creative"
                               },
                               "weight": {
                                 "type": "number",
@@ -486,7 +489,8 @@
                             "properties": {
                               "audience_id": {
                                 "type": "string",
-                                "description": "Audience segment identifier. For 'synced' source, matches audience_id from sync_audiences. For other sources, seller-defined."
+                                "description": "Audience segment identifier. For 'synced' source, matches audience_id from sync_audiences. For other sources, seller-defined.",
+                                "x-entity": "audience"
                               },
                               "audience_source": {
                                 "$ref": "/schemas/enums/audience-source.json",

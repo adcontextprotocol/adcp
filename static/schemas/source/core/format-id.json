@@ -3,6 +3,7 @@
   "$id": "/schemas/core/format-id.json",
   "title": "Format ID",
   "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+  "x-entity": "creative_format",
   "type": "object",
   "properties": {
     "agent_url": {

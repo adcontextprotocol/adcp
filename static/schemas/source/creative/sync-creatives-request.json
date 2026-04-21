@@ -28,7 +28,8 @@
       "type": "array",
       "description": "Optional filter to limit sync scope to specific creative IDs. When provided, only these creatives will be created/updated. Other creatives in the library are unaffected. Useful for partial updates and error recovery.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "creative"
       },
       "minItems": 1,
       "maxItems": 100
@@ -41,11 +42,13 @@
         "properties": {
           "creative_id": {
             "type": "string",
-            "description": "ID of the creative to assign"
+            "description": "ID of the creative to assign",
+            "x-entity": "creative"
           },
           "package_id": {
             "type": "string",
-            "description": "ID of the package to assign the creative to"
+            "description": "ID of the package to assign the creative to",
+            "x-entity": "package"
           },
           "weight": {
             "type": "number",
