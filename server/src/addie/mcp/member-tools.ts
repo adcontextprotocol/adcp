@@ -24,6 +24,8 @@ import {
   comply,
   getBriefsByVertical,
   SAMPLE_BRIEFS,
+  classifyCapabilityResolutionError,
+  presentCapabilityResolutionError,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -3250,8 +3252,37 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      const capsError = classifyCapabilityResolutionError(error);
+
+      // Agent-declared strings (specialism id, parent protocol name) reach
+      // the LLM via this tool result, so fence them to neutralise markdown /
+      // prompt-injection payloads. The classifier already sanitizes control
+      // chars and length-caps the extracted values; `fenceAgentValue` adds
+      // the "this is agent input" quotes Addie is trained to treat as data.
+      if (capsError) {
+        const presentation = presentCapabilityResolutionError(capsError);
+        logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
+        const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+        if (capsError.kind === 'specialism_parent_protocol_missing') {
+          const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
+          return (
+            `**Capabilities misconfigured.** The agent at ${resolved.resolvedUrl} declares the ` +
+            `${safeSpec} specialism, but its parent protocol ${safeParent} is missing from ` +
+            `\`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n` +
+            `Add the ${safeParent} protocol to the \`supported_protocols\` array in the agent's ` +
+            `\`get_adcp_capabilities\` response, redeploy, then re-run \`evaluate_agent_quality\`.`
+          );
+        }
+        return (
+          `**Unknown specialism.** The agent declares ${safeSpec}, which isn't in the local ` +
+          `compliance cache. Either the cache is stale (re-sync the \`@adcp/client\` compliance ` +
+          `tarball) or the specialism id is a typo — cross-check against ` +
+          `https://adcontextprotocol.org/compliance/latest/index.json.`
+        );
+      }
+
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
       if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
@@ -3338,8 +3369,9 @@ export function createMemberToolHandlers(
     }
 
     // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
-    // closed if a declared specialism has no local bundle — log the raw error
-    // server-side (it includes cache paths) but show the member a clean message.
+    // closed for two distinct agent-config problems: a specialism whose parent
+    // protocol is missing from supported_protocols, or a specialism whose
+    // bundle isn't in the local cache. Classify and coach accordingly.
     let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
     try {
       const res = resolveStoryboardsForCapabilities({
@@ -3348,11 +3380,27 @@ export function createMemberToolHandlers(
       });
       resolvedBundles = res.bundles;
     } catch (error) {
-      logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
-      const knownIds = index?.specialisms.map(s => s.id).sort() || [];
+      const capsError = classifyCapabilityResolutionError(error);
       // specialism ids came from the untrusted agent — fence them so a hostile
       // id string can't break out of the markdown fence.
       const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
+      const safeProtocolsDeclared = supportedProtocols.map(p => fenceAgentValue(p, 80)).filter(Boolean).join(', ');
+
+      if (capsError?.kind === 'specialism_parent_protocol_missing') {
+        const presentation = presentCapabilityResolutionError(capsError);
+        logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
+        const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+        const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
+        output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but its parent protocol ${safeParent} is missing from \`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n`;
+        if (safeProtocolsDeclared) {
+          output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+        }
+        output += `Add the ${safeParent} protocol to the \`supported_protocols\` array in \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
+        return output;
+      }
+
+      logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
+      const knownIds = index?.specialisms.map(s => s.id).sort() || [];
       output += `**Can't resolve bundles.** The agent declared a specialism (${safeDeclared || '(empty)'}) that the local compliance cache doesn't have a matching bundle for.\n\n`;
       if (knownIds.length > 0) {
         output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
