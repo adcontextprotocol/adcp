@@ -20,6 +20,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
+import sharp from "sharp";
 import { signC2PA, isC2PASigningEnabled } from "../server/src/services/c2pa.js";
 
 const STYLES: Record<string, string> = {
@@ -123,7 +124,7 @@ async function generateAndSaveImage(
         fs.mkdirSync(dir, { recursive: true });
       }
       const rawBuffer = Buffer.from(part.inlineData.data, "base64");
-      const finalBuffer = signStoryboardIfEnabled(rawBuffer, outputPath, prompt, style);
+      const finalBuffer = await signStoryboardIfEnabled(rawBuffer, outputPath, prompt, style);
       fs.writeFileSync(outputPath, finalBuffer);
       console.log(`  Saved: ${outputPath} (${(finalBuffer.length / 1024).toFixed(0)} KB)`);
       return finalBuffer;
@@ -141,15 +142,24 @@ async function generateAndSaveImage(
  * and warns if signing fails — docs storyboards are a build-time artifact
  * and a single failure should not break a batch run.
  */
-function signStoryboardIfEnabled(
+async function signStoryboardIfEnabled(
   buffer: Buffer,
   outputPath: string,
   prompt: string,
   style: string,
-): Buffer {
+): Promise<Buffer> {
   if (!isC2PASigningEnabled()) return buffer;
   try {
-    const signed = signC2PA(buffer, {
+    // Re-encode to PNG before signing. Gemini occasionally returns webp/jpeg
+    // variants that c2pa-node rejects with "type is unsupported"; normalizing
+    // through sharp guarantees the bytes match the image/png mimeType the
+    // signer declares. failOn:'error' + .rotate() apply EXIF orientation and
+    // drop upstream metadata so the C2PA manifest is the sole provenance.
+    const pngBuffer = await sharp(buffer, { failOn: "error" })
+      .rotate()
+      .png()
+      .toBuffer();
+    const signed = signC2PA(pngBuffer, {
       claimGenerator: "AAO Docs Storyboard Generator",
       title: path.basename(outputPath),
       softwareAgent: { name: "gemini-3.1-flash-image-preview", version: "preview" },

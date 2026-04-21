@@ -7,6 +7,7 @@
  */
 
 import { createHash } from 'crypto';
+import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createLogger } from '../logger.js';
 import { withGeminiRetry } from '../utils/gemini-retry.js';
@@ -173,7 +174,7 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
         throw new Error(`Gemini returned non-image content: ${mimeType}`);
       }
       logger.info({ sizeKB: (imageBuffer.length / 1024).toFixed(0), mimeType }, 'Illustration generated');
-      return attachC2PAIfEnabled({ imageBuffer, promptUsed: prompt }, { title, category, editionDate });
+      return await attachC2PAIfEnabled({ imageBuffer, promptUsed: prompt }, { title, category, editionDate });
     }
   }
 
@@ -194,13 +195,23 @@ export async function generateIllustration(options: GenerateIllustrationOptions)
  * Every failure fires a throttled system-error alert (one per 5 min per source,
  * via notifySystemError) so sustained failures surface rather than hiding in logs.
  */
-export function attachC2PAIfEnabled(
+export async function attachC2PAIfEnabled(
   result: { imageBuffer: Buffer; promptUsed: string },
   manifest: { title: string; category?: string; editionDate?: string },
-): GenerateIllustrationResult {
+): Promise<GenerateIllustrationResult> {
   if (!isC2PASigningEnabled()) return result;
   try {
-    const signed = signC2PA(result.imageBuffer, {
+    // Re-encode to PNG before signing. Gemini's image model sometimes returns
+    // WebP/JPEG variants that c2pa-node rejects with "type is unsupported";
+    // normalizing through sharp guarantees the bytes match the image/png
+    // mimeType declared to the signer and matches what the portrait path does.
+    // failOn:'error' + .rotate() apply EXIF orientation and drop any upstream
+    // metadata so the C2PA manifest is the sole provenance source of truth.
+    const pngBuffer = await sharp(result.imageBuffer, { failOn: 'error' })
+      .rotate()
+      .png()
+      .toBuffer();
+    const signed = signC2PA(pngBuffer, {
       claimGenerator: 'AAO Illustration Generator',
       title: manifest.title,
       softwareAgent: { name: GEMINI_IMAGE_MODEL, version: GEMINI_IMAGE_VERSION },
