@@ -1387,6 +1387,7 @@
           external_url: document.getElementById('shareLinkUrl').value.trim(),
           excerpt: document.getElementById('shareLinkTake').value.trim() || null,
           collection: { slug: document.getElementById('shareLinkCollection').value },
+          status: 'published',
         };
         const res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed'); }

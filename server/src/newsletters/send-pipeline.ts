@@ -132,6 +132,7 @@ async function publishAsPerspective(
       display_title: config.authorTitle,
       display_order: 0,
     }],
+    status: 'published',
   });
 
   if (!result.success || !result.id) {
