@@ -387,6 +387,75 @@ phases:
   assert.deepEqual(contradictionsAcrossDocs(docs), []);
 });
 
+test('caller.role discriminates env: shared test_kit, distinct principal roles', () => {
+  // Forward guard (#2684): once #2670 part 2 removes `sb=` from the env
+  // fingerprint, two storyboards sharing a test_kit but exercising
+  // different principal roles (buyer_agent vs. orchestrator) would
+  // collapse into one fingerprint and false-positive as a contradiction.
+  // Note: both docs deliberately share id + test_kit; `role=<doc.caller.role>`
+  // is the sole discriminator under test.
+  const docs = {
+    'as_buyer.yaml': yaml.load(`
+id: sb_role_split
+caller:
+  role: buyer_agent
+prerequisites:
+  test_kit: "test-kits/shared.yaml"
+phases:
+  - id: p
+    steps:
+      - id: approved
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'as_orchestrator.yaml': yaml.load(`
+id: sb_role_split
+caller:
+  role: orchestrator
+prerequisites:
+  test_kit: "test-kits/shared.yaml"
+phases:
+  - id: p
+    steps:
+      - id: denied
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: POLICY_VIOLATION
+`),
+  };
+  assert.deepEqual(contradictionsAcrossDocs(docs), []);
+
+  // Direct fingerprint-level assertion: pin the discrimination to the
+  // role component specifically, not just "no contradiction fired for
+  // some reason." A future refactor that stops classifying outcomes
+  // across docs would leave the deepEqual check green.
+  const step = { comply_scenario: 'create' };
+  assert.notEqual(
+    fingerprintEnv(step, {}, docs['as_buyer.yaml']),
+    fingerprintEnv(step, {}, docs['as_orchestrator.yaml']),
+  );
+});
+
+test('env fingerprint tolerates missing caller block', () => {
+  // Guard: storyboards without a `caller:` block (or with non-string
+  // `caller.role`) must not crash the fingerprint and must not emit a
+  // spurious `role=` component. Matches the `typeof === 'string'`
+  // guards on sb/test_kit.
+  const docNoCaller = { id: 'sb_x', prerequisites: { test_kit: 'tk' } };
+  const docShapeyRole = { id: 'sb_x', caller: { role: { name: 'buyer' } }, prerequisites: { test_kit: 'tk' } };
+  const step = { comply_scenario: 'create' };
+  const fpNone = fingerprintEnv(step, {}, docNoCaller);
+  const fpShapey = fingerprintEnv(step, {}, docShapeyRole);
+  assert.equal(fpNone, fpShapey, 'non-string caller.role should be ignored like a missing caller block');
+  assert.ok(!fpNone.includes('role='), 'missing caller block must not produce a role= component');
+});
+
 test('top-level fixtures discriminates env: same id, different seeded state', () => {
   // Two runs of the same storyboard id against different seeded prerequisite
   // state (via top-level `fixtures:`) can legitimately assert different

@@ -290,7 +290,21 @@ function normalizeFixturesForHashing(fixtures) {
  *                are unreachable today. See #2670 for the planned removal.
  *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
  *                scenario but loading different test kits target different
- *                agent fixtures.
+ *                agent fixtures. Also the de-facto principal-identity
+ *                discriminator today: every test kit binds a principal
+ *                profile (spend authority, brand rights, category scoping),
+ *                and the current storyboard suite declares `caller.role:
+ *                buyer_agent` uniformly — so `test_kit` alone separates the
+ *                governance-denied-by-spend-authority path from the
+ *                governance-approved path. See #2684 for the audit.
+ *   role       — `doc.caller.role`. Forward-compatible guard for the
+ *                "shared test_kit, distinct principal role" case identified
+ *                in #2684. No-op on the current suite (all buyer_agent) but
+ *                automatically discriminates the first storyboard that
+ *                authors a different caller role against a shared kit —
+ *                load-bearing once #2670 part 2 removes `sb=` and the
+ *                fingerprint stops getting a free discriminator from the
+ *                storyboard id.
  *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
  *                different prerequisite state via `comply_test_controller`
  *                legitimately produce different outcomes for the same
@@ -305,6 +319,9 @@ function fingerprintEnv(step, phase, doc) {
   if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
   if (typeof doc?.prerequisites?.test_kit === 'string') {
     parts.push(`test_kit=${doc.prerequisites.test_kit}`);
+  }
+  if (typeof doc?.caller?.role === 'string') {
+    parts.push(`role=${doc.caller.role}`);
   }
   if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
     const fixturesHash = crypto
