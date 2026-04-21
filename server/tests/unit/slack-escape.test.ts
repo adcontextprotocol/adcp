@@ -32,10 +32,22 @@ describe('escapeSlackText', () => {
     expect(escapeSlackText(short, 240).endsWith('…')).toBe(false);
   });
 
-  it('truncation counts escaped characters toward the limit', () => {
-    // "<!here>" → "&lt;!here&gt;" (13 chars). If maxLength is 10, truncate.
-    const result = escapeSlackText('<!here> please', 10);
-    expect(result.length).toBe(11); // 10 + '…'
-    expect(result.endsWith('…')).toBe(true);
+  it('truncation caps raw input — escape expansion does not eat budget', () => {
+    // Attacker stuffs 1000 `<` characters. Raw length is 1000, so we
+    // truncate to 240 `<` before escaping. Escaped output is
+    // 240 * len('&lt;') + '…' = 240*4 + 1 = 961. Without
+    // truncate-first, a 240-char output cap would leave only ~60
+    // attacker characters visible; an attacker could pad content with
+    // cheap chars to push real content past the cutoff.
+    const evil = '<'.repeat(1000);
+    const result = escapeSlackText(evil, 240);
+    expect(result).toBe('&lt;'.repeat(240) + '…');
+    expect(result.length).toBe(240 * 4 + 1);
+  });
+
+  it('escape is applied after truncation, so short inputs are not mangled', () => {
+    // "<!here>" is 7 chars, well under 240 — should escape cleanly
+    // without losing characters to truncation.
+    expect(escapeSlackText('<!here>', 240)).toBe('&lt;!here&gt;');
   });
 });

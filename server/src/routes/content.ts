@@ -73,13 +73,20 @@ async function notifyPendingReview(
     slug: string;
     excerpt: string | null;
     content_type: string;
+    content: string | null;
+    proposed_at: string;
   },
-  authorName: string
+  authorName: string,
+  proposerUserId: string
 ): Promise<void> {
   const pool = getPool();
 
-  // Fetch the working group and committee leads in one trip so we can include
-  // lead names in the message (helps reviewers know who to tag or assign).
+  // Fetch the working group, committee leads, and channel config in one
+  // round-trip so we can enrich the message with lead names. The leads
+  // query only surfaces WorkOS-linked users — slack-only leads (leaders
+  // added by Slack ID before mapping) won't appear in the `*Leads:*` line.
+  // That matches the current data-integrity requirement; a reviewer seeing
+  // a missing leads line just means the committee has unmapped leads.
   const [wgResult, leadersResult, editorialChannel] = await Promise.all([
     pool.query(
       `SELECT name, slack_channel_id FROM working_groups WHERE id = $1`,
@@ -120,11 +127,36 @@ async function notifyPendingReview(
   const safeWg = escapeSlackText(wgName, 80);
   const safeExcerpt = perspective.excerpt ? escapeSlackText(perspective.excerpt, 240) : null;
   const leadLine = leadNames.length > 0
-    ? `\n*Leads:* ${leadNames.map(n => escapeSlackText(n, 60)).join(', ')}`
+    ? `*Leads:* ${leadNames.map(n => escapeSlackText(n, 60)).join(', ')}`
     : '';
   const excerptLine = safeExcerpt ? `\n\n> ${safeExcerpt}` : '';
   const reviewUrl = `https://agenticadvertising.org/dashboard/content?status=pending_review&id=${encodeURIComponent(perspective.id)}`;
   const typeLabel = perspective.content_type === 'link' ? 'Link' : 'Article';
+
+  // Reviewer triage fields: word count, reading time, submission age,
+  // source (Addie vs direct). Gives reviewers enough to decide whether
+  // to open the draft without clicking through.
+  const wordCount = perspective.content
+    ? perspective.content.split(/\s+/).filter(Boolean).length
+    : 0;
+  const readingMin = Math.max(1, Math.round(wordCount / 200));
+  const proposedAtUnix = Math.floor(new Date(perspective.proposed_at).getTime() / 1000);
+  const submittedLine = `Submitted <!date^${proposedAtUnix}^{date_short_pretty} at {time}|${perspective.proposed_at}>`;
+  const source = proposerUserId === 'system:addie' || proposerUserId?.startsWith('system:')
+    ? 'drafted with Addie'
+    : 'direct submission';
+  const triageLine = perspective.content_type === 'article' && wordCount > 0
+    ? `${wordCount.toLocaleString()} words • ~${readingMin} min read • ${submittedLine} • ${source}`
+    : `${submittedLine} • ${source}`;
+
+  const headerLine = `📝 *New ${typeLabel.toLowerCase()} for review — ${safeWg}*`;
+  const titleLine = `*${safeTitle}* by ${safeAuthor}`;
+
+  const messageBlocks = [
+    `${headerLine}\n${titleLine}\n${triageLine}`,
+    leadLine,
+    excerptLine.trimStart(),
+  ].filter(Boolean).join('\n');
 
   const message: SlackBlockMessage = {
     text: `${typeLabel} pending review: "${safeTitle}" by ${safeAuthor}`,
@@ -133,7 +165,7 @@ async function notifyPendingReview(
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `📝 *New ${typeLabel.toLowerCase()} submitted for review*\n\n*Title:* ${safeTitle}\n*Author:* ${safeAuthor}\n*Committee:* ${safeWg}${leadLine}${excerptLine}`,
+          text: messageBlocks,
         },
       },
       {
@@ -141,7 +173,7 @@ async function notifyPendingReview(
         elements: [
           {
             type: 'button',
-            text: { type: 'plain_text', text: 'Review', emoji: true },
+            text: { type: 'plain_text', text: 'Review draft', emoji: true },
             url: reviewUrl,
             action_id: 'review_content',
             style: 'primary',
@@ -158,20 +190,33 @@ async function notifyPendingReview(
     targets.push({ channelId: editorialChannelId, label: 'editorial' });
   }
 
-  await Promise.all(targets.map(async ({ channelId, label }) => {
+  const results = await Promise.all(targets.map(async ({ channelId, label }) => {
     try {
       await sendChannelMessage(channelId, message);
       logger.info(
         { workingGroupId, perspectiveId: perspective.id, channelId, target: label },
         'Sent pending content notification'
       );
+      return true;
     } catch (error) {
       logger.error(
         { error, workingGroupId, perspectiveId: perspective.id, channelId, target: label },
         'Failed to send pending content notification'
       );
+      return false;
     }
   }));
+
+  // Surface the case where every configured target failed. A single
+  // failure is already logged per-target; the additional log fires only
+  // when the queue is effectively silent despite a channel being
+  // configured — ops can alert on this.
+  if (results.length > 0 && results.every(r => !r)) {
+    logger.error(
+      { workingGroupId, perspectiveId: perspective.id, targetCount: targets.length },
+      'All pending-review notification targets failed — reviewers will not be paged'
+    );
+  }
 }
 
 /**
@@ -412,8 +457,11 @@ export async function proposeContentForUser(
         slug: perspective.slug,
         excerpt: perspective.excerpt ?? null,
         content_type: perspective.content_type,
+        content: perspective.content ?? null,
+        proposed_at: perspective.proposed_at,
       },
-      authorName
+      authorName,
+      user.id
     ).catch(err => {
       logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
     });
