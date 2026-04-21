@@ -12,8 +12,8 @@ Standardizing asset types ensures consistency across formats and makes requireme
 ## Important: Payload vs Requirements
 
 For payload schemas (the structure of the actual asset data supplied in creative manifests), see:
-- [Asset Type Registry](https://adcontextprotocol.org/schemas/v3/creative/asset-types/index.json) - Links to all payload schemas
-- Core Asset Schemas at `/schemas/v3/core/assets/` - Individual asset payload definitions
+- [Asset Type Registry](https://adcontextprotocol.org/schemas/latest/creative/asset-types/index.json) - Links to all payload schemas
+- Core Asset Schemas at `/schemas/latest/core/assets/` - Individual asset payload definitions
 
 **Key distinction:**
 
@@ -232,7 +232,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
 - `duration_ms`: Expected video duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Includes IAB VAST 4.2 TrackingEvents plus flattened representations of Impression, Error, VideoClicks, and ViewableImpression elements:
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/latest/enums/vast-tracking-event.json) enum. Includes IAB VAST 4.2 TrackingEvents plus flattened representations of Impression, Error, VideoClicks, and ViewableImpression elements:
   - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (pre-4.0 compat), `exitFullscreen` (pre-4.0 compat), `otherAdInteraction`, `interactiveStart` (SIMID)
   - **Progress**: `progress` (for custom progress points via VAST `offset` attribute), `notUsed` (prefetched but not played)
@@ -278,7 +278,7 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 - `content`: Inline DAAST XML content (required when delivery_type is "inline")
 - `daast_version`: DAAST specification version (1.0, 1.1)
 - `duration_ms`: Expected audio duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/daast-tracking-event.json) enum. Includes DAAST-applicable events plus flattened Impression, Error, and ViewableImpression elements:
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/latest/enums/daast-tracking-event.json) enum. Includes DAAST-applicable events plus flattened Impression, Error, and ViewableImpression elements:
   - **Playback**: `impression` (billing event), `creativeView` (companion ad display), `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `skip`
   - **Progress**: `progress`
