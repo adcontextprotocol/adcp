@@ -407,10 +407,72 @@ test('composite_entity_disagreement: root x-entity and variant x-entity must agr
   assert.deepEqual(disagreements[0].variantEntities, ['signal_activation_id']);
 });
 
+test('entity_mismatch: registry-vs-inline policy conflation (#2685) is caught', () => {
+  // A storyboard captures a registry policy_id from a sync-plans-response
+  // (tagged governance_registry_policy) and feeds it into an inline
+  // policy-entry.json::policy_id (tagged governance_inline_policy). This is
+  // the namespace split the #2685 follow-up resolved: registry ids are
+  // globally unique, inline ids are plan-scoped, and they are not
+  // interchangeable. Before the split both were `governance_policy` and the
+  // lint silently allowed this flow.
+  const doc = {
+    phases: [
+      {
+        id: 'sync',
+        steps: [
+          {
+            id: 'sync_plans',
+            schema_ref: 'governance/sync-plans-request.json',
+            response_schema_ref: 'governance/sync-plans-response.json',
+            sample_request: {
+              idempotency_key: 'xxxxxxxxxxxxxxxxxxxx',
+              plans: [{ plan_id: 'p1', policy_ids: ['uk_hfss'] }],
+            },
+            context_outputs: [
+              { path: 'plans[0].resolved_policies[0].policy_id', name: 'some_policy' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'standards',
+        steps: [
+          {
+            id: 'create_standards',
+            schema_ref: 'content-standards/create-content-standards-request.json',
+            response_schema_ref: 'content-standards/create-content-standards-response.json',
+            sample_request: {
+              idempotency_key: 'yyyyyyyyyyyyyyyyyyyy',
+              standards_id: 's1',
+              account: { account_id: 'a1' },
+              policies: [
+                {
+                  policy_id: '$context.some_policy',
+                  enforcement: 'must',
+                  policy: 'inline rule text',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc);
+  const mismatch = violations.find((v) => v.rule === 'entity_mismatch');
+  assert.ok(mismatch, `expected entity_mismatch, got ${JSON.stringify(violations)}`);
+  assert.equal(mismatch.captureEntity, 'governance_registry_policy');
+  assert.equal(mismatch.consumeEntity, 'governance_inline_policy');
+});
+
 test('loadRegistry: core x-entity-types.json is valid and non-empty', () => {
   const registry = loadRegistry();
   assert.ok(registry.size > 0, 'registry should enumerate entity types');
   assert.ok(registry.has('advertiser_brand'), 'advertiser_brand must be registered');
   assert.ok(registry.has('rights_holder_brand'), 'rights_holder_brand must be registered');
   assert.ok(registry.has('rights_grant'), 'rights_grant must be registered');
+  assert.ok(registry.has('governance_registry_policy'), 'governance_registry_policy must be registered');
+  assert.ok(registry.has('governance_inline_policy'), 'governance_inline_policy must be registered');
+  assert.ok(!registry.has('governance_policy'), 'governance_policy should have been split and removed');
 });

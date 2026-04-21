@@ -109,11 +109,13 @@ High-level groupings (see the registry for full descriptions). *Categories below
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
-| Plans & governance | `media_plan`, `governance_plan`, `governance_policy`, `governance_check`, `content_standards`, `task` |
+| Plans & governance | `media_plan`, `governance_plan`, `governance_registry_policy`, `governance_inline_policy`, `governance_check`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option` |
 | SI | `si_session`, `offering` |
 
-**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_policy` identifies a rule inside or referenced by a plan (*"which rule?"* — e.g., `uk_hfss`); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
+**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_registry_policy` / `governance_inline_policy` identify a rule inside or referenced by a plan (*"which rule?"*); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
+
+**Registry vs. inline policy:** Use `governance_registry_policy` when the field holds a globally-unique registry id (e.g., `uk_hfss`, `us_coppa`, `garm:brand_safety:violence`). Use `governance_inline_policy` when the field holds a plan-scoped bespoke id authored via `policy-entry.json`. Every `$ref` to `policy-entry.json` in an AdCP task schema is inline by definition — registry entries are served by a separate out-of-band API. If the field can legitimately hold either at runtime (the two ambiguous sites: `check-governance-response::findings[].policy_id`, `get-plan-audit-logs-response` audit entries, plus reserved `creative/creative-feature-result.json::policy_id` and `core/feature-requirement.json::policy_id`), leave it un-annotated and add a `$comment` starting with `"x-entity deliberately omitted"` — the gap lister recognises that phrase and skips the leaf.
 
 The registry file is the source of truth. To see every annotated field across the repo: `git grep -l x-entity static/schemas/source`.
 

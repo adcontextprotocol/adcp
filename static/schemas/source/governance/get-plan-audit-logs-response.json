@@ -296,7 +296,7 @@
                       },
                       "policy_id": {
                         "type": "string",
-                        "x-entity": "governance_policy"
+                        "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"
