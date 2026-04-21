@@ -12,15 +12,21 @@
 import {
   CONTROLLER_SCENARIOS,
   TestControllerError,
+  createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
 } from '@adcp/client';
 import type { TestControllerStore } from '@adcp/client';
+import type { BrandReference } from '@adcp/client';
 import type {
   TrainingContext,
   ToolArgs,
   SessionState,
   MediaBuyState,
+  CreativeState,
+  GovernancePlanState,
+  AccountRef,
+  BrandRef,
   ComplyDeliveryAccumulator,
   ComplyBudgetSimulation,
 } from './types.js';
@@ -320,6 +326,130 @@ function createStore(session: SessionState): TestControllerStore {
         message: `Budget for ${entityId} set to ${spendPercentage}% consumed ($${computedSpend.toFixed(2)} of $${budgetAmount.toFixed(2)})`,
       };
     },
+
+    // ── Seed scenarios (spec: storyboard fixtures block) ──────────────
+    // Fixtures are permissive objects (spec: additionalProperties: true).
+    // Each seed method merges the fixture on top of sensible defaults and
+    // stores in the session. Idempotency (same ID + equivalent fixture
+    // returns success, same ID + different fixture returns INVALID_STATE)
+    // is enforced by the SDK's seed cache wired in handleComplyTestController.
+
+    async seedProduct(productId, fixture) {
+      const ext = session.complyExtensions;
+      enforceMapCap(ext.seededProducts, productId, 'seeded products');
+      ext.seededProducts.set(productId, { product_id: productId, ...(fixture ?? {}) });
+    },
+
+    async seedPricingOption(productId, pricingOptionId, fixture) {
+      const ext = session.complyExtensions;
+      const key = `${productId}:${pricingOptionId}`;
+      enforceMapCap(ext.seededPricingOptions, key, 'seeded pricing options');
+      ext.seededPricingOptions.set(key, {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        ...(fixture ?? {}),
+      });
+    },
+
+    async seedCreative(creativeId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.creatives, creativeId, 'creatives');
+      const existing = session.creatives.get(creativeId);
+      const now = new Date().toISOString();
+      const formatId = (fx.format_id as CreativeState['formatId']) ?? existing?.formatId ?? { id: 'display_300x250' };
+      session.creatives.set(creativeId, {
+        creativeId,
+        formatId,
+        name: (fx.name as string | undefined) ?? existing?.name,
+        status: (fx.status as string | undefined) ?? existing?.status ?? 'approved',
+        syncedAt: existing?.syncedAt ?? now,
+        manifest: (fx.manifest as CreativeState['manifest']) ?? existing?.manifest,
+        pricingOptionId: (fx.pricing_option_id as string | undefined) ?? existing?.pricingOptionId,
+      });
+    },
+
+    async seedPlan(planId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.governancePlans, planId, 'governance plans');
+      const existing = session.governancePlans.get(planId);
+      const fxBudget = (fx.budget as Record<string, unknown> | undefined) ?? {};
+      const fxFlight = (fx.flight as { start?: string; end?: string } | undefined) ?? {};
+      const now = new Date().toISOString();
+      const defaultFlightEnd = new Date(Date.now() + 90 * 86_400_000).toISOString();
+      session.governancePlans.set(planId, {
+        planId,
+        version: (fx.version as number | undefined) ?? existing?.version ?? 1,
+        status: (fx.status as GovernancePlanState['status']) ?? existing?.status ?? 'active',
+        brand: (fx.brand as BrandReference) ?? existing?.brand ?? { domain: 'acmeoutdoor.example' },
+        objectives: (fx.objectives as string | undefined) ?? existing?.objectives ?? 'seeded plan',
+        budget: {
+          total: (fxBudget.total as number | undefined) ?? existing?.budget.total ?? 0,
+          currency: (fxBudget.currency as string | undefined) ?? existing?.budget.currency ?? 'USD',
+          reallocationThreshold:
+            (fxBudget.reallocation_threshold as number | undefined)
+            ?? existing?.budget.reallocationThreshold
+            ?? 0,
+          reallocationUnlimited:
+            (fxBudget.reallocation_unlimited as boolean | undefined)
+            ?? existing?.budget.reallocationUnlimited
+            ?? false,
+          perSellerMaxPct:
+            (fxBudget.per_seller_max_pct as number | undefined) ?? existing?.budget.perSellerMaxPct,
+          allocations:
+            (fxBudget.allocations as GovernancePlanState['budget']['allocations'])
+            ?? existing?.budget.allocations,
+        },
+        humanReviewRequired:
+          (fx.human_review_required as boolean | undefined) ?? existing?.humanReviewRequired ?? false,
+        humanReviewAutoFlippedBy: existing?.humanReviewAutoFlippedBy ?? [],
+        humanOverride: existing?.humanOverride,
+        policyCategories: (fx.policy_categories as string[] | undefined) ?? existing?.policyCategories,
+        revisionHistory: existing?.revisionHistory ?? [],
+        flight: {
+          start: fxFlight.start ?? existing?.flight.start ?? now,
+          end: fxFlight.end ?? existing?.flight.end ?? defaultFlightEnd,
+        },
+        mode: (fx.mode as GovernancePlanState['mode']) ?? existing?.mode ?? 'enforce',
+        committedBudget: existing?.committedBudget ?? 0,
+        committedByType: existing?.committedByType ?? {},
+        syncedAt: existing?.syncedAt ?? now,
+      });
+    },
+
+    async seedMediaBuy(mediaBuyId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.mediaBuys, mediaBuyId, 'media buys');
+      const existing = session.mediaBuys.get(mediaBuyId);
+      const now = new Date().toISOString();
+      session.mediaBuys.set(mediaBuyId, {
+        mediaBuyId,
+        accountRef:
+          (fx.account as AccountRef | undefined)
+          ?? existing?.accountRef
+          ?? { brand: { domain: 'acmeoutdoor.example' } },
+        brandRef: (fx.brand as BrandRef | undefined) ?? existing?.brandRef,
+        status: (fx.status as string | undefined) ?? existing?.status ?? 'active',
+        currency: (fx.currency as string | undefined) ?? existing?.currency ?? 'USD',
+        packages: (fx.packages as MediaBuyState['packages']) ?? existing?.packages ?? [],
+        startTime:
+          (fx.start_time as string | undefined) ?? existing?.startTime ?? now,
+        endTime:
+          (fx.end_time as string | undefined)
+          ?? existing?.endTime
+          ?? new Date(Date.now() + 30 * 86_400_000).toISOString(),
+        revision: existing?.revision ?? 1,
+        confirmedAt: existing?.confirmedAt ?? now,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        history: existing?.history ?? [{
+          revision: 1,
+          timestamp: now,
+          actor: 'seller',
+          action: 'seeded',
+          summary: 'Media buy seeded via comply_test_controller.seed_media_buy',
+        }],
+      });
+    },
   };
 }
 
@@ -379,5 +509,10 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const store = createStore(session);
-  return handleTestControllerRequest(store, rawArgs);
+  return handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 }
+
+// Module-level seed-fixture cache enforces the spec's same-ID-different-
+// fixture rejection rule across all seed calls in the process. Scoping per-
+// process keeps it aligned with the CONTROLLER_SCENARIOS list being static.
+const SEED_CACHE = createSeedFixtureCache();
