@@ -48,6 +48,12 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'list_pending_content',
   'approve_content',
   'reject_content',
+  // Members routinely share Google Doc links as drafts. Reading the doc is
+  // the precondition for calling propose_content, so it should be available
+  // in any channel regardless of router intent selection. The handler is
+  // gated on GOOGLE_* credentials at registration, so environments without
+  // Google integration don't expose it anyway.
+  'read_google_doc',
 ];
 
 /**
