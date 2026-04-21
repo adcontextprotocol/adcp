@@ -335,6 +335,45 @@ test('resolveEntityAtPath: follows $ref through shared types', () => {
   );
 });
 
+test('resolveEntityAtPath: root-level x-entity on a oneOf schema applies to whole-object captures', () => {
+  // core/signal-id.json carries x-entity at its root, above the oneOf variants.
+  // A storyboard path like `signals[0].signal_id` targeting the whole object
+  // must resolve through $ref to signal-id.json and return `signal` via the
+  // root-level annotation, without duplicating x-entity on each variant.
+  const schema = {
+    properties: {
+      signals: {
+        type: 'array',
+        items: {
+          properties: {
+            signal_id: {
+              $ref: '/schemas/core/signal-id.json',
+            },
+          },
+        },
+      },
+    },
+  };
+  const entity = resolveEntityAtPath(schema, ['signals', '0', 'signal_id']);
+  assert.equal(entity, 'signal');
+});
+
+test('resolveEntityAtPath: array items with x-entity resolve through numeric path segments', () => {
+  // get-media-buys-request.json has `media_buy_ids.items.x-entity: media_buy`.
+  // A storyboard capturing `media_buy_ids[0]` → `$context.media_buy_id` must
+  // resolve to `media_buy` via the items annotation.
+  const schema = {
+    properties: {
+      media_buy_ids: {
+        type: 'array',
+        items: { type: 'string', 'x-entity': 'media_buy' },
+      },
+    },
+  };
+  const entity = resolveEntityAtPath(schema, ['media_buy_ids', '0']);
+  assert.equal(entity, 'media_buy');
+});
+
 test('resolveEntityAtPath: walks oneOf variants', () => {
   // acquire-rights-response is a oneOf with rights_id tagged rights_grant
   // in every success variant. The walker must find it without knowing which
@@ -347,6 +386,25 @@ test('resolveEntityAtPath: walks oneOf variants', () => {
   );
   const entity = resolveEntityAtPath(schema, ['rights_id']);
   assert.equal(entity, 'rights_grant');
+});
+
+test('composite_entity_disagreement: root x-entity and variant x-entity must agree', () => {
+  // The walker's empty-path rule returns the root-level x-entity before
+  // entering oneOf/anyOf/allOf. If a variant declares a different entity at
+  // the empty path, that variant's value is silently dropped. This check
+  // forces the schema author to make them agree — or remove one.
+  const { findCompositeDisagreements } = require('../scripts/lint-storyboard-context-entity.cjs');
+  const schema = {
+    'x-entity': 'signal',
+    oneOf: [
+      { 'x-entity': 'signal' },
+      { 'x-entity': 'signal_activation_id' },
+    ],
+  };
+  const disagreements = findCompositeDisagreements(schema, []);
+  assert.equal(disagreements.length, 1);
+  assert.equal(disagreements[0].rootEntity, 'signal');
+  assert.deepEqual(disagreements[0].variantEntities, ['signal_activation_id']);
 });
 
 test('loadRegistry: core x-entity-types.json is valid and non-empty', () => {

@@ -30,6 +30,11 @@ const REGISTRY_PATH = path.join(SCHEMA_DIR, 'core', 'x-entity-types.json');
 const CONTEXT_REF = /^\$context\.([A-Za-z_][A-Za-z0-9_]*)$/;
 
 const RULE_MESSAGES = {
+  composite_entity_disagreement: ({ schemaFile, schemaPath, rootEntity, variantEntities }) =>
+    `schema ${schemaFile} at ${schemaPath} has \`x-entity: ${JSON.stringify(rootEntity)}\` at the root but a ` +
+    `oneOf/anyOf/allOf variant declares ${variantEntities.map((e) => JSON.stringify(e)).join(' / ')}. ` +
+    'Root-level x-entity wins at the empty path, which would silently drop the variant value. ' +
+    'Either make them agree (all variants match the root) or remove one side — not both.',
   entity_mismatch: ({
     captureName,
     captureEntity,
@@ -182,6 +187,15 @@ function resolveEntityAtPath(node, segments) {
     return resolveEntityAtPath(resolved, segments);
   }
 
+  // Root-level annotation on the current node — useful on composite types like
+  // core/signal-id.json or core/format-id.json where the whole object IS the
+  // entity reference. Checked before descending into oneOf/anyOf/allOf so one
+  // annotation on the shared type applies to every variant without needing
+  // duplicated `x-entity` on each branch.
+  if (segments.length === 0 && typeof node['x-entity'] === 'string') {
+    return node['x-entity'];
+  }
+
   if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
     // oneOf / anyOf: variants are alternatives — take any variant that resolves.
     // allOf: variants are all required — any variant that carries the annotation
@@ -253,6 +267,48 @@ function relSchemaPath(absPath) {
 }
 
 /**
+ * Find nodes where the root carries `x-entity` AND a composite variant
+ * (oneOf/anyOf/allOf) carries a different `x-entity`. The walker's empty-path
+ * rule returns the root value and silently drops the variant — which can hide
+ * a naming error. This check makes the disagreement loud at the schema level,
+ * before any storyboard depends on the resolution.
+ *
+ * Returns `[{ schemaPath, rootEntity, variantEntities }, ...]`.
+ */
+function findCompositeDisagreements(node, trail) {
+  if (!node || typeof node !== 'object') return [];
+  const out = [];
+  if (typeof node['x-entity'] === 'string') {
+    const variants = node.oneOf || node.anyOf || node.allOf;
+    if (Array.isArray(variants)) {
+      const disagreements = new Set();
+      for (const variant of variants) {
+        if (variant && typeof variant === 'object' && typeof variant['x-entity'] === 'string' && variant['x-entity'] !== node['x-entity']) {
+          disagreements.add(variant['x-entity']);
+        }
+      }
+      if (disagreements.size > 0) {
+        out.push({
+          schemaPath: trail.join('.') || '<root>',
+          rootEntity: node['x-entity'],
+          variantEntities: [...disagreements],
+        });
+      }
+    }
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (!value || typeof value !== 'object') continue;
+    if (key === '$ref') continue;
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => out.push(...findCompositeDisagreements(v, [...trail, key, String(i)])));
+    } else {
+      out.push(...findCompositeDisagreements(value, [...trail, key]));
+    }
+  }
+  return out;
+}
+
+/**
  * Walk every schema under SCHEMA_DIR and flag `x-entity` values that aren't
  * in the registry. Runs independently of storyboards so a typo in a schema
  * is caught even before any storyboard references it.
@@ -289,6 +345,17 @@ function lintRegistry(registry) {
           didYouMean: closestRegistered(a.entity, registry),
         });
       }
+    }
+
+    // Flag root+variant disagreement: the walker's root-level check wins at
+    // empty path, so if root says one thing and a variant says another, the
+    // variant silently loses. Force authors to make both sides agree.
+    for (const disagreement of findCompositeDisagreements(doc, [])) {
+      violations.push({
+        rule: 'composite_entity_disagreement',
+        schemaFile: relSchemaPath(file),
+        ...disagreement,
+      });
     }
   }
   return violations;
@@ -467,5 +534,6 @@ module.exports = {
   loadSchema,
   resolveEntityAtPath,
   walkContextRefs,
+  findCompositeDisagreements,
   formatMessage,
 };

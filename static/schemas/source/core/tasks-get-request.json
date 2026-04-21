@@ -13,7 +13,8 @@
     },
     "task_id": {
       "type": "string",
-      "description": "Unique identifier of the task to retrieve"
+      "description": "Unique identifier of the task to retrieve",
+      "x-entity": "task"
     },
     "include_history": {
       "type": "boolean",

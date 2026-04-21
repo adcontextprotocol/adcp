@@ -7,7 +7,8 @@
   "properties": {
     "catalog_id": {
       "type": "string",
-      "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account."
+      "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account.",
+      "x-entity": "catalog"
     },
     "name": {
       "type": "string",

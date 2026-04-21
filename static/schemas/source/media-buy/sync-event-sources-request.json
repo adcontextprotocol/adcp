@@ -31,7 +31,8 @@
         "properties": {
           "event_source_id": {
             "type": "string",
-            "description": "Unique identifier for this event source"
+            "description": "Unique identifier for this event source",
+            "x-entity": "event_source"
           },
           "name": {
             "type": "string",

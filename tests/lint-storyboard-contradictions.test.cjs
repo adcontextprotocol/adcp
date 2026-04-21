@@ -22,7 +22,13 @@ const {
   fingerprintRequest,
   classifyOutcome,
   outcomesAgree,
+  MUTATING_TASKS,
+  MUTATING_EXCEPTIONS,
+  loadMutatingTasksFromSchemas,
 } = require('../scripts/lint-storyboard-contradictions.cjs');
+
+const path = require('node:path');
+const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 
 function contradictionsAcrossDocs(docs) {
   const events = [];
@@ -31,6 +37,57 @@ function contradictionsAcrossDocs(docs) {
   }
   return findContradictions(events);
 }
+
+test('MUTATING_TASKS is derived from idempotency_key-required schemas + exceptions', () => {
+  // Drift guard: the union of (schemas requiring idempotency_key) and
+  // MUTATING_EXCEPTIONS must equal MUTATING_TASKS exactly. If this test
+  // breaks, a new mutating task was added without either (a) adding
+  // idempotency_key to its request schema, or (b) documenting it in
+  // MUTATING_EXCEPTIONS with a schema-level rationale.
+  const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+  const expected = new Set([...derived, ...MUTATING_EXCEPTIONS]);
+  assert.deepEqual(
+    [...MUTATING_TASKS].sort(),
+    [...expected].sort(),
+    'MUTATING_TASKS drifted from (schema-derived + MUTATING_EXCEPTIONS)',
+  );
+});
+
+test('every MUTATING_EXCEPTION is absent from the schema-derived set', () => {
+  // If a task exists in both, the exception is redundant and should be
+  // removed. This keeps MUTATING_EXCEPTIONS as a disciplined list of
+  // genuine gaps the schema heuristic doesn't cover.
+  const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+  const redundant = [...MUTATING_EXCEPTIONS].filter((t) => derived.has(t));
+  assert.deepEqual(redundant, [], 'MUTATING_EXCEPTIONS entries redundant with schema');
+});
+
+test('schema-derived set covers known mutating tasks', () => {
+  // Sanity check: these are anchored task names that MUST be present
+  // regardless of schema refactors. If the schema filename convention
+  // changes or a file moves, this test localizes the break.
+  const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+  for (const task of ['create_media_buy', 'update_media_buy', 'sync_creatives', 'sync_audiences']) {
+    assert.ok(derived.has(task), `expected ${task} in schema-derived mutating set`);
+  }
+});
+
+test('schema-derived set does not over-match read-only tasks', () => {
+  // Negative anchor: if a read-only request schema ever starts listing
+  // idempotency_key in required (spec drift, accidental copy-paste), the
+  // contradiction lint would silently over-discriminate state paths. Lock
+  // in a handful of anchor reads so the bug surfaces here, not in a
+  // false-positive at build time.
+  const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+  for (const task of [
+    'get_products',
+    'get_signals',
+    'list_creative_formats',
+    'get_adcp_capabilities',
+  ]) {
+    assert.ok(!derived.has(task), `read-only ${task} must not be in mutating set`);
+  }
+});
 
 test('source tree has no contradictions', () => {
   const contradictions = lint();
@@ -289,6 +346,87 @@ phases:
             value: GOVERNANCE_DENIED
 `);
   assert.deepEqual(contradictionsAcrossDocs({ 'a.yaml': doc }), []);
+});
+
+test('test_kit discriminates env: two storyboards sharing id+scenario but different kits', () => {
+  // Authoring hazard: two parallel storyboards copied from one template,
+  // running against different agent fixtures via different test_kit paths.
+  // They legitimately produce different outcomes for the same request
+  // shape. Env fingerprint must discriminate.
+  const docs = {
+    'acme.yaml': yaml.load(`
+id: sb_parallel
+prerequisites:
+  test_kit: "test-kits/acme-outdoor.yaml"
+phases:
+  - id: p
+    steps:
+      - id: succeed
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'osei.yaml': yaml.load(`
+id: sb_parallel
+prerequisites:
+  test_kit: "test-kits/osei-natural.yaml"
+phases:
+  - id: p
+    steps:
+      - id: fail
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: GOVERNANCE_DENIED
+`),
+  };
+  assert.deepEqual(contradictionsAcrossDocs(docs), []);
+});
+
+test('top-level fixtures discriminates env: same id, different seeded state', () => {
+  // Two runs of the same storyboard id against different seeded prerequisite
+  // state (via top-level `fixtures:`) can legitimately assert different
+  // outcomes. Fingerprint must treat them as separate envs.
+  const docs = {
+    'approved.yaml': yaml.load(`
+id: sb_seeded
+fixtures:
+  plans:
+    - plan_id: pre_approved
+      status: approved
+phases:
+  - id: p
+    steps:
+      - id: go
+        task: create_media_buy
+        sample_request: { brand: { domain: x }, plan_id: pre_approved }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'denied.yaml': yaml.load(`
+id: sb_seeded
+fixtures:
+  plans:
+    - plan_id: pre_approved
+      status: denied
+phases:
+  - id: p
+    steps:
+      - id: nope
+        task: create_media_buy
+        sample_request: { brand: { domain: x }, plan_id: pre_approved }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: GOVERNANCE_DENIED
+`),
+  };
+  assert.deepEqual(contradictionsAcrossDocs(docs), []);
 });
 
 test('auth override discriminates env: valid key vs random-invalid key', () => {

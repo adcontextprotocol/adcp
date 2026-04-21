@@ -22,7 +22,8 @@
             "properties": {
               "catalog_id": {
                 "type": "string",
-                "description": "Catalog ID from the request"
+                "description": "Catalog ID from the request",
+                "x-entity": "catalog"
               },
               "action": {
                 "$ref": "/schemas/enums/catalog-action.json",

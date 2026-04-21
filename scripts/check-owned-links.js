@@ -5,6 +5,8 @@ import { globSync } from 'glob';
 const LINK_HOSTS = new Set(['agenticadvertising.org', 'docs.adcontextprotocol.org']);
 const SKIPPED_PATH_PREFIXES = ['/api/'];
 const ROOT = process.cwd();
+const FETCH_TIMEOUT_MS = 10_000;
+const CONCURRENCY = 8;
 
 function getCandidateFiles() {
   return globSync(
@@ -52,6 +54,7 @@ async function fetchStatus(url, method, retries = 3) {
         headers: {
           'User-Agent': 'adcp-owned-link-check/1.0',
         },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (response.status >= 500 && attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
@@ -66,6 +69,7 @@ async function fetchStatus(url, method, retries = 3) {
       throw err;
     }
   }
+  throw new Error(`fetchStatus exhausted retries without returning for ${url}`);
 }
 
 // 405 means the endpoint exists but rejects this HTTP method (e.g. MCP
@@ -106,16 +110,27 @@ async function main() {
     }
   }
 
-  const broken = [];
+  const urls = [...urlSources.keys()].sort();
+  const results = new Array(urls.length);
+  let cursor = 0;
 
-  for (const url of [...urlSources.keys()].sort()) {
-    const result = await checkUrl(url);
-    if (result.ok) {
-      continue;
+  async function worker() {
+    while (true) {
+      const index = cursor++;
+      if (index >= urls.length) return;
+      results[index] = await checkUrl(urls[index]);
     }
-
-    broken.push({ url, result, files: urlSources.get(url) ?? [] });
   }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+  const broken = [];
+  urls.forEach((url, index) => {
+    const result = results[index];
+    if (!result.ok) {
+      broken.push({ url, result, files: urlSources.get(url) ?? [] });
+    }
+  });
 
   if (broken.length === 0) {
     const hosts = [...LINK_HOSTS].join(', ');

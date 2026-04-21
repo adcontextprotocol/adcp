@@ -18,7 +18,8 @@
             "properties": {
               "event_source_id": {
                 "type": "string",
-                "description": "Event source ID from the request"
+                "description": "Event source ID from the request",
+                "x-entity": "event_source"
               },
               "name": {
                 "type": "string",

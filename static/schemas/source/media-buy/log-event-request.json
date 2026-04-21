@@ -13,7 +13,8 @@
     },
     "event_source_id": {
       "type": "string",
-      "description": "Event source configured on the account via sync_event_sources"
+      "description": "Event source configured on the account via sync_event_sources",
+      "x-entity": "event_source"
     },
     "test_event_code": {
       "type": "string",

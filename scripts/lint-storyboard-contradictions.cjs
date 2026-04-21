@@ -58,49 +58,96 @@ const crypto = require('node:crypto');
 const yaml = require('js-yaml');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
+const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 
 /**
- * AdCP task names that MUTATE server state. Prior-state discrimination
- * depends on this list — a step whose prior phase contains only read tasks
- * is at the same "state" as a step with no prior phases.
+ * Tasks whose state mutations are invisible to the idempotency-key heuristic
+ * below — they don't require `idempotency_key` in their request schema
+ * (typically because they are naturally idempotent or session-scoped) but
+ * still change observable agent state that a later step's outcome depends on.
  *
- * Keep in sync with TENANT_SCOPED_TASKS in lint-storyboard-scoping.cjs where
- * overlap exists; reads like list_creative_formats/get_products are
- * intentionally NOT here.
+ * Each entry must be justified. Adding to this set without a schema-level
+ * reason is a drift hazard; prefer declaring `idempotency_key` required on
+ * the request schema instead.
+ */
+const MUTATING_EXCEPTIONS = new Set([
+  // Schema description: "Naturally idempotent: the `scenario` enum is either
+  // a lookup (`list_scenarios`) or a state-forcing operation whose target
+  // state is carried in the payload (`force_*_status`, `simulate_*`), so
+  // replays converge to the same observable state." The controller scenarios
+  // do mutate controller state the next step observes, so the contradiction
+  // lint must treat them as mutations.
+  'comply_test_controller',
+  // Schema description: "Naturally idempotent — `session_id` is the dedup
+  // boundary, and terminating an already-terminated session is a no-op that
+  // returns the same terminal state." The termination still transitions
+  // active → terminated, and a later si_send_message on the same session_id
+  // asserts against that terminal state; the contradiction lint must
+  // discriminate pre- vs post-termination state paths.
+  'si_terminate_session',
+]);
+
+/**
+ * Read every `*-request.json` under `SCHEMAS_DIR` and return the set of
+ * task names that require `idempotency_key`. Task name is derived from the
+ * filename: `create-media-buy-request.json` → `create_media_buy`.
+ *
+ * Mirrors the pattern in `scripts/build-compliance.cjs:loadMutatingSchemaRefs`;
+ * kept local rather than shared because the two lints have slightly
+ * different output needs (tool-only here, refs+tools there).
+ */
+function loadMutatingTasksFromSchemas(schemasDir) {
+  // Map<task, srcPath> so same-task-name across subdirs surfaces as an
+  // explicit collision rather than silently deduping through Set.add.
+  const origins = new Map();
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      // Real directories only. Skip symlinks to avoid unbounded recursion
+      // if a schemas subtree symlinks back to itself.
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        walk(p);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('-request.json')) continue;
+      let schema;
+      try {
+        schema = JSON.parse(fs.readFileSync(p, 'utf8'));
+      } catch {
+        continue;
+      }
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (!required.includes('idempotency_key')) continue;
+      const task = entry.name.replace(/-request\.json$/, '').replace(/-/g, '_');
+      const prior = origins.get(task);
+      if (prior && prior !== p) {
+        throw new Error(
+          `lint-storyboard-contradictions: task name "${task}" derives from two schema files: ` +
+            `${path.relative(schemasDir, prior)} and ${path.relative(schemasDir, p)}. ` +
+            'Rename one of the files (the hyphen-to-underscore conversion collides).',
+        );
+      }
+      origins.set(task, p);
+    }
+  }
+  walk(schemasDir);
+  return new Set(origins.keys());
+}
+
+/**
+ * AdCP task names that MUTATE server state. Derived at module load by
+ * reading request schemas' `required: [idempotency_key]` declarations
+ * (source of truth for "this task is a mutation"), plus documented
+ * exceptions for naturally-idempotent tasks that still change state.
+ *
+ * Prior-state discrimination in the contradiction lint depends on this
+ * set — a step whose prior phase contains only read tasks is at the same
+ * "state" as a step with no prior phases.
  */
 const MUTATING_TASKS = new Set([
-  'create_media_buy',
-  'update_media_buy',
-  'sync_creatives',
-  'creative_approval',
-  'sync_accounts',
-  'sync_governance',
-  'sync_plans',
-  'sync_catalogs',
-  'sync_event_sources',
-  'activate_signal',
-  'provide_performance_feedback',
-  'acquire_rights',
-  'update_rights',
-  'log_event',
-  'calibrate_content',
-  'create_property_list',
-  'update_property_list',
-  'delete_property_list',
-  'create_collection_list',
-  'update_collection_list',
-  'delete_collection_list',
-  'create_content_standards',
-  'update_content_standards',
-  'report_plan_outcome',
-  'report_usage',
-  'build_creative',
-  // Test-controller primitives mutate the runner's controller state; a
-  // later comply_test_controller assertion depends on what prior ones did.
-  'comply_test_controller',
-  // Sponsored-intelligence session primitives mutate session state.
-  'si_initiate_session',
-  'si_send_message',
+  ...loadMutatingTasksFromSchemas(SCHEMAS_DIR),
+  ...MUTATING_EXCEPTIONS,
 ]);
 
 /**
@@ -212,15 +259,37 @@ function fingerprintRequest(req) {
  * returning different error shapes, or two storyboards seeding different
  * governance states).
  *
- * The storyboard's top-level `id:` is included: distinct storyboard files
- * exercise distinct test-kit/controller configurations that a runner
- * resets between runs. Contradictions within a single storyboard are the
- * high-value signal; cross-storyboard contradictions require an explicit
- * shared env tag (comply_scenario + prerequisites) to surface.
+ * Components:
+ *   sb         — storyboard's top-level `id:`. Ensures distinct storyboard
+ *                files aren't treated as running against the same in-memory
+ *                agent. Conservative: means cross-storyboard contradictions
+ *                are unreachable today. See #2670 for the planned removal.
+ *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
+ *                scenario but loading different test kits target different
+ *                agent fixtures.
+ *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
+ *                different prerequisite state via `comply_test_controller`
+ *                legitimately produce different outcomes for the same
+ *                request.
+ *   scenario   — step's `comply_scenario`.
+ *   auth       — step's auth override shape (type + strategy).
+ *   seed       — phase's `prerequisites.controller_seeding` (distinct from
+ *                top-level fixtures; applies phase-scoped seeding).
  */
 function fingerprintEnv(step, phase, doc) {
   const parts = [];
   if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
+  if (typeof doc?.prerequisites?.test_kit === 'string') {
+    parts.push(`test_kit=${doc.prerequisites.test_kit}`);
+  }
+  if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
+    const fixturesHash = crypto
+      .createHash('sha1')
+      .update(stableStringify(doc.fixtures))
+      .digest('hex')
+      .slice(0, 8);
+    parts.push(`fixtures=${fixturesHash}`);
+  }
   if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
   if (step.auth) {
     const auth = step.auth;
@@ -459,7 +528,9 @@ if (require.main === module) main();
 
 module.exports = {
   MUTATING_TASKS,
+  MUTATING_EXCEPTIONS,
   SKIP_TASKS,
+  loadMutatingTasksFromSchemas,
   normalizeRequestValue,
   canonicalizeRequest,
   fingerprintRequest,
