@@ -13,11 +13,13 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "Rights grant this creative was produced under"
+      "description": "Rights grant this creative was produced under",
+      "x-entity": "rights_grant"
     },
     "creative_id": {
       "type": "string",
-      "description": "Buyer-assigned creative identifier. Equivalent to OpenRTB crid. Used to track approval status across resubmissions."
+      "description": "Buyer-assigned creative identifier. Equivalent to OpenRTB crid. Used to track approval status across resubmissions.",
+      "x-entity": "creative"
     },
     "creative_url": {
       "type": "string",

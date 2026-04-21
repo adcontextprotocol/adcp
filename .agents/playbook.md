@@ -48,6 +48,7 @@ All documentation and examples MUST match JSON schemas in `static/schemas/source
 - Verify fields exist in schema before documenting
 - Remove examples that don't match schema (don't mark as `test=false`)
 - Test with: `npm test -- --file docs/path/to/file.mdx`
+- ID-bearing fields that can cross storyboard step boundaries must carry an `x-entity` annotation — see `docs/contributing/x-entity-annotation.md`
 
 ### Expert Review Scenarios
 When running expert agents against documentation changes, test both:

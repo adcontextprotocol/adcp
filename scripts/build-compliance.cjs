@@ -426,6 +426,18 @@ function main() {
     process.exit(1);
   }
 
+  // Context-entity lint: captured $context values must not flow from a field
+  // of one entity type into a consume site of a different entity type
+  // (issue #2660, rule 3; canonical case #2627).
+  try {
+    execSync('node scripts/lint-storyboard-context-entity.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
