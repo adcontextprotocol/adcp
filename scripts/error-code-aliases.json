@@ -1,0 +1,4 @@
+{
+  "_comment": "Registry of deprecated error-code aliases and their replacements. Shape: { aliases: { OLD_CODE: NEW_CODE } }. Both keys and values match /^[A-Z][A-Z0-9_]*$/; values MUST exist in static/schemas/source/enums/error-code.json. scripts/lint-error-codes.cjs reads this file and emits warnings on storyboard references to aliased codes during the deprecation window; once an alias is removed, stale references become lint errors. Intentionally empty at creation — add entries only when actively renaming a code.",
+  "aliases": {}
+}

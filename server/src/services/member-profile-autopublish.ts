@@ -69,7 +69,7 @@ export async function ensureMemberProfilePublished(params: {
   const existing = await memberDb.getProfileByOrgId(orgId);
 
   if (existing?.is_public) {
-    return { action: 'noop', profileId: existing.id };
+    return { action: 'noop', profileId: existing.id, slug: existing.slug };
   }
 
   if (existing) {
@@ -79,7 +79,7 @@ export async function ensureMemberProfilePublished(params: {
       { orgId, profileId: existing.id, source },
       'Auto-published existing member profile on membership activation',
     );
-    return { action: 'published', profileId: existing.id };
+    return { action: 'published', profileId: existing.id, slug: existing.slug };
   }
 
   // No profile yet — create one with a unique slug. Retry on unique-violation
@@ -108,12 +108,12 @@ export async function ensureMemberProfilePublished(params: {
       if (concurrent) {
         if (concurrent.is_public) {
           logger.info({ orgId, profileId: concurrent.id, source }, 'Profile created concurrently by another webhook — noop');
-          return { action: 'noop', profileId: concurrent.id };
+          return { action: 'noop', profileId: concurrent.id, slug: concurrent.slug };
         }
         await memberDb.updateProfile(concurrent.id, { is_public: true });
         await recordProfilePublishedIfNeeded(orgId, concurrent.is_public, true, SYSTEM_ACTOR);
         logger.info({ orgId, profileId: concurrent.id, source }, 'Profile created concurrently by another webhook — published');
-        return { action: 'published', profileId: concurrent.id };
+        return { action: 'published', profileId: concurrent.id, slug: concurrent.slug };
       }
 
       // Slug collision with a different org — retry with a new suffix.

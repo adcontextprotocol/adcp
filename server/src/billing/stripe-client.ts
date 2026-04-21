@@ -1308,6 +1308,23 @@ export async function createCheckoutSession(
     const price = await stripe.prices.retrieve(data.priceId);
     const mode = price.recurring ? 'subscription' : 'payment';
 
+    // Disclose auto-publish on membership checkouts. Membership prices use
+    // lookup keys prefixed `aao_membership_` or `aao_invoice_`; once the
+    // subscription or invoice activates, the Stripe webhook flips the org's
+    // directory listing to is_public=true. Surfacing that at purchase time
+    // closes the consent loop from issue #2583.
+    const isMembershipCheckout =
+      !!price.lookup_key &&
+      (price.lookup_key.startsWith('aao_membership_') || price.lookup_key.startsWith('aao_invoice_'));
+    const customText = isMembershipCheckout
+      ? {
+          submit: {
+            message:
+              'Completing checkout activates your membership and publishes your organization in the public member directory at agenticadvertising.org/members. You can edit or make the listing private anytime from your dashboard.',
+          },
+        }
+      : undefined;
+
     // Resolve discounts before building the params object
     let discounts: Array<{ coupon?: string; promotion_code?: string }> | undefined;
     let allow_promotion_codes: boolean | undefined;
@@ -1332,6 +1349,7 @@ export async function createCheckoutSession(
       success_url: data.successUrl,
       cancel_url: data.cancelUrl,
       billing_address_collection: 'required',
+      ...(customText ? { custom_text: customText } : {}),
       metadata: {
         ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
         ...(data.workosUserId && { workos_user_id: data.workosUserId }),

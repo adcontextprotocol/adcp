@@ -304,15 +304,19 @@ phases:
   - id: terminal_enforcement
     title: "Terminal state enforcement"
     narrative: |
-      Verify that the agent rejects state transitions on a canceled media buy. Pausing,
-      resuming, or re-canceling a terminal buy must return an error.
+      Verify that the agent rejects state transitions on a canceled media buy. Pausing
+      or resuming a terminal buy returns INVALID_STATE (generic terminal-state rule).
+      Re-canceling a terminal buy returns NOT_CANCELLABLE — the cancellation-specific
+      code takes precedence over the generic INVALID_STATE when the attempted
+      transition is itself a cancellation. Non-cancellation illegal transitions into
+      or out of terminal states still return INVALID_STATE.
 
     steps:
       - id: pause_canceled_buy
         title: "Reject pause on canceled buy"
         narrative: |
           Attempt to pause a canceled media buy. The agent must reject this with
-          INVALID_STATE_TRANSITION.
+          INVALID_STATE.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -321,7 +325,7 @@ phases:
         expect_error: true
         stateful: true
         expected: |
-          Reject with INVALID_STATE_TRANSITION — cannot pause a canceled buy.
+          Reject with INVALID_STATE — cannot pause a canceled buy.
 
         sample_request:
           account:
@@ -349,7 +353,7 @@ phases:
         title: "Reject resume on canceled buy"
         narrative: |
           Attempt to resume a canceled media buy. The agent must reject this with
-          INVALID_STATE_TRANSITION.
+          INVALID_STATE.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -358,7 +362,7 @@ phases:
         expect_error: true
         stateful: true
         expected: |
-          Reject with INVALID_STATE_TRANSITION — cannot resume a canceled buy.
+          Reject with INVALID_STATE — cannot resume a canceled buy.
 
         sample_request:
           account:
@@ -383,21 +387,27 @@ phases:
             value: "media_buy_state_machine--resume_canceled_buy"
             description: "Context correlation_id returned unchanged"
       - id: recancel_buy
-        title: "Handle re-cancel of canceled buy"
+        title: "Reject re-cancel of canceled buy with NOT_CANCELLABLE"
         narrative: |
-          Attempt to cancel an already-canceled media buy. The agent should either
-          return an error or accept it idempotently. Both are valid, so no context
-          echo validation — the error path loses structured data without expect_error,
-          and we cannot set expect_error when success is also valid.
+          Attempt to cancel an already-canceled media buy. The agent MUST reject
+          this with NOT_CANCELLABLE. The cancellation-specific code takes
+          precedence over the generic terminal-state INVALID_STATE when the
+          terminal update is itself a cancellation attempt — see §128/§129 of
+          the media-buy specification and media_buy_seller/invalid_transitions
+          for the canonical vector. Idempotent acceptance is NOT conformant for
+          this case.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: terminal_state_enforcement
+        expect_error: true
         stateful: true
         expected: |
-          Either reject with INVALID_STATE_TRANSITION or accept idempotently.
-          Both behaviors are valid.
+          Reject with:
+          - code: NOT_CANCELLABLE
+          - recovery: correctable
+          - context echoed unchanged
 
         sample_request:
           account:
@@ -410,3 +420,14 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_state_machine_terminal_enforcement_recancel_buy"
           context:
             correlation_id: "media_buy_state_machine--recancel_buy"
+        validations:
+          - check: error_code
+            value: "NOT_CANCELLABLE"
+            description: "Error code is NOT_CANCELLABLE on re-cancel of canceled buy"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--recancel_buy"
+            description: "Context correlation_id returned unchanged"

@@ -14,18 +14,31 @@
         "force_media_buy_status",
         "force_session_status",
         "simulate_delivery",
-        "simulate_budget_spend"
+        "simulate_budget_spend",
+        "seed_product",
+        "seed_pricing_option",
+        "seed_creative",
+        "seed_plan",
+        "seed_media_buy"
       ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. Others trigger state transitions for the specified domain."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
     },
     "params": {
       "type": "object",
       "description": "Scenario-specific parameters. Required for all scenarios except list_scenarios.",
       "properties": {
-        "creative_id": { "type": "string", "description": "Creative to transition. Used by force_creative_status." },
+        "creative_id": { "type": "string", "description": "Creative to transition (force_creative_status) or seed (seed_creative)." },
         "account_id": { "type": "string", "description": "Account to transition. Used by force_account_status and simulate_budget_spend." },
-        "media_buy_id": { "type": "string", "description": "Media buy to transition. Used by force_media_buy_status, simulate_delivery, and simulate_budget_spend." },
+        "media_buy_id": { "type": "string", "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy)." },
         "session_id": { "type": "string", "description": "Session to transition. Used by force_session_status." },
+        "product_id": { "type": "string", "description": "Product to seed. Used by seed_product and seed_pricing_option." },
+        "pricing_option_id": { "type": "string", "description": "Pricing option to seed, scoped to a product. Used by seed_pricing_option." },
+        "plan_id": { "type": "string", "description": "Plan to seed. Used by seed_plan." },
+        "fixture": {
+          "type": "object",
+          "description": "Arbitrary fixture payload carried by seed_* scenarios. Shape matches the domain object the seed scenario creates (product, creative, plan, media buy, pricing option). Seller MAY reject malformed fixtures with INVALID_PARAMS. Kept permissive so storyboard authors can declare the minimum shape each test needs without the spec locking down every field.",
+          "additionalProperties": true
+        },
         "status": {
           "type": "string",
           "description": "Target status for the resource. Type depends on scenario: creative-status for force_creative_status, account-status for force_account_status, media-buy-status for force_media_buy_status. For force_session_status, must be 'complete' or 'terminated'."
@@ -87,6 +100,26 @@
           }
         }
       }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_product" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["product_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_pricing_option" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["product_id", "pricing_option_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_creative" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["creative_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_plan" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["plan_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_media_buy" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id"] } } }
     }
   ],
   "additionalProperties": true,
@@ -148,6 +181,35 @@
         "params": {
           "media_buy_id": "mb-789",
           "spend_percentage": 95
+        }
+      }
+    },
+    {
+      "description": "Seed a product fixture so subsequent storyboard steps can reference it by ID",
+      "data": {
+        "scenario": "seed_product",
+        "params": {
+          "product_id": "test-product",
+          "fixture": {
+            "delivery_type": "non_guaranteed",
+            "channels": ["display"],
+            "pricing_options": [
+              { "pricing_option_id": "test-pricing", "pricing_model": "cpm", "currency": "USD", "floor_price": 1.0 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Seed an approved creative fixture",
+      "data": {
+        "scenario": "seed_creative",
+        "params": {
+          "creative_id": "campaign_hero_video",
+          "fixture": {
+            "status": "approved",
+            "format_id": { "id": "video_30s" }
+          }
         }
       }
     }

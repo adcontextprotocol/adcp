@@ -40,7 +40,7 @@ process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 
 const args = process.argv.slice(2);
@@ -66,6 +66,22 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
       (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
     },
   }));
+  // RFC 9728 protected-resource metadata — the graders probe
+  // `${origin}/.well-known/oauth-protected-resource${pathname}`, which is the
+  // origin root regardless of where the training-agent router is mounted.
+  // Mount the endpoint on the top-level app so `/.well-known/oauth-protected-
+  // resource/api/training-agent/mcp` is reachable.
+  app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+    const suffix = req.path.replace(/^\/\.well-known\/oauth-protected-resource/, '') || '/';
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({
+      resource: `${proto}://${host}${suffix}`,
+      authorization_servers: [`${proto}://${host}/auth`],
+      bearer_methods_supported: ['header'],
+    });
+  });
   app.use('/api/training-agent', createTrainingAgentRouter());
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
@@ -160,10 +176,28 @@ async function main() {
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
 
   for (const sb of all) {
+    // Isolate storyboards from each other: a previous storyboard may have
+    // seeded governance plans, media buys, creatives, etc. into a session
+    // keyed by the same brand domain. Without this reset the next
+    // storyboard inherits that state and e.g. a $10K governance plan
+    // from `media_buy_seller/governance_denied` silently intercepts a
+    // $50K buy in `sales_guaranteed`.
+    await clearSessions();
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
       const brand = brandForStoryboard(sb);
-      const result = await runStoryboard(agentUrl, sb, {
+      // The default `/mcp` route is the public sandbox (bearer OR signed,
+      // no `required_for` enforcement). The `/mcp-strict` route is the
+      // grader target with presence-gated signing + required_for. Point
+      // the signed_requests conformance storyboard at the strict route
+      // so vector 001 (`request_signature_required`) fires against a
+      // cap that actually advertises `required_for: [create_media_buy]`;
+      // every other storyboard stays on `/mcp` so bearer-authed unsigned
+      // calls keep working.
+      const targetUrl = sb.id === 'signed_requests'
+        ? agentUrl.replace(/\/mcp$/, '/mcp-strict')
+        : agentUrl;
+      const result = await runStoryboard(targetUrl, sb, {
         auth: { type: 'bearer', token: AUTH_TOKEN },
         allow_http: true,
         contracts: ['webhook_receiver_runner'],
@@ -173,7 +207,23 @@ async function main() {
           replayStore: new InMemoryReplayStore(),
           revocationStore: new InMemoryRevocationStore(),
         },
-        request_signing: { transport: 'mcp' },
+        request_signing: {
+          transport: 'mcp',
+          // Our declared capability is `covers_content_digest: 'either'`;
+          // vectors 007 and 018 assert specific mismatching policies
+          // (`required` / `forbidden`) — the grader skip-list per
+          // capability-profile mismatch. Vector 020 (rate-abuse) sends
+          // cap+1 requests per run and is opt-in anyway. Vector 025
+          // grades the SDK's library verifier against an inline malformed
+          // JWK (`jwks_override`) — it exercises SDK internals, not our
+          // agent, so we skip it here and rely on upstream SDK tests.
+          skipVectors: [
+            '007-missing-content-digest',
+            '018-digest-covered-when-forbidden',
+            '025-jwk-alg-crv-mismatch',
+          ],
+          skipRateAbuse: true,
+        },
         ...(brand && { brand }),
       });
       const summary = summarize(sb, result);

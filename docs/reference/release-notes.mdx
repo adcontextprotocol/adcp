@@ -9,6 +9,26 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0-rc.5
+
+**Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
+
+Late-RC security hardening on the way to 3.0.0 GA. The rc.4 entry below carries the governance changes; this rev adds two normative tightenings from the external 3.0 security review.
+
+**1. Idempotency cache insert-rate limiting is now MUST.** Sellers MUST apply per-`(authenticated_agent, account)` rate limits on idempotency-cache inserts (separate from request rate limits) and MUST return `RATE_LIMITED` with `retry_after` when the configured ceiling is crossed. First-deployment ceiling: **60 inserts/sec sustained per agent (3,600/min), with burst to 300/sec over rolling 10-second windows** — sized against a realistic high-volume launch pattern (10 media buys/min × 10 packages × 10 creatives, with 3–5× headroom) and consistent with the existing 100k-per-keyid webhook replay cap and 1M-per-keyid request replay cap. Tunable per deployment. Closes a nonce-flood DoS amplification vector. See [security.mdx idempotency § bullet 8](/docs/building/implementation/security#idempotency) for normative detail.
+
+**Implementer migration**: sellers rate-limiting at the request layer today MUST add a cache-insert-layer limit if they don't already have one. Buyers with burst-onboarding traffic above 60/sec sustained SHOULD coordinate with their seller to tune the ceiling before GA; well-behaved launch patterns are covered by the 3–5× headroom. Buyers MUST respect `retry_after`.
+
+**2. Webhook-registration signing is now MUST for signing-capable sellers.** Sellers that support request signing MUST reject webhook-registration requests carrying `push_notification_config.authentication` over bearer-only (unsigned) transport, with `request_signature_required`. Structural defense against on-path mutators silently injecting or stripping the `authentication` block during onboarding — a 9421-signed registration cryptographically commits to the body. Sellers that do not support request signing at all fall back to the existing log-and-alarm posture (unchanged).
+
+**Implementer migration — scoped breakage warning**: this flips registration behavior for sellers with a conditional signing posture (signs some operations but accepts bearer on webhook registration today). Any buyer that previously registered webhooks with `authentication` blocks against such a seller via bearer transport must switch to 9421-signed registration, or the seller must carve `authentication`-carrying registration requests out of its bearer-authenticated path. Fully unsigned-only sellers and fully 9421-required sellers are unaffected.
+
+**3. Conformance coverage.** Negative test vector `027-webhook-registration-authentication-unsigned.json` lands with the tightening. Runtime storyboard grading for the idempotency insert-rate ceiling requires a burst-runner test-kit contract not yet defined — covered for 3.0 GA by spec-level MUST plus implementer attestation in `universal/idempotency.yaml`, with runtime grading tracked as a follow-up.
+
+**What did NOT change.** The admission-pressure threshold structural shape (short-window ratio / medium-window ratio / long-window ratio / proportional ceiling) is already normative; concrete starting numbers live in the non-normative [Webhook Verifier Tuning Guide](/docs/building/implementation/webhook-verifier-tuning). A separate restructure was already landed in PR #2548.
+
+---
+
 ## Version 3.0.0-rc.4
 
 **Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3) | [Annex III obligations](/docs/governance/annex-iii-obligations)

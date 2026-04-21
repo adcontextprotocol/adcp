@@ -114,6 +114,12 @@ export type EmailType =
 /**
  * Send welcome email to new members after subscription is created
  * Now with tracking!
+ *
+ * If `listing` is provided, an "Your listing is live" section is included
+ * that links to the public listing and the edit / privacy controls. This is
+ * populated by the Stripe webhook when `ensureMemberProfilePublished` has
+ * just created or flipped a profile public — consistent with the activation
+ * touch, so admins know their listing went public without a separate email.
  */
 export async function sendWelcomeEmail(data: {
   to: string;
@@ -123,6 +129,10 @@ export async function sendWelcomeEmail(data: {
   workosOrganizationId?: string;
   isPersonal?: boolean;
   firstName?: string;
+  listing?: {
+    slug: string;
+    action: 'created' | 'published';
+  };
 }): Promise<boolean> {
   if (!resend) {
     logger.debug('Resend not configured, skipping welcome email');
@@ -171,6 +181,60 @@ export async function sendWelcomeEmail(data: {
     const footerHtml = generateFooterHtml(trackingId, null);
     const footerText = generateFooterText(null);
 
+    // Optional: auto-published listing section. Piggybacks on this email so
+    // admins see (and can correct) the listing without a separate send.
+    let listingSectionHtml = '';
+    let listingSectionText = '';
+    if (data.listing) {
+      const orgQuery = data.workosOrganizationId
+        ? `?org=${encodeURIComponent(data.workosOrganizationId)}`
+        : '';
+      // Defense-in-depth: slugs are validated at creation (slugify → [a-z0-9-]),
+      // but the URL path and display both encode/escape so a future policy
+      // change can't introduce injection here.
+      const encodedSlug = encodeURIComponent(data.listing.slug);
+      const safeSlug = escapeHtml(data.listing.slug);
+      const viewUrl = trackedUrl(
+        trackingId,
+        'cta_listing_view',
+        `https://agenticadvertising.org/members/${encodedSlug}`,
+      );
+      const editUrl = trackedUrl(
+        trackingId,
+        'cta_listing_edit',
+        `https://agenticadvertising.org/member-profile${orgQuery}`,
+      );
+      const privacyAnchor = orgQuery ? `${orgQuery}#field-is-public` : '#field-is-public';
+      const privacyUrl = trackedUrl(
+        trackingId,
+        'cta_listing_privacy',
+        `https://agenticadvertising.org/member-profile${privacyAnchor}`,
+      );
+      const intro = data.listing.action === 'created'
+        ? 'Your directory listing is now live. We created it when your membership activated so other members and visitors can find you.'
+        : 'Your directory listing is now live — we published it when your membership activated.';
+      listingSectionHtml = `
+  <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 8px; padding: 16px 20px; margin: 24px 0;">
+    <p style="margin: 0 0 10px 0;"><strong>Your listing is live</strong></p>
+    <p style="margin: 0 0 12px 0; font-size: 14px;">${intro}</p>
+    <p style="margin: 0 0 4px 0; font-size: 14px;">
+      <a href="${viewUrl}" style="color: #2563eb;">View listing</a>
+      &nbsp;·&nbsp;
+      <a href="${editUrl}" style="color: #2563eb;">Edit</a>
+      &nbsp;·&nbsp;
+      <a href="${privacyUrl}" style="color: #2563eb;">Make private</a>
+    </p>
+    <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">/members/${safeSlug}</p>
+  </div>`;
+      listingSectionText = `
+Your listing is live
+${intro}
+- View: https://agenticadvertising.org/members/${encodedSlug}
+- Edit: https://agenticadvertising.org/member-profile${orgQuery}
+- Make private: https://agenticadvertising.org/member-profile${privacyAnchor}
+`;
+    }
+
     const { data: sendData, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: data.to,
@@ -204,7 +268,7 @@ export async function sendWelcomeEmail(data: {
   <p style="text-align: center; margin: 30px 0;">
     <a href="${dashboardUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Go to Dashboard</a>
   </p>
-
+  ${listingSectionHtml}
   <p>If you have any questions, just reply to this email - we're happy to help.</p>
 
   <p style="margin-top: 30px;">
@@ -229,7 +293,7 @@ As a member, you now have access to:
 
 To get started, visit your dashboard to set up your member profile:
 https://agenticadvertising.org/dashboard
-
+${listingSectionText}
 If you have any questions, just reply to this email - we're happy to help.
 
 Best,

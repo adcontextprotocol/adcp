@@ -20,6 +20,7 @@ import {
   type Authenticator,
   type AuthPrincipal,
 } from '@adcp/client/server';
+import { RequestSignatureError } from '@adcp/client/signing';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
@@ -147,25 +148,37 @@ function buildRequireToken(authenticator: Authenticator | null) {
     try {
       principal = await authenticator(req);
     } catch (err) {
+      logger.warn({ err }, 'Training agent: authentication error');
       // The strict authenticator throws this sentinel when an unsigned
-      // request targets an op in `required_for`. Surface the canonical
-      // spec error code so grader vector 001 sees what it expects.
-      // `respondUnauthorized`'s `error` field is typed to RFC 6750 codes
-      // only — `request_signature_required` is an AdCP-specific code that
-      // needs to land in the JSON body, so we write the 401 directly.
+      // request targets an op in `required_for`. The signing authenticator
+      // wraps `RequestSignatureError` (bad signature, replayed, revoked,
+      // etc.) inside `AuthError`. Both need to surface as a RFC 9421
+      // `WWW-Authenticate: Signature error="<code>"` challenge — the
+      // `signed_requests` conformance grader reads the error code off
+      // that header, not off the JSON body. `respondUnauthorized`
+      // hardcodes the Bearer scheme, so emit the Signature challenge
+      // directly.
       if (err instanceof RequestSignatureRequiredError) {
         res.setHeader('Content-Type', 'application/json');
-        res.setHeader('WWW-Authenticate', 'Bearer realm="mcp", error="invalid_token"');
+        res.setHeader('WWW-Authenticate', 'Signature realm="mcp", error="request_signature_required"');
         res.status(401).json({
           error: 'request_signature_required',
           error_description: err.publicMessage,
         });
         return;
       }
+      const sigCause = err instanceof AuthError && err.cause instanceof RequestSignatureError
+        ? err.cause
+        : null;
+      if (sigCause) {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('WWW-Authenticate', `Signature realm="mcp", error="${sigCause.code}"`);
+        res.status(401).json({ error: sigCause.code, error_description: sigCause.message });
+        return;
+      }
       const publicMessage = err instanceof AuthError
         ? err.publicMessage
         : 'Authentication failed';
-      logger.warn({ err }, 'Training agent: authentication error');
       respondUnauthorized(req, res, {
         error: 'invalid_token',
         errorDescription: publicMessage,

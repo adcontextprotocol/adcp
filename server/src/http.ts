@@ -3436,6 +3436,17 @@ export class HTTPServer {
               subscription,
             });
 
+            // Captured inside the fresh-activation block for use in the
+            // post-UPDATE autopublish + notification dispatch below. Kept
+            // out of that later block so the listing isn't flipped public
+            // until the organizations row reflects the activated membership.
+            let activationAdminContext: {
+              userEmail: string;
+              workosUserId: string;
+              firstName?: string;
+              productName?: string;
+            } | undefined;
+
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
               if (org) {
@@ -3562,55 +3573,17 @@ export class HTTPServer {
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
 
-                    // Send thank you to org admin group DM (fire-and-forget)
-                    (async () => {
-                      try {
-                        // Get org admins/owners
-                        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-                          organizationId: org.workos_organization_id,
-                        });
-                        const adminEmails: string[] = [];
-                        for (const membership of orgMemberships.data) {
-                          if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-                            try {
-                              const adminUser = await workos!.userManagement.getUser(membership.userId);
-                              if (adminUser.email) {
-                                adminEmails.push(adminUser.email);
-                              }
-                            } catch {
-                              // Skip if can't fetch user
-                            }
-                          }
-                        }
-
-                        if (adminEmails.length > 0) {
-                          // Compute seat limits for the welcome message
-                          const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
-                          const seatLimits = getSeatLimits(welcomeUpdate.membership_tier);
-
-                          await notifySubscriptionThankYou({
-                            orgId: org.workos_organization_id,
-                            orgName: org.name || 'Organization',
-                            adminEmails,
-                            seatLimits,
-                          });
-                        }
-                      } catch (err) {
-                        logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send thank you to admin group DM');
-                      }
-                    })();
-
-                    // Send welcome email to new member
-                    sendWelcomeEmail({
-                      to: userEmail,
-                      organizationName: org.name || 'Unknown Organization',
-                      productName,
+                    // Capture the admin-facing touch context so the post-UPDATE
+                    // block can auto-publish the listing and thread the result
+                    // into the thank-you DM + welcome email. Deferring the
+                    // notifications avoids publishing a directory listing
+                    // before the organizations row reflects activation.
+                    activationAdminContext = {
+                      userEmail,
                       workosUserId: workosUser.id,
-                      workosOrganizationId: org.workos_organization_id,
-                      isPersonal: org.is_personal || false,
                       firstName: workosUser.firstName || undefined,
-                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+                      productName,
+                    };
 
                     // Record to org_activities for prospect tracking
                     const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
@@ -3739,27 +3712,93 @@ export class HTTPServer {
                 invalidateMemberContextCache();
                 invalidateMembershipCache(org.workos_organization_id);
 
-                // Auto-publish directory listing on fresh activation only.
-                // Scoped to subscription.created to avoid clobbering a later
-                // manual unpublish on renewals / tier changes.
-                if (
-                  event.type === 'customer.subscription.created' &&
-                  (TIER_PRESERVING_STATUSES as readonly string[]).includes(subUpdate.subscription_status)
-                ) {
-                  try {
-                    await ensureMemberProfilePublished({
-                      orgId: org.workos_organization_id,
-                      orgName: org.name ?? '',
-                      source: `stripe:${event.type}`,
-                    });
-                  } catch (err) {
-                    // Don't fail the webhook — the backlog endpoint surfaces
-                    // orgs we missed so an operator can clean them up.
-                    logger.error(
-                      { err, orgId: org.workos_organization_id },
-                      'Failed to auto-publish member profile on activation',
-                    );
+                // Auto-publish the directory listing and fire the welcome
+                // touch — only after the organizations row reflects an active
+                // membership. Autopublish is gated on an active/trial/past_due
+                // status so renewals and tier changes don't clobber a later
+                // manual unpublish (#2583). Notifications fire even if the
+                // subscription was created in a non-active status (e.g.,
+                // incomplete), matching prior behavior — just without the
+                // listing section. Failures never throw: the unpublished-
+                // backlog admin endpoint surfaces orgs we missed.
+                if (event.type === 'customer.subscription.created' && activationAdminContext) {
+                  let listingNotice: { slug: string; action: 'created' | 'published' } | undefined;
+                  if ((TIER_PRESERVING_STATUSES as readonly string[]).includes(subUpdate.subscription_status)) {
+                    try {
+                      const autopublishResult = await ensureMemberProfilePublished({
+                        orgId: org.workos_organization_id,
+                        orgName: org.name ?? '',
+                        source: `stripe:${event.type}`,
+                      });
+                      if (
+                        (autopublishResult.action === 'created' || autopublishResult.action === 'published') &&
+                        autopublishResult.slug
+                      ) {
+                        listingNotice = {
+                          slug: autopublishResult.slug,
+                          action: autopublishResult.action,
+                        };
+                      }
+                    } catch (err) {
+                      logger.error(
+                        { err, orgId: org.workos_organization_id },
+                        'Failed to auto-publish member profile on activation',
+                      );
+                    }
                   }
+
+                  const { getSeatLimits } = await import('./db/organization-db.js');
+                  const seatLimits = getSeatLimits(subUpdate.membership_tier);
+                  const capturedAdmin = activationAdminContext;
+                  const orgIdForDispatch = org.workos_organization_id;
+                  const orgNameForDispatch = org.name;
+                  const isPersonalForDispatch = org.is_personal;
+
+                  // Thank-you DM (fire-and-forget)
+                  (async () => {
+                    try {
+                      const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                        organizationId: orgIdForDispatch,
+                      });
+                      const adminEmails: string[] = [];
+                      for (const membership of orgMemberships.data) {
+                        if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                          try {
+                            const adminUser = await workos!.userManagement.getUser(membership.userId);
+                            if (adminUser.email) {
+                              adminEmails.push(adminUser.email);
+                            }
+                          } catch {
+                            // Skip if can't fetch user
+                          }
+                        }
+                      }
+
+                      if (adminEmails.length > 0) {
+                        await notifySubscriptionThankYou({
+                          orgId: orgIdForDispatch,
+                          orgName: orgNameForDispatch || 'Organization',
+                          adminEmails,
+                          seatLimits,
+                          listing: listingNotice,
+                        });
+                      }
+                    } catch (err) {
+                      logger.warn({ err, orgId: orgIdForDispatch }, 'Failed to send thank you to admin group DM');
+                    }
+                  })();
+
+                  // Welcome email (fire-and-forget)
+                  sendWelcomeEmail({
+                    to: capturedAdmin.userEmail,
+                    organizationName: orgNameForDispatch || 'Unknown Organization',
+                    productName: capturedAdmin.productName,
+                    workosUserId: capturedAdmin.workosUserId,
+                    workosOrganizationId: orgIdForDispatch,
+                    isPersonal: isPersonalForDispatch || false,
+                    firstName: capturedAdmin.firstName,
+                    listing: listingNotice,
+                  }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
                 }
 
                 // Send Slack notification for subscription cancellation
@@ -8284,13 +8323,29 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     });
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
-    this.app.use((err: Error & { status?: number; statusCode?: number }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    this.app.use((err: Error & { status?: number; statusCode?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       const status = err.status || err.statusCode || 500;
 
       // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
       if (status === 416) {
         logger.debug({ path: req.path }, 'Range not satisfiable');
         return res.status(416).end();
+      }
+
+      // body-parser malformed JSON / payload errors are client errors, not server issues
+      if (status === 400 && (err.type === 'entity.parse.failed' || err.type === 'entity.verify.failed' || err.type === 'encoding.unsupported')) {
+        logger.warn({ path: req.path, method: req.method, type: err.type, msg: err.message }, 'Malformed request body');
+        return res.status(400).json({ error: 'Malformed request body', type: err.type });
+      }
+      if (status === 413) {
+        logger.warn({ path: req.path, method: req.method }, 'Request body too large');
+        return res.status(413).json({ error: 'Request body too large' });
+      }
+
+      // Any other 4xx thrown by middleware is a client error, not an unhandled server error
+      if (status >= 400 && status < 500) {
+        logger.warn({ err, path: req.path, method: req.method, status }, 'Client error');
+        return res.status(status).json({ error: err.message || 'Bad request' });
       }
 
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');

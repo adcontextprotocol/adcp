@@ -475,6 +475,8 @@ phases:
                 height: 250
 
           idempotency_key: "$generate:uuid_v4#content_standards_standards_version_change_calibrate_after_policy_change"
+          context:
+            correlation_id: "content_standards--calibrate_after_policy_change"
         validations:
           - check: response_schema
             description: "Response matches calibrate-content-response.json schema"
@@ -488,7 +490,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "content_standards--calibrate_content"
+            value: "content_standards--calibrate_after_policy_change"
             description: "Context correlation_id returned unchanged"
   - id: delivery_validation
     title: "Validate delivered content"

@@ -23,7 +23,7 @@ const yaml = require('js-yaml');
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
 const ENUM_PATH = path.join(ROOT, 'static', 'schemas', 'source', 'enums', 'error-code.json');
-const ALIAS_PATH = path.join(ROOT, 'static', 'schemas', 'source', 'enums', 'error-code-aliases.json');
+const ALIAS_PATH = path.join(ROOT, 'scripts', 'error-code-aliases.json');
 
 function loadEnum() {
   const raw = JSON.parse(fs.readFileSync(ENUM_PATH, 'utf8'));
