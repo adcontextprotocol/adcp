@@ -428,7 +428,7 @@ Named collection of DOOH screens across specific venues (e.g., 'times_square_net
 
 Common error codes across all AdCP implementations:
 
-- `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
+- `REFERENCE_NOT_FOUND`: Invalid or expired segment ID (or any referenced resource that does not exist or is not accessible; `error.field` identifies the failing parameter). Replaces the removed-in-rc.5 codes: `SEGMENT_NOT_FOUND`, `SIGNAL_AGENT_SEGMENT_NOT_FOUND`, `AGENT_NOT_FOUND`, `AUDIENCE_NOT_FOUND`, `CATALOG_NOT_FOUND`, `EVENT_SOURCE_NOT_FOUND`, `FORMAT_NOT_FOUND`, `STANDARDS_NOT_FOUND`, `BRAND_NOT_FOUND`, `CHECK_NOT_FOUND`, `CAMPAIGN_NOT_FOUND`. See [release notes](/docs/reference/release-notes#version-3-0-0-rc-5) for the migration.
 - `ACTIVATION_FAILED`: Unable to complete activation process
 - `ALREADY_ACTIVATED`: Signal already active for platform/seat
 - `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat

@@ -224,7 +224,7 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
-| `BRAND_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. |
+| `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
 | `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
 
 ## Related tasks

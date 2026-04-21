@@ -536,7 +536,7 @@ The schema never carries cleartext email or phone — buyers MUST hash before tr
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` |
-| `AUDIENCE_NOT_FOUND` | Audience to remove from doesn't exist | Check `audience_id` or omit `remove` |
+| `REFERENCE_NOT_FOUND` | Audience to remove from doesn't exist or is not accessible (`error.field` = `audience_id`) | Check `audience_id` or omit `remove` |
 | `INVALID_HASH_FORMAT` | Identifier doesn't match expected hash format | Verify SHA-256 hex encoding (64 chars, lowercase) |
 | `RATE_LIMITED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
 | `CALL_TOO_LARGE` | Too many members in payload | Payloads are limited to 100,000 members across all audiences |

@@ -60,7 +60,12 @@ Every signal request involves two roles:
 ### Signal Agent Types
 
 **Private Signal Agents** — owned by a single account with exclusive access:
-- Signal agents MUST return `AGENT_NOT_FOUND` for unauthorized accounts
+- Signal agents MUST return `REFERENCE_NOT_FOUND` for unauthorized accounts — the
+  same response as "agent does not exist." Distinguishing "exists but unauthorized"
+  from "does not exist" would enable cross-tenant enumeration of private agents.
+  See the uniform-response MUST in
+  [error-handling.mdx](/docs/building/implementation/error-handling) for the full
+  set of observable channels that MUST match on both paths.
 - Signal agents MUST NOT expose private signals across accounts
 
 **Marketplace Signal Agents** — license signal data to multiple accounts:
