@@ -260,6 +260,17 @@ Canonical example: `past_start_reject_path` / `past_start_adjust_path` / `past_s
 
 Single-code `check: error_code` is still correct when the spec mandates a canonical code for a scenario (e.g. `GOVERNANCE_DENIED` on a governance-denied outcome, `NOT_CANCELLABLE` on re-cancel). The split-phase pattern applies only when the spec itself leaves the outcome branchable.
 
+### When NOT to use this pattern
+
+The parallel-optional-phases + `assert_contribution` shape is only appropriate when the **spec text itself** permits multiple observable outcomes (look for explicit `MAY`/`OR` in the normative prose, or an enum of acceptable statuses). It is **not** a tool for softening a vector because an agent's behavior drifted from the spec. Do not apply this pattern to:
+
+- **Idempotency semantics.** `idempotency_key` must be rejected when missing on mutating tasks; replay must return the cached response; conflict must surface `IDEMPOTENCY_CONFLICT`. The spec mandates single behaviors — any other outcome is non-conformant, not a valid branch.
+- **Context echo.** Responses MUST echo `context:` verbatim when the caller sent it. There is no conformant branch that omits the echo.
+- **Error-code vocabulary.** Canonical codes enumerated in `static/schemas/source/enums/error-code.json` are single-value per scenario. If a storyboard asserts `GOVERNANCE_DENIED` on a governance-denied outcome, that is the code — not one option among several.
+- **Webhook signing correctness.** RFC 9421 signing with AdCP's covered-components profile is a single verification shape; there is no alternate branch.
+
+If you find yourself reaching for the split-phase pattern to get past a failing vector, first verify the spec actually permits the branch you want to accept. If it doesn't, the fix is in the agent (or in the spec), not in the vector.
+
 ## Running the lint locally
 
 ```bash
