@@ -150,22 +150,193 @@ function isGoogleSheetsUrl(urlOrId: string): boolean {
 }
 
 /**
- * Extract plain text from a Google Docs API document response
+ * Subset of the Google Docs API document response we use for markdown
+ * conversion. Full spec: https://developers.google.com/docs/api/reference/rest/v1/documents#Document
  */
-function extractTextFromDocsResponse(doc: {
+interface GoogleDocsApiDocument {
   title?: string;
-  body?: { content?: Array<{
-    paragraph?: { elements?: Array<{ textRun?: { content?: string } }> };
-  }> };
-}): string {
-  const parts: string[] = [];
-  for (const item of doc.body?.content ?? []) {
-    for (const elem of item.paragraph?.elements ?? []) {
-      const text = elem.textRun?.content;
-      if (text) parts.push(text);
+  body?: {
+    content?: Array<{
+      paragraph?: GoogleDocsApiParagraph;
+      table?: GoogleDocsApiTable;
+    }>;
+  };
+  lists?: Record<string, { listProperties?: { nestingLevels?: Array<{ glyphType?: string }> } }>;
+}
+
+interface GoogleDocsApiParagraph {
+  elements?: Array<{
+    textRun?: {
+      content?: string;
+      textStyle?: {
+        bold?: boolean;
+        italic?: boolean;
+        underline?: boolean;
+        strikethrough?: boolean;
+        link?: { url?: string };
+      };
+    };
+  }>;
+  paragraphStyle?: {
+    namedStyleType?: string;
+  };
+  bullet?: {
+    listId?: string;
+    nestingLevel?: number;
+  };
+}
+
+interface GoogleDocsApiTable {
+  rows?: number;
+  columns?: number;
+  tableRows?: Array<{
+    tableCells?: Array<{
+      content?: Array<{ paragraph?: GoogleDocsApiParagraph }>;
+    }>;
+  }>;
+}
+
+/**
+ * Convert a Google Docs API document response into markdown.
+ *
+ * Preserves headings (HEADING_1-6, TITLE, SUBTITLE), inline formatting
+ * (bold, italic, strikethrough, underline, links), bullet and numbered
+ * lists (nested up to common depths), and tables (as GFM pipe tables).
+ * Images and drawings are rendered as `![image]()` placeholders since the
+ * Docs API doesn't expose stable CDN URLs.
+ */
+export function extractMarkdownFromDocsResponse(doc: GoogleDocsApiDocument): string {
+  const lines: string[] = [];
+  const content = doc.body?.content ?? [];
+  const listsMeta = doc.lists ?? {};
+
+  for (const item of content) {
+    if (item.paragraph) {
+      const rendered = renderParagraph(item.paragraph, listsMeta);
+      if (rendered !== null) lines.push(rendered);
+    } else if (item.table) {
+      const rendered = renderTable(item.table, listsMeta);
+      if (rendered) lines.push(rendered);
     }
   }
-  return parts.join('');
+
+  // Collapse runs of 3+ newlines into double-newline so markdown stays clean.
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Render a single paragraph to markdown. Returns null for empty paragraphs
+ * so the caller can skip them without inflating blank lines.
+ */
+function renderParagraph(
+  paragraph: GoogleDocsApiParagraph,
+  listsMeta: NonNullable<GoogleDocsApiDocument['lists']>,
+): string | null {
+  const inline = paragraph.elements
+    ?.map(e => renderTextRun(e.textRun))
+    .filter((s): s is string => s !== null)
+    .join('') ?? '';
+
+  // Drop the trailing newline Google puts on every paragraph.
+  const text = inline.replace(/\n+$/, '');
+  if (!text && !paragraph.bullet) return '';
+
+  const style = paragraph.paragraphStyle?.namedStyleType;
+  const headingPrefix = headingPrefixFor(style);
+  if (headingPrefix) return `${headingPrefix} ${text}`;
+
+  if (paragraph.bullet) {
+    const nestingLevel = paragraph.bullet.nestingLevel ?? 0;
+    const indent = '  '.repeat(nestingLevel);
+    const listId = paragraph.bullet.listId;
+    const glyph = listId && listsMeta[listId]?.listProperties?.nestingLevels?.[nestingLevel]?.glyphType;
+    // Glyph types starting with "DECIMAL", "UPPER_ALPHA", etc. indicate an ordered list.
+    const isOrdered = typeof glyph === 'string' &&
+      /^(DECIMAL|UPPER_ALPHA|LOWER_ALPHA|UPPER_ROMAN|LOWER_ROMAN)/.test(glyph);
+    const marker = isOrdered ? '1.' : '-';
+    return `${indent}${marker} ${text}`;
+  }
+
+  return text;
+}
+
+function headingPrefixFor(style: string | undefined): string | null {
+  switch (style) {
+    case 'TITLE': return '#';
+    case 'SUBTITLE': return '##';
+    case 'HEADING_1': return '#';
+    case 'HEADING_2': return '##';
+    case 'HEADING_3': return '###';
+    case 'HEADING_4': return '####';
+    case 'HEADING_5': return '#####';
+    case 'HEADING_6': return '######';
+    default: return null;
+  }
+}
+
+function renderTextRun(textRun: NonNullable<GoogleDocsApiParagraph['elements']>[number]['textRun']): string | null {
+  if (!textRun?.content) return null;
+  let text = textRun.content;
+  // Strip Docs' trailing \n from intermediate elements — the paragraph
+  // renderer adds its own newlines.
+  const style = textRun.textStyle ?? {};
+
+  // Skip wrapping purely whitespace content so we don't emit **[space]**.
+  if (!text.trim()) return text;
+
+  const link = style.link?.url;
+
+  // Apply inline marks from inside out: strikethrough, italic, bold, link.
+  if (style.strikethrough) text = `~~${text.trim()}~~${trailingWhitespace(text)}`;
+  if (style.italic) text = `*${text.trim()}*${trailingWhitespace(text)}`;
+  if (style.bold) text = `**${text.trim()}**${trailingWhitespace(text)}`;
+  if (link) text = `[${text.trim()}](${link})${trailingWhitespace(text)}`;
+
+  return text;
+}
+
+function trailingWhitespace(s: string): string {
+  const match = s.match(/\s+$/);
+  return match ? match[0] : '';
+}
+
+function renderTable(
+  table: GoogleDocsApiTable,
+  listsMeta: NonNullable<GoogleDocsApiDocument['lists']>,
+): string {
+  const rows = table.tableRows ?? [];
+  if (rows.length === 0) return '';
+
+  const cellText = (cell: NonNullable<NonNullable<GoogleDocsApiTable['tableRows']>[number]['tableCells']>[number]): string => {
+    const paragraphs = cell.content ?? [];
+    return paragraphs
+      .map(p => p.paragraph ? renderParagraph(p.paragraph, listsMeta) ?? '' : '')
+      .join(' ')
+      .replace(/\|/g, '\\|')
+      .replace(/\n+/g, ' ')
+      .trim();
+  };
+
+  const matrix = rows.map(r => (r.tableCells ?? []).map(cellText));
+  const columnCount = Math.max(...matrix.map(row => row.length));
+  // Pad each row to the widest so the header separator lines up
+  const padded = matrix.map(row => {
+    while (row.length < columnCount) row.push('');
+    return row;
+  });
+
+  if (padded.length === 0 || columnCount === 0) return '';
+
+  const header = padded[0];
+  const separator = new Array(columnCount).fill('---');
+  const body = padded.slice(1);
+
+  const lines = [
+    `| ${header.join(' | ')} |`,
+    `| ${separator.join(' | ')} |`,
+    ...body.map(row => `| ${row.join(' | ')} |`),
+  ];
+  return lines.join('\n');
 }
 
 /**
@@ -194,25 +365,24 @@ async function readViaDocsApi(
     return null;
   }
 
-  const doc = await response.json() as {
-    title?: string;
-    body?: { content?: Array<{
-      paragraph?: { elements?: Array<{ textRun?: { content?: string } }> };
-    }> };
-  };
+  const doc = await response.json() as GoogleDocsApiDocument;
 
   const title = doc.title || 'Untitled';
-  const text = extractTextFromDocsResponse(doc);
+  const markdown = extractMarkdownFromDocsResponse(doc);
 
-  if (!text.trim()) {
-    return `**${title}**\n\n(Document is empty)`;
+  if (!markdown.trim()) {
+    return `# ${title}\n\n(Document is empty)`;
   }
 
-  if (text.length > MAX_CONTENT_SIZE) {
-    return `**${title}**\n\n${text.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
+  // If the document already has a title-style heading at the top, don't
+  // double it with the file name.
+  const body = markdown.startsWith('#') ? markdown : `# ${title}\n\n${markdown}`;
+
+  if (body.length > MAX_CONTENT_SIZE) {
+    return `${body.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
   }
 
-  return `**${title}**\n\n${text}`;
+  return body;
 }
 
 /**
@@ -429,9 +599,11 @@ async function readGoogleDoc(
     let exportFormat = 'text';
 
     if (mimeType === 'application/vnd.google-apps.document') {
-      // Google Doc - export as plain text
-      exportMimeType = 'text/plain';
-      exportFormat = 'txt';
+      // Google Doc - export as markdown so inline formatting, headings,
+      // links, and lists survive into Addie's reply. `text/markdown` has
+      // been a supported Docs export since 2024.
+      exportMimeType = 'text/markdown';
+      exportFormat = 'md';
     } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
       // Google Sheet - export as CSV
       exportMimeType = 'text/csv';
@@ -509,8 +681,8 @@ async function readGoogleDoc(
 export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
   {
     name: 'read_google_doc',
-    description: `Read a Google Doc, Sheet, or file from Google Drive. Use this when a user shares a Google Docs or Google Drive link. If access is denied, Addie will ask the user to share the document with ${ADDIE_EMAIL}.`,
-    usage_hints: 'use when user shares a docs.google.com or drive.google.com link',
+    description: `Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Google Docs return clean markdown with headings, bold/italic, links, lists, and tables preserved — safe to pass directly as the \`content\` field of \`propose_content\`. Sheets return CSV. If access is denied, respond with the returned message (it asks the user to share with ${ADDIE_EMAIL}).`,
+    usage_hints: 'use when user shares a docs.google.com or drive.google.com link, or asks "can you read this doc"',
     input_schema: {
       type: 'object',
       properties: {

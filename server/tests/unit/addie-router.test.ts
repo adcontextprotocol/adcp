@@ -501,6 +501,13 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('reject_content');
   });
 
+  it('should always expose read_google_doc so propose_content can consume a Docs link', () => {
+    // Members share Google Doc links as drafts — the reader has to be
+    // reachable before propose_content can be called, regardless of channel.
+    const tools = getToolsForSets([], false);
+    expect(tools).toContain('read_google_doc');
+  });
+
   it('should block admin tools for non-admin users', () => {
     const tools = getToolsForSets(['admin'], false);
     // Non-admin requesting admin set should get only always-available tools
