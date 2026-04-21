@@ -24,11 +24,22 @@
  *   contributes_bad_type — `contributes` is present but not a boolean
  *   orphan_contribution  — contributes_to flag is never consumed by any
  *                          assert_contribution any_of in the same storyboard
+ *   unresolved_scenario_reference — requires_scenarios entry names an id
+ *                          that doesn't exist in the source tree (no file
+ *                          declares that `id:`). Symmetric with the
+ *                          duplicate-doc.id throw in buildScenarioFlagIndex:
+ *                          if collisions are a build-time error, missing
+ *                          references must be too.
  *
  * `contributes_both` / `contributes_outside_branch_set` / `contributes_bad_type`
  * mirror adcp-client's loader (node_modules/@adcp/client/dist/lib/testing/
  * storyboard/loader.js `resolveContributesShorthand`) so authors see the
  * violation at build time instead of storyboard-load time.
+ *
+ * Doc-level rules (those that apply to the storyboard as a whole, not a
+ * specific phase) use `phaseId: '<doc>'` as a sentinel so the main()
+ * formatter can render `file.yaml:<doc>` consistently. Current doc-level
+ * rules: unresolved_scenario_reference.
  */
 
 'use strict';
@@ -83,6 +94,12 @@ const RULE_MESSAGES = {
     `step in this storyboard references it via \`check: any_of, ` +
     `allowed_values: [${flag}]\`. Either add the assertion or remove the ` +
     'dead contribution — nothing is grading what this step produces.',
+  unresolved_scenario_reference: ({ scenarioId }) =>
+    `requires_scenarios references "${scenarioId}" but no file in the source ` +
+    `tree declares that \`id:\`. Either fix the reference, add the missing ` +
+    'scenario file, or remove the entry — the runner will grade this ' +
+    'storyboard `not_applicable` with `unresolved_scenario_reference` rather ' +
+    'than silently pass.',
 };
 
 function formatMessage(violation) {
@@ -187,6 +204,10 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS, scenarioFlagIn
   // in `requires_scenarios:` asserts it. The two kinds are unioned so a
   // parent storyboard that delegates its grading to a shared scenario
   // doesn't trigger orphan_contribution.
+  //
+  // An unresolved entry in `requires_scenarios` is a separate, stronger
+  // violation: it means the runner will grade this storyboard
+  // not_applicable at execution time. Surface it at lint time instead.
   const assertedFlags = collectAssertedFlags(doc);
   if (scenarioFlagIndex && Array.isArray(doc.requires_scenarios)) {
     for (const scenarioId of doc.requires_scenarios) {
@@ -194,6 +215,12 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS, scenarioFlagIn
       const scenarioFlags = scenarioFlagIndex.get(scenarioId);
       if (scenarioFlags) {
         for (const flag of scenarioFlags) assertedFlags.add(flag);
+      } else {
+        violations.push({
+          rule: 'unresolved_scenario_reference',
+          phaseId: '<doc>',
+          scenarioId,
+        });
       }
     }
   }

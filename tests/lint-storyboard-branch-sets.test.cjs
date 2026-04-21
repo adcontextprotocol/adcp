@@ -302,10 +302,8 @@ phases:
 });
 
 test('orphan_contribution: unresolved requires_scenarios still flags orphan', () => {
-  // Fail-open on unknown scenario ids (separate authoring bug the scoping
-  // lint catches) but don't pretend the flag is asserted. Missing scenarios
-  // produce the same orphan violation as storyboards with no
-  // requires_scenarios at all.
+  // Missing scenarios don't pretend the flag is asserted. Orphan violation
+  // fires independently of the new unresolved_scenario_reference rule.
   const parent = yaml.load(`
 id: parent_sb
 requires_scenarios: [nonexistent/foo]
@@ -322,6 +320,81 @@ phases:
     orphans.map((v) => ({ stepId: v.stepId, flag: v.flag })),
     [{ stepId: 'contribute', flag: 'dangling' }],
   );
+});
+
+test('unresolved_scenario_reference: fires on requires_scenarios id absent from index', () => {
+  // Symmetric with the duplicate-doc.id throw in buildScenarioFlagIndex:
+  // if collisions are a build-time error, missing references must be too.
+  // The runner will grade this storyboard not_applicable at execution
+  // time; surface it at lint time so authors catch the typo/rename.
+  const parent = yaml.load(`
+id: parent_unresolved
+requires_scenarios: [typo/misnamed_scenario, present/scenario]
+phases:
+  - id: p
+    steps: []
+`);
+  const scenarioFlagIndex = new Map([['present/scenario', new Set()]]);
+  const unresolved = lintDoc(parent, { scenarioFlagIndex }).filter(
+    (v) => v.rule === 'unresolved_scenario_reference',
+  );
+  assert.deepEqual(
+    unresolved.map((v) => v.scenarioId),
+    ['typo/misnamed_scenario'],
+  );
+});
+
+test('unresolved_scenario_reference: absent when scenarioFlagIndex is not provided', () => {
+  // Back-compat: callers that don't pass the index (pre-#2671 code paths,
+  // unit tests) don't trigger the new rule. Only kicks in when the lint
+  // has the source-tree context to verify resolution.
+  const parent = yaml.load(`
+id: parent_no_index
+requires_scenarios: [any/id]
+phases:
+  - id: p
+    steps: []
+`);
+  const unresolved = lintDoc(parent).filter(
+    (v) => v.rule === 'unresolved_scenario_reference',
+  );
+  assert.deepEqual(unresolved, []);
+});
+
+test('unresolved_scenario_reference: fires once per occurrence on duplicate unresolved ids', () => {
+  // Duplicate entries in the array produce one violation per occurrence.
+  // If a future refactor de-duplicates, this test forces the decision to
+  // be explicit rather than silent.
+  const parent = yaml.load(`
+id: parent_dup_unresolved
+requires_scenarios: [typo/x, typo/x]
+phases:
+  - id: p
+    steps: []
+`);
+  const unresolved = lintDoc(parent, { scenarioFlagIndex: new Map() }).filter(
+    (v) => v.rule === 'unresolved_scenario_reference',
+  );
+  assert.equal(unresolved.length, 2);
+  assert.ok(unresolved.every((v) => v.scenarioId === 'typo/x'));
+});
+
+test('unresolved_scenario_reference: no violation for resolved references', () => {
+  const parent = yaml.load(`
+id: parent_all_resolve
+requires_scenarios: [a/one, b/two]
+phases:
+  - id: p
+    steps: []
+`);
+  const scenarioFlagIndex = new Map([
+    ['a/one', new Set()],
+    ['b/two', new Set()],
+  ]);
+  const unresolved = lintDoc(parent, { scenarioFlagIndex }).filter(
+    (v) => v.rule === 'unresolved_scenario_reference',
+  );
+  assert.deepEqual(unresolved, []);
 });
 
 test('buildScenarioFlagIndex indexes source tree by doc.id', () => {
