@@ -20,11 +20,13 @@ const {
   findContradictions,
   canonicalizeRequest,
   fingerprintRequest,
+  fingerprintEnv,
   classifyOutcome,
   outcomesAgree,
   MUTATING_TASKS,
   MUTATING_EXCEPTIONS,
   loadMutatingTasksFromSchemas,
+  normalizeFixturesForHashing,
 } = require('../scripts/lint-storyboard-contradictions.cjs');
 
 const path = require('node:path');
@@ -427,6 +429,89 @@ phases:
 `),
   };
   assert.deepEqual(contradictionsAcrossDocs(docs), []);
+});
+
+test('fixtures hash is stable across array-order permutations within a category', () => {
+  // Regression guard: `products: [A, B]` and `products: [B, A]` seed the
+  // same runner state (the seeding DAG keys on foreign-key dependencies,
+  // not intra-array order). Their env fingerprints must match.
+  const docA = {
+    id: 'sb_fx',
+    fixtures: {
+      products: [
+        { product_id: 'p1', delivery_type: 'guaranteed' },
+        { product_id: 'p2', delivery_type: 'non_guaranteed' },
+      ],
+      creatives: [
+        { creative_id: 'c1', status: 'approved' },
+        { creative_id: 'c2', status: 'pending' },
+      ],
+    },
+  };
+  const docB = {
+    id: 'sb_fx',
+    fixtures: {
+      products: [
+        { product_id: 'p2', delivery_type: 'non_guaranteed' },
+        { product_id: 'p1', delivery_type: 'guaranteed' },
+      ],
+      creatives: [
+        { creative_id: 'c2', status: 'pending' },
+        { creative_id: 'c1', status: 'approved' },
+      ],
+    },
+  };
+  const step = { comply_scenario: 'test' };
+  assert.equal(fingerprintEnv(step, {}, docA), fingerprintEnv(step, {}, docB));
+});
+
+test('fixtures hash still discriminates genuinely different entries', () => {
+  // Complement to the stability guard: different fixture CONTENTS must
+  // still produce different env fingerprints, even if the array order
+  // looks similar.
+  const docA = {
+    id: 'sb_fx',
+    fixtures: {
+      plans: [{ plan_id: 'pre_approved', status: 'approved' }],
+    },
+  };
+  const docB = {
+    id: 'sb_fx',
+    fixtures: {
+      plans: [{ plan_id: 'pre_approved', status: 'denied' }],
+    },
+  };
+  const step = { comply_scenario: 'test' };
+  assert.notEqual(fingerprintEnv(step, {}, docA), fingerprintEnv(step, {}, docB));
+});
+
+test('normalizeFixturesForHashing throws on unknown fixture category', () => {
+  // Schema-lint coupling: a new category added to storyboard-schema.yaml
+  // without updating FIXTURE_CATEGORY_PRIMARY_ID would silently create a
+  // false-negative bucket in the env fingerprint. Force the schema doc
+  // update and the lint update to land together.
+  const input = {
+    custom_entities: [{ some_field: 'z' }, { some_field: 'a' }],
+  };
+  assert.throws(
+    () => normalizeFixturesForHashing(input),
+    /unknown fixture category "custom_entities"/,
+  );
+});
+
+test('normalizeFixturesForHashing accepts every documented category', () => {
+  // Complement to the throw: the five categories the schema documents
+  // today must round-trip cleanly. Guards against a rename or typo in
+  // FIXTURE_CATEGORY_PRIMARY_ID that would break all storyboards
+  // declaring fixtures.
+  const input = {
+    products: [{ product_id: 'p1' }],
+    pricing_options: [{ pricing_option_id: 'po1' }],
+    creatives: [{ creative_id: 'c1' }],
+    plans: [{ plan_id: 'pl1' }],
+    media_buys: [{ media_buy_id: 'mb1' }],
+  };
+  assert.doesNotThrow(() => normalizeFixturesForHashing(input));
 });
 
 test('auth override discriminates env: valid key vs random-invalid key', () => {

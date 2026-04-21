@@ -253,6 +253,56 @@ function fingerprintRequest(req) {
 }
 
 /**
+ * Primary-id field per documented fixture category (see the `fixtures:`
+ * block documentation in storyboard-schema.yaml). Used to sort arrays
+ * within a category so two storyboards with semantically equivalent
+ * fixtures in different array order hash the same.
+ *
+ * The seeding DAG is keyed on foreign-key dependencies across categories,
+ * not on intra-array order within one — sorting by primary id is safe and
+ * eliminates a false-negative envelope in the env fingerprint.
+ */
+const FIXTURE_CATEGORY_PRIMARY_ID = {
+  products: 'product_id',
+  pricing_options: 'pricing_option_id',
+  creatives: 'creative_id',
+  plans: 'plan_id',
+  media_buys: 'media_buy_id',
+};
+
+function normalizeFixturesForHashing(fixtures) {
+  if (!fixtures || typeof fixtures !== 'object') return fixtures;
+  const out = {};
+  for (const [category, entries] of Object.entries(fixtures)) {
+    if (!Array.isArray(entries)) {
+      out[category] = entries;
+      continue;
+    }
+    const idField = FIXTURE_CATEGORY_PRIMARY_ID[category];
+    if (!idField) {
+      // Unknown category: fail loudly rather than preserve order silently.
+      // A new fixture category added to the schema without updating this
+      // table would otherwise create a false-negative bucket in the env
+      // fingerprint (two authors listing entries in different orders
+      // produce different hashes for the same seeded state). Force the
+      // schema update and the lint update to land together.
+      throw new Error(
+        `lint-storyboard-contradictions: unknown fixture category "${category}". ` +
+          `Add it to FIXTURE_CATEGORY_PRIMARY_ID in scripts/lint-storyboard-contradictions.cjs ` +
+          'alongside the schema documentation in static/compliance/source/universal/storyboard-schema.yaml.',
+      );
+    }
+    out[category] = [...entries].sort((a, b) => {
+      const aid = a && typeof a === 'object' ? a[idField] : undefined;
+      const bid = b && typeof b === 'object' ? b[idField] : undefined;
+      if (typeof aid !== 'string' || typeof bid !== 'string') return 0;
+      return aid < bid ? -1 : aid > bid ? 1 : 0;
+    });
+  }
+  return out;
+}
+
+/**
  * Env fingerprint: the external knobs that select which fixture a conformant
  * agent serves. Two steps with same request but different env can
  * legitimately disagree on outcome (e.g., api-key vs oauth_bearer auth
@@ -285,7 +335,7 @@ function fingerprintEnv(step, phase, doc) {
   if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
     const fixturesHash = crypto
       .createHash('sha1')
-      .update(stableStringify(doc.fixtures))
+      .update(stableStringify(normalizeFixturesForHashing(doc.fixtures)))
       .digest('hex')
       .slice(0, 8);
     parts.push(`fixtures=${fixturesHash}`);
@@ -530,11 +580,13 @@ module.exports = {
   MUTATING_TASKS,
   MUTATING_EXCEPTIONS,
   SKIP_TASKS,
+  FIXTURE_CATEGORY_PRIMARY_ID,
   loadMutatingTasksFromSchemas,
   normalizeRequestValue,
   canonicalizeRequest,
   fingerprintRequest,
   fingerprintEnv,
+  normalizeFixturesForHashing,
   classifyOutcome,
   outcomesAgree,
   describeOutcome,

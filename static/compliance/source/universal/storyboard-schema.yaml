@@ -31,7 +31,27 @@
 #
 # requires_scenarios: string[] (optional — scenario IDs from storyboards/scenarios/ that must pass alongside this storyboard.
 #   Scenarios are small, focused behavior tests (e.g., "media_buy_seller/accepts_governance").
-#   The compliance engine resolves and runs them alongside the main storyboard.)
+#   The compliance engine resolves and runs them alongside the main storyboard.
+#
+#   Flag flow across `requires_scenarios`:
+#     A `branch_set` flag contributed in a step of storyboard X is
+#     considered asserted if EITHER (a) a step in X's own phases asserts
+#     it via `assert_contribution` with `check: any_of, allowed_values:
+#     [<flag>]`, OR (b) a scenario Y listed in `X.requires_scenarios`
+#     asserts it via the same check. The `orphan_contribution` lint
+#     honors this flow.
+#
+#     Reverse flow (a contribution in scenario Y asserted in parent X)
+#     is NOT supported — scenarios MUST be internally self-grading.
+#     The restriction preserves standalone lintability of scenarios
+#     and prevents cycles in the composition graph. Scenarios that
+#     contribute a flag without asserting it in their own phases will
+#     surface as `orphan_contribution` when linted standalone.
+#
+#     Scenario IDs in `requires_scenarios` MUST match the referenced
+#     file's top-level `id:` exactly, and the referenced scenario file
+#     MUST exist in the source tree at build time. Duplicate IDs
+#     across files are a build-time error.)
 #
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
