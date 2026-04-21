@@ -630,7 +630,6 @@ function printCoverageReport() {
   const registry = loadRegistry();
   const totalAnnotations = [...annotatedByEntity.values()].reduce((a, list) => a + list.length, 0);
   const usedEntities = annotatedByEntity.size;
-  const unusedEntities = [...registry].filter((e) => !annotatedByEntity.has(e));
 
   // Count domains (top-level dirs under SCHEMA_DIR) that contain at least
   // one annotated field. This is the honest "how much is covered" signal —
