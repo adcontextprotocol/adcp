@@ -459,6 +459,19 @@ function main() {
     process.exit(1);
   }
 
+  // Auth-shape lint: storyboard steps must use principal-handle shapes
+  // (from_test_kit, value_strategy, none) rather than literal credentials
+  // that bind the storyboard to a specific value and leak identity into
+  // source control. #2720.
+  try {
+    execSync('node scripts/lint-storyboard-auth-shape.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
