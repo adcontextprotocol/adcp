@@ -138,7 +138,8 @@ const products = await client.getProducts({
 
 **Package exports:**
 - `@adcp/client` — Main API
-- `@adcp/client/testing` — Testing utilities (includes `testAgent`)
+- `@adcp/client/testing` — Buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/docs/building/get-test-ready))
+- `@adcp/client/server` — Low-level server helpers (MCP tool registration, state stores, `handleTestControllerRequest`)
 - `@adcp/client/advanced` — Advanced API features
 - `@adcp/client/types` — TypeScript type definitions
 

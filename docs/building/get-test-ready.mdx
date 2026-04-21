@@ -1,0 +1,182 @@
+---
+title: Get Test-Ready
+sidebarTitle: Get Test-Ready
+description: "What a sales agent operator must have in place before running storyboards — capabilities, sandbox accounts, and the compliance test controller."
+"og:title": "AdCP — Get Test-Ready"
+---
+
+Storyboards run themselves once your agent exposes the right surfaces. This page is the checklist between "I built an agent" and "I can run `npx @adcp/client storyboard run`." Work through it once per agent, then the [storyboard runner](/docs/building/validate-your-agent) handles the rest.
+
+## The three surfaces the runner needs
+
+The runner is not magic — it drives your agent through the same public tools a buyer would call, plus one sandbox-only tool for fixture setup. Three things must be in place:
+
+| Surface | What it tells the runner | Where it lives |
+|---------|--------------------------|----------------|
+| [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Which protocols and specialisms you claim, and that you support sandbox | Your agent's capability response |
+| [`sync_accounts`](/docs/media-buy/advanced-topics/sandbox) (or `list_accounts`) | How to obtain a sandbox account to run tests against | Your agent's account tool |
+| [`comply_test_controller`](/docs/building/implementation/comply-test-controller) | How to seed fixtures and force seller-side transitions deterministically | Your agent, sandbox-only |
+
+Everything else — which storyboards to run, what order to seed fixtures, how to compare responses — is runner responsibility. You do not ship test scripts. You ship these three surfaces.
+
+## Step 1 — Declare capabilities honestly
+
+`get_adcp_capabilities` is how the runner picks which storyboards apply to you. It is also the conformance contract: you are promising to pass every storyboard that matches what you declare.
+
+Declare only what you actually implement:
+
+```json
+{
+  "supported_protocols": ["media-buy", "creative"],
+  "specialisms": ["sales-guaranteed", "sales-proposal-mode"],
+  "account": {
+    "sandbox": true,
+    "require_operator_auth": false
+  }
+}
+```
+
+- **`supported_protocols`** — Pulls in the matching protocol storyboards from `/compliance/{version}/protocols/`.
+- **`specialisms`** — Pulls in opt-in specialism storyboards (see [Compliance Catalog](/docs/building/compliance-catalog)).
+- **`account.sandbox: true`** — Signals to the runner that you honor sandbox semantics (no real spend, no production side effects).
+- **`account.require_operator_auth`** — Determines your sandbox bootstrap path (step 2).
+
+<Warning>
+Do not declare a capability you cannot pass. The conformance spec treats the storyboards matching your declaration as the source of truth — overclaiming produces a public failure, not a soft warning.
+</Warning>
+
+## Step 2 — Pick your sandbox bootstrap path
+
+The runner must obtain a sandbox account before it can do anything. There are two paths, chosen by your `require_operator_auth` flag:
+
+**Implicit accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
+
+**Explicit accounts (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. Publish a short note in your docs telling operators how to request one.
+
+Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbox).
+
+## Step 3 — Implement the compliance test controller
+
+This is the real work. Without a compliance test controller, the runner can only test buyer-initiated flows (observational mode). With one, it can walk full lifecycles — approve creatives, reject media buys, simulate delivery, force budget depletion (deterministic mode). The [conformance spec](/docs/building/conformance) treats deterministic mode as the bar for specialism coverage.
+
+`comply_test_controller` is a single tool with a `scenario` parameter covering three families:
+
+| Scenario family | What it does | When you need it |
+|-----------------|--------------|------------------|
+| `seed_*` | Create fixtures (products, pricing options, creatives, plans, media buys) with caller-supplied IDs | Almost every storyboard — this replaces hardcoded-ID discovery |
+| `force_*` | Drive entities through state transitions that are normally seller-initiated | Any storyboard that tests a state machine (creative approval, account suspension, etc.) |
+| `simulate_*` | Inject delivery data or budget spend | Reporting and budgeting storyboards |
+
+See [Compliance test controller](/docs/building/implementation/comply-test-controller) for scenario-by-scenario parameters and response shapes.
+
+### Use the SDK scaffold, not a hand-written dispatcher
+
+`@adcp/client` ships a seller-side scaffold so you wire your data layer to the controller without reimplementing tool registration, param validation, error envelopes, or re-seed idempotency. You supply adapters; the SDK owns the protocol surface.
+
+```ts
+import { createComplyController, TestControllerError } from '@adcp/client/testing';
+
+const controller = createComplyController({
+  sandboxGate: (input) => input.auth?.sandbox === true,
+
+  seed: {
+    product: async ({ product_id, fixture }) => {
+      await productRepo.upsert(product_id, fixture);
+    },
+    creative: async ({ creative_id, fixture }) => {
+      await creativeRepo.upsert(creative_id, fixture);
+    },
+    // Add pricing_option, plan, media_buy as your claimed storyboards require
+  },
+
+  force: {
+    creative_status: async ({ creative_id, status, rejection_reason }) => {
+      const result = await creativeRepo.transition(creative_id, status, rejection_reason);
+      if (result.kind === 'invalid_transition') {
+        throw new TestControllerError('INVALID_TRANSITION', result.message, result.currentStatus);
+      }
+      return { success: true, current_state: result.status };
+    },
+    // Add account_status, media_buy_status, session_status as needed
+  },
+
+  // simulate: { delivery, budget_spend } — add if you claim reporting/budget specialisms
+});
+
+// MCP registration — only expose in sandbox deployments
+if (process.env.ADCP_SANDBOX === '1') {
+  controller.register(server);
+}
+```
+
+What the scaffold handles for you:
+
+- **Tool registration and schema.** `controller.toolDefinition` stays in sync with the published spec version.
+- **Dispatch and `UNKNOWN_SCENARIO`.** Scenarios you do not register return `UNKNOWN_SCENARIO` automatically — never a schema error.
+- **Param validation.** Invalid params produce `INVALID_PARAMS` with a readable `error_detail` without ever reaching your adapter.
+- **Seed idempotency.** Calling `seed_product` twice with the same `product_id` and an equivalent `fixture` returns `previous_state: "existing"`; a divergent `fixture` returns `INVALID_PARAMS`. Your adapter is only invoked on the first seed — equivalence checking is inside the helper.
+- **Error envelopes.** Throw `TestControllerError('INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS', message, currentState?)` from any adapter to produce the correct typed error response.
+- **Per-request sandbox gating.** `sandboxGate` returns `FORBIDDEN` on the adapter's behalf. A thrown gate fails closed.
+
+The scaffold does **not** own the state machine. Transition rules live in your adapters, so compliance testing and production share one source of truth — the exact behavior the [anti-teach-to-test principle](#avoiding-the-teach-to-test-trap) depends on.
+
+### Rules the scaffold enforces so you do not have to
+
+- **Sandbox-gated.** `comply_test_controller` MUST NOT appear in `tools/list` on a production connection. Wrap `controller.register(server)` in your sandbox check (e.g., `if (process.env.ADCP_SANDBOX === '1')`). Per-request, `sandboxGate` returns `FORBIDDEN` for requests that reference a non-sandbox account.
+- **Same transition rules as production.** Your adapter enforces validity by throwing `TestControllerError('INVALID_TRANSITION', …)`. The SDK does not second-guess your state machine — whatever production rejects, sandbox rejects identically.
+- **Open-for-extension.** Scenarios you do not wire up return `UNKNOWN_SCENARIO` automatically. Storyboards that depend on unavailable scenarios are graded `not_applicable`, not failed.
+
+<Note>
+For custom MCP wrappers — AsyncLocalStorage, transport-level sandbox gating, session-backed stores — compose the lower-level `handleTestControllerRequest`, `toMcpResponse`, and `TOOL_INPUT_SHAPE` from `@adcp/client/server` directly.
+</Note>
+
+## Step 4 — Run the storyboard runner
+
+Once the three surfaces are in place, the runner takes over:
+
+```bash
+npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client storyboard run my-agent
+```
+
+The runner:
+1. Calls `get_adcp_capabilities` to pick matching storyboards.
+2. Calls `sync_accounts` (or `list_accounts`) to obtain a sandbox account.
+3. Calls `comply_test_controller` with seed scenarios to populate fixtures declared by each storyboard.
+4. Walks the storyboard's buyer-initiated steps, calling `force_*` and `simulate_*` where the storyboard needs a seller-side transition.
+5. Reports pass/fail per step.
+
+See [Validate Your Agent](/docs/building/validate-your-agent) for the full CLI reference.
+
+## Avoiding the teach-to-test trap
+
+Storyboards hardcode fixture IDs — `"test-product"`, `"campaign_hero_video"`, `"acmeoutdoor.example"`. It is tempting to make your controller "work" by special-casing those strings. **Do not.** Agents that pass storyboards on fixture IDs but fail on real buyer data are the exact failure mode the conformance program is trying to prevent.
+
+The SDK scaffold above already points you in the right direction: adapters receive `product_id`, `creative_id`, etc. as values, not as conditions. If your adapter contains a switch on `product_id === "test-product"`, you have regressed.
+
+Two rules of thumb:
+
+1. **Implement seed scenarios generically.** `seed_product` should accept any `product_id` and persist a product with that ID in your sandbox data layer. Your adapter is a thin wrapper over a real upsert against your sandbox store.
+2. **The `fixture` object is the contract, the ID is not.** Storyboard authors set `fixture` to the minimum shape the test needs. Everything beyond that — discovery, filtering, authorization — is your normal code path, exercised on fixture-seeded data the same way it runs on production data.
+
+A good test that you are not teaching to the test: swap a storyboard's fixture IDs for random UUIDs and re-run. If the run still passes, your controller is correct. If it breaks, you have hardcoded behavior to fix.
+
+## Readiness checklist
+
+Before you run your first full storyboard sweep:
+
+- [ ] `get_adcp_capabilities` returns your real `supported_protocols` and `specialisms`
+- [ ] `account.sandbox: true` is declared and honored (sandbox requests produce no real spend or platform calls)
+- [ ] `sync_accounts` (implicit path) or `list_accounts` (explicit path) handles sandbox requests
+- [ ] `controller.register(server)` is wrapped in a sandbox-only check so `comply_test_controller` never appears in production `tools/list`
+- [ ] `sandboxGate` returns `false` for requests referencing non-sandbox accounts (producing `FORBIDDEN`)
+- [ ] Every `seed_*` adapter your claimed storyboards depend on is wired to a real upsert in your sandbox store (no ID special-cases)
+- [ ] Every `force_*` adapter throws `TestControllerError('INVALID_TRANSITION', …)` using your production transition logic
+- [ ] Storyboards pass when fixture IDs are swapped for random UUIDs
+
+## What's next
+
+- **[Validate Your Agent](/docs/building/validate-your-agent)** — The CLI and Addie workflows for actually running storyboards
+- **[Compliance test controller](/docs/building/implementation/comply-test-controller)** — Full scenario-by-scenario spec
+- **[Sandbox mode](/docs/media-buy/advanced-topics/sandbox)** — The two account model paths in depth
+- **[Conformance](/docs/building/conformance)** — What "conformant" and "verified" mean once your runs pass
