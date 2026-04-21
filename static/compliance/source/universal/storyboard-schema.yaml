@@ -546,6 +546,36 @@
 #       UNKNOWN_SCENARIO). The storyboard grades not_applicable (coverage gap),
 #       not failed.
 #
+#   unresolved_scenario_reference
+#       A detailed sub-reason under the canonical skip `reason:
+#       not_applicable`. Emitted when a parent storyboard's
+#       `requires_scenarios:` entry cannot be resolved against the source
+#       tree (no file declares that `id:`). Per the
+#       `detailed_reason_mapping` convention in runner-output-contract.yaml,
+#       runners MUST populate the canonical `reason: not_applicable` and
+#       encode `unresolved_scenario_reference` in `detail`. detail MUST
+#       follow the shape
+#       'requires_scenarios reference "<scenario_id>" did not resolve
+#       against the source tree' — and when multiple references are
+#       unresolved, detail MUST enumerate every unresolved id with the
+#       same shape (comma-separated or newline-delimited) so downstream
+#       tooling can parse each. Runners MUST NOT silently pass the parent
+#       as if the missing scenario had contributed.
+#
+#       Distinct from `fixture_seed_unsupported`: that reason indicates an
+#       agent-coverage gap (seller doesn't implement a seed scenario);
+#       `unresolved_scenario_reference` indicates a source-tree authoring
+#       bug that the build-time lint SHOULD have caught. Dashboards and
+#       summary reports SHOULD NOT conflate the two when aggregating
+#       `not_applicable` counts — they are categorically different
+#       signals.
+#
+#       The `lint:storyboard-branch-sets` script surfaces this as a
+#       build-time error via the `unresolved_scenario_reference` rule so
+#       unresolved references in a well-linted corpus never reach a
+#       runner. The runner-side grading is defensive for corpora that
+#       bypass the lint or come from pre-lint CI states.
+#
 # --- Webhook receiver (optional, for outbound-webhook conformance) ---
 #
 # Storyboards that verify outbound webhook conformance (signing, idempotency_key
