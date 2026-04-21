@@ -174,6 +174,8 @@
 # optional: boolean (default false — see semantics below)
 # skip_if: string (expression — phase is skipped when the expression evaluates to true,
 #                  e.g., "!test_kit.auth.api_key")
+# branch_set: object (optional — first-class declaration of branch-set membership;
+#                     see "Branch sets" section below)
 #
 # Optional phase semantics:
 #   - An `optional: true` phase always runs unless `skip_if` evaluates to true.
@@ -185,47 +187,115 @@
 #     when no optional path succeeded.
 #   - A non-optional phase that fails fails the storyboard unconditionally.
 #
-# Per-step grading in any_of branch patterns:
-#   An "aggregation flag" is the shared `contributes_to: <flag>` value that
-#   peer optional phases use to signal "this branch succeeded" toward a later
-#   `assert_contribution` check over that flag. When two or more optional
-#   phases declare `contributes_to: <flag>` for the same aggregation flag,
-#   they form a branch set. At most one branch is typically taken by a
-#   conformant agent — the others observe the non-chosen outcome and their
-#   steps' assertions (e.g., `expect_error: true` on the reject branch vs.
-#   `field_present: media_buy_id` on the accept branch) cannot both pass on
-#   the same agent.
+# Branch sets:
+#   A branch set is a group of peer optional phases exercising mutually
+#   exclusive agent behaviors for the same trigger — e.g., an agent that
+#   rejects a past start_time vs. an agent that accepts-and-adjusts. A
+#   later `assert_contribution` step over the set's `branch_set.id` fails
+#   the storyboard only when NO branch contributed.
 #
-#   Authoring constraint: every phase in a branch set MUST set
-#   `optional: true`. A non-optional phase that also declares `contributes_to`
-#   matching a branch-set flag is a storyboard authoring error — failures in
-#   that phase would fail the storyboard unconditionally regardless of peer
-#   branch contribution, defeating the any_of semantics.
+#   Minimal example — two peer phases and the assertion that grades them:
 #
-#   Runners MUST grade per-step results in a branch set as follows:
-#     - If at least one peer branch contributed the aggregation flag, the
+#     phases:
+#       - id: past_start_reject_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_reject
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect INVALID_REQUEST ...
+#
+#       - id: past_start_adjust_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_adjust
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect media_buy_id ...
+#
+#       - id: past_start_enforcement
+#         steps:
+#           - task: assert_contribution
+#             validations:
+#               - check: any_of
+#                 allowed_values: [past_start_handled]
+#
+#   New storyboards MUST declare branch-set membership with a `branch_set:`
+#   object. The implicit-detection fallback below exists only so pre-#2633
+#   storyboards keep running unchanged.
+#
+#   `branch_set:` field shape:
+#     - id:        non-empty string. MUST equal the `contributes_to` value
+#                  on every contributing step inside the phase and MUST
+#                  appear in the `assert_contribution` step's any_of
+#                  allowed_values.
+#     - semantics: `any_of`. No other value is supported today.
+#
+#   `contributes_to:` on the contributing step is still REQUIRED — the
+#   phase-level `branch_set:` declares membership but does not replace
+#   per-step contribution signalling. Runners accumulate contributions at
+#   the step level, not the phase level.
+#
+#   Authoring rules (enforced by `lint:storyboard-branch-sets`):
+#     - A phase with `branch_set:` MUST set `optional: true`. A
+#       non-optional phase's failure would fail the storyboard
+#       unconditionally and defeat the any_of semantics.
+#     - All phases in a storyboard sharing the same `branch_set.id` MUST
+#       share the same `branch_set.semantics`.
+#     - A storyboard with a `branch_set:` declaration MUST contain an
+#       `assert_contribution` step whose `validations[].check: any_of`
+#       includes the `branch_set.id` in `allowed_values`.
+#     - Any step inside a branch-set phase that declares `contributes_to`
+#       MUST use the value `<branch_set.id>`.
+#     - If any phase declares `branch_set: { id: X, ... }`, every optional
+#       phase in the same storyboard whose steps contribute to X MUST also
+#       declare `branch_set: { id: X, ... }`. A mixed-mode storyboard (one
+#       peer declared, one peer relying on implicit detection) would be
+#       graded as a single-member set by a runner preferring the explicit
+#       declaration.
+#
+#   Runner grading:
+#     Runners MUST prefer the explicit `branch_set:` declaration when
+#     present and fall back to implicit detection otherwise (see below).
+#     - If at least one peer branch contributed the `branch_set.id`, the
 #       non-contributing branch's failing steps MUST be graded with skip
 #       reason `peer_branch_taken` (see
 #       runner-output-contract.yaml > skip_result.reasons.peer_branch_taken).
 #       They MUST NOT surface as `failed` in the storyboard summary, and
-#       MUST NOT be conflated with `not_applicable` (which is reserved for
-#       coverage gaps — agent didn't declare the protocol).
-#     - If no branch contributed the flag, the final `assert_contribution`
-#       step is what fails the storyboard — individual branch step failures
-#       still grade `failed` so the implementor sees what each branch
-#       observed.
+#       MUST NOT be conflated with `not_applicable` (reserved for coverage
+#       gaps — agent didn't declare the protocol).
+#     - If no branch contributed, the final `assert_contribution` step
+#       fails the storyboard. Individual branch step failures still grade
+#       `failed` so the implementor sees what each branch observed.
 #
-#   Runner detection:
-#     A branch set is the set of `optional: true` phases whose steps declare
-#     the same `contributes_to: <flag>` value as a later `assert_contribution`
-#     step's `validations[].check: any_of, allowed_values: [<flag>]` target.
-#     Nested branch sets (a branch set whose member is itself a branch set)
-#     are out of scope for runners.
+#   When to use a branch set:
+#     Only when the AdCP spec permits multiple conformant behaviors for
+#     the same trigger. If the spec mandates one behavior, write a
+#     required phase — a branch set where only one branch is legal
+#     weakens the test to any_of and hides regressions. Branch sets are
+#     not for optional features (use `skip_if` and coverage flags) or
+#     for progressive disclosure (use sequential phases).
 #
-#   Authoring guidance (not a runner rule): storyboards SHOULD keep branch
-#   sets flat — two or three peer phases is typical. If a scenario needs
-#   deeper branching, restructure into separate storyboards or a linear
-#   sequence.
+#   Authoring guidance: keep branch sets flat — two or three peer phases
+#   is typical. Nested branch sets (a branch set whose member is itself a
+#   branch set) are out of scope for runners. If a scenario needs deeper
+#   branching, restructure into separate storyboards or a linear sequence.
+#
+#   Implicit branch-set detection (DEPRECATED — pre-#2633 storyboards only):
+#     When no phase in a storyboard declares `branch_set:`, runners fall
+#     back to the legacy rule: a branch set is the set of `optional: true`
+#     phases whose steps declare the same `contributes_to: <flag>` value
+#     as a later `assert_contribution` step's
+#     `validations[].check: any_of, allowed_values: [<flag>]` target.
+#     Fragile against typos in `contributes_to:` — new storyboards MUST
+#     use the explicit form above. This fallback exists only so
+#     pre-#2633 storyboards keep running during migration.
 #
 # --- Validation ---
 #

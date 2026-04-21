@@ -145,6 +145,9 @@ phases:
 
     optional: true
     skip_if: "!test_kit.auth.api_key"
+    branch_set:
+      id: auth_mechanism_verified
+      semantics: any_of
 
     steps:
       - id: probe_api_key
@@ -260,6 +263,9 @@ phases:
       agent that ignores API keys is broken.
 
     optional: true
+    branch_set:
+      id: auth_mechanism_verified
+      semantics: any_of
 
     steps:
       - id: probe_protected_resource

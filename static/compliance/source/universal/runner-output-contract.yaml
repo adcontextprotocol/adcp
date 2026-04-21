@@ -278,11 +278,11 @@ skip_result:
       applies only where the contract explicitly permits SKIP.
     peer_branch_taken: |
       The step is part of an `any_of` branch set (see storyboard-schema.yaml
-      > "Per-step grading in any_of branch patterns") whose aggregation flag
-      was already contributed by a peer optional phase, making this
-      non-chosen branch moot. detail MUST follow the shape
-      "<flag> contributed by <peer_phase_id>.<peer_step_id> —
-      <this_branch_id> is moot" so downstream tooling can parse which peer
+      > "Branch sets") whose `branch_set.id` was already contributed by a
+      peer optional phase, making this non-chosen branch moot. detail MUST
+      follow the shape
+      "<branch_set.id> contributed by <peer_phase_id>.<peer_step_id> —
+      <this_phase_id> is moot" so downstream tooling can parse which peer
       carried the contribution. Kept distinct from not_applicable: coverage
       gaps (agent doesn't support a protocol) and runtime branch routing
       (agent took the other path) are different signals and must not be
