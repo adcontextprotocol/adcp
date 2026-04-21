@@ -49,6 +49,28 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  products:
+    - product_id: "sports_ctv_q2"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "lifestyle_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "sports_ctv_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 45.0
+    - product_id: "lifestyle_display_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
   plans:
     - plan_id: "gov_acme_q2_2027"
       brand:
@@ -61,6 +83,14 @@ fixtures:
       flight:
         start: "2027-01-01T00:00:00Z"
         end: "2027-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "ctv_weekly_reporting"
+          enforcement: "must"
+          policy: "CTV buys require weekly delivery reporting."
+        - policy_id: "ugc_brand_safety"
+          enforcement: "must"
+          policy: "UGC placements require brand safety review before go-live."
 
 phases:
   - id: capability_discovery

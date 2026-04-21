@@ -52,6 +52,11 @@ fixtures:
       status: "approved"
       format_id:
         id: "vast_30s"
+      pricing_options:
+        - pricing_option_id: "po_vast_30s_cpm"
+          pricing_model: "cpm"
+          rate: 0.50
+          currency: "USD"
 
 phases:
   - id: capability_discovery

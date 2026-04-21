@@ -74,15 +74,6 @@ fixtures:
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 15.0
-  media_buys:
-    - media_buy_id: "mb_acme_q2_2026_auction"
-      status: "active"
-      budget:
-        total: 25000
-        currency: "USD"
-      flight:
-        start: "2026-04-01T00:00:00Z"
-        end: "2026-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery

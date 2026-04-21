@@ -59,6 +59,11 @@ fixtures:
       flight:
         start: "2027-01-01T00:00:00Z"
         end: "2027-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "drift_reevaluation"
+          enforcement: "must"
+          policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
   media_buys:
     - media_buy_id: "mb_acme_q2_2026"
       status: "active"
