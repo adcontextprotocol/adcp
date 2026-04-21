@@ -388,6 +388,25 @@ test('resolveEntityAtPath: walks oneOf variants', () => {
   assert.equal(entity, 'rights_grant');
 });
 
+test('composite_entity_disagreement: root x-entity and variant x-entity must agree', () => {
+  // The walker's empty-path rule returns the root-level x-entity before
+  // entering oneOf/anyOf/allOf. If a variant declares a different entity at
+  // the empty path, that variant's value is silently dropped. This check
+  // forces the schema author to make them agree — or remove one.
+  const { findCompositeDisagreements } = require('../scripts/lint-storyboard-context-entity.cjs');
+  const schema = {
+    'x-entity': 'signal',
+    oneOf: [
+      { 'x-entity': 'signal' },
+      { 'x-entity': 'signal_activation_id' },
+    ],
+  };
+  const disagreements = findCompositeDisagreements(schema, []);
+  assert.equal(disagreements.length, 1);
+  assert.equal(disagreements[0].rootEntity, 'signal');
+  assert.deepEqual(disagreements[0].variantEntities, ['signal_activation_id']);
+});
+
 test('loadRegistry: core x-entity-types.json is valid and non-empty', () => {
   const registry = loadRegistry();
   assert.ok(registry.size > 0, 'registry should enumerate entity types');

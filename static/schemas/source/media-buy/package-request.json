@@ -35,7 +35,7 @@
     "pricing_option_id": {
       "type": "string",
       "description": "ID of the selected pricing option from the product's pricing_options array",
-      "x-entity": "pricing_option"
+      "x-entity": "product_pricing_option"
     },
     "bid_price": {
       "type": "number",

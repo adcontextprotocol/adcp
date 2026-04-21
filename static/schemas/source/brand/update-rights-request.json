@@ -30,7 +30,7 @@
     "pricing_option_id": {
       "type": "string",
       "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries.",
-      "x-entity": "pricing_option"
+      "x-entity": "vendor_pricing_option"
     },
     "paused": {
       "type": "boolean",

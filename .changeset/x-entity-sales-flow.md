@@ -13,9 +13,12 @@ Annotations added (no new entity types needed from the registry):
 - **creative/**: `creative_id`, `creative_ids[]`, `media_buy_ids[]`, `package_id`, `task_id` across request/response pairs
 - **signals/**: `signal_agent_segment_id` (→ `signal_activation_id`), `pricing_option_id`, and `signal` via the shared `core/signal-id.json` annotation
 
-Lint enhancement:
-- Walker now reads root-level `x-entity` on composite types (oneOf/anyOf/allOf) before descending into variants. This lets shared types like `core/signal-id.json` carry one root annotation that applies to whole-object captures such as `signals[0].signal_id`, without duplicating on each variant.
+Registry change: `pricing_option` split into `product_pricing_option` (seller product rate card) and `vendor_pricing_option` (agent-issued service pricing — rights, signals, creative, governance). The two live in different namespaces and a storyboard capturing one and consuming the other would be the same bug shape as the #2627 brand_id conflation.
 
-Two regression-guard tests added covering the walker enhancement and array-items path resolution.
+Lint enhancements:
+- Walker now reads root-level `x-entity` on composite types (oneOf/anyOf/allOf) before descending into variants. This lets shared types like `core/signal-id.json` carry one root annotation that applies to whole-object captures such as `signals[0].signal_id`, without duplicating on each variant.
+- New `composite_entity_disagreement` schema rule flags when a root `x-entity` and a variant's `x-entity` disagree at the empty path — the root wins silently, so forcing them to agree (or removing one) prevents a future hidden-drop hazard.
+
+Three regression-guard tests added covering the walker enhancement, array-items path resolution, and root+variant disagreement detection.
 
 Remaining domains for follow-ups: `account/`, `governance/`, `property/`, `collection/`, `sponsored-intelligence/`.
