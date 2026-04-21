@@ -98,6 +98,7 @@
     .agent-status-dot--degraded { background: var(--color-warning-500); }
     .agent-status-dot--failing { background: var(--color-error-500); }
     .agent-status-dot--unknown { background: var(--color-gray-400); }
+    .agent-status-dot--error { background: var(--color-warning-500); }
 
     .agent-status-label {
       font-size: var(--text-xs);
@@ -560,6 +561,81 @@
 
     document.addEventListener('DOMContentLoaded', loadAgents);
 
+    // Shared across the page so event handlers (e.g. retry) can re-render
+    // a single card without a full reload.
+    const pageState = { agents: [], complianceMap: new Map(), orgId: null };
+
+    // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
+    // network failures, honoring Retry-After when present. Rate-limit hits
+    // are common when the dashboard fans out 3 requests per agent on reload
+    // — without retry, agents silently collapse to "not yet checked".
+    async function fetchWithRetry(url, opts, { retries = 1, baseDelayMs = 800 } = {}) {
+      let lastErr;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const res = await fetch(url, opts);
+          if (res.status === 429 && attempt < retries) {
+            const retryAfter = parseInt(res.headers.get('retry-after') || '', 10);
+            const wait = Number.isFinite(retryAfter) ? retryAfter * 1000 : baseDelayMs;
+            await new Promise(r => setTimeout(r, wait));
+            continue;
+          }
+          return res;
+        } catch (err) {
+          lastErr = err;
+          if (attempt >= retries) break;
+          await new Promise(r => setTimeout(r, baseDelayMs));
+        }
+      }
+      throw lastErr ?? new Error('fetch failed');
+    }
+
+    // Fetches compliance + history + auth for a single agent. Always returns
+    // an object — on failure, loadError is populated so the renderer can
+    // distinguish "server says unknown" from "we couldn't load".
+    async function fetchAgentState(agent) {
+      const encoded = encodeURIComponent(agent.url);
+      const endpoints = [
+        `/api/registry/agents/${encoded}/compliance`,
+        `/api/registry/agents/${encoded}/compliance/history?limit=10`,
+        `/api/registry/agents/${encoded}/auth-status`,
+      ];
+      const settled = await Promise.allSettled(
+        endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
+      );
+
+      const parseOrError = async (s, source) => {
+        if (s.status === 'rejected') {
+          return { data: null, error: { source, code: 0, message: String(s.reason?.message || s.reason || 'network') } };
+        }
+        const res = s.value;
+        if (!res.ok) {
+          return { data: null, error: { source, code: res.status, message: res.statusText || `HTTP ${res.status}` } };
+        }
+        try {
+          return { data: await res.json(), error: null };
+        } catch (err) {
+          return { data: null, error: { source, code: res.status, message: String(err?.message || 'parse') } };
+        }
+      };
+
+      const [statusResult, historyResult, authResult] = await Promise.all([
+        parseOrError(settled[0], 'compliance'),
+        parseOrError(settled[1], 'history'),
+        parseOrError(settled[2], 'auth'),
+      ]);
+
+      // Only the compliance endpoint determines the primary card state.
+      // History and auth errors are logged but don't block rendering.
+      return {
+        url: agent.url,
+        status: statusResult.data,
+        history: historyResult.data,
+        authStatus: authResult.data,
+        loadError: statusResult.error,
+      };
+    }
+
     async function loadAgents() {
       try {
         const meRes = await fetch('/api/me', { credentials: 'include' });
@@ -620,28 +696,20 @@
         const agentCompliance = new Map();
         const agents = profileData?.profile?.agents || [];
         if (agents.length > 0) {
-          const results = await Promise.allSettled(
-            agents.map(async (agent) => {
-              const encoded = encodeURIComponent(agent.url);
-              const [statusRes, historyRes, authRes] = await Promise.all([
-                fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
-                fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
-                fetch(`/api/registry/agents/${encoded}/auth-status`, { credentials: 'include' }),
-              ]);
-              const status = statusRes.ok ? await statusRes.json() : null;
-              const history = historyRes.ok ? await historyRes.json() : null;
-              const authStatus = authRes.ok ? await authRes.json() : null;
-              return { url: agent.url, status, history, authStatus };
-            }),
-          );
+          const results = await Promise.allSettled(agents.map(fetchAgentState));
           for (const r of results) {
-            if (r.status === 'fulfilled' && r.value.status) {
+            if (r.status === 'fulfilled') {
               agentCompliance.set(r.value.url, r.value);
+            } else {
+              console.error('Agent compliance fetch rejected:', r.reason);
             }
           }
         }
 
         const currentOrgId = currentOrg?.id || null;
+        pageState.agents = agents;
+        pageState.complianceMap = agentCompliance;
+        pageState.orgId = currentOrgId;
         renderPage(agents, agentCompliance, currentOrgId);
       } catch (err) {
         console.error('Agents page load error:', err);
@@ -730,10 +798,34 @@
         const history = data?.history;
         const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
         const authInfo = data?.authStatus;
+        const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
         const hasAuth = authInfo?.has_auth;
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+
+        if (loadError) {
+          const isRateLimited = loadError.code === 429;
+          const errMsg = isRateLimited
+            ? 'Rate-limited — too many requests. Retry in a moment.'
+            : 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
+          return `
+          <div class="agent-compliance-card" id="${cardId}">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--error"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label" style="color: var(--color-warning-700, var(--color-text-secondary));">couldn't load</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0;">
+                <button class="agent-reload-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Retry</button>
+              </div>
+            </div>
+            <div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+              ${escapeHtml(errMsg)}
+            </div>
+          </div>`;
+        }
 
         if (!hasData) {
           return `
@@ -872,6 +964,34 @@
         } catch {
           checkbox.checked = !checkbox.checked;
         }
+      }
+    });
+
+    // Retry a single agent's compliance fetch after a load error.
+    document.addEventListener('click', async function(e) {
+      const retryBtn = e.target.closest('.agent-reload-btn');
+      if (!retryBtn) return;
+      const agentUrl = retryBtn.dataset.agentUrl;
+      const cardId = retryBtn.dataset.cardId;
+      if (!agentUrl || !cardId) return;
+      const card = document.getElementById(cardId);
+      if (!card) return;
+
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying...';
+      try {
+        const state = await fetchAgentState({ url: agentUrl });
+        pageState.complianceMap.set(agentUrl, state);
+        const agent = pageState.agents.find(a => a.url === agentUrl) || { url: agentUrl };
+        const newHtml = renderAgentsSection([agent], pageState.complianceMap, pageState.orgId);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = newHtml.trim();
+        const newCard = wrapper.firstElementChild;
+        if (newCard) card.replaceWith(newCard);
+      } catch (err) {
+        console.error('Retry failed:', err);
+        retryBtn.disabled = false;
+        retryBtn.textContent = 'Retry';
       }
     });
 
