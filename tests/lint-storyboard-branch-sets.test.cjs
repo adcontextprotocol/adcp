@@ -16,7 +16,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const yaml = require('js-yaml');
 
-const { lint, lintDoc, collectAssertedFlags } = require('../scripts/lint-storyboard-branch-sets.cjs');
+const {
+  lint,
+  lintDoc,
+  collectAssertedFlags,
+  buildScenarioFlagIndex,
+} = require('../scripts/lint-storyboard-branch-sets.cjs');
 
 test('source tree passes the branch-set lint', () => {
   const violations = lint();
@@ -272,6 +277,107 @@ phases:
   const orphans = violations.filter((v) => v.rule === 'orphan_contribution');
   assert.equal(orphans.length, 1);
   assert.equal(orphans[0].flag, 'unasserted');
+});
+
+test('orphan_contribution: requires_scenarios resolves linked assertions', () => {
+  // A parent storyboard delegates grading to a linked scenario via
+  // `requires_scenarios`. Contributions in the parent that the scenario
+  // asserts must not fire orphan_contribution.
+  const parent = yaml.load(`
+id: parent_sb
+requires_scenarios: [linked_suite/governance_denied]
+phases:
+  - id: emit
+    steps:
+      - id: contribute
+        contributes_to: governance_denied_flag
+`);
+  const scenarioFlagIndex = new Map([
+    ['linked_suite/governance_denied', new Set(['governance_denied_flag'])],
+  ]);
+  const orphans = lintDoc(parent, { scenarioFlagIndex }).filter(
+    (v) => v.rule === 'orphan_contribution',
+  );
+  assert.deepEqual(orphans, []);
+});
+
+test('orphan_contribution: unresolved requires_scenarios still flags orphan', () => {
+  // Fail-open on unknown scenario ids (separate authoring bug the scoping
+  // lint catches) but don't pretend the flag is asserted. Missing scenarios
+  // produce the same orphan violation as storyboards with no
+  // requires_scenarios at all.
+  const parent = yaml.load(`
+id: parent_sb
+requires_scenarios: [nonexistent/foo]
+phases:
+  - id: emit
+    steps:
+      - id: contribute
+        contributes_to: dangling
+`);
+  const orphans = lintDoc(parent, { scenarioFlagIndex: new Map() }).filter(
+    (v) => v.rule === 'orphan_contribution',
+  );
+  assert.deepEqual(
+    orphans.map((v) => ({ stepId: v.stepId, flag: v.flag })),
+    [{ stepId: 'contribute', flag: 'dangling' }],
+  );
+});
+
+test('buildScenarioFlagIndex indexes source tree by doc.id', () => {
+  // Real source tree is indexed and non-empty. No current scenario file
+  // uses assert_contribution, so the in-memory round-trip below exercises
+  // the flag-collection path directly.
+  const index = buildScenarioFlagIndex(
+    require('node:path').resolve(__dirname, '..', 'static', 'compliance', 'source'),
+  );
+  assert.ok(index.size > 0, 'expected scenario flag index to be non-empty');
+  // Known anchor: a real scenario file that requires_scenarios points at.
+  assert.ok(
+    index.has('media_buy_seller/governance_denied'),
+    'expected media_buy_seller/governance_denied in index',
+  );
+});
+
+test('buildScenarioFlagIndex throws on duplicate doc.id across files', () => {
+  // Load-bearing for orphan resolution: a duplicate id would make "which
+  // file's asserted flags win" order-dependent on filesystem iteration,
+  // potentially masking a real orphan elsewhere. Surface the collision.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'branch-set-lint-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'a.yaml'), 'id: collide\nphases: []\n');
+    fs.writeFileSync(path.join(tmp, 'b.yaml'), 'id: collide\nphases: []\n');
+    assert.throws(() => buildScenarioFlagIndex(tmp), /duplicate storyboard id "collide"/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('requires_scenarios: non-string entries are skipped, not thrown', () => {
+  // Defensive: authoring error (e.g., accidental map entry) shouldn't crash
+  // the lint. Strings resolve; non-strings are ignored.
+  const parent = yaml.load(`
+id: parent_mixed
+requires_scenarios:
+  - valid_scenario
+  - 42
+  - { not: a string }
+phases:
+  - id: emit
+    steps:
+      - id: contribute
+        contributes_to: a_flag
+`);
+  const scenarioFlagIndex = new Map([
+    ['valid_scenario', new Set(['a_flag'])],
+  ]);
+  const orphans = lintDoc(parent, { scenarioFlagIndex }).filter(
+    (v) => v.rule === 'orphan_contribution',
+  );
+  assert.deepEqual(orphans, []);
 });
 
 test('collectAssertedFlags pulls every any_of flag from every assert_contribution step', () => {
