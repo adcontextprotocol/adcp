@@ -149,12 +149,22 @@
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
 #   auth: none                                            → strip any configured credentials before sending
 #   auth: { type: api_key, from_test_kit: true }          → use the API key at `auth.api_key` in the test kit
+#   auth: { type: api_key, from_test_kit: "auth.principals.<name>.api_key" }
+#                                                         → select a named principal within a multi-principal kit
+#                                                           (forward-compatible shape; no kit exposes multiple
+#                                                           principals today)
 #   auth: { type: api_key, value_strategy: random_invalid }
 #                                                         → use a per-run random bogus API key (for invalid-key probes).
 #                                                           Runner generates `invalid-<32 random bytes>` per run.
 #   auth: { type: oauth_bearer, value_strategy: random_invalid_jwt }
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
+#
+# DISALLOWED: `auth: { type: ..., value: "<literal>" }` — literal credentials in
+# storyboard YAML are a code smell (they bind the storyboard to a specific value,
+# can't rotate without rewriting, and leak plaintext identity into source).
+# `lint-storyboard-auth-shape.cjs` (rule `literal_value`) fails the build on this
+# shape. Use `from_test_kit` or `value_strategy` instead. See #2720.
 #
 # omit_idempotency_key: boolean (optional — when true on a mutating-task step,
 #   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
