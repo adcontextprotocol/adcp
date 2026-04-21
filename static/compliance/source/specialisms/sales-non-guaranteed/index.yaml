@@ -49,6 +49,40 @@ prerequisites:
     provides a sample brand (Acme Outdoor) with bid parameters suitable for testing
     the auction-based flow.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_display_auction"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_auction"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "sports_display_auction"
+      pricing_option_id: "cpm_auction"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5.0
+    - product_id: "outdoor_video_auction"
+      pricing_option_id: "cpm_auction"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 15.0
+  media_buys:
+    - media_buy_id: "mb_acme_q2_2026_auction"
+      status: "active"
+      budget:
+        total: 25000
+        currency: "USD"
+      flight:
+        start: "2026-04-01T00:00:00Z"
+        end: "2026-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery

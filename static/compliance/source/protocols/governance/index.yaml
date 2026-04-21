@@ -41,6 +41,21 @@ prerequisites:
     URL. The test kit provides a sample brand (Acme Outdoor) with campaign parameters
     and a governance configuration with spending authority limits.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  plans:
+    - plan_id: "gov_acme_q2_2027"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+      budget:
+        total: 50000
+        currency: "USD"
+        reallocation_threshold: 20000
+      flight:
+        start: "2027-04-01T00:00:00Z"
+        end: "2027-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery
