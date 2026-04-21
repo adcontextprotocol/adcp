@@ -42,6 +42,18 @@ narrative: |
      IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
   4. A request with a different key is treated as a new request, even if the payload
      is identical — the key is what makes retries safe, not payload equivalence.
+  5. Error responses (returned envelopes, thrown envelopes, and uncaught exceptions)
+     do not cache. The next request carrying the same key re-executes the handler.
+     This applies to every recovery class, including terminal — terminal states in
+     AdCP are mostly state-dependent (e.g., ACCOUNT_SUSPENDED flips after buyer
+     remediation) and cached error replay would mask legitimate recovery. Handler
+     authors must mutate state last: a handler that writes state then returns or
+     throws an error envelope will double-write on retry. See
+     security.mdx#idempotency rule 3 ("Only successful responses are cached"),
+     which this storyboard validates structurally via the reviewer check on
+     key_reuse_conflict. An end-to-end phase that drives a deterministic terminal
+     error and replays the key is deferred pending a generic force-error controller
+     verb (see adcontextprotocol/adcp#2760).
 
   Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
   Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
@@ -429,6 +441,7 @@ phases:
         reviewer_checks:
           - "Error body MUST NOT include the cached payload, the original request, or any fingerprint (hash, digest, field diff). Leaking cached state turns key-reuse into a read oracle for attackers who stole a key."
           - "Error body MAY include code + message only. No `field` json-pointer — even a pointer like `/packages/0/budget` reveals schema shape."
+          - "Reviewer MUST confirm the seller's documentation states that errored requests release the idempotency claim, or manually probe the behavior (force a deterministic terminal error, then retry with the same key and a valid payload — the seller MUST return a fresh success, not IDEMPOTENCY_CONFLICT and not the cached error). See security.mdx#idempotency rule 3."
 
   - id: fresh_key_new_resource
     title: "Different key creates a new resource"
