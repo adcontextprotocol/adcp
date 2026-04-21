@@ -304,8 +304,12 @@ phases:
   - id: terminal_enforcement
     title: "Terminal state enforcement"
     narrative: |
-      Verify that the agent rejects state transitions on a canceled media buy. Pausing,
-      resuming, or re-canceling a terminal buy must return an error.
+      Verify that the agent rejects state transitions on a canceled media buy. Pausing
+      or resuming a terminal buy returns INVALID_STATE (generic terminal-state rule).
+      Re-canceling a terminal buy returns NOT_CANCELLABLE — the cancellation-specific
+      code takes precedence over the generic INVALID_STATE when the attempted
+      transition is itself a cancellation. Non-cancellation illegal transitions into
+      or out of terminal states still return INVALID_STATE.
 
     steps:
       - id: pause_canceled_buy
@@ -410,6 +414,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_terminal_enforcement_recancel_buy"
           context:
             correlation_id: "media_buy_state_machine--recancel_buy"
         validations:

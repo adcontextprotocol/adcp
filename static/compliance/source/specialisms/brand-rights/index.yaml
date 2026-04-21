@@ -116,9 +116,6 @@ phases:
 
           context:
             correlation_id: "brand_rights--get_brand_identity"
-        context_outputs:
-          - path: "brand_id"
-            key: "brand_id"
 
         validations:
           - check: response_schema
