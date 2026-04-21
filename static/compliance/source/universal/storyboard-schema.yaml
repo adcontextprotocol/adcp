@@ -170,7 +170,13 @@
 #       equals: <string>            # literal value, or `$agent_url` for the
 #                                   # runner target URL. Keys ending in `url`
 #                                   # get trailing-slash / case normalization
-#                                   # on both sides before compare.
+#                                   # on both sides before compare. Transport
+#                                   # path canonicalization (`/mcp`, well-known
+#                                   # A2A card path) for `$agent_url` is tracked
+#                                   # in adcp-client#710 — until it lands, MCP
+#                                   # agents should expect refs to fall
+#                                   # out-of-scope when format_ids name the
+#                                   # bare agent URL.
 #     on_out_of_scope: warn | ignore | fail
 #                                   # how refs outside `scope` are graded.
 #                                   # default `warn`: pass the check, attach
