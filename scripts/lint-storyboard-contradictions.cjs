@@ -152,6 +152,10 @@ function normalizeRequestValue(value) {
     if (value.startsWith('{{runner.')) return '<runner>';
     return value;
   }
+  // YAML 1.1 auto-parses unquoted ISO timestamps into Date objects.
+  // Without this branch, `stableStringify` would emit `{}` for them and two
+  // steps with different timestamps would fingerprint to the same group.
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(normalizeRequestValue);
   if (value && typeof value === 'object') {
     const out = {};

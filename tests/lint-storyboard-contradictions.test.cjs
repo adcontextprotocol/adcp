@@ -76,6 +76,15 @@ test('canonicalizeRequest normalizes per-run substitutions stably', () => {
   assert.equal(fingerprintRequest(a), fingerprintRequest(b));
 });
 
+test('canonicalizeRequest normalizes Date objects (yaml.load ISO timestamps)', () => {
+  // YAML 1.1 parses unquoted ISO timestamps into JS Date. Without Date
+  // handling, stableStringify emits `{}` for every Date — two steps with
+  // different start_time values collide silently.
+  const a = { start_time: new Date('2024-01-01T00:00:00Z') };
+  const b = { start_time: new Date('2026-06-15T00:00:00Z') };
+  assert.notEqual(canonicalizeRequest(a), canonicalizeRequest(b));
+});
+
 test('canonicalizeRequest distinguishes different $context sources', () => {
   // $context.media_buy_id vs $context.plan_id are NOT interchangeable —
   // the name matters even though both resolve at runtime.
