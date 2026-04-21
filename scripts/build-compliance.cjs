@@ -426,6 +426,18 @@ function main() {
     process.exit(1);
   }
 
+  // Contradiction lint: no two storyboards may encode contradictory outcomes
+  // for the same (task, request, prior-state, env) — a conformant agent
+  // cannot satisfy both.
+  try {
+    execSync('node scripts/lint-storyboard-contradictions.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
