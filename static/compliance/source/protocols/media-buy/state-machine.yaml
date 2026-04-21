@@ -304,8 +304,12 @@ phases:
   - id: terminal_enforcement
     title: "Terminal state enforcement"
     narrative: |
-      Verify that the agent rejects state transitions on a canceled media buy. Pausing,
-      resuming, or re-canceling a terminal buy must return an error.
+      Verify that the agent rejects state transitions on a canceled media buy. Pausing
+      or resuming a terminal buy returns INVALID_STATE (generic terminal-state rule).
+      Re-canceling a terminal buy returns NOT_CANCELLABLE — the cancellation-specific
+      code takes precedence over the generic INVALID_STATE when the attempted
+      transition is itself a cancellation. Non-cancellation illegal transitions into
+      or out of terminal states still return INVALID_STATE.
 
     steps:
       - id: pause_canceled_buy
@@ -385,11 +389,13 @@ phases:
       - id: recancel_buy
         title: "Reject re-cancel of canceled buy with NOT_CANCELLABLE"
         narrative: |
-          Attempt to cancel an already-canceled media buy. Per the media-buy
-          specification, the agent MUST reject with NOT_CANCELLABLE — the
-          cancellation-specific code takes precedence over the generic
-          terminal-state INVALID_STATE rule. Idempotent acceptance is NOT
-          conformant for this case.
+          Attempt to cancel an already-canceled media buy. The agent MUST reject
+          this with NOT_CANCELLABLE. The cancellation-specific code takes
+          precedence over the generic terminal-state INVALID_STATE when the
+          terminal update is itself a cancellation attempt — see §128/§129 of
+          the media-buy specification and media_buy_seller/invalid_transitions
+          for the canonical vector. Idempotent acceptance is NOT conformant for
+          this case.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
