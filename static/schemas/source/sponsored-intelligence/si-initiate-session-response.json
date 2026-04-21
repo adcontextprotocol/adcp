@@ -8,7 +8,8 @@
   "properties": {
     "session_id": {
       "type": "string",
-      "description": "Unique session identifier for subsequent messages"
+      "description": "Unique session identifier for subsequent messages",
+      "x-entity": "si_session"
     },
     "response": {
       "type": "object",

@@ -30,7 +30,8 @@
       "properties": {
         "offering_id": {
           "type": "string",
-          "description": "Offering identifier"
+          "description": "Offering identifier",
+          "x-entity": "offering"
         },
         "title": {
           "type": "string",
@@ -74,7 +75,8 @@
         "properties": {
           "product_id": {
             "type": "string",
-            "description": "Product identifier"
+            "description": "Product identifier",
+            "x-entity": "product"
           },
           "name": {
             "type": "string",
@@ -122,7 +124,8 @@
     "alternative_offering_ids": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "offering"
       },
       "description": "Alternative offerings to consider if this one is unavailable"
     },

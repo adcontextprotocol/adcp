@@ -14,7 +14,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the collection list to delete"
+      "description": "ID of the collection list to delete",
+      "x-entity": "collection_list"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

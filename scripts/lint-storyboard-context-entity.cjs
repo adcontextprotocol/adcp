@@ -484,6 +484,127 @@ function lintDoc(doc) {
   return violations;
 }
 
+/**
+ * Walk every schema and summarise annotation coverage. Used by the CLI to
+ * print a non-blocking progress signal after the lint passes. The counter
+ * lists how many `*_id` / `*_ids` fields carry `x-entity` vs. how many are
+ * unannotated, and names the first few unannotated sites so authors know
+ * where the gaps are. Fields with transient suffixes (idempotency, trace,
+ * request, correlation, etc) are excluded — they're not entity identity.
+ */
+const TRANSIENT_ID_NAMES = new Set([
+  'idempotency_key',
+  'request_id',
+  'correlation_id',
+  'trace_id',
+  'span_id',
+  'operation_id',
+  'token_id',
+  'key_id',
+  'jwt_id',
+  'kid',
+  'nonce',
+  'request_nonce',
+  'message_id',
+  // `event_id` in log-event-request is a client-side dedup key, not the
+  // event_source entity identifier (which is `event_source_id` and IS
+  // annotated). Treat as transient for coverage purposes.
+  'event_id',
+]);
+
+function isIdShapedProperty(name) {
+  if (TRANSIENT_ID_NAMES.has(name)) return false;
+  return /_id$|_ids$/.test(name) || name === 'id';
+}
+
+function reportCoverage() {
+  const annotatedByEntity = new Map();
+  const unannotated = [];
+  const walkDir = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walkDir(full);
+      else if (entry.isFile() && entry.name.endsWith('.json') && full !== REGISTRY_PATH) {
+        let doc;
+        try { doc = JSON.parse(fs.readFileSync(full, 'utf8')); } catch { continue; }
+        collectIdFields(doc, [], new WeakSet(), full, annotatedByEntity, unannotated);
+      }
+    }
+  };
+  walkDir(SCHEMA_DIR);
+  return { annotatedByEntity, unannotated };
+}
+
+function collectIdFields(node, trail, seen, file, annotatedByEntity, unannotated) {
+  if (!node || typeof node !== 'object' || seen.has(node)) return;
+  seen.add(node);
+
+  if (node.properties && typeof node.properties === 'object') {
+    for (const [name, value] of Object.entries(node.properties)) {
+      if (!value || typeof value !== 'object') continue;
+      // Check if this looks like an identity-bearing property.
+      if (isIdShapedProperty(name)) {
+        const info = detectAnnotation(value);
+        if (info.annotated) {
+          const list = annotatedByEntity.get(info.entity) || [];
+          list.push({ file, path: [...trail, name].join('.') });
+          annotatedByEntity.set(info.entity, list);
+        } else if (info.isStringLike) {
+          unannotated.push({ file, path: [...trail, name].join('.') });
+        }
+      }
+      collectIdFields(value, [...trail, name], seen, file, annotatedByEntity, unannotated);
+    }
+  }
+  // Descend into composite types (oneOf/anyOf/allOf), array items, and
+  // nested keywords that contain schemas. We stop at $ref because the
+  // registry check visits the target schema separately.
+  for (const key of ['items', 'additionalProperties', 'then', 'else']) {
+    if (node[key] && typeof node[key] === 'object') {
+      collectIdFields(node[key], [...trail, key], seen, file, annotatedByEntity, unannotated);
+    }
+  }
+  for (const key of ['oneOf', 'anyOf', 'allOf']) {
+    if (Array.isArray(node[key])) {
+      node[key].forEach((v, i) => collectIdFields(v, [...trail, key, String(i)], seen, file, annotatedByEntity, unannotated));
+    }
+  }
+}
+
+/**
+ * Detect whether an identity-shaped property node carries x-entity, and
+ * whether it's string-like enough to be worth flagging. Follows a single
+ * $ref level (so shared id types like core/brand-id.json propagate). This
+ * is a shallow detector — the context-entity lint proper does the deep
+ * walk for actual capture/consume matching.
+ */
+function detectAnnotation(node) {
+  if (!node || typeof node !== 'object') return { annotated: false, isStringLike: false };
+  if (typeof node['x-entity'] === 'string') return { annotated: true, entity: node['x-entity'], isStringLike: true };
+  if (typeof node.$ref === 'string') {
+    const resolved = loadSchema(node.$ref);
+    if (resolved && typeof resolved['x-entity'] === 'string') {
+      return { annotated: true, entity: resolved['x-entity'], isStringLike: true };
+    }
+    // Check leaf-level annotation inside the $ref target (e.g., object with
+    // id property that carries x-entity).
+    return { annotated: false, isStringLike: !!resolved };
+  }
+  if (node.type === 'string') return { annotated: false, isStringLike: true };
+  if (node.type === 'array' && node.items) return detectAnnotation(node.items);
+  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
+    // If any variant is annotated, treat as annotated (good enough for
+    // coverage counting). The disagreement lint will flag conflicts.
+    const variants = node.oneOf || node.anyOf || node.allOf;
+    for (const variant of variants) {
+      const inner = detectAnnotation(variant);
+      if (inner.annotated) return inner;
+    }
+    return { annotated: false, isStringLike: true };
+  }
+  return { annotated: false, isStringLike: false };
+}
+
 function lint() {
   const registry = loadRegistry();
   const violations = [...lintRegistry(registry)];
@@ -504,10 +625,36 @@ function lint() {
   return violations;
 }
 
+function printCoverageReport() {
+  const { annotatedByEntity } = reportCoverage();
+  const registry = loadRegistry();
+  const totalAnnotations = [...annotatedByEntity.values()].reduce((a, list) => a + list.length, 0);
+  const usedEntities = annotatedByEntity.size;
+
+  // Count domains (top-level dirs under SCHEMA_DIR) that contain at least
+  // one annotated field. This is the honest "how much is covered" signal —
+  // counting raw id-shaped fields conflates entity identity with catalog-
+  // item identity (hotel_id, job_id, asset_id, etc.) and inflates the
+  // denominator with non-entities.
+  const annotatedDomains = new Set();
+  for (const list of annotatedByEntity.values()) {
+    for (const hit of list) {
+      const rel = path.relative(SCHEMA_DIR, hit.file);
+      const domain = rel.split('/')[0];
+      if (domain && !domain.endsWith('.json')) annotatedDomains.add(domain);
+    }
+  }
+
+  console.log(`  x-entity coverage:`);
+  console.log(`    Annotations:    ${totalAnnotations} across ${annotatedDomains.size} domains`);
+  console.log(`    Registry usage: ${usedEntities}/${registry.size} id-shaped entity types in use`);
+}
+
 function main() {
   const violations = lint();
   if (violations.length === 0) {
     console.log('✓ storyboard context-entity lint: all captures and consumes align');
+    printCoverageReport();
     return;
   }
   console.error(`✗ storyboard context-entity lint: ${violations.length} violation(s)\n`);
@@ -535,5 +682,6 @@ module.exports = {
   resolveEntityAtPath,
   walkContextRefs,
   findCompositeDisagreements,
+  reportCoverage,
   formatMessage,
 };

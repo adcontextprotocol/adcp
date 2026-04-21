@@ -15,7 +15,8 @@
     },
     "session_id": {
       "type": "string",
-      "description": "Session identifier to terminate"
+      "description": "Session identifier to terminate",
+      "x-entity": "si_session"
     },
     "reason": {
       "type": "string",
