@@ -3527,13 +3527,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
   /**
-   * Verify the authenticated user belongs to the organization that owns this agent.
-   * Returns true if ownership is confirmed, false otherwise.
+   * Resolve the organization id that owns this agent from the authenticated
+   * user's perspective. Returns the workos_organization_id when the user is
+   * a member of an org whose member_profile lists this agent, else null.
+   *
+   * Mirrors the query used by the auth-status endpoint (see `/registry/agents/:url/auth-status`),
+   * so the agent_context consulted for "Test your agent" auth is the same
+   * one the UI displayed as "Auth configured via OAuth".
    */
-  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+  async function resolveAgentOwnerOrg(userId: string, agentUrl: string): Promise<string | null> {
     try {
-      const result = await query(
-        `SELECT 1 FROM member_profiles mp
+      const result = await query<{ workos_organization_id: string }>(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
          JOIN organization_memberships om
            ON om.workos_organization_id = mp.workos_organization_id
          WHERE mp.agents @> $1::jsonb
@@ -3541,10 +3547,83 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
          LIMIT 1`,
         [JSON.stringify([{ url: agentUrl }]), userId],
       );
-      return result.rows.length > 0;
+      return result.rows[0]?.workos_organization_id ?? null;
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+    return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
+  }
+
+  type ResolvedAuth = Awaited<ReturnType<ComplianceDatabase['resolveOwnerAuth']>>;
+
+  /**
+   * Resolve test-time auth for an agent using the authenticated user's own
+   * org context. Falls back to `complianceDb.resolveOwnerAuth` when the
+   * user-scoped lookup misses (e.g., org membership exists but the member's
+   * profile.agents list is out of sync), so the Test-your-agent flow doesn't
+   * silently drop auth and 401 against OAuth-protected agents.
+   */
+  async function resolveUserAgentAuth(
+    userId: string,
+    agentUrl: string,
+  ): Promise<ResolvedAuth> {
+    const orgId = await resolveAgentOwnerOrg(userId, agentUrl);
+    if (orgId) {
+      try {
+        const staticAuth = await agentContextDb.getAuthInfoByOrgAndUrl(orgId, agentUrl);
+        if (staticAuth) {
+          if (staticAuth.authType === 'basic') {
+            const decoded = Buffer.from(staticAuth.token, 'base64').toString();
+            const colonIndex = decoded.indexOf(':');
+            if (colonIndex >= 0) {
+              return {
+                type: 'basic',
+                username: decoded.slice(0, colonIndex),
+                password: decoded.slice(colonIndex + 1),
+              };
+            }
+          }
+          return { type: 'bearer', token: staticAuth.token };
+        }
+      } catch (err) {
+        logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: static token lookup failed');
+      }
+
+      try {
+        const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+        if (context?.has_oauth_token) {
+          const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, agentUrl);
+          if (tokens?.access_token) {
+            if (!tokens.refresh_token) {
+              return { type: 'bearer', token: tokens.access_token };
+            }
+
+            const client = await agentContextDb.getOAuthClient(context.id);
+            return {
+              type: 'oauth',
+              tokens: {
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token,
+                ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+              },
+              ...(client && {
+                client: {
+                  client_id: client.client_id,
+                  ...(client.client_secret && { client_secret: client.client_secret }),
+                },
+              }),
+            };
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: OAuth token lookup failed');
+      }
+    }
+
+    return complianceDb.resolveOwnerAuth(agentUrl);
   }
 
   function validateAgentUrlParam(raw: string): string | null {
@@ -3915,11 +3994,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
 
     try {
-      let auth;
+      let auth: ResolvedAuth;
       try {
-        auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        auth = await resolveUserAgentAuth(req.user.id, agentUrl);
       } catch (authErr) {
-        logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
+        logger.warn({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
       }
 
       let profile;
@@ -4059,11 +4138,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        let auth;
+        let auth: ResolvedAuth;
         try {
-          auth = await complianceDb.resolveOwnerAuth(agentUrl);
+          auth = await resolveUserAgentAuth(req.user.id, agentUrl);
         } catch (authErr) {
-          logger.debug({ err: authErr, agentUrl }, "Auth resolution failed for step run");
+          logger.warn({ err: authErr, agentUrl }, "Auth resolution failed for step run");
         }
 
         const { context, dry_run } = req.body;
@@ -4136,7 +4215,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
 
         // Resolve agent auth
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(req.user.id, agentUrl);
 
         const complyResult = await comply(agentUrl, {
           timeout_ms: 90_000,
@@ -4226,7 +4305,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(req.user.id, agentUrl);
         const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
