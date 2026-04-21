@@ -161,6 +161,8 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 **Cache warmth** is a distinct oracle: a warm cache on tenant B's id indicates someone accessed it recently. Sellers MUST NOT gate cache population on authorization — true-miss ids MUST be cached-as-miss with the same TTL as resolve-then-deny, or cache reads MUST be bypassed for not-found responses.
 
+**Verifying this yourself.** The paired-probe `adcp fuzz` invariant checks uniform-response compliance by comparing two responses per tool. See [Validate Your Agent — Preparing to test uniform error responses](/docs/building/validate-your-agent#preparing-to-test-uniform-error-responses) for tenant-setup requirements and CLI invocation. Full-strength testing requires two isolated tenants; single-tenant runs cover only the "does not exist" leg.
+
 ### Authentication and Access
 
 | Code | Recovery | Description | Resolution |
