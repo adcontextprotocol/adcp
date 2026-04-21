@@ -472,6 +472,19 @@ function main() {
     process.exit(1);
   }
 
+  // Test-kits lint: every file under test-kits/ must declare either
+  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
+  // Enforces the bimodal partition documented in storyboard-schema.yaml
+  // under "Test kit flavors". #2721.
+  try {
+    execSync('node scripts/lint-storyboard-test-kits.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
