@@ -387,12 +387,20 @@ export async function notifyMemberAdded(data: {
 
 /**
  * Send thank you message when org subscribes, including seat entitlement info.
+ *
+ * When `listing` is provided, a note and action buttons are added so admins
+ * see the auto-published directory listing alongside the welcome — avoids a
+ * separate send while still closing the consent loop from issue #2583.
  */
 export async function notifySubscriptionThankYou(data: {
   orgId: string;
   orgName: string;
   adminEmails: string[];
   seatLimits?: SeatLimits;
+  listing?: {
+    slug: string;
+    action: 'created' | 'published';
+  };
 }): Promise<boolean> {
   const safeOrgName = escapeSlackMrkdwn(data.orgName);
 
@@ -404,50 +412,75 @@ export async function notifySubscriptionThankYou(data: {
     welcomeText += `\n\nYour plan includes *${contribLabel} contributor seats* and *${communityLabel} community seats*. When teammates join, you'll get a prompt to assign access.`;
   }
 
-  const message: SlackBlockMessage = {
-    text: `Thank you for joining AgenticAdvertising.org!`,
-    blocks: [
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: 'Welcome to AgenticAdvertising.org!',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: welcomeText,
+      },
+    },
+  ];
+
+  if (data.listing) {
+    // Defense-in-depth: slugs and orgIds are validated at their source
+    // (slugify → [a-z0-9-]; WorkOS orgIds are opaque `org_...`). Encode
+    // both before interpolating into the Slack `<URL|label>` link syntax
+    // so a future policy shift can't break the link or inject into it.
+    const safeSlug = escapeSlackMrkdwn(data.listing.slug);
+    const encodedOrgId = encodeURIComponent(data.orgId);
+    const listingUrl = `${APP_URL}/members/${encodeURIComponent(data.listing.slug)}`;
+    const editUrl = `${APP_URL}/member-profile?org=${encodedOrgId}`;
+    const privacyUrl = `${APP_URL}/member-profile?org=${encodedOrgId}#field-is-public`;
+    const intro = data.listing.action === 'created'
+      ? `Your directory listing went live at <${listingUrl}|/members/${safeSlug}>. We created it when your membership activated so others can find you.`
+      : `Your directory listing is now live at <${listingUrl}|/members/${safeSlug}> — we published it when your membership activated.`;
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${intro}\n<${editUrl}|Edit the listing> or <${privacyUrl}|make it private>.`,
+      },
+    });
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: [
       {
-        type: 'header',
+        type: 'button',
         text: {
           type: 'plain_text',
-          text: 'Welcome to AgenticAdvertising.org!',
+          text: 'Manage Team',
           emoji: true,
         },
+        url: `${APP_URL}/team?org=${data.orgId}`,
+        action_id: 'go_to_team',
       },
       {
-        type: 'section',
+        type: 'button',
         text: {
-          type: 'mrkdwn',
-          text: welcomeText,
+          type: 'plain_text',
+          text: 'Go to Dashboard',
+          emoji: true,
         },
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: {
-              type: 'plain_text',
-              text: 'Manage Team',
-              emoji: true,
-            },
-            url: `${APP_URL}/team?org=${data.orgId}`,
-            action_id: 'go_to_team',
-          },
-          {
-            type: 'button',
-            text: {
-              type: 'plain_text',
-              text: 'Go to Dashboard',
-              emoji: true,
-            },
-            url: `${APP_URL}/dashboard`,
-            action_id: 'go_to_dashboard',
-          },
-        ],
+        url: `${APP_URL}/dashboard`,
+        action_id: 'go_to_dashboard',
       },
     ],
+  });
+
+  const message: SlackBlockMessage = {
+    text: `Thank you for joining AgenticAdvertising.org!`,
+    blocks,
   };
 
   return sendToOrgAdmins(data.orgId, data.adminEmails, message);
