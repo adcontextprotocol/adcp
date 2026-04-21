@@ -214,13 +214,20 @@ phases:
   assert.deepEqual(outcomes, ['error', 'success']);
 });
 
-test('no contradiction when storyboard IDs differ (independent test suites)', () => {
-  // Same task, same request, same outcome-disagreement — but two distinct
-  // storyboards. The env fingerprint includes doc.id so cross-suite
-  // differences in controller-seeded state are not flagged as contradictions.
+test('cross-storyboard contradictions surface when ids differ but env matches', () => {
+  // #2670 part 2: the env fingerprint no longer includes `sb=<doc.id>`, so
+  // two storyboards declaring disagreeing outcomes for the same
+  // (task, request, state, env) triple land in the same group and fire
+  // as a contradiction — which is the exact bug class (#2627, #2628,
+  // #2629) this lint exists to catch. Prior to this change the sb=
+  // component suppressed the cross-storyboard case entirely.
   const docs = {
     'a.yaml': yaml.load(`
 id: sb_a
+caller:
+  role: buyer_agent
+prerequisites:
+  test_kit: "test-kits/acme-outdoor.yaml"
 phases:
   - id: p
     steps:
@@ -233,6 +240,69 @@ phases:
 `),
     'b.yaml': yaml.load(`
 id: sb_b
+caller:
+  role: buyer_agent
+prerequisites:
+  test_kit: "test-kits/acme-outdoor.yaml"
+phases:
+  - id: p
+    steps:
+      - id: fail
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: GOVERNANCE_DENIED
+`),
+  };
+  const contradictions = contradictionsAcrossDocs(docs);
+  assert.equal(contradictions.length, 1, 'expected one cross-storyboard contradiction');
+  const [c] = contradictions;
+  // Assert files via `members` (full group) not `mismatch` (one picked pair) —
+  // `findContradictions` only records the first disagreeing pair per group,
+  // so `mismatch` is brittle under group-size changes. `members` is stable.
+  const memberFiles = new Set(c.members.map((m) => m.file));
+  assert.deepEqual([...memberFiles].sort(), ['a.yaml', 'b.yaml']);
+  // Pin the kind of disagreement, not just its existence: one success, one
+  // error. Guards against a future regression where grouping still fires but
+  // the outcome classification flipped for an unrelated reason.
+  const outcomes = c.members.map((m) => m.outcome.kind).sort();
+  assert.deepEqual(outcomes, ['error', 'success']);
+});
+
+test('cross-storyboard env differences still protect: different test_kit + different ids → no contradiction', () => {
+  // Complementary to the cross-storyboard-surface test above. After dropping
+  // `sb=` from the env fingerprint, the burden of separating legitimately-
+  // different test vectors falls entirely on the remaining env components
+  // (test_kit / role / fixtures / scenario / auth / seed). This test pins
+  // that two storyboards running against *different* test kits can still
+  // assert disagreeing outcomes for the same request without being flagged
+  // — i.e., `test_kit=` still discriminates correctly across storyboard
+  // files, not just within-file.
+  const docs = {
+    'acme.yaml': yaml.load(`
+id: sb_acme
+caller:
+  role: buyer_agent
+prerequisites:
+  test_kit: "test-kits/acme-outdoor.yaml"
+phases:
+  - id: p
+    steps:
+      - id: succeed
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'nova.yaml': yaml.load(`
+id: sb_nova
+caller:
+  role: buyer_agent
+prerequisites:
+  test_kit: "test-kits/nova-motors.yaml"
 phases:
   - id: p
     steps:
@@ -353,6 +423,10 @@ test('test_kit discriminates env: two storyboards sharing id+scenario but differ
   // running against different agent fixtures via different test_kit paths.
   // They legitimately produce different outcomes for the same request
   // shape. Env fingerprint must discriminate.
+  //
+  // With `sb=<doc.id>` removed from the env fingerprint (#2670 part 2),
+  // `test_kit=` is the sole discriminator here — both docs deliberately
+  // share `id:` so no implicit fallback separates them.
   const docs = {
     'acme.yaml': yaml.load(`
 id: sb_parallel

@@ -284,10 +284,6 @@ function normalizeFixturesForHashing(fixtures) {
  * governance states).
  *
  * Components:
- *   sb         — storyboard's top-level `id:`. Ensures distinct storyboard
- *                files aren't treated as running against the same in-memory
- *                agent. Conservative: means cross-storyboard contradictions
- *                are unreachable today. See #2670 for the planned removal.
  *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
  *                scenario but loading different test kits target different
  *                agent fixtures. Also the de-facto principal-identity
@@ -299,12 +295,9 @@ function normalizeFixturesForHashing(fixtures) {
  *                governance-approved path. See #2684 for the audit.
  *   role       — `doc.caller.role`. Forward-compatible guard for the
  *                "shared test_kit, distinct principal role" case identified
- *                in #2684. No-op on the current suite (all buyer_agent) but
- *                automatically discriminates the first storyboard that
- *                authors a different caller role against a shared kit —
- *                load-bearing once #2670 part 2 removes `sb=` and the
- *                fingerprint stops getting a free discriminator from the
- *                storyboard id.
+ *                in #2684. No-op on the current suite (all buyer_agent)
+ *                but automatically discriminates the first storyboard that
+ *                authors a different caller role against a shared kit.
  *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
  *                different prerequisite state via `comply_test_controller`
  *                legitimately produce different outcomes for the same
@@ -313,10 +306,21 @@ function normalizeFixturesForHashing(fixtures) {
  *   auth       — step's auth override shape (type + strategy).
  *   seed       — phase's `prerequisites.controller_seeding` (distinct from
  *                top-level fixtures; applies phase-scoped seeding).
+ *
+ * Note on `sb=<doc.id>`: the env fingerprint deliberately does NOT include
+ * the storyboard id. That was the conservative shape during the lint's
+ * initial rollout (#2661) but suppressed the exact class of bug the lint
+ * was built to catch — cross-storyboard contradictions (#2627, #2628,
+ * #2629). #2670 documented the planned removal; #2684 audited principal
+ * identity as the prerequisite discriminator (→ added `role=`); and
+ * #2708 tracks the deeper gap that `auth=` encodes strategy, not resolved
+ * principal identity. With those precisions in place, two steps that
+ * share (task, request, state, env) are now treated as the same test
+ * vector regardless of which storyboard file they live in — which is the
+ * whole point of this lint.
  */
 function fingerprintEnv(step, phase, doc) {
   const parts = [];
-  if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
   if (typeof doc?.prerequisites?.test_kit === 'string') {
     parts.push(`test_kit=${doc.prerequisites.test_kit}`);
   }
