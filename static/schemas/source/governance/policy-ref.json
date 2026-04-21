@@ -8,7 +8,7 @@
     "policy_id": {
       "type": "string",
       "description": "The unique identifier of the policy in the registry (e.g., \"uk_hfss\", \"us_coppa\").",
-      "x-entity": "policy"
+      "x-entity": "governance_policy"
     },
     "version": {
       "type": "string",

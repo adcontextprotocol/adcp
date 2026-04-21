@@ -27,7 +27,8 @@
     "property",
     "media_plan",
     "governance_plan",
-    "policy",
+    "governance_policy",
+    "governance_check",
     "content_standards",
     "task",
     "si_session"
@@ -53,9 +54,10 @@
     "property_list": "A buyer-managed property list. `list_id` on property/* schemas. Same field name as collection_list — annotation distinguishes them.",
     "catalog": "A buyer catalog feed (product, inventory, promotion, offering). `catalog_id` in media-buy/sync-catalogs-request and core/catalog.json.",
     "property": "A publisher property in the seller's view. Appears in property/* and referenced by core/property.json.",
-    "media_plan": "A media plan (distinct from media_buy — a plan can have multiple buys or precede a buy). `plan_id` in governance/sync-plans-request and related schemas when the scope is media planning.",
-    "governance_plan": "A governance plan (AI Act, consent, suitability). `plan_id` in governance/* schemas when the scope is governance, not media planning.",
-    "policy": "A governance policy identifier (e.g., 'uk_hfss', 'us_coppa') from the policy registry or a bespoke inline policy scoped to a plan. `policy_id` in governance/policy-entry.json, governance/policy-ref.json, governance/sync-plans-request (policies and portfolio.shared_policy_ids), governance/check-governance-response (findings), and governance/get-plan-audit-logs-response (audit entries).",
+    "media_plan": "A media plan — distinct from media_buy (a plan can have multiple buys or precede a buy). Reserved for future media-plan schemas; no currently-shipped schemas use this value. Do not confuse with `governance_plan`, which owns every `plan_id` in governance/* schemas today.",
+    "governance_plan": "A governance plan (AI Act, consent, suitability). `plan_id` in governance/* schemas, plus media-buy/create-media-buy-request.plan_id (which flows into check_governance).",
+    "governance_policy": "A governance policy identifier (e.g., 'uk_hfss', 'us_coppa'). `policy_id` in governance/policy-entry.json, governance/policy-ref.json, governance/sync-plans-request, governance/check-governance-response findings, governance/get-plan-audit-logs-response audit entries, plus cross-domain sites: property/validation-result, error-details/policy-violation, and content-standards/*. Known caveat: registry-scoped ids (`uk_hfss`) and plan-scoped inline bespoke ids share this entity type today; splitting them requires schema-shape discrimination — tracked in issue #2685.",
+    "governance_check": "A governance check result identifier. `check_id` in governance/check-governance-response and governance/report-plan-outcome-request — it round-trips between the two, so entity-identity tracking is required.",
     "content_standards": "A content-standards document. `standards_id` in content-standards/* schemas.",
     "task": "An async task handle (governance check, validation result). `task_id` across core/tasks-* schemas.",
     "si_session": "A sponsored-intelligence conversation session. `session_id` in sponsored-intelligence/* schemas."

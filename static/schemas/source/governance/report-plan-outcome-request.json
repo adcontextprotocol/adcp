@@ -19,7 +19,8 @@
     },
     "check_id": {
       "type": "string",
-      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
+      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes.",
+      "x-entity": "governance_check"
     },
     "idempotency_key": {
       "type": "string",

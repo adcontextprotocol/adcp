@@ -115,7 +115,8 @@
                   "properties": {
                     "check_id": {
                       "type": "string",
-                      "description": "The escalated governance check."
+                      "description": "The escalated governance check.",
+                      "x-entity": "governance_check"
                     },
                     "reason": {
                       "type": "string",
@@ -295,7 +296,7 @@
                       },
                       "policy_id": {
                         "type": "string",
-                        "x-entity": "policy"
+                        "x-entity": "governance_policy"
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"

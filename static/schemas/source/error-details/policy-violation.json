@@ -7,7 +7,8 @@
   "properties": {
     "policy_id": {
       "type": "string",
-      "description": "Identifier for the violated policy"
+      "description": "Identifier for the violated policy",
+      "x-entity": "governance_policy"
     },
     "policy_url": {
       "type": "string",

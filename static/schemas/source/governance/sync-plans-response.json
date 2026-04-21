@@ -64,7 +64,7 @@
                 "policy_id": {
                   "type": "string",
                   "description": "Registry policy ID.",
-                  "x-entity": "policy"
+                  "x-entity": "governance_policy"
                 },
                 "source": {
                   "type": "string",
