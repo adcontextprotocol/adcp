@@ -5,6 +5,8 @@ protocol: media-buy
 status: preview
 summary: "Retail media network seller — onsite, offsite, and in-store inventory tied to commerce signals and SKU-level reporting."
 track: media-buy
+required_tools:
+  - sync_catalogs
 
 narrative: |
   You run a retail media network. Inventory spans owned-and-operated digital
@@ -14,7 +16,15 @@ narrative: |
   3.1 placeholder: retail-media-specific phases (SKU targeting, closed-loop
   attribution, ROAS reporting, commerce-media signal activation) will be
   populated as the retail-media additions to media-buy and signals stabilize.
-  Agents claiming this specialism today pass the media-buy baseline storyboard.
+  Agents claiming this specialism today pass the media-buy baseline storyboard
+  plus the single catalog-acceptance phase below.
+
+  The catalog-acceptance phase is the minimum viable retail-media test: retail
+  media is almost entirely catalog/SKU-driven, so any agent claiming this
+  specialism MUST accept a product catalog via `sync_catalogs`. The full
+  retail-media flow (create catalog-backed media buy, SKU-level measurement,
+  closed-loop attribution) is tracked in the retail-media epic referenced from
+  #2640.
 
 agent:
   interaction_model: media_buy_agent
@@ -29,4 +39,87 @@ agent:
 caller:
   role: buyer_agent
 
-phases: []
+prerequisites:
+  description: |
+    Seller supports sync_catalogs and accepts retail product feeds. Minimal
+    catalog-acceptance testing — full retail-media flow populated with the
+    retail-media epic.
+  test_kit: "test-kits/summit-foods.yaml"
+
+phases:
+  - id: catalog_acceptance
+    title: "Retail product catalog acceptance"
+    narrative: |
+      The buyer pushes a small retail product feed. Retail media networks are
+      fundamentally catalog-driven: onsite sponsored-product ads, offsite DPAs,
+      and closed-loop measurement all resolve back to SKU-level catalog items.
+      This phase establishes the catalog-acceptance contract; the full buy-to-
+      attribution flow lands with the retail-media epic (see #2640).
+
+    steps:
+      - id: sync_retail_catalog
+        title: "Push a retail product catalog"
+        narrative: |
+          The buyer pushes a small inline retail catalog with SKU-level items.
+          Your platform validates each item and returns per-item approval status.
+          Items that fail validation MUST return specific `item_issues`.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Return per-catalog results with catalog_id, action, item_count,
+          items_approved, and item_issues for any rejected items.
+
+        sample_request:
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "summit_foods_pantry_2026"
+              type: "product"
+              name: "Summit Foods — Pantry Staples 2026"
+              items:
+                - item_id: "organic_oats_1kg"
+                  sku: "SF-OAT-1000"
+                  title: "Organic Rolled Oats, 1kg"
+                  description: "Whole-grain rolled oats, single-origin, no additives."
+                  url: "https://summitfoods.example/shop/organic-oats-1kg"
+                  image_url: "https://cdn.summitfoods.example/products/organic-oats-1kg.jpg"
+                  price:
+                    amount: 8.99
+                    currency: "USD"
+                - item_id: "wild_honey_500g"
+                  sku: "SF-HNY-500"
+                  title: "Wild Wildflower Honey, 500g"
+                  description: "Raw unfiltered honey from regional wildflower meadows."
+                  url: "https://summitfoods.example/shop/wild-honey-500g"
+                  image_url: "https://cdn.summitfoods.example/products/wild-honey-500g.jpg"
+                  price:
+                    amount: 14.50
+                    currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_catalog_acceptance_sync_retail_catalog"
+          context:
+            correlation_id: "sales_retail_media--sync_retail_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Catalog has an ID"
+          - check: field_present
+            path: "catalogs[0].item_count"
+            description: "Catalog reports item count"
+          - check: field_present
+            path: "catalogs[0].items_approved"
+            description: "Catalog reports approved item count"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--sync_retail_catalog"
+            description: "Context correlation_id returned unchanged"
