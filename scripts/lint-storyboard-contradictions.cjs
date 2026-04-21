@@ -277,6 +277,81 @@ function normalizeFixturesForHashing(fixtures) {
 }
 
 /**
+ * Reduce a step's `auth` field to a stable fingerprint token. Always returns
+ * a string so the `auth=` component is ALWAYS present in the env fingerprint
+ * — required by #2711: steps that inherit the transport default used to emit
+ * no `auth=` component and could collide with explicit steps authored
+ * against divergent transport defaults once `sb=<doc.id>` was removed.
+ *
+ * Emission shape (what goes in `auth=...`):
+ *
+ *   kit_default              — step.auth absent. Step inherits whatever
+ *                              credential the transport is configured with
+ *                              (today: the test kit's `auth.api_key`, which
+ *                              is already covered by `test_kit=<path>` in
+ *                              the outer fingerprint; the explicit token
+ *                              keeps the shape legible and pins inheritance
+ *                              as a distinct semantic from a declared
+ *                              override).
+ *
+ *   none                     — step.auth === "none". Credentials stripped.
+ *
+ *   <type>:<strategy>        — step.auth is an object. Strategy encodes:
+ *     value_strategy          → the declared strategy verbatim
+ *                              (e.g., api_key:random_invalid). Per-run
+ *                              values are random; identity is the strategy.
+ *     from_test_kit: true     → `from_test_kit` — the kit's default
+ *                              principal handle. Equivalent in resolution
+ *                              to `kit_default` today, distinguished here
+ *                              because the explicit declaration carries
+ *                              type info the default case can't.
+ *     from_test_kit: "<path>" → `from_test_kit:<path>` — selects a named
+ *                              principal within a multi-principal kit
+ *                              (#2708). Today no kit declares multiple
+ *                              principals; emission shape is forward-
+ *                              compatible so the first multi-principal
+ *                              kit's storyboards are discriminated without
+ *                              further changes to the lint.
+ *     value: "<literal>"      → `literal:<sha1-8hex>` — hash the resolved
+ *                              identity (#2708) so two steps declaring
+ *                              different literal keys against the same
+ *                              kit don't collide. 32-bit truncation is
+ *                              deliberate: at storyboard-authoring scale
+ *                              (~thousands) the birthday bound is ~65K
+ *                              before even-odds collision, and a miss
+ *                              here degrades to a lint false-negative,
+ *                              not a correctness hazard. Literal keys in
+ *                              storyboards are already a code smell; the
+ *                              hash is defense-in-depth, not a load-
+ *                              bearing discriminator.
+ *
+ *   unknown                  — step.auth is some other shape. Defensive
+ *                              catch-all so the lint surfaces rather than
+ *                              silently drops.
+ *
+ * Precedence (first match wins): `value_strategy` > `from_test_kit` >
+ * `value`. Intentional: if a step declares both `value_strategy:
+ * random_invalid` and `from_test_kit: true`, the random value wins on the
+ * wire — the strategy is what the agent actually sees — so encoding the
+ * strategy is faithful to runtime behavior. Reordering would silently
+ * change which tests discriminate.
+ */
+function describeStepAuth(auth) {
+  if (auth === undefined) return 'kit_default';
+  if (auth === 'none') return 'none';
+  if (typeof auth !== 'object' || auth === null) return 'unknown';
+  const type = typeof auth.type === 'string' ? auth.type : '?';
+  if (typeof auth.value_strategy === 'string') return `${type}:${auth.value_strategy}`;
+  if (typeof auth.from_test_kit === 'string') return `${type}:from_test_kit:${auth.from_test_kit}`;
+  if (auth.from_test_kit === true) return `${type}:from_test_kit`;
+  if (typeof auth.value === 'string') {
+    const hash = crypto.createHash('sha1').update(auth.value).digest('hex').slice(0, 8);
+    return `${type}:literal:${hash}`;
+  }
+  return `${type}:?`;
+}
+
+/**
  * Env fingerprint: the external knobs that select which fixture a conformant
  * agent serves. Two steps with same request but different env can
  * legitimately disagree on outcome (e.g., api-key vs oauth_bearer auth
@@ -284,10 +359,6 @@ function normalizeFixturesForHashing(fixtures) {
  * governance states).
  *
  * Components:
- *   sb         — storyboard's top-level `id:`. Ensures distinct storyboard
- *                files aren't treated as running against the same in-memory
- *                agent. Conservative: means cross-storyboard contradictions
- *                are unreachable today. See #2670 for the planned removal.
  *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
  *                scenario but loading different test kits target different
  *                agent fixtures. Also the de-facto principal-identity
@@ -299,24 +370,38 @@ function normalizeFixturesForHashing(fixtures) {
  *                governance-approved path. See #2684 for the audit.
  *   role       — `doc.caller.role`. Forward-compatible guard for the
  *                "shared test_kit, distinct principal role" case identified
- *                in #2684. No-op on the current suite (all buyer_agent) but
- *                automatically discriminates the first storyboard that
- *                authors a different caller role against a shared kit —
- *                load-bearing once #2670 part 2 removes `sb=` and the
- *                fingerprint stops getting a free discriminator from the
- *                storyboard id.
+ *                in #2684. No-op on the current suite (all buyer_agent)
+ *                but automatically discriminates the first storyboard that
+ *                authors a different caller role against a shared kit.
  *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
  *                different prerequisite state via `comply_test_controller`
  *                legitimately produce different outcomes for the same
  *                request.
  *   scenario   — step's `comply_scenario`.
- *   auth       — step's auth override shape (type + strategy).
+ *   auth       — step's effective credential shape, produced by
+ *                `describeStepAuth`. Always emitted (even for steps that
+ *                inherit the transport default) so inheritance itself
+ *                participates in the fingerprint rather than silently
+ *                collapsing with arbitrary other states — see #2711.
+ *                Forward-compatible with multi-principal kits via
+ *                `from_test_kit:<path>` selectors — see #2708.
  *   seed       — phase's `prerequisites.controller_seeding` (distinct from
  *                top-level fixtures; applies phase-scoped seeding).
+ *
+ * Note on `sb=<doc.id>`: the env fingerprint deliberately does NOT include
+ * the storyboard id. That was the conservative shape during the lint's
+ * initial rollout (#2661) but suppressed the exact class of bug the lint
+ * was built to catch — cross-storyboard contradictions (#2627, #2628,
+ * #2629). #2670 documented the planned removal; #2684 audited principal
+ * identity as the prerequisite discriminator (→ added `role=`); and
+ * #2708 tracks the deeper gap that `auth=` encodes strategy, not resolved
+ * principal identity. With those precisions in place, two steps that
+ * share (task, request, state, env) are now treated as the same test
+ * vector regardless of which storyboard file they live in — which is the
+ * whole point of this lint.
  */
 function fingerprintEnv(step, phase, doc) {
   const parts = [];
-  if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
   if (typeof doc?.prerequisites?.test_kit === 'string') {
     parts.push(`test_kit=${doc.prerequisites.test_kit}`);
   }
@@ -332,15 +417,7 @@ function fingerprintEnv(step, phase, doc) {
     parts.push(`fixtures=${fixturesHash}`);
   }
   if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
-  if (step.auth) {
-    const auth = step.auth;
-    if (auth === 'none') parts.push('auth=none');
-    else if (typeof auth === 'object') {
-      const type = auth.type || '?';
-      const strat = auth.value_strategy || (auth.from_test_kit ? 'from_test_kit' : auth.value ? 'literal' : '?');
-      parts.push(`auth=${type}:${strat}`);
-    }
-  }
+  parts.push(`auth=${describeStepAuth(step.auth)}`);
   const seeding = phase?.prerequisites?.controller_seeding;
   if (Array.isArray(seeding) && seeding.length > 0) {
     parts.push(`seed=${seeding.map((s) => s?.scenario || s).sort().join(',')}`);
@@ -576,6 +653,7 @@ module.exports = {
   canonicalizeRequest,
   fingerprintRequest,
   fingerprintEnv,
+  describeStepAuth,
   normalizeFixturesForHashing,
   classifyOutcome,
   outcomesAgree,
