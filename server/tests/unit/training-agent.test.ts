@@ -5828,20 +5828,40 @@ describe('create_content_standards input validation', () => {
     expect(result.message).toMatch(/scope/i);
   });
 
-  it('returns INVALID_INPUT when policy is missing', async () => {
+  it('returns INVALID_INPUT when no policy/policies/registry_policy_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_content_standards', {
       scope: { languages_any: ['en'] },
     });
     expect(result.code).toBe('INVALID_INPUT');
-    expect(result.message).toMatch(/policy/i);
+    expect(result.message).toMatch(/policy|policies|registry_policy_ids/i);
   });
 
-  it('creates standards when scope and policy are valid', async () => {
+  it('creates standards when called with legacy policy string', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_content_standards', {
       scope: { countries_all: ['US'], languages_any: ['en'] },
       policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with spec-shape policies array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      policies: [
+        { policy_id: 'no_violence', policy_categories: ['brand_safety'], enforcement: 'must', policy: 'No violent imagery' },
+      ],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with registry_policy_ids only', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      registry_policy_ids: ['shared_brand_safety_v1'],
     });
     expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
   });
