@@ -202,9 +202,7 @@
 #   later `assert_contribution` step over the set's `branch_set.id` fails
 #   the storyboard only when NO branch contributed.
 #
-#   Minimal example — two peer phases and the assertion that grades them.
-#   The contributing step uses the `contributes: true` shorthand, which the
-#   runner resolves to the enclosing phase's `branch_set.id`:
+#   Minimal example — two peer phases and the assertion that grades them:
 #
 #     phases:
 #       - id: past_start_reject_path
@@ -215,7 +213,7 @@
 #         steps:
 #           - id: create_buy_past_start_reject
 #             task: create_media_buy
-#             contributes: true
+#             contributes_to: past_start_handled
 #             # ... expect INVALID_REQUEST ...
 #
 #       - id: past_start_adjust_path
@@ -226,7 +224,7 @@
 #         steps:
 #           - id: create_buy_past_start_adjust
 #             task: create_media_buy
-#             contributes: true
+#             contributes_to: past_start_handled
 #             # ... expect media_buy_id ...
 #
 #       - id: past_start_enforcement
@@ -236,9 +234,13 @@
 #               - check: any_of
 #                 allowed_values: [past_start_handled]
 #
-#   The legacy string form `contributes_to: past_start_handled` on the
-#   contributing step is also valid and required outside branch_set phases;
-#   inside a branch_set phase it MUST equal `branch_set.id`.
+#   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
+#   `contributes: true` on a step inside a branch_set phase — the runner's
+#   loader resolves it to the enclosing phase's `branch_set.id`. Storyboards
+#   in this repository currently stay on the string form pending resolution
+#   of unrelated 5.8.0 schema-validation regressions; the defensive lint
+#   rules below cover both forms so the shorthand can be adopted
+#   per-storyboard once the runner upgrade lands.
 #
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633

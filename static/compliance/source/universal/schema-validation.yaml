@@ -375,7 +375,7 @@ phases:
         comply_scenario: temporal_validation
         expect_error: true
         stateful: false
-        contributes: true
+        contributes_to: past_start_handled
         expected: |
           Reject the request with:
           - Error code: INVALID_REQUEST
@@ -441,7 +441,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
         stateful: false
-        contributes: true
+        contributes_to: past_start_handled
         expected: |
           Accept the request with auto-adjusted dates:
           - Response matches create-media-buy-response.json schema
