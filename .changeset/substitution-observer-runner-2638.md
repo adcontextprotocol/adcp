@@ -3,35 +3,38 @@
 
 compliance: substitution-observer-runner test-kit contract + first consumer phase (#2638)
 
-Closes #2638 (contract drafted; consumer phases beyond sales-catalog-driven tracked as follow-ups once #2640 merges).
+Closes #2638 (contract drafted with v2 fixes from expert review; consumer phases beyond sales-catalog-driven tracked as follow-ups once #2640 merges).
 
-The #2620 rule — sales agents MUST percent-encode catalog-item macro values (unreserved-whitelist, RFC 3986 §2.5 for non-ASCII) before substitution into URL contexts — has a library-level conformance artifact (the 6-vector unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`). It had no runtime conformance test.
+The #2620 rule — sales agents MUST percent-encode catalog-item macro values (unreserved-whitelist, RFC 3986 §2.5 for non-ASCII) before substitution into URL contexts — has a library-level conformance artifact (the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`). It had no runtime conformance test.
 
-This PR lands the runtime side:
+**`static/compliance/source/test-kits/substitution-observer-runner.yaml`** — test-kit contract, shape mirrors `webhook-receiver-runner.yaml`:
 
-**`static/compliance/source/test-kits/substitution-observer-runner.yaml`** — new test-kit contract specifying how a black-box runner observes substituted tracker URLs in creative previews and asserts encoding safety. Mirrors the shape of `webhook-receiver-runner.yaml`:
+- **Normative SSRF policy** in contract body (not deferred to library): explicit IPv4/IPv6 CIDR deny lists (loopback, RFC 1918, link-local incl. 169.254.169.254 IMDS, CGNAT, IPv6 ULA, multicast), cloud metadata hostnames, HTTPS-only scheme allowlist, DNS revalidation, strict `follow_redirects: false`, `host_literal_policy_verified: reject` in AdCP Verified mode.
+- **Normative HTML attribute extraction set** — enumerated `tag_attribute_pairs`; `srcset` parsed per-descriptor; script text and comments explicitly out of scope.
+- **Normative macro-position alignment algorithm** — parse template + observed URL with same WHATWG URL parser, align query pairs by key, align path segments positionally, compare byte-for-byte.
+- **Normative hex case policy** — producers emit uppercase per RFC 3986 §2.1; verifiers use case-insensitive comparison on hex digits inside triplets only.
+- **Single-source-of-truth vectors** — contract references fixture by name; `expected_encoded` strings dropped from contract. Vector names aligned to fixture's hyphen convention. No drift risk.
+- **Simplified `catalog_bindings`** — `{macro, catalog_item_id, vector_name}`; runner looks up raw_value/expected_encoded from fixture. Custom vectors opt-in via optional override fields.
+- **Error-report payload policy** — canonical vectors echo verbatim; custom vectors auto-redact to SHA-256 unless `--include-raw-payloads` flag (default off, disabled in Verified).
+- **Split library surface** — `observer/` for runners; sibling `encoder/` for sellers. One library, disjoint APIs.
+- **`require_all_bindings_observed` → `require_every_binding_observed`** with default `true`. Closes silent-strip bypass.
+- **Collapsed error codes** — `preview_url_fetch_failed` + `preview_body_not_html` merged into `preview_url_unusable` with six sub-reasons including `ssrf_blocked`.
+- **`substitution_scheme_injection`** error code added for `javascript:`-scheme injection at href-whole-value positions.
+- **Preview/serve divergence** added to out-of-scope v1.
+- **Structured `scope:` and `references:` blocks** — machine-readable.
+- Fetch tuning: `max_body_bytes` 1 MiB → 256 KiB; `max_connect_seconds: 3`.
+- Observation modes renamed: `preview_html_inline` / `preview_url_fetch` → `html_inline` / `url_fetch`.
 
-- Two observation modes: `preview_html_inline` (default for lint/fast) parses `preview_html` from the response; `preview_url_fetch` (default for AdCP Verified) fetches `preview_url` over HTTPS with SSRF allowlist enforcement.
-- `attacker_value_catalog` cross-references the 6 canonical vectors from the unit-test fixture so library-level and runtime-level conformance exercise the same payloads.
-- `step_task: expect_substitution_safe` documented with full argument shape and 6 error modes (`substitution_encoding_violation`, `nested_macro_re_expansion`, `substitution_binding_missing`, `preview_source_unavailable`, `preview_url_fetch_failed`, `preview_body_not_html`).
-- `client_primitives.substitution_observer` reserves the proposed `@adcp/client` surface (`parse_html`, `fetch_and_parse`, `assert_rfc3986_safe`, `assert_no_nested_expansion`) so conformance and production code paths share one implementation.
-- Out-of-scope v1: non-catalog macros, HTML-attribute contexts, VAST XML, post-impression log introspection. All explicitly called out with rationale.
+**`static/test-vectors/catalog-macro-substitution.json`** — added `url-scheme-injection-neutralized` vector. Value `javascript:alert(0)` encodes to `javascript%3Aalert%280%29` per strict RFC 3986 (parens are NOT unreserved — encoders using `encodeURIComponent`-equivalent that leave parens unescaped fail this vector). All 7 vectors verified.
 
-**`static/compliance/source/universal/storyboard-schema.yaml`** — registered `task: expect_substitution_safe` alongside the webhook task types so runners and storyboards share a single schema.
+**`static/compliance/source/universal/storyboard-schema.yaml`** — `task: expect_substitution_safe` docs updated to match contract v2 shape.
 
-**`static/compliance/source/specialisms/sales-catalog-driven/index.yaml`** — new `substitution_safety` phase inserted between `catalog_sync` and `create_buy`. Three steps:
-
-1. `sync_attacker_shaped_catalog` — pushes three of the canonical attacker-shaped values (reserved-char breakout, nested-expansion preservation, non-ASCII UTF-8) as catalog items.
-2. `build_catalog_aware_creative` — builds a creative with `{SKU}` in impression/click trackers and `include_preview: true`.
-3. `expect_substitution_safe` — gated on `substitution_observer_runner`. Runners that do not advertise the contract grade this step `not_applicable`; the earlier two steps still run and exercise the catalog-acceptance and build paths unconditionally.
-
-Extending the `expect_substitution_safe` pattern to `sales-social` and `creative-generative` (both of which add their catalog phases in #2640) is tracked as a follow-up — not bundled here to keep this PR off a pre-#2640 main and avoid merge conflicts.
+**`static/compliance/source/specialisms/sales-catalog-driven/index.yaml`** — consumer phase updated to match contract v2: `require_every_binding_observed: true`, simplified bindings (vector_name lookup), `source: html_inline`, `content_id_type: "sku"` declared on probe catalog.
 
 ## Out of scope (follow-ups)
 
-- Reference runner implementation (adcp-client `SubstitutionObserver`) — tracked separately in the adcp-client repo once the contract YAML is reviewed.
+- Reference runner implementation (`@adcp/client` `SubstitutionObserver` + `SubstitutionEncoder` split) — adcp-client repo.
+- Unicode normalization round-trip (NFC vs NFD) — spec gap, surface in #2620 first.
+- Zero-width / invisible-char vectors — additive after NFC resolves.
 - Extension to `sales-social` / `creative-generative` once #2640 merges.
-- `sales-retail-media` wiring — waits for the retail-media epic per #2640's scoping.
-- Spec-level expansion of the #2620 rule to HTML-attribute contexts — explicitly deferred per #2620.
-
-No schema change. No spec change. New phase grades not_applicable for existing runners, so no conformance regression.
+- `sales-retail-media` wiring — retail-media epic per #2640.

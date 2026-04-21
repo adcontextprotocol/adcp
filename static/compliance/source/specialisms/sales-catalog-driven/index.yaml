@@ -321,8 +321,11 @@ phases:
           catalogs:
             - catalog_id: "substitution_safety_probe_v1"
               type: "product"
+              content_id_type: "sku"
               name: "Substitution safety probe"
               items:
+                # item_id is the vector name; the `sku` field carries the
+                # attacker-shaped value that substitution must encode.
                 - item_id: "reserved_char_breakout"
                   sku: "00013&cmd=drop"
                   title: "Reserved-char breakout probe"
@@ -396,29 +399,30 @@ phases:
           The runner inspects the preview artifact from the previous step,
           extracts tracker URLs that bind `{SKU}` to a catalog item from the
           attacker-shaped catalog, and asserts each value is percent-encoded
-          per RFC 3986 (unreserved-whitelist). Raw-byte leakage fails.
+          per RFC 3986 (unreserved-whitelist). Raw-byte leakage fails. Every
+          declared binding MUST be observed — a seller that silently strips
+          `{SKU}` rather than substituting it fails with
+          `substitution_binding_missing`.
         task: expect_substitution_safe
         requires_contract: substitution_observer_runner
-        source: preview_html
+        source: html_inline
         source_path: "/creative_manifest/preview_html"
         macro_template: "https://track.example/imp?sku={SKU}"
-        require_all_bindings_observed: false
+        require_every_binding_observed: true
         catalog_bindings:
+          # Each binding: `catalog_item_id` is the item_id in the synced
+          # catalog; `vector_name` is the fixture entry whose raw_value and
+          # expected_encoded the runner loads from
+          # static/test-vectors/catalog-macro-substitution.json.
           - macro: "{SKU}"
-            catalog_field: "items[0].sku"
-            item_id: "reserved_char_breakout"
-            raw_value: "00013&cmd=drop"
-            expected_encoded: "00013%26cmd%3Ddrop"
+            catalog_item_id: "reserved_char_breakout"
+            vector_name: "reserved-character-breakout"
           - macro: "{SKU}"
-            catalog_field: "items[1].sku"
-            item_id: "nested_expansion"
-            raw_value: "vacancy-{DEVICE_ID}-42"
-            expected_encoded: "vacancy-%7BDEVICE_ID%7D-42"
+            catalog_item_id: "nested_expansion"
+            vector_name: "nested-expansion-preserved-as-literal"
           - macro: "{SKU}"
-            catalog_field: "items[2].sku"
-            item_id: "non_ascii"
-            raw_value: "café-amsterdam"
-            expected_encoded: "caf%C3%A9-amsterdam"
+            catalog_item_id: "non_ascii"
+            vector_name: "non-ascii-utf8-percent-encoding"
   - id: create_buy
     title: "Create catalog-driven media buy"
     narrative: |

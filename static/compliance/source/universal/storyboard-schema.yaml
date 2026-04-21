@@ -445,24 +445,33 @@
 #   the `@adcp/client` SubstitutionObserver primitive (see test-kit
 #   substitution-observer-runner.yaml). Catches implementations that pass raw
 #   attacker bytes through substitution, including CRLF injection, bidi-override
-#   spoofing, and reserved-character URL breakout.
+#   spoofing, reserved-character URL breakout, and javascript:-scheme injection.
 #
 #   Fields:
-#     source: preview_html | preview_url  # default preview_html
+#     source: html_inline | url_fetch  # default html_inline
 #     source_path: "<JSON pointer into previous step's response>"
 #     macro_template: "<URL template with {MACRO} placeholders>"
 #     catalog_bindings:
 #       - macro: "{SKU}"
-#         catalog_field: "items[0].sku"
-#         item_id: "<catalog item_id>"
-#         raw_value: "<attacker-shaped input>"
-#         expected_encoded: "<RFC 3986 unreserved-encoded form>"
-#     require_all_bindings_observed: true  # default true
+#         catalog_item_id: "<item_id in the synced catalog>"
+#         vector_name: "<fixture entry name, e.g. reserved-character-breakout>"
+#         # Optional overrides for custom (non-canonical-fixture) vectors:
+#         # raw_value: "<attacker-shaped input>"
+#         # expected_encoded: "<RFC 3986 unreserved-encoded form>"
+#     require_every_binding_observed: true  # default true. Opt to false only
+#                                           # when preview shows a partial
+#                                           # catalog and partial observation
+#                                           # is legitimate (document why in
+#                                           # the narrative). The old field
+#                                           # name require_all_bindings_observed
+#                                           # is deprecated.
 #     requires_contract: substitution_observer_runner
 #
 #   Error modes: substitution_encoding_violation, nested_macro_re_expansion,
-#   substitution_binding_missing, preview_source_unavailable,
-#   preview_url_fetch_failed, preview_body_not_html.
+#   substitution_scheme_injection, substitution_binding_missing,
+#   preview_source_unavailable, preview_url_unusable (with sub-reason:
+#   http_status | content_type | size_exceeded | redirect_returned |
+#   ssrf_blocked | fetch_timeout).
 #
 # --- shared_receiver (deferred / out of scope v1) ---
 #
