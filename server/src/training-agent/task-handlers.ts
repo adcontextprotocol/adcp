@@ -2266,7 +2266,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
-      ...(pkg.targeting && { targeting: pkg.targeting }),
+      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.canceledAt && {
         cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
       }),

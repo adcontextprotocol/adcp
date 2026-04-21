@@ -933,8 +933,10 @@ export async function handleAcquireRights(
     if (!Number.isNaN(endMs) && endMs < Date.now()) {
       return {
         errors: [{
-          code: 'invalid_request',
+          code: 'INVALID_REQUEST',
           message: `Campaign end_date ${campaign.end_date} is in the past; cannot license rights for an expired period.`,
+          field: 'campaign.end_date',
+          recovery: 'correctable',
         }],
       };
     }

@@ -292,7 +292,7 @@ export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   if (!req.catalogs && !req.catalog_ids) {
     const existing = Array.from(catalogs.values()).map(c => ({
       catalog_id: c.catalogId,
-      catalog_type: c.catalogType,
+      type: c.catalogType,
       name: c.name,
       item_count: c.itemCount,
       items_approved: c.itemsApproved,
