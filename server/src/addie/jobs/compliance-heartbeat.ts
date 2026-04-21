@@ -5,7 +5,13 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { comply, complianceResultToDbInput, type ComplyOptions } from '../services/compliance-testing.js';
+import {
+  comply,
+  complianceResultToDbInput,
+  classifyCapabilityResolutionError,
+  presentCapabilityResolutionError,
+  type ComplyOptions,
+} from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
@@ -108,11 +114,35 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
+      const capsError = classifyCapabilityResolutionError(error);
 
-      // Agent timeouts are expected (slow/unreachable agents) — log at warn, not error
+      // Classify failure. Timeouts and capability-config faults are expected
+      // per-agent problems, not platform errors — log at warn so observability
+      // doesn't alarm on them. The DB `headline` flows into Slack DM titles
+      // via notifyComplianceChange, so only sanitized / controlled strings
+      // go there (never the raw upstream error message).
+      let headline: string;
+      let observationCategory: string;
+      let observationSeverity: 'warning' | 'error';
+      let observationMessage: string;
       if (isAgentTimeout) {
+        headline = 'Timed out: agent did not respond within 60s';
+        observationCategory = 'connectivity';
+        observationSeverity = 'warning';
+        observationMessage = headline;
         logger.warn({ agentUrl: agent.agent_url }, `Compliance check timed out for agent: ${agent.agent_url}`);
+      } else if (capsError) {
+        const presentation = presentCapabilityResolutionError(capsError);
+        headline = presentation.headline;
+        observationCategory = 'capabilities';
+        observationSeverity = 'warning';
+        observationMessage = presentation.headline;
+        logger.warn({ agentUrl: agent.agent_url, ...presentation.logFields }, presentation.logMsg);
       } else {
+        headline = `Unreachable: ${errorMessage}`;
+        observationCategory = 'connectivity';
+        observationSeverity = 'error';
+        observationMessage = errorMessage;
         logger.error({ error, agentUrl: agent.agent_url }, 'Compliance check failed for agent');
       }
 
@@ -131,13 +161,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           agent_url: agent.agent_url,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
-          headline: isAgentTimeout ? `Timed out: agent did not respond within 60s` : `Unreachable: ${errorMessage}`,
+          headline,
           tracks_json: [],
           tracks_passed: 0,
           tracks_failed: 0,
           tracks_skipped: 0,
           tracks_partial: 0,
-          observations_json: [{ category: 'connectivity', severity: isAgentTimeout ? 'warning' : 'error', message: errorMessage }],
+          observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: true,
         });
@@ -145,8 +175,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
-      // Timeouts count as checked (not skipped) — they're a valid result, not a skip
-      if (isAgentTimeout) {
+      // Timeouts and capability-config faults are valid per-agent results
+      // (not skips) — they need to surface in checked/failed so the heartbeat
+      // summary reflects reality.
+      if (isAgentTimeout || capsError) {
         result.checked++;
         result.failed++;
       } else {

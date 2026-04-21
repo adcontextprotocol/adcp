@@ -17,7 +17,12 @@ import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
-import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
+import {
+  comply,
+  complianceResultToDbInput,
+  classifyCapabilityResolutionError,
+  presentCapabilityResolutionError,
+} from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -3941,22 +3946,43 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           specialisms,
         });
       } catch (resolveErr) {
-        // Fail-closed: agent declared a specialism whose bundle isn't in the
-        // local compliance cache. The resolver's message includes server-side
-        // paths — log it but don't leak it to the client. Return the
-        // declared vs known lists so a UI can name the offender without
-        // asking the developer to re-read their own config.
-        logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Agent declared an unknown specialism");
+        // Fail-closed: agent capabilities are malformed. Distinguish the two
+        // concrete cases the resolver throws for — parent-protocol-missing vs
+        // unknown-specialism — via the shared presenter so the response
+        // envelope stays consistent. Consumers switch on `error_kind`.
+        const capsError = classifyCapabilityResolutionError(resolveErr);
         let knownSpecialisms: string[] = [];
         try {
           knownSpecialisms = loadComplianceIndex().specialisms.map(s => s.id).sort();
         } catch (indexErr) {
           logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
         }
+
+        if (capsError) {
+          const presentation = presentCapabilityResolutionError(capsError);
+          logger.warn(
+            { agentUrl, ...presentation.logFields, supportedProtocols, specialisms },
+            presentation.logMsg,
+          );
+          const legacyFlag =
+            capsError.kind === 'specialism_parent_protocol_missing'
+              ? { specialism_parent_protocol_missing: true }
+              : { unknown_specialism: true };
+          return res.status(422).json({
+            error: presentation.headline,
+            ...presentation.restBody,
+            ...legacyFlag,
+            declared_specialisms: specialisms,
+            declared_protocols: supportedProtocols,
+            known_specialisms: knownSpecialisms,
+          });
+        }
+
+        logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Capability resolution failed with unclassified error");
         return res.status(422).json({
-          error: "Agent declared a specialism that isn't in the compliance cache. The cache may be stale, or the specialism id is unrecognized.",
-          unknown_specialism: true,
+          error: "Agent capability resolution failed. The cache may be stale, or the agent's response is malformed.",
           declared_specialisms: specialisms,
+          declared_protocols: supportedProtocols,
           known_specialisms: knownSpecialisms,
         });
       }
