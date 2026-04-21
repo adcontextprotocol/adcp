@@ -569,6 +569,11 @@
     // network failures, honoring Retry-After when present. Rate-limit hits
     // are common when the dashboard fans out 3 requests per agent on reload
     // — without retry, agents silently collapse to "not yet checked".
+    // Retry-After is capped: bulkResolveRateLimiter's 60s window can ask us
+    // to wait nearly a minute, which hangs the whole page behind one agent.
+    // If the server wants longer than MAX_RETRY_WAIT_MS, surface the 429 to
+    // the caller so the per-agent "Rate-limited — Retry" card renders.
+    const MAX_RETRY_WAIT_MS = 3000;
     async function fetchWithRetry(url, opts, { retries = 1, baseDelayMs = 800 } = {}) {
       let lastErr;
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -576,6 +581,9 @@
           const res = await fetch(url, opts);
           if (res.status === 429 && attempt < retries) {
             const retryAfter = parseInt(res.headers.get('retry-after') || '', 10);
+            if (Number.isFinite(retryAfter) && retryAfter * 1000 > MAX_RETRY_WAIT_MS) {
+              return res;
+            }
             const wait = Number.isFinite(retryAfter) ? retryAfter * 1000 : baseDelayMs;
             await new Promise(r => setTimeout(r, wait));
             continue;
@@ -692,17 +700,26 @@
           });
         }
 
-        // Fetch compliance data for org's agents
+        // Fetch compliance data for org's agents. A hard 15s ceiling guards
+        // against any single fetch hanging the entire page — unresolved agents
+        // fall through to the per-card "not yet checked" / error state, and
+        // the user can still interact with the page.
         const agentCompliance = new Map();
         const agents = profileData?.profile?.agents || [];
         if (agents.length > 0) {
-          const results = await Promise.allSettled(agents.map(fetchAgentState));
-          for (const r of results) {
-            if (r.status === 'fulfilled') {
-              agentCompliance.set(r.value.url, r.value);
-            } else {
-              console.error('Agent compliance fetch rejected:', r.reason);
+          const allSettled = Promise.allSettled(agents.map(fetchAgentState));
+          const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
+          const results = await Promise.race([allSettled, timeout]);
+          if (Array.isArray(results)) {
+            for (const r of results) {
+              if (r.status === 'fulfilled') {
+                agentCompliance.set(r.value.url, r.value);
+              } else {
+                console.error('Agent compliance fetch rejected:', r.reason);
+              }
             }
+          } else {
+            console.warn('Agent compliance fetch timed out after 15s; rendering with partial data');
           }
         }
 
