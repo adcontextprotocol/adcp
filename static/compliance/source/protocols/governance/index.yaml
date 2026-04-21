@@ -338,23 +338,26 @@ phases:
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
-          binding:
-            type: "media_buy"
+          caller: "https://pinnacle-agency.example"
+          tool: "create_media_buy"
+          payload:
+            idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_denied_payload"
             account:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
-            total_budget: 50000
+            brand:
+              domain: "acmeoutdoor.example"
+            start_time: "2027-01-01T00:00:00Z"
+            end_time: "2027-03-31T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
+                pricing_option_id: "cpm_standard"
               - product_id: "outdoor_video_q2"
                 budget: 20000
+                pricing_option_id: "cpm_standard"
 
           context:
             correlation_id: "media_buy_governance_escalation--check_governance_denied"
@@ -409,30 +412,27 @@ phases:
           - approved_at: timestamp of approval
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           governance_context: "gov_ctx_acme_q2_escalated"
-          binding:
-            type: "media_buy"
+          tool: "create_media_buy"
+          payload:
+            idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_approved_payload"
             account:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
-            total_budget: 50000
+            brand:
+              domain: "acmeoutdoor.example"
+            start_time: "2027-01-01T00:00:00Z"
+            end_time: "2027-03-31T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
+                pricing_option_id: "cpm_standard"
               - product_id: "outdoor_video_q2"
                 budget: 20000
-          human_approval:
-            approved_by: "jsmith@pinnacle-agency.example"
-            approved_at: "2026-04-03T14:22:00Z"
-            conditions:
-              - "Weekly delivery reporting required"
-              - "Human review required for any budget increase above 10%"
+                pricing_option_id: "cpm_standard"
 
           context:
             correlation_id: "media_buy_governance_escalation--check_governance_approved"

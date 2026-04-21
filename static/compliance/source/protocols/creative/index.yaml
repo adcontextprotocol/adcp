@@ -378,9 +378,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           creative_id: "video_30s_trail_pro"
-          output_format:
+          target_format_id:
             agent_url: "https://your-platform.example.com"
             id: "vast_30s"
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_build_video_tag"
 
           context:
             correlation_id: "creative_lifecycle--build_video_tag"
