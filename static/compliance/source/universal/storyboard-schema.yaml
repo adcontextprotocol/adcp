@@ -145,6 +145,14 @@
 #
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
+# contributes: boolean (optional — shorthand for `contributes_to: <enclosing phase's branch_set.id>`
+#                       introduced alongside first-class `branch_set:` declarations.
+#                       Legal only inside a phase that declares `branch_set:`; the runner's
+#                       loader resolves `contributes: true` to the phase's branch_set.id
+#                       and raises a storyboard-load error on `contributes: true` outside
+#                       a branch_set phase or on a step that also declares `contributes_to`.
+#                       See adcp-client#693 and `lint:storyboard-branch-sets` for the
+#                       full rule set.)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
 #   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
@@ -226,6 +234,14 @@
 #               - check: any_of
 #                 allowed_values: [past_start_handled]
 #
+#   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
+#   `contributes: true` on a step inside a branch_set phase — the runner's
+#   loader resolves it to the enclosing phase's `branch_set.id`. Storyboards
+#   in this repository currently stay on the string form pending resolution
+#   of unrelated 5.8.0 schema-validation regressions; the defensive lint
+#   rules below cover both forms so the shorthand can be adopted
+#   per-storyboard once the runner upgrade lands.
+#
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633
 #   storyboards keep running unchanged.
@@ -237,10 +253,14 @@
 #                  allowed_values.
 #     - semantics: `any_of`. No other value is supported today.
 #
-#   `contributes_to:` on the contributing step is still REQUIRED — the
-#   phase-level `branch_set:` declares membership but does not replace
-#   per-step contribution signalling. Runners accumulate contributions at
-#   the step level, not the phase level.
+#   Per-step contribution signalling is REQUIRED on each contributing step —
+#   the phase-level `branch_set:` declares membership but does not replace
+#   the step-level flag. Runners accumulate contributions at the step level.
+#   Two equivalent forms:
+#     - `contributes: true` (preferred inside a branch_set phase; resolves
+#       to the enclosing phase's `branch_set.id`)
+#     - `contributes_to: <branch_set.id>` (string form; required outside a
+#       branch_set phase and must equal `branch_set.id` inside one)
 #
 #   Authoring rules (enforced by `lint:storyboard-branch-sets`):
 #     - A phase with `branch_set:` MUST set `optional: true`. A
@@ -250,9 +270,15 @@
 #       share the same `branch_set.semantics`.
 #     - A storyboard with a `branch_set:` declaration MUST contain an
 #       `assert_contribution` step whose `validations[].check: any_of`
-#       includes the `branch_set.id` in `allowed_values`.
+#       includes the `branch_set.id` in `allowed_values`. Any
+#       `contributes_to:` / `contributes: true` whose resolved flag has no
+#       matching assert_contribution is flagged as `orphan_contribution` —
+#       nothing grades it.
 #     - Any step inside a branch-set phase that declares `contributes_to`
 #       MUST use the value `<branch_set.id>`.
+#     - A step MUST NOT declare both `contributes` and `contributes_to`
+#       (ambiguous). `contributes: true` is legal only inside a phase
+#       that declares `branch_set:`.
 #     - If any phase declares `branch_set: { id: X, ... }`, every optional
 #       phase in the same storyboard whose steps contribute to X MUST also
 #       declare `branch_set: { id: X, ... }`. A mixed-mode storyboard (one
@@ -296,6 +322,25 @@
 #     Fragile against typos in `contributes_to:` — new storyboards MUST
 #     use the explicit form above. This fallback exists only so
 #     pre-#2633 storyboards keep running during migration.
+#
+# Cross-storyboard contradiction lint:
+#   The `lint:storyboard-contradictions` script groups every step-with-
+#   assertions across every storyboard by (task, canonicalized request
+#   fingerprint, prior-state fingerprint, env fingerprint) and flags
+#   groups whose asserted outcomes disagree in a way no conformant agent
+#   can satisfy (success ↔ error, or disjoint error-code sets).
+#
+#   Env fingerprint includes the storyboard's top-level `id:`, so two
+#   separate storyboards exercising different controller-seeded states
+#   are legitimately independent test suites and do not collide. To make
+#   two different storyboards' assertions collide — e.g., to catch
+#   "storyboard A assumes media_buy_id X is active, storyboard B
+#   assumes it is canceled" — use matching `comply_scenario:` values or
+#   shared `prerequisites.controller_seeding`.
+#
+#   Branch-set peers (two optional phases in the same storyboard sharing
+#   a `branch_set.id`) are exempt from contradiction flagging by design:
+#   any_of semantics intentionally asserts mutually exclusive outcomes.
 #
 # --- Validation ---
 #

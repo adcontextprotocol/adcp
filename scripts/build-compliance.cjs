@@ -426,6 +426,18 @@ function main() {
     process.exit(1);
   }
 
+  // Contradiction lint: no two storyboards may encode contradictory outcomes
+  // for the same (task, request, prior-state, env) — a conformant agent
+  // cannot satisfy both.
+  try {
+    execSync('node scripts/lint-storyboard-contradictions.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Context-entity lint: captured $context values must not flow from a field
   // of one entity type into a consume site of a different entity type
   // (issue #2660, rule 3; canonical case #2627).

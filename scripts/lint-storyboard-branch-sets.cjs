@@ -19,6 +19,16 @@
  *   no_assertion         — declared branch_set.id has no matching assert_contribution any_of
  *   contributes_to_mismatch — step inside branch_set phase has contributes_to != branch_set.id
  *   peer_not_declared    — phase contributes_to a declared branch_set.id without declaring branch_set:
+ *   contributes_both     — step declares both `contributes` and `contributes_to`
+ *   contributes_outside_branch_set — `contributes: true` outside a branch_set phase
+ *   contributes_bad_type — `contributes` is present but not a boolean
+ *   orphan_contribution  — contributes_to flag is never consumed by any
+ *                          assert_contribution any_of in the same storyboard
+ *
+ * `contributes_both` / `contributes_outside_branch_set` / `contributes_bad_type`
+ * mirror adcp-client's loader (node_modules/@adcp/client/dist/lib/testing/
+ * storyboard/loader.js `resolveContributesShorthand`) so authors see the
+ * violation at build time instead of storyboard-load time.
  */
 
 'use strict';
@@ -57,6 +67,22 @@ const RULE_MESSAGES = {
     'storyboard already declares that branch set — in mixed mode the runner ' +
     "would see a single-member set and grade this peer's failing steps as " +
     '`failed` instead of `peer_branch_taken`.',
+  contributes_both: () =>
+    'step declares both `contributes` and `contributes_to`. Pick one — ' +
+    "the runner's loader throws on ambiguity at storyboard-load time.",
+  contributes_outside_branch_set: () =>
+    '`contributes: true` is only legal inside a phase that declares ' +
+    '`branch_set:`. Outside a branch set there is no id to resolve the ' +
+    'shorthand to — use `contributes_to: <flag>` or remove the field.',
+  contributes_bad_type: ({ value }) =>
+    '`contributes` must be a boolean (true or false); ' +
+    `got ${JSON.stringify(value)}. Use \`contributes_to: <flag>\` for the ` +
+    'string form.',
+  orphan_contribution: ({ flag }) =>
+    `step declares contribution to "${flag}" but no \`assert_contribution\` ` +
+    `step in this storyboard references it via \`check: any_of, ` +
+    `allowed_values: [${flag}]\`. Either add the assertion or remove the ` +
+    'dead contribution — nothing is grading what this step produces.',
 };
 
 function formatMessage(violation) {
@@ -134,18 +160,44 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
     const bs = phase?.branch_set;
 
     if (bs === undefined || bs === null) {
-      // Rule 6 (peer_not_declared): the phase doesn't declare branch_set, but
-      // if a peer does, any step here contributing to that peer's id is a
-      // mixed-mode authoring error.
-      if (phase?.optional === true) {
-        const steps = Array.isArray(phase?.steps) ? phase.steps : [];
-        for (const step of steps) {
+      const steps = Array.isArray(phase?.steps) ? phase.steps : [];
+      for (const step of steps) {
+        const stepId = step?.id || '<unnamed>';
+
+        // `contributes` in a phase without branch_set: only `false` is valid
+        // (equivalent to absence); `true` has no id to resolve to, non-boolean
+        // is a type error.
+        if (step?.contributes !== undefined) {
+          if (typeof step.contributes !== 'boolean') {
+            violations.push({
+              rule: 'contributes_bad_type',
+              phaseId,
+              stepId,
+              value: step.contributes,
+            });
+          } else if (step.contributes === true) {
+            violations.push({
+              rule: 'contributes_outside_branch_set',
+              phaseId,
+              stepId,
+            });
+          }
+        }
+
+        if (step?.contributes !== undefined && step?.contributes_to !== undefined) {
+          violations.push({ rule: 'contributes_both', phaseId, stepId });
+        }
+
+        // peer_not_declared: the phase doesn't declare branch_set, but if a
+        // peer does, any step here contributing to that peer's id is a
+        // mixed-mode authoring error.
+        if (phase?.optional === true) {
           const c = step?.contributes_to;
           if (typeof c === 'string' && declaredBranchSetIds.has(c)) {
             violations.push({
               rule: 'peer_not_declared',
               phaseId,
-              stepId: step?.id || '<unnamed>',
+              stepId,
               id: c,
             });
           }
@@ -200,16 +252,60 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
 
     const steps = Array.isArray(phase.steps) ? phase.steps : [];
     for (const step of steps) {
+      const stepId = step?.id || '<unnamed>';
+
+      if (step?.contributes !== undefined && step?.contributes_to !== undefined) {
+        violations.push({ rule: 'contributes_both', phaseId, stepId });
+      }
+
+      if (step?.contributes !== undefined && typeof step.contributes !== 'boolean') {
+        violations.push({
+          rule: 'contributes_bad_type',
+          phaseId,
+          stepId,
+          value: step.contributes,
+        });
+      }
+
+      // `contributes: true` resolves to phase.branch_set.id — never a mismatch.
+      // `contributes_to: <string>` must still equal branch_set.id.
       const contribution = step?.contributes_to;
       if (contribution === undefined || contribution === null) continue;
       if (typeof contribution !== 'string' || contribution !== id) {
         violations.push({
           rule: 'contributes_to_mismatch',
           phaseId,
-          stepId: step?.id || '<unnamed>',
+          stepId,
           id,
           contribution,
         });
+      }
+    }
+  }
+
+  // orphan_contribution: every contributes_to flag (and every branch_set.id
+  // on a step with `contributes: true`) must be consumed by an
+  // assert_contribution any_of somewhere in the same storyboard. A
+  // contribution nothing asserts on is silently a no-op.
+  for (const phase of phases) {
+    const phaseId = phase?.id || '<unnamed>';
+    const bs = phase?.branch_set;
+    const branchSetId =
+      bs && typeof bs === 'object' && !Array.isArray(bs) && typeof bs.id === 'string' && bs.id.length > 0
+        ? bs.id
+        : null;
+    const steps = Array.isArray(phase?.steps) ? phase.steps : [];
+    for (const step of steps) {
+      const stepId = step?.id || '<unnamed>';
+      let flag = null;
+      if (typeof step?.contributes_to === 'string' && step.contributes_to.length > 0) {
+        flag = step.contributes_to;
+      } else if (step?.contributes === true && branchSetId) {
+        flag = branchSetId;
+      }
+      if (flag === null) continue;
+      if (!assertedFlags.has(flag)) {
+        violations.push({ rule: 'orphan_contribution', phaseId, stepId, flag });
       }
     }
   }

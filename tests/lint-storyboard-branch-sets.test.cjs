@@ -195,6 +195,85 @@ phases:
   assert.deepEqual(lintDoc(doc), []);
 });
 
+test('contributes_both: step cannot declare both `contributes` and `contributes_to`', () => {
+  const doc = yaml.load(`
+phases:
+  - id: p
+    optional: true
+    branch_set: { id: flag, semantics: any_of }
+    steps:
+      - id: ambiguous
+        contributes: true
+        contributes_to: flag
+  - id: assert_it
+    steps:
+      - task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: [flag]
+`);
+  const rules = lintDoc(doc).map((v) => v.rule);
+  assert.ok(rules.includes('contributes_both'), `expected contributes_both in ${JSON.stringify(rules)}`);
+});
+
+test('contributes_outside_branch_set: `contributes: true` only legal inside a branch_set phase', () => {
+  const doc = yaml.load(`
+phases:
+  - id: plain_phase
+    steps:
+      - id: nope
+        contributes: true
+`);
+  const rules = lintDoc(doc).map((v) => v.rule);
+  assert.ok(rules.includes('contributes_outside_branch_set'), `got ${JSON.stringify(rules)}`);
+});
+
+test('contributes_bad_type: `contributes` must be boolean', () => {
+  const doc = yaml.load(`
+phases:
+  - id: p
+    steps:
+      - id: stringy
+        contributes: "true"
+`);
+  const rules = lintDoc(doc).map((v) => v.rule);
+  assert.ok(rules.includes('contributes_bad_type'));
+});
+
+test('orphan_contribution: contributes_to with no assert_contribution is dead', () => {
+  const doc = yaml.load(`
+phases:
+  - id: p
+    steps:
+      - id: orphan_step
+        contributes_to: unused_flag
+`);
+  const orphans = lintDoc(doc).filter((v) => v.rule === 'orphan_contribution');
+  assert.deepEqual(
+    orphans.map((v) => ({ stepId: v.stepId, flag: v.flag })),
+    [{ stepId: 'orphan_step', flag: 'unused_flag' }],
+  );
+});
+
+test('orphan_contribution fires on `contributes: true` that resolves to an unasserted branch_set.id', () => {
+  // Edge case: a branch_set phase exists but no assert_contribution consumes
+  // its id. The existing `no_assertion` rule fires on the phase; the
+  // `contributes: true` step should also flag as orphan.
+  const doc = yaml.load(`
+phases:
+  - id: p
+    optional: true
+    branch_set: { id: unasserted, semantics: any_of }
+    steps:
+      - id: contributing
+        contributes: true
+`);
+  const violations = lintDoc(doc);
+  const orphans = violations.filter((v) => v.rule === 'orphan_contribution');
+  assert.equal(orphans.length, 1);
+  assert.equal(orphans[0].flag, 'unasserted');
+});
+
 test('collectAssertedFlags pulls every any_of flag from every assert_contribution step', () => {
   const doc = yaml.load(`
 phases:
