@@ -9,7 +9,8 @@
       "properties": {
         "pricing_option_id": {
           "type": "string",
-          "description": "Opaque identifier for this pricing option, unique within the vendor agent. Pass this in report_usage to identify which pricing option was applied."
+          "description": "Opaque identifier for this pricing option, unique within the vendor agent. Pass this in report_usage to identify which pricing option was applied.",
+          "x-entity": "vendor_pricing_option"
         }
       },
       "required": ["pricing_option_id"]
