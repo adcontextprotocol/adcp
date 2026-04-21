@@ -6860,6 +6860,50 @@ describe('get_brand_identity handler', () => {
   });
 });
 
+describe('property-list uniform not-found response (issue #2739)', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  // Paired-probe: two distinct unresolvable list_ids must produce byte-identical
+  // error bodies, otherwise the probed id is a cross-tenant enumeration oracle.
+  const PROBE_TOOLS = ['get_property_list', 'update_property_list', 'delete_property_list'] as const;
+  for (const toolName of PROBE_TOOLS) {
+    it(`${toolName} returns byte-identical errors for two distinct unresolvable list_ids`, async () => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+
+      const probeA = await simulateCallTool(server, toolName, { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec' });
+      const probeB = await simulateCallTool(server, toolName, { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b' });
+
+      expect(probeA.isError).toBe(probeB.isError);
+      expect(probeA.result).toEqual(probeB.result);
+      expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+      expect(probeA.result.message).toBe('Property list not found');
+      expect(probeA.result.field).toBe('list_id');
+    });
+  }
+
+  it('validate_property_delivery returns byte-identical errors for two distinct unresolvable list_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+    const records = [{ identifier: { type: 'domain', value: 'x.example' }, impressions: 1 }];
+
+    const probeA = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec', records });
+    const probeB = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b', records });
+
+    expect(probeA.isError).toBe(probeB.isError);
+    expect(probeA.result).toEqual(probeB.result);
+    expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+    expect(probeA.result.message).toBe('Property list not found');
+    expect(probeA.result.field).toBe('list_id');
+  });
+});
+
 describe('cross-machine session persistence', () => {
   beforeEach(async () => {
     await clearSessions();
