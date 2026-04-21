@@ -24,8 +24,8 @@ is gone, and the lint reads one source of truth.
 
 **Changes:**
 - 31 `*-request.json` schemas under `static/schemas/source/` gain
-  `"x-mutates-state": true` (29 previously detected via
-  `idempotency_key` + 2 previously exceptions).
+  `"x-mutates-state": true` (29 previously inferred via
+  `idempotency_key`, 2 previously carved out as exceptions).
 - `loadMutatingTasksFromSchemas` reads `schema['x-mutates-state'] === true`.
 - `MUTATING_EXCEPTIONS` removed from `lint-storyboard-contradictions.cjs`.
 - `storyboard-schema.yaml` gains a normative paragraph describing
