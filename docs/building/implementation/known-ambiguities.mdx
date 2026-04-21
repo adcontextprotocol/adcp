@@ -6,11 +6,11 @@ description: "Open AdCP spec gaps that affect compliance testing — with workar
 
 This page enumerates spec gaps that currently affect storyboard conformance. Each entry covers one of three patterns: a spec `MAY` branch where vectors assert one outcome, a response field storyboards assert that the schema does not yet require, or a testing-infrastructure quirk that prevents a vector from probing through the reference SDK.
 
-**Entries are removed as the underlying issue closes.** If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
+**Entries persist until the fix ships in a tagged `@adcp/client` or spec release** — closing the GitHub issue is not the removal trigger, because an implementer on an SDK version that predates the fix still hits the symptom. Each entry's Workaround names the release gate when relevant. If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
 
 ## How to use this page
 
-If a storyboard fails on a behavior you believe is spec-conformant, search this page for the storyboard name or the assertion text. Each entry describes the gap, the workaround that gets you past the blocker, and the issue that tracks the fix. When the issue closes the entry here is removed — so always pair this page with the linked issue for the authoritative state.
+If a storyboard fails on a behavior you believe is spec-conformant, search this page for the storyboard name or the assertion text. Each entry describes the gap, the workaround that gets you past the blocker, and the issue that tracks the fix. Entries are removed when the fix ships in a tagged release, not when the issue closes — pair this page with the linked issue and the SDK / spec release notes for the authoritative state.
 
 For the opposite direction — failures that are **not** in this list and do have clean fixes — see the [storyboard troubleshooting guide](/docs/building/implementation/storyboard-troubleshooting).
 
@@ -19,7 +19,7 @@ For the opposite direction — failures that are **not** in this list and do hav
 ### `check_governance` `conditions` field shape
 
 - **Schema**: `check-governance-response.json` defines `conditions[]` items as `{ field, required_value?, reason }` with `field` and `reason` required. The `status: conditions` status now requires `conditions` with `minItems: 1`.
-- **Gap closed by**: [#2603](https://github.com/adcontextprotocol/adcp/issues/2603). The schema tightening lands in the protocol patch release following this entry's removal.
+- **Resolution**: [#2603](https://github.com/adcontextprotocol/adcp/issues/2603). The schema tightening lands in the protocol patch release following this entry's removal.
 - **Workaround (until you pull the fix)**: emit `conditions[]` with the canonical `{ field, reason }` shape on every `status: conditions` response. Agents following the prose description already do this; the schema tightening just makes enforcement mechanical.
 
 ### PRM required for non-OAuth agents
@@ -50,7 +50,7 @@ For the opposite direction — failures that are **not** in this list and do hav
 ### Rights-holder vs advertiser `brand_id` in brand protocol
 
 - **Storyboard**: `specialisms/brand-rights/index.yaml` phases `identity_discovery` + `rights_search`.
-- **Gap**: `get_brand_identity.brand_id` identifies the advertiser (e.g., `acme_outdoor`); `get_rights.brand_id` filters by rights-holder brand (e.g., talent like `daan_janssen`). Same field name, different entities — pre-fix the storyboard threaded the advertiser id through to the rights-holder filter, and a conformant agent either returned empty rights (fail) or added a "return all when no match" fallback (masking bugs).
+- **Gap**: `get_brand_identity.brand_id` identifies the advertiser (e.g., `acme_outdoor`); `get_rights.brand_id` scopes the search to a specific rights-holder brand (e.g., talent like `daan_janssen`). Same field name, different entities — before the #2627 fix the storyboard threaded the advertiser id through to the rights-holder filter, and a conformant agent either returned empty rights (fail) or added a "return all when no match" fallback (masking bugs).
 - **Resolution**: [#2627](https://github.com/adcontextprotocol/adcp/issues/2627) — the storyboard now sends `buyer_brand` (advertiser for compatibility filtering) and omits the rights-holder `brand_id` filter so the agent returns its full catalog.
 - **Workaround**: treat `get_rights.brand_id` as a rights-holder filter only; populate `buyer_brand` for compatibility filtering against the buyer's `brand.json`.
 
@@ -63,8 +63,8 @@ For the opposite direction — failures that are **not** in this list and do hav
 
 ### Branch-set step grading (`peer_branch_taken`)
 
-- **Storyboards**: any with parallel `optional: true` phases sharing a `contributes_to:` flag — canonical example `universal/schema-validation.yaml > past_start_reject_path` + `past_start_adjust_path`.
-- **Gap**: a conformant agent picks one branch (e.g., rejects past `start_time`); the other branch's assertion (e.g., `field_present: media_buy_id`) fails because the agent took the opposite behavior. Pre-fix runners surfaced this as `× (unknown step)` in the summary even though the `any_of` aggregate passed — implementers debugged a branch they weren't on.
+- **Storyboards**: any with parallel `optional: true` phases sharing a `contributes_to:` flag — canonical example `universal/schema-validation.yaml > past_start_reject_path` + `past_start_adjust_path` (aggregation flag `past_start_handled`).
+- **Gap**: a conformant agent picks one branch (e.g., rejects past `start_time`); the other branch's assertion (e.g., `field_present: media_buy_id`) fails because the agent took the opposite behavior. Runners before the #2629 fix surfaced this as `× (unknown step)` in the summary even though the `any_of` aggregate passed — implementers debugged a branch they weren't on.
 - **Resolution**: [#2629](https://github.com/adcontextprotocol/adcp/issues/2629) — runners now grade non-chosen branch steps with skip reason `peer_branch_taken` (distinct from `not_applicable`, which is reserved for protocol/specialism coverage gaps). See `storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" for the authoring rules and `runner-output-contract.yaml > skip_result.reasons.peer_branch_taken` for the canonical `detail` shape.
 - **Workaround**: if your runner reports an unexpected branch failure, check whether a peer optional phase contributed the same `contributes_to` flag. If so, you're conformant on the branch you chose — the runner needs the #2629 update.
 
