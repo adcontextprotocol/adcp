@@ -13,7 +13,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the property list to delete"
+      "description": "ID of the property list to delete",
+      "x-entity": "property_list"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

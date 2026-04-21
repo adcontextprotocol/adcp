@@ -11,7 +11,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the deleted list"
+      "description": "ID of the deleted list",
+      "x-entity": "collection_list"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

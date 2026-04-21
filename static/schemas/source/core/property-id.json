@@ -5,6 +5,7 @@
   "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
   "type": "string",
   "pattern": "^[a-z0-9_]+$",
+  "x-entity": "property",
   "examples": [
     "cnn_ctv_app",
     "homepage",

@@ -21,7 +21,8 @@
     },
     "session_id": {
       "type": "string",
-      "description": "Active session identifier"
+      "description": "Active session identifier",
+      "x-entity": "si_session"
     },
     "message": {
       "type": "string",

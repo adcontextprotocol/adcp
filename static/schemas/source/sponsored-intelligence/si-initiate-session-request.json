@@ -21,7 +21,8 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "AdCP media buy ID if session was triggered by advertising"
+      "description": "AdCP media buy ID if session was triggered by advertising",
+      "x-entity": "media_buy"
     },
     "placement": {
       "type": "string",
@@ -29,7 +30,8 @@
     },
     "offering_id": {
       "type": "string",
-      "description": "Brand-specific offering identifier to apply"
+      "description": "Brand-specific offering identifier to apply",
+      "x-entity": "offering"
     },
     "supported_capabilities": {
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",

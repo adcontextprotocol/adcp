@@ -7,7 +7,8 @@
   "properties": {
     "list_id": {
       "type": "string",
-      "description": "Unique identifier for this collection list"
+      "description": "Unique identifier for this collection list",
+      "x-entity": "collection_list"
     },
     "name": {
       "type": "string",

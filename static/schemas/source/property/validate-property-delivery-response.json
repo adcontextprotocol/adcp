@@ -11,7 +11,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the property list validated against"
+      "description": "ID of the property list validated against",
+      "x-entity": "property_list"
     },
     "summary": {
       "type": "object",

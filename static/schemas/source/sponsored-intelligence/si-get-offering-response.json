@@ -30,7 +30,8 @@
       "properties": {
         "offering_id": {
           "type": "string",
-          "description": "Offering identifier"
+          "description": "Offering identifier",
+          "x-entity": "offering"
         },
         "title": {
           "type": "string",
@@ -74,7 +75,8 @@
         "properties": {
           "product_id": {
             "type": "string",
-            "description": "Product identifier"
+            "description": "Product identifier",
+            "x-entity": "product"
           },
           "name": {
             "type": "string",

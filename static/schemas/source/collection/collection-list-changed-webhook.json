@@ -19,7 +19,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the collection list that changed"
+      "description": "ID of the collection list that changed",
+      "x-entity": "collection_list"
     },
     "list_name": {
       "type": "string",
