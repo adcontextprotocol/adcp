@@ -357,9 +357,10 @@ export async function handleValidatePropertyDelivery(
       status: compliant ? 'compliant' : 'non_compliant',
       impressions,
       ...(!compliant ? {
-        violations: [{
-          code: isInclusion ? 'not_in_inclusion_list' : 'in_exclusion_list',
-          message: isInclusion
+        features: [{
+          feature_id: 'record:list_membership',
+          status: 'failed',
+          explanation: isInclusion
             ? `Property '${domain}' is not in inclusion list '${state.name}'`
             : `Property '${domain}' is in exclusion list '${state.name}'`,
         }],
@@ -370,7 +371,6 @@ export async function handleValidatePropertyDelivery(
   const totalImpressions = compliantImpressions + nonCompliantImpressions;
 
   return {
-    compliant: nonCompliantRecords === 0,
     list_id: req.list_id,
     summary: {
       total_records: records.length,
