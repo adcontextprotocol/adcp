@@ -437,6 +437,33 @@
 #   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
 #   signature_replayed.
 #
+# task: expect_substitution_safe
+#   Assert that a creative preview (preview_html or preview_url) contains
+#   substituted catalog-item macro values that are percent-encoded per RFC 3986
+#   (unreserved-whitelist), per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+#   Runner delegates HTML parsing, URL extraction, and the encoding check to
+#   the `@adcp/client` SubstitutionObserver primitive (see test-kit
+#   substitution-observer-runner.yaml). Catches implementations that pass raw
+#   attacker bytes through substitution, including CRLF injection, bidi-override
+#   spoofing, and reserved-character URL breakout.
+#
+#   Fields:
+#     source: preview_html | preview_url  # default preview_html
+#     source_path: "<JSON pointer into previous step's response>"
+#     macro_template: "<URL template with {MACRO} placeholders>"
+#     catalog_bindings:
+#       - macro: "{SKU}"
+#         catalog_field: "items[0].sku"
+#         item_id: "<catalog item_id>"
+#         raw_value: "<attacker-shaped input>"
+#         expected_encoded: "<RFC 3986 unreserved-encoded form>"
+#     require_all_bindings_observed: true  # default true
+#     requires_contract: substitution_observer_runner
+#
+#   Error modes: substitution_encoding_violation, nested_macro_re_expansion,
+#   substitution_binding_missing, preview_source_unavailable,
+#   preview_url_fetch_failed, preview_body_not_html.
+#
 # --- shared_receiver (deferred / out of scope v1) ---
 #
 # Storyboards with multiple webhook-triggering steps MUST use per-step receiver

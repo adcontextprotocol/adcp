@@ -1,0 +1,296 @@
+# Substitution Observer Runner — Harness Contract Test Kit
+#
+# Applies to:
+#   - Any storyboard that exercises catalog-item macro substitution and needs
+#     to assert the RFC 3986 percent-encoding rule from
+#     docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros.
+#   - Current consumers (when phases are gated on this contract):
+#     - specialisms/sales-catalog-driven/index.yaml
+#     - specialisms/creative-generative/index.yaml
+#     - specialisms/sales-social/index.yaml (catalog_driven_dynamic_ads phase)
+#   - Future consumers: sales-retail-media (post-retail-media-epic),
+#     sales-broadcast-tv dynamic-creative phases, and anywhere else catalog
+#     values expand into URL contexts.
+#
+# The #2620 rule: sales agents MUST percent-encode catalog-item macro values
+# such that only RFC 3986 `unreserved` characters remain unescaped before
+# substitution into URL contexts. Nested macro expansion is prohibited.
+#
+# The ATTACK SURFACE is impression-time URL emission. AdCP's API surface does
+# not normally expose substituted output — it happens at serve time outside
+# the protocol. Two observable AdCP-layer hooks exist:
+#
+#   preview_creative responses (preview_html / preview_url)
+#   build_creative responses with include_preview: true
+#
+# This contract defines how a runner consumes those preview artifacts,
+# extracts tracker URLs with substituted catalog-item values, and asserts
+# the values are encoded per the #2620 rule.
+#
+# Clean seam: the runner does NOT reimplement URL parsing, HTML extraction,
+# or the encoding check. It delegates to @adcp/client primitives (proposed:
+# `SubstitutionObserver` with `extract_tracker_urls` and `assert_rfc3986_safe`
+# helpers) so the same library production receivers would use is what the
+# conformance runner exercises. Library fixes cover both.
+
+id: substitution_observer_runner
+applies_to:
+  specialisms:
+    - sales_catalog_driven
+    - creative_generative
+    - sales_social
+  universals: []
+
+description: |
+  Coordination contract between a runner that observes substituted tracker
+  URLs in preview artifacts and an agent under test that emits catalog-driven
+  creatives. The runner ingests preview_html or follows preview_url, extracts
+  tracker URLs bound to catalog-item macros, and asserts RFC 3986 percent-
+  encoding of catalog-item values per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+
+endpoint_scope: sandbox
+# Storyboards consuming this contract synthesize attacker-shaped catalog
+# values (e.g., title containing `abc&cmd=drop` or `\r\nHost: evil`) and
+# push them via sync_catalogs. Running those against production would
+# pollute live catalogs. Graders MUST target a sandbox/staging endpoint.
+
+harness_mode: black_box
+
+# --- Observation mechanism ---
+#
+# The runner captures preview output from two response shapes (either is
+# sufficient — the storyboard author names which to observe):
+#
+#   preview_html (inline HTML string in the response)
+#     The runner parses the HTML and extracts href / src / and known tracker
+#     attribute values. Zero network dependency.
+#
+#   preview_url (HTTPS URL the runner fetches)
+#     The runner performs a single GET against the URL, expects 200 + HTML,
+#     and extracts identically. Must respect the standard SSRF allowlist
+#     (no RFC 1918, no loopback, no link-local) — the runner applies the
+#     same validation @adcp/client uses for JWKS fetches.
+#
+# Both paths land at the same @adcp/client.SubstitutionObserver.extract_tracker_urls
+# primitive, which returns a deterministic list of `{ url, source_attr, line_hint }`
+# records that storyboards match against.
+
+observation_modes:
+  - mode: preview_html_inline
+    default_for: [lint, fast, full_conformance]
+    description: |
+      Runner reads preview_html from the response and parses it. No network
+      fetch. Appropriate for CI lint gates and SDK self-tests.
+    runner_config:
+      source_path: preview_html
+      html_parser: "@adcp/client.SubstitutionObserver.parse_html"
+
+  - mode: preview_url_fetch
+    default_for: [adcp_verified]
+    description: |
+      Runner fetches preview_url over HTTPS, expects 200 + text/html, and
+      parses the body. Required for AdCP Verified grading where the preview
+      is a live asset.
+    runner_config:
+      source_path: preview_url
+      fetch:
+        method: GET
+        follow_redirects: false
+        max_body_bytes: 1048576
+        timeout_seconds: 10
+        required_content_types: ["text/html", "application/xhtml+xml"]
+        ssrf_allowlist: "@adcp/client.SubstitutionObserver.fetch_ssrf_allowlist"
+
+# --- Attacker-shaped catalog values ---
+#
+# Storyboards consuming this contract push a small catalog with pre-defined
+# attacker-shaped values. The runner knows the mapping between catalog field
+# and target macro, so it can assert the emitted tracker URL contains the
+# encoded form of the original value (not the raw form).
+#
+# The six canonical attacker shapes match the unit-test fixture at
+# static/test-vectors/catalog-macro-substitution.json — storyboards SHOULD
+# reuse that fixture's payloads so library-level and runtime-level conformance
+# exercise the same vectors.
+
+attacker_value_catalog:
+  source_fixture: static/test-vectors/catalog-macro-substitution.json
+  canonical_vectors:
+    - vector: reserved_character_breakout
+      raw_value: "00013&cmd=drop"
+      expected_encoded: "00013%26cmd%3Ddrop"
+    - vector: nested_expansion_preserved
+      raw_value: "vacancy-{DEVICE_ID}-42"
+      expected_encoded: "vacancy-%7BDEVICE_ID%7D-42"
+    - vector: crlf_injection_neutralized
+      raw_value: "abc\r\nHost: evil.example"
+      expected_encoded: "abc%0D%0AHost%3A%20evil.example"
+    - vector: non_ascii_utf8
+      raw_value: "café-amsterdam"
+      expected_encoded: "caf%C3%A9-amsterdam"
+    - vector: path_and_query_mixed
+      raw_value: "gmc/primary feed"
+      expected_encoded: "gmc%2Fprimary%20feed"
+    - vector: bidi_override_neutralized
+      raw_value: "VIN-\u202E1234"
+      expected_encoded: "VIN-%E2%80%AE1234"
+
+# --- Storyboard-layer step task ---
+#
+# The contract exposes one primary step task:
+#
+#   task: expect_substitution_safe
+#
+# Arguments:
+#   source:
+#     preview_html  | preview_url  | response_body
+#     Which response field the runner observes. Default: preview_html.
+#   source_path:
+#     JSON-pointer into the previous step's response where `source` lives.
+#     Example: "/creative_manifest/preview_html"
+#   macro_template:
+#     The URL template containing AdCP macros (the value submitted via
+#     sync_creatives). Example: "https://track.example/imp?sku={SKU}"
+#   catalog_bindings:
+#     Array of { macro, catalog_field, item_id, expected_encoded }
+#     describing which catalog item's field feeds which macro, and what
+#     the encoded form MUST be.
+#   require_all_bindings_observed:
+#     Default true. If true, the step fails when the extracted tracker URLs
+#     do not include EVERY binding — catches a seller that silently strips
+#     macros rather than substituting. If false, only observed bindings are
+#     checked (permissive; useful when preview shows one item from a larger
+#     catalog).
+#
+# Validations (runner-internal; storyboards reference them by name):
+#
+#   substitution_encoded:
+#     For each binding, the extracted URL at the macro position MUST equal
+#     expected_encoded byte-for-byte. Raw-value leakage (any byte of the raw
+#     attacker shape appearing literally at the macro position) fails the
+#     step with `substitution_encoding_violation` plus the offending byte
+#     offset and the library-expected encoding.
+#
+#   nested_expansion_not_re_scanned:
+#     For the nested_expansion_preserved vector specifically: the extracted
+#     URL MUST contain `%7BDEVICE_ID%7D` (encoded braces) and MUST NOT contain
+#     any resolved value for {DEVICE_ID}. A second-round expansion fails
+#     with `nested_macro_re_expansion`.
+#
+#   rfc3986_unreserved_only_at_macro_position:
+#     A stricter check than substitution_encoded — verifies that every byte
+#     emitted at the macro position is either unreserved (ALPHA / DIGIT /
+#     "-" / "." / "_" / "~") or a percent-encoded triplet. A conformant
+#     encoder passes this trivially; an encoder that uses a reserved-char
+#     allowlist (rather than unreserved-whitelist) fails specifically on
+#     the CRLF and bidi vectors.
+
+step_task:
+  name: expect_substitution_safe
+  schema_ref: static/compliance/source/universal/storyboard-schema.yaml
+  error_modes:
+    - substitution_encoding_violation
+    - nested_macro_re_expansion
+    - substitution_binding_missing
+    - preview_source_unavailable
+    - preview_url_fetch_failed
+    - preview_body_not_html
+
+# --- @adcp/client primitives the runner consumes ---
+#
+# The runner does NOT reimplement HTML parsing, URL extraction, or the RFC
+# 3986 encoding check. It consumes library primitives so production code
+# paths match conformance paths.
+
+client_primitives:
+  substitution_observer:
+    reference: SubstitutionObserver
+    methods:
+      - parse_html(html: string) -> TrackerUrlRecord[]
+      - fetch_and_parse(url: URL) -> TrackerUrlRecord[]
+      - assert_rfc3986_safe(url: URL, binding: CatalogBinding) -> AssertionResult
+      - assert_no_nested_expansion(url: URL, prohibited_pattern: RegExp) -> AssertionResult
+    proposed_location: "@adcp/client/src/substitution-observer/"
+    doc: "To be filed as an adcp-client PR when #2638 lands."
+
+  tracker_url_record:
+    reference: TrackerUrlRecord
+    shape: |
+      {
+        url: URL;                    // parsed URL object
+        source_attr: string;         // 'href' | 'src' | 'data-impression-url' | …
+        line_hint: number | null;    // best-effort line number in preview HTML
+      }
+
+  catalog_binding:
+    reference: CatalogBinding
+    shape: |
+      {
+        macro: string;                // e.g., "{GTIN}"
+        catalog_field: string;        // e.g., "items[0].sku"
+        item_id: string;              // e.g., "trail_pro_3000"
+        raw_value: string;            // attacker-shaped input
+        expected_encoded: string;     // rfc3986_unreserved-encoded form
+      }
+
+# --- Grading decision tree ---
+#
+# A step gated on this contract grades as follows:
+#
+#   not_applicable:
+#     Runner does not advertise substitution_observer_runner in its
+#     capabilities, OR the specialism under test does not expose a preview
+#     surface (preview_html, preview_url, or equivalent). Recorded as
+#     not_applicable with a reason; does NOT contribute to the pass rate.
+#
+#   pass:
+#     All bindings in `catalog_bindings` appear at their macro positions in
+#     extracted tracker URLs, each byte-equal to `expected_encoded`.
+#
+#   fail with `substitution_encoding_violation`:
+#     At least one binding's extracted value differs from expected_encoded
+#     in any byte. Runner MUST include the binding, the observed URL, the
+#     offending byte offset, and the expected encoding in the error report.
+#
+#   fail with `nested_macro_re_expansion`:
+#     The nested_expansion_preserved vector's macro position contains any
+#     byte sequence that resolves as a second-round AdCP macro. Includes
+#     the resolved macro name and its unexpected value.
+#
+#   fail with `substitution_binding_missing`:
+#     `require_all_bindings_observed: true` (default) and one or more
+#     bindings are not present in any extracted URL. Catches a seller that
+#     silently drops the macro.
+#
+#   fail with `preview_source_unavailable`:
+#     The configured `source_path` resolves to null or an empty string in
+#     the observed response. The seller's preview shape does not satisfy
+#     the contract; specialism MAY grade not_applicable if the agent does
+#     not advertise preview support.
+#
+#   fail with `preview_url_fetch_failed` / `preview_body_not_html`:
+#     preview_url fetch path specific. The runner includes the HTTP status
+#     or the offending content-type in the error report.
+
+# --- Out of scope v1 ---
+#
+# The following are deliberate non-goals for the initial contract:
+#
+#   - Macros outside the catalog-item class. Trusted macros (MEDIA_BUY_ID,
+#     DEVICE_ID, GEO) are not observed by this contract. Extension to a
+#     universal URL-encoding check across all macros is tracked as a
+#     potential 3.2+ scope, not v1.
+#
+#   - HTML-attribute context assertions. The #2620 rule explicitly scopes
+#     to URL contexts; HTML-attribute escaping is the publisher's
+#     responsibility. A runner that detects a catalog value rendered
+#     unencoded into an HTML attribute SHOULD warn but MUST NOT fail.
+#
+#   - VAST XML bodies. VAST macros use [SQUARE_BRACKETS] and resolve in
+#     the player, not in AdCP. Runners MAY extract tracker URLs from VAST
+#     CDATA blocks for the AdCP-macro check but MUST NOT assert on VAST
+#     macro substitution.
+#
+#   - Non-preview surfaces (post-impression log introspection, direct
+#     ad-server querying). Those require a different contract — not this
+#     one — and are a separate 3.2+ RFC.
