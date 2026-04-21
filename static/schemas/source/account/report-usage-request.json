@@ -32,7 +32,8 @@
           },
           "media_buy_id": {
             "type": "string",
-            "description": "Seller-assigned media buy identifier. Links this usage record to a specific media buy."
+            "description": "Seller-assigned media buy identifier. Links this usage record to a specific media buy.",
+            "x-entity": "media_buy"
           },
           "vendor_cost": {
             "type": "number",
@@ -46,7 +47,8 @@
           },
           "pricing_option_id": {
             "type": "string",
-            "description": "Pricing option identifier from the vendor's discovery response (e.g., get_signals, list_content_standards). The vendor uses this to verify the correct rate was applied."
+            "description": "Pricing option identifier from the vendor's discovery response (e.g., get_signals, list_content_standards). The vendor uses this to verify the correct rate was applied.",
+            "x-entity": "vendor_pricing_option"
           },
           "impressions": {
             "type": "integer",
@@ -60,23 +62,28 @@
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Signal identifier from get_signals. Required for signals agents."
+            "description": "Signal identifier from get_signals. Required for signals agents.",
+            "x-entity": "signal_activation_id"
           },
           "standards_id": {
             "type": "string",
-            "description": "Content standards configuration identifier. Required for governance agents."
+            "description": "Content standards configuration identifier. Required for governance agents.",
+            "x-entity": "content_standards"
           },
           "rights_id": {
             "type": "string",
-            "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation."
+            "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation.",
+            "x-entity": "rights_grant"
           },
           "creative_id": {
             "type": "string",
-            "description": "Creative identifier from build_creative or list_creatives. Required for creative agents. Links usage records to specific creatives for billing verification."
+            "description": "Creative identifier from build_creative or list_creatives. Required for creative agents. Links usage records to specific creatives for billing verification.",
+            "x-entity": "creative"
           },
           "property_list_id": {
             "type": "string",
-            "description": "Property list identifier from list_property_lists. Required for property list agents. Links usage records to specific property lists for billing verification."
+            "description": "Property list identifier from list_property_lists. Required for property list agents. Links usage records to specific property lists for billing verification.",
+            "x-entity": "property_list"
           }
         },
         "required": [

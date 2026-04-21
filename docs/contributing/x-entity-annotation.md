@@ -99,7 +99,7 @@ If variants resolve to *different* entities, **split the type**. The registry li
 
 The authoritative list lives at `static/schemas/source/core/x-entity-types.json`. The lint rejects unknown values — extending the registry is intentional and requires a PR.
 
-High-level groupings (see the registry for full descriptions):
+High-level groupings (see the registry for full descriptions). *Categories below are editorial grouping for orientation only; the registry at `static/schemas/source/core/x-entity-types.json` is the authoritative list.*
 
 | Category | Values |
 |---|---|
@@ -109,9 +109,11 @@ High-level groupings (see the registry for full descriptions):
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
-| Plans & governance | `media_plan`, `governance_plan`, `content_standards`, `task` |
+| Plans & governance | `media_plan`, `governance_plan`, `governance_policy`, `governance_check`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option` |
 | SI | `si_session` |
+
+**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_policy` identifies a rule inside or referenced by a plan (*"which rule?"* — e.g., `uk_hfss`); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
 
 The registry file is the source of truth. To see every annotated field across the repo: `git grep -l x-entity static/schemas/source`.
 
