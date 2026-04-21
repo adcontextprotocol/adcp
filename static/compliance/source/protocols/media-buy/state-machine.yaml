@@ -383,21 +383,24 @@ phases:
             value: "media_buy_state_machine--resume_canceled_buy"
             description: "Context correlation_id returned unchanged"
       - id: recancel_buy
-        title: "Handle re-cancel of canceled buy"
+        title: "Reject re-cancel of canceled buy"
         narrative: |
-          Attempt to cancel an already-canceled media buy. The agent should either
-          return an error or accept it idempotently. Both are valid, so no context
-          echo validation — the error path loses structured data without expect_error,
-          and we cannot set expect_error when success is also valid.
+          Attempt to cancel an already-canceled media buy. The agent MUST reject
+          this with NOT_CANCELLABLE. The cancellation-specific code takes
+          precedence over the generic terminal-state INVALID_STATE when the
+          terminal update is itself a cancellation attempt — see §128/§129 of
+          the media-buy specification and media_buy_seller/invalid_transitions
+          for the canonical vector.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: terminal_state_enforcement
+        expect_error: true
         stateful: true
         expected: |
-          Either reject with INVALID_STATE or accept idempotently.
-          Both behaviors are valid.
+          Reject with NOT_CANCELLABLE — the cancellation target is already in
+          canceled state.
 
         sample_request:
           account:
@@ -407,6 +410,17 @@ phases:
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
-          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_terminal_enforcement_recancel_buy"
           context:
             correlation_id: "media_buy_state_machine--recancel_buy"
+        validations:
+          - check: error_code
+            value: "NOT_CANCELLABLE"
+            description: "Re-cancel of canceled buy rejected with NOT_CANCELLABLE"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--recancel_buy"
+            description: "Context correlation_id returned unchanged"

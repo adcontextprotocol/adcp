@@ -185,6 +185,36 @@
 #     when no optional path succeeded.
 #   - A non-optional phase that fails fails the storyboard unconditionally.
 #
+# Per-step grading in any_of branch patterns:
+#   When two or more optional phases declare `contributes_to: <flag>` for the
+#   same aggregation flag (i.e., the branches of an `any_of` check over that
+#   flag), they form a branch set. At most one branch is typically taken by a
+#   conformant agent — the others observe the non-chosen outcome and their
+#   steps' assertions (e.g., `expect_error: true` on the reject branch vs.
+#   `field_present: media_buy_id` on the accept branch) cannot both pass on
+#   the same agent.
+#
+#   Runners MUST grade per-step results in a branch set as follows:
+#     - If at least one peer branch contributed the aggregation flag, the
+#       non-contributing branch's failing steps MUST be graded
+#       `not_applicable` with `detail` citing the peer step/phase that
+#       contributed the flag. They MUST NOT surface as `failed` in the
+#       storyboard summary.
+#     - If no branch contributed the flag, the final `assert_contribution`
+#       step is what fails the storyboard — individual branch step failures
+#       still grade `failed` so the implementor sees what each branch
+#       observed.
+#
+#   Runner detection:
+#     A branch set is the set of `optional: true` phases whose steps declare
+#     the same `contributes_to: <flag>` value as a later `assert_contribution`
+#     step's `validations[].check: any_of, allowed_values: [<flag>]` target.
+#     Storyboards SHOULD keep branch sets flat (two or three peer phases);
+#     nested branch sets are out of scope for runners.
+#
+#   See runner-output-contract.yaml > skip_result.reasons.not_applicable
+#   for the canonical `detail` shape on the skipped branch.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",

@@ -249,8 +249,17 @@ skip_result:
   reasons:
     not_applicable: |
       The agent did not declare the protocol or specialism this storyboard
-      targets. detail MUST cite the agent's declared supported_protocols
-      and specialisms.
+      targets, OR the step is part of an `any_of` branch set (see
+      storyboard-schema.yaml > "Per-step grading in any_of branch patterns")
+      whose aggregation flag was already contributed by a peer optional
+      phase, making the non-chosen branch moot.
+
+      When used for an unsupported protocol/specialism, detail MUST cite the
+      agent's declared supported_protocols and specialisms. When used for a
+      non-chosen any_of branch, detail MUST cite the peer step/phase that
+      contributed the aggregation flag (e.g., "past_start_handled
+      contributed by past_start_adjust_path.create_buy_past_start_adjust —
+      reject branch is moot for this agent").
     no_phases: |
       The storyboard is a placeholder with no phases to run (e.g., a
       protocol baseline that has not been populated yet). detail MUST cite
