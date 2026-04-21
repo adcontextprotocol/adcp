@@ -33,6 +33,19 @@ const vectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'webhoo
 const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
 
 describe('Signer conformance harness', () => {
+  // Guard against a silent-green regression if a future fixture-file
+  // refactor drops the signer_side section: the for-of loops below would
+  // still exit 0 with zero assertions run. This check makes that failure
+  // mode loud — if the fixture shape disappears, CI surfaces it here
+  // rather than letting the gate degrade silently.
+  it('fixture file carries the signer_side section with both vector kinds', () => {
+    assert.ok(data.signer_side, 'webhook-hmac-sha256.json MUST include a signer_side block — the CI gate this file enforces depends on it');
+    assert.ok(Array.isArray(data.signer_side.rejection_vectors) && data.signer_side.rejection_vectors.length > 0,
+      'signer_side.rejection_vectors MUST be a non-empty array — the rejection CI gate is vacuous without it');
+    assert.ok(Array.isArray(data.signer_side.positive_vectors) && data.signer_side.positive_vectors.length > 0,
+      'signer_side.positive_vectors MUST be a non-empty array — a CI run that only sees rejection vectors cannot catch an over-eager signer (false-positive duplicate-key detection)');
+  });
+
   describe('rejection vectors', () => {
     for (const vector of data.signer_side?.rejection_vectors || []) {
       it(`reference signer rejects: ${vector.id}`, () => {
