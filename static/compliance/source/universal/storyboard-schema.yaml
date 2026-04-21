@@ -136,6 +136,13 @@
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
 #
+# omit_idempotency_key: boolean (optional — when true on a mutating-task step,
+#   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
+#   `skipIdempotencyAutoInject` so the request reaches the agent WITHOUT an
+#   `idempotency_key`. Use for missing-key rejection vectors — without this flag
+#   the SDK auto-injects a key and the agent never sees the missing-key path.
+#   Applies only to mutating tasks (create/update/cancel); ignored on reads.)
+#
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
