@@ -15,6 +15,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/creative_fate_after_cancellation
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
