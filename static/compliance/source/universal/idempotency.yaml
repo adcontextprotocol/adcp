@@ -112,6 +112,16 @@ phases:
       A create_media_buy request without idempotency_key MUST be rejected. The schema
       marks the field as required, so this is typically caught at validation time.
 
+      The reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating
+      tasks via `applyIdempotencyInvariant` + client-side shaping. Without an
+      explicit opt-out this vector would never reach the agent with a missing key
+      — the runner would inject one before dispatch, and the vector would silently
+      pass for every SDK-speaking agent regardless of enforcement. The step below
+      sets `omit_idempotency_key: true` so the runner skips both its own
+      invariant application and the SDK's auto-inject. Do not remove the flag:
+      without it, "certified" agents all carry an unverified assertion on this
+      vector.
+
     steps:
       - id: create_media_buy_missing_key
         title: "Missing idempotency_key returns INVALID_REQUEST"
@@ -125,6 +135,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_handling
         expect_error: true
+        omit_idempotency_key: true
         stateful: false
         expected: |
           Reject with:

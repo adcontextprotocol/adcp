@@ -1,0 +1,94 @@
+---
+title: Storyboard troubleshooting
+description: "Common failure patterns when running AdCP compliance storyboards — missing fixtures, signature challenges, envelope drift, context echo, capability mismatches, and state-machine error codes."
+"og:title": "AdCP — Storyboard troubleshooting"
+---
+
+When a compliance storyboard fails against your agent, the runner reports a step name and error text. This page maps the most common error patterns to their root causes and fixes, so you can resolve each class of failure without spelunking through SDK source or runner internals.
+
+Each section shows the error you'll see, what it means, and what to change in your agent.
+
+## Unknown fixture errors
+
+```
+× (unknown step): PRODUCT_NOT_FOUND: Package 0: Product not found: test-product
+```
+
+The storyboard's `sample_request` references a hardcoded ID (`test-product`, `test-pricing`, `campaign_hero_video`, `gov_acme_q2_2027`, etc.). The runner expects the agent to have that ID in its catalog before the mutating step runs.
+
+**Fix:** Implement `comply_test_controller` and honor the seed scenarios declared in the storyboard's `fixtures:` block. When `prerequisites.controller_seeding: true` is set, the runner auto-injects a fixtures phase that calls `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, or `seed_media_buy` in foreign-key order before the main phases execute.
+
+See [Compliance test controller — Scenarios](/docs/building/implementation/comply-test-controller#scenarios) for the full seed contract. Agents that return `UNKNOWN_SCENARIO` on a seed call grade the storyboard `not_applicable` — they are not penalized for missing sandbox surface, but they cannot pass storyboards that depend on pre-seeded state.
+
+## Signature challenge missing on 401
+
+```
+× (unknown step): expected error="request_signature_required", got error="(none)"
+```
+
+The storyboard sent an unsigned request to an operation declared in `get_adcp_capabilities.request_signing.required_for`. Your agent rejected with 401 but did not include a `WWW-Authenticate: Signature ...` challenge header, so the runner could not resolve the error code from the transport binding.
+
+**Fix:** Emit the RFC 9421 challenge header on every 401 caused by missing or invalid signatures. The runner resolves the error code via the transport binding order — if the `WWW-Authenticate` header is absent, the error classification falls back to "(none)" even when the JSON body carries a useful message.
+
+The reference SDK constructs these errors via `RequestSignatureError` from `@adcp/client/signing` with `.code: RequestSignatureErrorCode`. The full taxonomy (`request_signature_required`, `request_signature_header_malformed`, `request_signature_tag_invalid`, `request_signature_window_invalid`, `request_signature_key_unknown`, etc.) is enumerated in that module. Your agent SHOULD surface the same code on the challenge so SDK-speaking callers can recover automatically.
+
+See the [request-signing error-code discovery path](/docs/building/implementation/security#request-signing) for the challenge-header format and the [transport-error binding order](/docs/building/implementation/transport-errors).
+
+## Response envelope drift
+
+```
+× (unknown step): Response contains errors array
+```
+
+The vector used `check: error_code` but your response surfaces the error on a shape the runner's client-detection order didn't expect. In practice, this means your agent returned `errors[]` when the transport layer already carried `adcp_error`, or vice versa — the storyboard asserted a single error code and the runner resolved it from a different layer than you emitted on.
+
+**Fix:** Pick one error surface per response and stick to it per the [envelope vs. payload two-layer model](/docs/building/implementation/error-handling#envelope-vs-payload-errors-the-two-layer-model). On MCP: `adcp_error` for structured content; `errors[]` for task-payload errors. On A2A: the same layers apply — transport error in the envelope, application error in the task artifact's DataPart.
+
+The runner's `check: error_code` is shape-agnostic — it resolves from either layer — but if your agent emits both simultaneously they can disagree, and the runner grades the resolved code against the vector's expectation. Choosing one surface and being consistent avoids the divergence.
+
+## Context echo failures
+
+```
+× (unknown step): expected field "context.correlation_id" = "xyz", got (missing)
+```
+
+Your agent returned a response that does not include the `context:` object from the request. Every storyboard step that sends `context: { correlation_id: ... }` asserts that `context.correlation_id` echoes unchanged in the response.
+
+**Fix:** Preserve the full `context:` object verbatim on every response, including errors. The echo contract is normative — buyers use `correlation_id` to stitch multi-agent flows, and the runner grades every context-carrying step on it. See [Context and sessions — Normative echo contract](/docs/building/integration/context-sessions#normative-echo-contract).
+
+Captures use the same contract in reverse: storyboards that pass `"$context.<name>"` through `context_outputs:` rely on the capture populating after the producer step's validations pass. A downstream step reading `$context.foo` when the producer failed or omitted `context:` grades as `unresolved_substitution`.
+
+## Capability-vector mismatch (runner declared, agent doesn't support)
+
+```
+× (unknown step): capability X asserted but not declared in get_adcp_capabilities
+```
+
+The storyboard dispatched a step that requires a capability your agent does not advertise in its `get_adcp_capabilities` response. The runner should auto-skip these steps; if you're seeing them graded as failures instead, either the capability is declared at the wrong key or the runner is missing the auto-skip path.
+
+**Fix:** Double-check your `get_adcp_capabilities.tools` list and any required-for fields (`request_signing.required_for`, `idempotency.supported_tools`, etc.). For vectors that apply only to specialized agents, the storyboard author can use `skipVectors` to flag the opt-out explicitly; as an implementer, the fix is almost always on the capability declaration rather than the vector.
+
+## Required-for composition
+
+```
+× (unknown step): missing auth — step requires authenticated or signed
+```
+
+The runner encountered a mutating step that expected either authenticated credentials or a signed request, and the transport carried neither. Typically this means the test kit didn't declare `auth.api_key` AND the agent doesn't advertise request-signing support — leaving the runner with no way to authenticate the call.
+
+**Fix:** Either (a) declare `auth.api_key` in the test kit so the runner uses Bearer auth, or (b) advertise request-signing via `get_adcp_capabilities.request_signing` so the runner signs the request instead. The runner's `requireAuthenticatedOrSigned` gate accepts either path — it fails only when both are absent.
+
+## `INVALID_STATE` vs `INVALID_TRANSITION`
+
+Two codes that are easy to confuse:
+
+- **`INVALID_STATE`** — the canonical AdCP media-buy error code for "the resource is in a state that doesn't allow this action." Used on `create_media_buy`/`update_media_buy`/`pause`/`resume`/`cancel` against a media buy that cannot transition as requested. See `media-buy/specification.mdx` and `media-buy/media-buys/index.mdx` for authoritative usage.
+- **`INVALID_TRANSITION`** — specific to the `comply_test_controller` sandbox primitive. Emitted when a runner requests a state-machine transition the seller rejects (e.g., forcing `approved` → `archived` without going through `active`). See [Compliance test controller](/docs/building/implementation/comply-test-controller#state-machine-transitions).
+
+A storyboard vector that asserts `INVALID_STATE` on a production task but your agent returns `INVALID_TRANSITION` is an error-code vocabulary mismatch — `INVALID_TRANSITION` is not in the canonical enum at `static/schemas/source/enums/error-code.json` and should not appear outside the compliance test controller.
+
+## When none of the above matches
+
+If you hit a failure that doesn't map to anything here, check the [known spec ambiguities](/docs/building/implementation/known-ambiguities) page — some storyboards are blocked on resolved-but-unreleased spec gaps, and the workaround is tracked there.
+
+Still stuck? File an issue at [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp/issues) with the full runner output, and the storyboard author can usually narrow the pattern from the error signature in under an hour.

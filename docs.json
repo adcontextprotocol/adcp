@@ -144,7 +144,9 @@
                       "docs/building/implementation/a2a-response-extraction",
                       "docs/building/implementation/security",
                       "docs/building/implementation/webhook-verifier-tuning",
-                      "docs/building/implementation/seller-integration"
+                      "docs/building/implementation/seller-integration",
+                      "docs/building/implementation/storyboard-troubleshooting",
+                      "docs/building/implementation/known-ambiguities"
                     ]
                   },
                   {
@@ -643,7 +645,9 @@
                   "docs/building/implementation/a2a-response-extraction",
                   "docs/building/implementation/security",
                   "docs/building/implementation/webhook-verifier-tuning",
-                  "docs/building/implementation/seller-integration"
+                  "docs/building/implementation/seller-integration",
+                  "docs/building/implementation/storyboard-troubleshooting",
+                  "docs/building/implementation/known-ambiguities"
                 ]
               },
               {

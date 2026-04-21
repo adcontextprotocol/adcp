@@ -1,0 +1,59 @@
+---
+title: Known spec ambiguities
+description: "Open AdCP spec gaps that affect compliance testing — with workarounds and issue links. Entries are removed as the underlying issues close."
+"og:title": "AdCP — Known spec ambiguities"
+---
+
+This page enumerates spec gaps that currently affect storyboard conformance: places where the spec allows multiple conformant behaviors but the storyboard vectors assert only one branch, where a response field is asserted but not yet required by the schema, or where a testing-infrastructure quirk prevents a vector from probing through the reference SDK.
+
+**Entries are removed as the underlying issue closes.** If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
+
+## How to use this page
+
+If a storyboard fails on a behavior you believe is spec-conformant, search this page for the storyboard name or the assertion text. Each entry describes the gap, the workaround that gets you past the blocker, and the issue that tracks the fix. When the issue closes the entry here is removed — so always pair this page with the linked issue for the authoritative state.
+
+For the opposite direction — failures that are **not** in this list and do have clean fixes — see the [storyboard troubleshooting guide](/docs/building/implementation/storyboard-troubleshooting).
+
+## Current ambiguities
+
+### `past_start` — reject vs. accept-and-adjust
+
+- **Storyboards**: `universal/schema-validation.yaml` phases `past_start_reject_path` / `past_start_adjust_path` / `past_start_enforcement`.
+- **Gap**: resolved in [#2389](https://github.com/adcontextprotocol/adcp/pull/2389) — the storyboard now accepts either branch via parallel optional phases + `assert_contribution`. Agents that chose either outcome pass.
+- **Status**: **closed**. Listed here for historical reference; if you still see failures, pull the latest compliance build.
+- **Pattern to replicate**: see [storyboard authoring — Asserting on branchable behaviors](/docs/contributing/storyboard-authoring#asserting-on-branchable-behaviors) for the shape any future `MAY` branch should follow.
+
+### `check_governance` `conditions` field shape
+
+- **Schema**: `check-governance-response.json` defines `conditions[]` items as `{ field, required_value?, reason }` with `field` and `reason` required. The `status: conditions` status now requires `conditions` with `minItems: 1`.
+- **Gap closed by**: [#2603](https://github.com/adcontextprotocol/adcp/issues/2603). The schema tightening lands in the protocol patch release following this entry's removal.
+- **Workaround (until you pull the fix)**: emit `conditions[]` with the canonical `{ field, reason }` shape on every `status: conditions` response. Agents following the prose description already do this; the schema tightening just makes enforcement mechanical.
+
+### PRM required for non-OAuth agents
+
+- **Storyboard**: `universal/security.yaml` phases `oauth_discovery` + `mechanism_required`.
+- **Gap**: the RFC 9728 / RFC 8414 probes run for every agent by default. API-key-only sandboxes were standing up fake issuer URLs to "pass" the probes, which is worse than skipping them.
+- **Resolution**: [#2606](https://github.com/adcontextprotocol/adcp/issues/2606) — the storyboard narrative now explicitly directs API-key-only agents to declare `auth.api_key` in the test kit and omit PRM entirely. Optional-phase semantics make `oauth_discovery` failures non-fatal; `mechanism_required` passes via the API-key path.
+- **Workaround**: if your agent has no OAuth issuer, do not serve `/.well-known/oauth-protected-resource/...`. Declare `auth.api_key` in your test-kit and let the OAuth discovery phase fail silently.
+
+### Idempotency missing-key probe via SDK
+
+- **Storyboard**: `universal/idempotency.yaml` step `missing_key/create_media_buy_missing_key`.
+- **Gap**: the reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating tasks, so a vector that tries to probe "missing key rejection" never reaches the agent with a missing key — the runner would inject one before dispatch.
+- **Resolution**: [#2607](https://github.com/adcontextprotocol/adcp/issues/2607) — the step declares `omit_idempotency_key: true`, which signals the runner to skip both its own `applyIdempotencyInvariant` and the SDK's auto-inject. The request arrives at your agent without a key, letting the vector probe the rejection path honestly.
+- **Workaround**: nothing required — honor the existing spec requirement (reject missing `idempotency_key` on mutating tasks with `INVALID_REQUEST` or `VALIDATION_ERROR`).
+
+### Response schema fields asserted by storyboards
+
+- **Storyboards**: `sales_catalog_driven` (catalog counts), `creative_ad_server` (pricing_options), `media_buy_seller/inventory_list_targeting` (property_list echo), `creative_ad_server` (vendor_cost required).
+- **Gap**: historical drift between what storyboard vectors assert and what the response schemas require.
+- **Resolution**: [#2604](https://github.com/adcontextprotocol/adcp/issues/2604). Audit complete:
+  - `sync-catalogs-response.json` now requires `item_count` on catalog entries when `action` is `created`/`updated`/`unchanged`.
+  - `property_list` / `collection_list` echo: already canonical via `packages[].targeting_overlay`.
+  - `list-creatives-response.json` `pricing_options`: already canonical (array, `minItems: 1`, items require `pricing_option_id`).
+  - `report-usage-request.json` `vendor_cost`: already required.
+- **Workaround**: emit `item_count` on every non-failed/non-deleted catalog entry. Conformant agents already do this; the schema tightening catches gaps at `response_schema` validation.
+
+## When an ambiguity isn't listed
+
+If you're blocked on a behavior you believe the spec leaves ambiguous but it's not on this list, open an issue at [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp/issues/new). Include the storyboard, the vector's assertion text, the conformant branch you picked, and why you believe the spec allows it. The fastest resolutions come from issues that cite the specific spec paragraph and the specific vector assertion — that's enough for a maintainer to either point you at an existing fix or confirm the gap and schedule it.
