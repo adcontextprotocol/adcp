@@ -129,21 +129,32 @@
     const agent = params.get('agent');
     const error = params.get('error');
 
-    // Only accept same-origin path redirects (defense-in-depth;
-    // server validates before storing, but we revalidate here).
+    // Resolve return_to to a same-origin URL. Returns null for anything
+    // that isn't a plain path on the current origin. Server validates
+    // before storing; this is defense-in-depth.
     function safeReturnTo(raw) {
       if (!raw || typeof raw !== 'string') return null;
       if (raw.length > 512) return null;
       if (!raw.startsWith('/')) return null;
       if (raw.startsWith('//') || raw.startsWith('/\\')) return null;
-      return raw;
+      try {
+        const url = new URL(raw, window.location.origin);
+        if (url.origin !== window.location.origin) return null;
+        return url.pathname + url.search + url.hash;
+      } catch (_) {
+        return null;
+      }
     }
-    const returnTo = success ? safeReturnTo(params.get('return_to')) : null;
+    const returnToPath = success ? safeReturnTo(params.get('return_to')) : null;
+    // Build an absolute, provably same-origin URL for navigation.
+    const returnToUrl = returnToPath
+      ? window.location.origin + returnToPath
+      : null;
 
     const content = document.getElementById('content');
 
     if (success) {
-      const returningInstruction = returnTo
+      const returningInstruction = returnToUrl
         ? `Returning to your dashboard…`
         : `You can close this tab and return to your conversation.`;
       content.innerHTML = `
@@ -158,12 +169,15 @@
         <div class="oauth-complete__footer">
           <p class="oauth-complete__instruction">
             ${returningInstruction}
-            ${returnTo ? ` <a href="${escapeHtml(returnTo)}">Go now</a>.` : ''}
+            ${returnToUrl ? ` <a href="${escapeHtml(returnToUrl)}">Go now</a>.` : ''}
           </p>
         </div>
       `;
-      if (returnTo) {
-        setTimeout(() => { window.location.replace(returnTo); }, 1200);
+      if (returnToUrl) {
+        // codeql[js/client-side-unvalidated-url-redirection] -- returnToUrl
+        // is built from window.location.origin plus a path that was parsed
+        // via URL() and confirmed to resolve to the same origin.
+        setTimeout(() => { window.location.replace(returnToUrl); }, 1200);
       }
     } else {
       content.innerHTML = `
