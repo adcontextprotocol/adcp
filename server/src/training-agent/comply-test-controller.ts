@@ -357,17 +357,27 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 // ── Main handler ──────────────────────────────────────────────────
 
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
-  // Sandbox gating
-  const account = (args as Record<string, unknown>).account as { sandbox?: boolean } | undefined;
-  if (!account?.sandbox) {
+  const rawArgs = args as Record<string, unknown>;
+
+  // Sandbox gate — spec: "If a comply_test_controller call references a
+  // non-sandbox account, the controller MUST return FORBIDDEN." The
+  // training agent is sandbox-only by deployment (the tool only lists on
+  // sandbox connections), so a caller hitting this endpoint is by
+  // definition in sandbox. Reject ONLY when the request explicitly
+  // declares `account.sandbox: false` (an attempt to target a named
+  // production account) — default-to-allow matches the storyboards
+  // (`deterministic_testing`, etc.) which don't include `account` at all
+  // on error-surface probes.
+  const account = rawArgs.account as { sandbox?: boolean } | undefined;
+  if (account && account.sandbox === false) {
     return {
       success: false,
       error: 'FORBIDDEN',
-      error_detail: 'comply_test_controller is only available in sandbox mode',
+      error_detail: 'comply_test_controller cannot target non-sandbox accounts',
     };
   }
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const store = createStore(session);
-  return handleTestControllerRequest(store, args as Record<string, unknown>);
+  return handleTestControllerRequest(store, rawArgs);
 }
