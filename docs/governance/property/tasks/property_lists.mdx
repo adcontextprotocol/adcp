@@ -661,8 +661,7 @@ Pass property lists to media buy creation:
 
 | Code | Description |
 |------|-------------|
-| `LIST_NOT_FOUND` | Property list ID doesn't exist |
-| `LIST_ACCESS_DENIED` | The authenticated agent or account doesn't have access to this list |
+| `REFERENCE_NOT_FOUND` | Property list ID doesn't exist, or the caller lacks access. Returned uniformly for both cases — see [Uniform response for inaccessible references](/docs/building/implementation/error-handling#standard-error-codes). Sellers MUST NOT distinguish "exists but unauthorized" from "does not exist." |
 | `INVALID_FILTER` | Filter configuration is invalid |
 | `LIST_NAME_EXISTS` | A list with this name already exists |
 
