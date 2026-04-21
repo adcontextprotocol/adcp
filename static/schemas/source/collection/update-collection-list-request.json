@@ -3,6 +3,7 @@
   "$id": "/schemas/collection/update-collection-list-request.json",
   "title": "Update Collection List Request",
   "description": "Request parameters for updating an existing collection list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

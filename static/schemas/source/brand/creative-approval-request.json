@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/creative-approval-request.json",
   "title": "Creative Approval Request",
   "description": "Payload submitted by the buyer to the approval_webhook URL from acquire_rights. Contains the creative for rights holder review before distribution.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

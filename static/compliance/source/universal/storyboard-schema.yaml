@@ -362,6 +362,20 @@
 #   a `branch_set.id`) are exempt from contradiction flagging by design:
 #   any_of semantics intentionally asserts mutually exclusive outcomes.
 #
+#   Mutating-task detection: the lint's prior-state fingerprint partitions
+#   steps by the ordered list of prior MUTATING tasks. A task is mutating
+#   iff its request schema declares `"x-mutates-state": true` at the top
+#   level. The annotation is an explicit contract — decoupled from the
+#   separate `idempotency_key` mechanism — meaning "this task changes
+#   observable server state a later conformant call may assert against."
+#   Mutating tasks include writes (create/update/delete/sync/build), state
+#   transitions (cancel, approve, reject), session-scoped primitives
+#   (si_initiate_session, si_send_message, si_terminate_session), and
+#   reporting/audit writes (log_event, report_usage, report_plan_outcome,
+#   provide_performance_feedback — their outputs surface in later
+#   get_plan_audit_logs / billing reads). Read-only tasks (get_*, list_*,
+#   check_*, validate_*, preview_*) do not declare `x-mutates-state`.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",

@@ -3,6 +3,7 @@
   "$id": "/schemas/collection/delete-collection-list-request.json",
   "title": "Delete Collection List Request",
   "description": "Request parameters for deleting a collection list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

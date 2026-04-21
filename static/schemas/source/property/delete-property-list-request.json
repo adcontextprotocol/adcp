@@ -3,6 +3,7 @@
   "$id": "/schemas/property/delete-property-list-request.json",
   "title": "Delete Property List Request",
   "description": "Request parameters for deleting a property list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

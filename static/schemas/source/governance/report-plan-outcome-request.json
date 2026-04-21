@@ -4,6 +4,7 @@
   "title": "Report Plan Outcome Request",
   "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

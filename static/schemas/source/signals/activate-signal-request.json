@@ -3,6 +3,7 @@
   "$id": "/schemas/signals/activate-signal-request.json",
   "title": "Activate Signal Request",
   "description": "Request parameters for activating or deactivating a signal on deployment targets",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

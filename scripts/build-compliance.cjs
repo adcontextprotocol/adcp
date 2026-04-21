@@ -175,6 +175,15 @@ function discoverProtocols(sourceDir, specialisms) {
 // arrival. The one documented exception (si-terminate-session: naturally
 // idempotent by session_id) carries a `$comment` on its request schema
 // and is correctly absent from the required-key set.
+//
+// Divergence with `x-mutates-state`: the contradiction lint's cousin at
+// `scripts/lint-storyboard-contradictions.cjs:loadMutatingTasksFromSchemas`
+// reads `x-mutates-state: true` instead — that's the mutation-semantics
+// declaration ("this task changes observable state"), which is a different
+// concern from the idempotency mechanism enforced here. The two sets
+// overlap on ~95% of tasks but legitimately diverge on naturally-idempotent
+// mutations (comply_test_controller, si_terminate_session). Do not
+// unify — they answer different questions.
 
 function loadMutatingSchemaRefs(schemasDir) {
   const refs = new Set();
