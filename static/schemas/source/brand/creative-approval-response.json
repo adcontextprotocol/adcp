@@ -14,11 +14,13 @@
           "description": "Creative has been approved for distribution"
         },
         "rights_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_grant"
         },
         "creative_id": {
           "type": "string",
-          "description": "Echo of the buyer's creative identifier"
+          "description": "Echo of the buyer's creative identifier",
+          "x-entity": "creative"
         },
         "creative_url": {
           "type": "string",
@@ -53,11 +55,13 @@
           "description": "Creative was rejected"
         },
         "rights_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_grant"
         },
         "creative_id": {
           "type": "string",
-          "description": "Echo of the buyer's creative identifier"
+          "description": "Echo of the buyer's creative identifier",
+          "x-entity": "creative"
         },
         "creative_url": {
           "type": "string",
@@ -92,11 +96,13 @@
           "description": "Creative is queued for review"
         },
         "rights_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_grant"
         },
         "creative_id": {
           "type": "string",
-          "description": "Echo of the buyer's creative identifier"
+          "description": "Echo of the buyer's creative identifier",
+          "x-entity": "creative"
         },
         "creative_url": {
           "type": "string",

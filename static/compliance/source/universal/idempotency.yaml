@@ -5,6 +5,19 @@ category: core
 summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
 track: core
 
+# Cross-step assertions (adcontextprotocol/adcp#2639). These convert two
+# reviewer-only checks from `key_reuse_conflict` and `security` into
+# programmatic gates that fail the storyboard at runtime rather than
+# waiting on human review. `idempotency.conflict_no_payload_leak` catches
+# the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
+# catches credential echo on any step's response. Runners must
+# `import '@adcp/adcp/compliance/assertions'` (or the equivalent module
+# path in their consumer) before calling `runStoryboard` so these ids
+# resolve.
+invariants:
+  - idempotency.conflict_no_payload_leak
+  - context.no_secret_echo
+
 # Security note for the test harness: sample_request values below use
 # $generate:uuid_v4 and $generate:uuid_v4#alias placeholders. The harness
 # MUST replace these with fresh UUID v4 values PER RUN (not per file, not

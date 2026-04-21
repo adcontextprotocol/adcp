@@ -17,11 +17,13 @@
             "properties": {
               "rights_id": {
                 "type": "string",
-                "description": "Identifier for this rights offering. Referenced in acquire_rights."
+                "description": "Identifier for this rights offering. Referenced in acquire_rights.",
+                "x-entity": "rights_grant"
               },
               "brand_id": {
                 "type": "string",
-                "description": "Brand identifier from the agent's roster"
+                "description": "Brand identifier from the agent's roster",
+                "x-entity": "rights_holder_brand"
               },
               "name": {
                 "type": "string",
@@ -119,7 +121,7 @@
           "items": {
             "type": "object",
             "properties": {
-              "brand_id": { "type": "string" },
+              "brand_id": { "type": "string", "x-entity": "rights_holder_brand" },
               "name": { "type": "string" },
               "reason": {
                 "type": "string",
