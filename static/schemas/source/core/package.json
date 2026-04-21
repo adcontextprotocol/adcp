@@ -7,11 +7,13 @@
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Seller's unique identifier for the package"
+      "description": "Seller's unique identifier for the package",
+      "x-entity": "package"
     },
     "product_id": {
       "type": "string",
-      "description": "ID of the product this package is based on"
+      "description": "ID of the product this package is based on",
+      "x-entity": "product"
     },
     "budget": {
       "type": "number",
@@ -23,7 +25,8 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "ID of the selected pricing option from the product's pricing_options array"
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "pricing_option"
     },
     "bid_price": {
       "type": "number",

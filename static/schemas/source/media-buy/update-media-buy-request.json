@@ -17,7 +17,8 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Seller's ID of the media buy to update"
+      "description": "Seller's ID of the media buy to update",
+      "x-entity": "media_buy"
     },
     "revision": {
       "type": "integer",

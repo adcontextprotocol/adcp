@@ -53,7 +53,8 @@
         "properties": {
           "creative_id": {
             "type": "string",
-            "description": "Unique identifier for the creative"
+            "description": "Unique identifier for the creative",
+            "x-entity": "creative"
           },
           "account": {
             "$ref": "/schemas/core/account.json",
@@ -145,7 +146,8 @@
                   "properties": {
                     "package_id": {
                       "type": "string",
-                      "description": "Package identifier"
+                      "description": "Package identifier",
+                      "x-entity": "package"
                     },
                     "assigned_date": {
                       "type": "string",

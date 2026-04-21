@@ -14,7 +14,8 @@
     "media_buy_id": {
       "type": "string",
       "description": "Seller's media buy identifier",
-      "minLength": 1
+      "minLength": 1,
+      "x-entity": "media_buy"
     },
     "idempotency_key": {
       "type": "string",
@@ -35,12 +36,14 @@
     "package_id": {
       "type": "string",
       "description": "Specific package within the media buy (if feedback is package-specific)",
-      "minLength": 1
+      "minLength": 1,
+      "x-entity": "package"
     },
     "creative_id": {
       "type": "string",
       "description": "Specific creative asset (if feedback is creative-specific)",
-      "minLength": 1
+      "minLength": 1,
+      "x-entity": "creative"
     },
     "metric_type": {
       "$ref": "/schemas/enums/metric-type.json",

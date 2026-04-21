@@ -23,7 +23,8 @@
         },
         "pricing_option_id": {
           "type": "string",
-          "description": "Which rate card pricing option was applied for this evaluation. Present when the governance agent charges for evaluations and account was provided in the request."
+          "description": "Which rate card pricing option was applied for this evaluation. Present when the governance agent charges for evaluations and account was provided in the request.",
+          "x-entity": "pricing_option"
         },
         "vendor_cost": {
           "type": "number",

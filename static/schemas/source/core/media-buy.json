@@ -7,7 +7,8 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Seller's unique identifier for the media buy"
+      "description": "Seller's unique identifier for the media buy",
+      "x-entity": "media_buy"
     },
     "account": {
       "$ref": "/schemas/core/account.json",

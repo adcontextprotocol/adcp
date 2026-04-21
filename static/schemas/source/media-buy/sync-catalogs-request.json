@@ -35,7 +35,8 @@
       "type": "array",
       "description": "Optional filter to limit sync scope to specific catalog IDs. When provided, only these catalogs will be created/updated. Other catalogs on the account are unaffected.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "catalog"
       },
       "minItems": 1,
       "maxItems": 50

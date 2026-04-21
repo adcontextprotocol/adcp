@@ -182,6 +182,15 @@ function resolveEntityAtPath(node, segments) {
     return resolveEntityAtPath(resolved, segments);
   }
 
+  // Root-level annotation on the current node — useful on composite types like
+  // core/signal-id.json or core/format-id.json where the whole object IS the
+  // entity reference. Checked before descending into oneOf/anyOf/allOf so one
+  // annotation on the shared type applies to every variant without needing
+  // duplicated `x-entity` on each branch.
+  if (segments.length === 0 && typeof node['x-entity'] === 'string') {
+    return node['x-entity'];
+  }
+
   if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
     // oneOf / anyOf: variants are alternatives — take any variant that resolves.
     // allOf: variants are all required — any variant that carries the annotation
