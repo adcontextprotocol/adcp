@@ -1243,7 +1243,7 @@ export class AdAgentsManager {
           result.card_endpoint = endpoint;
 
           // Check content-type header
-          const contentType = response.headers['content-type'] || '';
+          const contentType = String(response.headers['content-type'] ?? '');
           const isJsonContentType = contentType.includes('application/json');
 
           // Basic validation of card structure
