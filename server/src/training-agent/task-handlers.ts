@@ -2038,7 +2038,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
   }
 
-  // Terminal state check
+  // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
+  // media_buy_seller/invalid_transitions pins this error code explicitly.
   const currentStatus = deriveStatus(mb);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
