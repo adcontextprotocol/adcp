@@ -42,13 +42,26 @@ function sanitizeErrorMessage(error: unknown): string {
 /**
  * Validate that a return_to value is a safe same-origin path,
  * preventing open redirects and javascript:/data: URIs.
+ *
+ * Expresses the same-origin invariant via URL parsing against a
+ * placeholder origin rather than inferring it from prefix checks,
+ * so the guarantee holds even if the value is later consumed in a
+ * context that concatenates or redirects without re-prepending an
+ * origin.
  */
 function sanitizeReturnTo(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length === 0 || value.length > 512) return undefined;
   if (!value.startsWith('/')) return undefined;
   if (value.startsWith('//') || value.startsWith('/\\')) return undefined;
   if (/[\x00-\x1f]/.test(value)) return undefined;
-  return value;
+  const placeholderOrigin = 'https://placeholder.invalid';
+  try {
+    const url = new URL(value, placeholderOrigin);
+    if (url.origin !== placeholderOrigin) return undefined;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return undefined;
+  }
 }
 
 // Type for token response
