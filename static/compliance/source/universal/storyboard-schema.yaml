@@ -236,11 +236,12 @@
 #
 #   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
 #   `contributes: true` on a step inside a branch_set phase — the runner's
-#   loader resolves it to the enclosing phase's `branch_set.id`. Storyboards
-#   in this repository currently stay on the string form pending resolution
-#   of unrelated 5.8.0 schema-validation regressions; the defensive lint
-#   rules below cover both forms so the shorthand can be adopted
-#   per-storyboard once the runner upgrade lands.
+#   loader resolves it to the enclosing phase's `branch_set.id`. The two
+#   forms are semantically identical; `contributes: true` is preferred
+#   inside a branch_set phase because it eliminates the typo surface (the
+#   string form must equal `branch_set.id` exactly). Authors may use
+#   either. `universal/schema-validation.yaml` and `universal/security.yaml`
+#   use the shorthand as reference examples.
 #
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633

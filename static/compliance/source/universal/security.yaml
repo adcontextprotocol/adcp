@@ -207,7 +207,7 @@ phases:
         auth:
           type: api_key
           value_strategy: random_invalid
-        contributes_to: auth_mechanism_verified
+        contributes: true
         contributes_if: "prior_step.probe_api_key.passed"
         expect_error: true
         expected: |
@@ -378,7 +378,7 @@ phases:
         auth:
           type: oauth_bearer
           value_strategy: random_invalid_jwt
-        contributes_to: auth_mechanism_verified
+        contributes: true
         contributes_if: "prior_step.probe_protected_resource.passed"
         expect_error: true
         expected: |
