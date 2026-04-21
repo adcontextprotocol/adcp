@@ -571,6 +571,26 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--list_formats"
             description: "Context correlation_id returned unchanged"
+          - check: refs_resolve
+            description: |
+              Every format_id returned on products resolves to a format in this
+              agent's list_creative_formats. Broken references here surface as a
+              grading failure instead of a silent mismatch that only breaks at
+              sync_creatives time, after the buy is committed. Third-party
+              format_ids (agent_url pointing at a different creative agent)
+              can't be verified without calling that agent and are reported as
+              observations rather than failures.
+            source:
+              from: context
+              path: "products[*].format_ids[*]"
+            target:
+              from: current_step
+              path: "formats[*].format_id"
+            match_keys: [agent_url, id]
+            scope:
+              key: agent_url
+              equals: $agent_url
+            on_out_of_scope: warn
 
       - id: sync_creatives
         title: "Push creative assets (format_id roundtrip)"
