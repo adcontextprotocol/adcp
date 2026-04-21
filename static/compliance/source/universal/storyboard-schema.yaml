@@ -362,6 +362,54 @@
 #   a `branch_set.id`) are exempt from contradiction flagging by design:
 #   any_of semantics intentionally asserts mutually exclusive outcomes.
 #
+#   Mutating-task detection: the lint's prior-state fingerprint partitions
+#   steps by the ordered list of prior MUTATING tasks. A task is mutating
+#   iff its request schema declares `"x-mutates-state": true` at the top
+#   level. The annotation is consumed by
+#   `scripts/lint-storyboard-contradictions.cjs` (which builds the
+#   mutating-task set at lint time) and is the single source of truth for
+#   this concern.
+#
+#   Decidability rule (apply to any new task):
+#     A task declares `"x-mutates-state": true` iff a conformant compliance
+#     suite could write an assertion — on any later `get_*`, `list_*`, or
+#     follow-up call — whose outcome depends on this request having run.
+#     Equivalently: "this task changes observable server state a later
+#     conformant call may assert against."
+#
+#   Mutating task classes (illustrative; the decidability rule above is
+#   the actual test):
+#     - Writes (create/update/delete/sync/build) — resource lifecycle.
+#     - State transitions (cancel, approve, reject) — status moves.
+#     - Session-scoped primitives (si_initiate_session, si_send_message,
+#       si_terminate_session) — session lifecycle.
+#     - Reporting/audit writes (log_event, report_usage,
+#       report_plan_outcome, provide_performance_feedback) — mutating
+#       because `get_plan_audit_logs` and billing-summary tasks can assert
+#       against their recorded outputs.
+#
+#   Non-mutating task classes:
+#     - Read-only tasks (get_*, list_*, check_*, validate_*, preview_*) do
+#       not declare `x-mutates-state` UNLESS the read itself produces
+#       observable state a later task can assert against (e.g., a view
+#       counter that `get_analytics` can read) — those are mutating
+#       regardless of prefix.
+#     - Pure-compute tasks (no state read or write — estimates,
+#       calculations) MUST NOT declare `x-mutates-state`.
+#
+#   Relationship to idempotency_key (decoupled, do not unify):
+#     `x-mutates-state` declares mutation semantics. `required:
+#     [idempotency_key]` declares the idempotency mechanism. The sets
+#     overlap ~95% but legitimately diverge for naturally-idempotent
+#     mutations. Example: `comply_test_controller` declares
+#     `x-mutates-state: true` but omits `idempotency_key` from `required`
+#     because the `scenario` enum is the dedup boundary — replaying
+#     `force_media_buy_status=active` converges to the same observable
+#     state without a key. `si_terminate_session` is the same shape
+#     (session_id is the dedup boundary). `scripts/build-compliance.cjs`
+#     reads `idempotency_key` for its own enforcement; do not try to share
+#     the two reads.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",

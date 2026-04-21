@@ -61,40 +61,20 @@ const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source
 const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 
 /**
- * Tasks whose state mutations are invisible to the idempotency-key heuristic
- * below — they don't require `idempotency_key` in their request schema
- * (typically because they are naturally idempotent or session-scoped) but
- * still change observable agent state that a later step's outcome depends on.
- *
- * Each entry must be justified. Adding to this set without a schema-level
- * reason is a drift hazard; prefer declaring `idempotency_key` required on
- * the request schema instead.
- */
-const MUTATING_EXCEPTIONS = new Set([
-  // Schema description: "Naturally idempotent: the `scenario` enum is either
-  // a lookup (`list_scenarios`) or a state-forcing operation whose target
-  // state is carried in the payload (`force_*_status`, `simulate_*`), so
-  // replays converge to the same observable state." The controller scenarios
-  // do mutate controller state the next step observes, so the contradiction
-  // lint must treat them as mutations.
-  'comply_test_controller',
-  // Schema description: "Naturally idempotent — `session_id` is the dedup
-  // boundary, and terminating an already-terminated session is a no-op that
-  // returns the same terminal state." The termination still transitions
-  // active → terminated, and a later si_send_message on the same session_id
-  // asserts against that terminal state; the contradiction lint must
-  // discriminate pre- vs post-termination state paths.
-  'si_terminate_session',
-]);
-
-/**
  * Read every `*-request.json` under `SCHEMAS_DIR` and return the set of
- * task names that require `idempotency_key`. Task name is derived from the
- * filename: `create-media-buy-request.json` → `create_media_buy`.
+ * task names whose schema declares `"x-mutates-state": true`. Task name
+ * is derived from the filename: `create-media-buy-request.json` →
+ * `create_media_buy`.
  *
- * Mirrors the pattern in `scripts/build-compliance.cjs:loadMutatingSchemaRefs`;
- * kept local rather than shared because the two lints have slightly
- * different output needs (tool-only here, refs+tools there).
+ * `x-mutates-state` is the explicit schema-level declaration that this
+ * task changes observable server state a later step's assertion may
+ * depend on. It decouples "mutation semantics" (what the contradiction
+ * lint needs) from "idempotency mechanism" (what
+ * `build-compliance.cjs:loadMutatingSchemaRefs` enforces) — the two
+ * correlate ~95% of the time but legitimately diverge for naturally-
+ * idempotent mutations like `comply_test_controller` (scenario enum is
+ * the dedup boundary) and `si_terminate_session` (session_id is the
+ * dedup boundary).
  */
 function loadMutatingTasksFromSchemas(schemasDir) {
   // Map<task, srcPath> so same-task-name across subdirs surfaces as an
@@ -117,8 +97,7 @@ function loadMutatingTasksFromSchemas(schemasDir) {
       } catch {
         continue;
       }
-      const required = Array.isArray(schema.required) ? schema.required : [];
-      if (!required.includes('idempotency_key')) continue;
+      if (schema['x-mutates-state'] !== true) continue;
       const task = entry.name.replace(/-request\.json$/, '').replace(/-/g, '_');
       const prior = origins.get(task);
       if (prior && prior !== p) {
@@ -137,18 +116,13 @@ function loadMutatingTasksFromSchemas(schemasDir) {
 
 /**
  * AdCP task names that MUTATE server state. Derived at module load by
- * reading request schemas' `required: [idempotency_key]` declarations
- * (source of truth for "this task is a mutation"), plus documented
- * exceptions for naturally-idempotent tasks that still change state.
+ * reading every request schema's `x-mutates-state: true` declaration.
  *
  * Prior-state discrimination in the contradiction lint depends on this
  * set — a step whose prior phase contains only read tasks is at the same
  * "state" as a step with no prior phases.
  */
-const MUTATING_TASKS = new Set([
-  ...loadMutatingTasksFromSchemas(SCHEMAS_DIR),
-  ...MUTATING_EXCEPTIONS,
-]);
+const MUTATING_TASKS = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
 
 /**
  * Step tasks that we skip entirely — they're synthetic assertions or
@@ -578,7 +552,6 @@ if (require.main === module) main();
 
 module.exports = {
   MUTATING_TASKS,
-  MUTATING_EXCEPTIONS,
   SKIP_TASKS,
   FIXTURE_CATEGORY_PRIMARY_ID,
   loadMutatingTasksFromSchemas,

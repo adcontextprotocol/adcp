@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
   "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

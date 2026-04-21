@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/provide-performance-feedback-request.json",
   "title": "Provide Performance Feedback Request",
   "description": "Request payload for provide_performance_feedback task",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

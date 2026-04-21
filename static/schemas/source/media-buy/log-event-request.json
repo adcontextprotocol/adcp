@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/log-event-request.json",
   "title": "Log Event Request",
   "description": "Request parameters for logging marketing events",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

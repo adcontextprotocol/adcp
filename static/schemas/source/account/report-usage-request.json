@@ -3,6 +3,7 @@
   "$id": "/schemas/account/report-usage-request.json",
   "title": "Report Usage Request",
   "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

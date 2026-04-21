@@ -3,6 +3,7 @@
   "$id": "/schemas/content-standards/create-content-standards-request.json",
   "title": "Create Content Standards Request",
   "description": "Request parameters for creating a new content standards configuration",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

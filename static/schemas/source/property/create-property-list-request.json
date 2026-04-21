@@ -3,6 +3,7 @@
   "$id": "/schemas/property/create-property-list-request.json",
   "title": "Create Property List Request",
   "description": "Request parameters for creating a new property list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

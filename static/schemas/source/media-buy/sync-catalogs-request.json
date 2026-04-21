@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/sync-catalogs-request.json",
   "title": "Sync Catalogs Request",
   "description": "Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across multiple catalog types (products, inventory, stores, promotions, offerings). Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs is omitted, the call is discovery-only: returns all catalogs on the account without modification.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

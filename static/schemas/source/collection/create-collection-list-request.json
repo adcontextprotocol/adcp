@@ -3,6 +3,7 @@
   "$id": "/schemas/collection/create-collection-list-request.json",
   "title": "Create Collection List Request",
   "description": "Request parameters for creating a new collection list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

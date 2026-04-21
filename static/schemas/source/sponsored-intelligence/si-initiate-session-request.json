@@ -4,6 +4,7 @@
   "title": "SI Initiate Session Request",
   "description": "Host initiates a session with a brand agent",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
