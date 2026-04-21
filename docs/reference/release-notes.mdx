@@ -25,6 +25,14 @@ Late-RC security hardening on the way to 3.0.0 GA. The rc.4 entry below carries 
 
 **3. Conformance coverage.** Negative test vector `027-webhook-registration-authentication-unsigned.json` lands with the tightening. Runtime storyboard grading for the idempotency insert-rate ceiling requires a burst-runner test-kit contract not yet defined — covered for 3.0 GA by spec-level MUST plus implementer attestation in `universal/idempotency.yaml`, with runtime grading tracked as a follow-up.
 
+**4. Error-code vocabulary cleanup** (resolves #2704). The uniform-response MUST from rc.4 (#2691) forbids sellers from minting custom `*_NOT_FOUND` codes for typed parameters. The spec itself was out of compliance — 12 custom codes appeared in task-reference pages. This cleanup aligns the spec with the rule:
+
+- **Promoted to standard vocabulary:** `PLAN_NOT_FOUND` (used across `report_plan_outcome`, `get_plan_audit_logs`, `check_governance`; recovery via `sync_plans`). Same uniform-response MUST as the other entity-specific codes.
+- **Collapsed to `REFERENCE_NOT_FOUND`:** `CHECK_NOT_FOUND`, `CAMPAIGN_NOT_FOUND`, `BRAND_NOT_FOUND`, `STANDARDS_NOT_FOUND`, `FORMAT_NOT_FOUND`, `AGENT_NOT_FOUND`, `SIGNAL_AGENT_SEGMENT_NOT_FOUND`, `SEGMENT_NOT_FOUND`, `AUDIENCE_NOT_FOUND`, `CATALOG_NOT_FOUND`, `EVENT_SOURCE_NOT_FOUND`. Implementers name the typed parameter that failed to resolve in `error.field` (per the existing `REFERENCE_NOT_FOUND` normative clause in [`error-handling.mdx`](/docs/building/implementation/error-handling)).
+- **Signals spec auth-uniformity tightened:** `docs/signals/specification.mdx` previously said "Private signal agents MUST return `AGENT_NOT_FOUND` for unauthorized accounts." That rule now explicitly routes through `REFERENCE_NOT_FOUND` — the same response regardless of whether the agent exists or the caller is unauthorized — preventing cross-tenant enumeration of private agents. No behavior change for implementers already following the uniform-response MUST.
+
+**Implementer migration**: sellers returning any of the 11 collapsed codes today MUST switch to `REFERENCE_NOT_FOUND` with `error.field` identifying the failed parameter. Sellers returning `PLAN_NOT_FOUND` today continue to do so. None of the 12 codes appeared in JSON schemas, so no schema-enum migration is required; this is a prose-level cleanup.
+
 **What did NOT change.** The admission-pressure threshold structural shape (short-window ratio / medium-window ratio / long-window ratio / proportional ceiling) is already normative; concrete starting numbers live in the non-normative [Webhook Verifier Tuning Guide](/docs/building/implementation/webhook-verifier-tuning). A separate restructure was already landed in PR #2548.
 
 ---

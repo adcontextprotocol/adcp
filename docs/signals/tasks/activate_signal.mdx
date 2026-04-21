@@ -478,7 +478,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 ## Error Codes
 
 ### Activation Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
+- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist or is not accessible to the calling account (`error.field` identifies the failing parameter)
 - `ACTIVATION_FAILED`: Could not activate signal for unspecified reasons
 - `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
 - `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions

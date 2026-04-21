@@ -598,8 +598,12 @@ Discover all available deployments across platforms:
 ## Error Codes
 
 ### Discovery Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
-- `AGENT_NOT_FOUND`: Private signal agent not visible to this account
+- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist,
+  OR a private signal agent is not visible to this account. The same code is
+  returned whether the resource exists but is unauthorized or truly does not
+  exist — sellers MUST NOT distinguish the two (see `error.field` to
+  identify which typed parameter failed to resolve). See the uniform-response
+  MUST in error-handling.mdx.
 - `AGENT_ACCESS_DENIED`: Authenticated agent's credentials did not authorize access to this signal agent
 
 ### Discovery Warnings

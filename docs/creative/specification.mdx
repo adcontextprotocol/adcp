@@ -352,7 +352,7 @@ Creative agents MUST return errors using the [standard AdCP error schema](/docs/
 
 Common error codes:
 
-- `FORMAT_NOT_FOUND`: Requested format does not exist
+- `REFERENCE_NOT_FOUND`: Requested format does not exist or is not accessible (`error.field` identifies the `format_id`)
 - `VALIDATION_ERROR`: Manifest failed format validation
 - `ASSET_MISSING`: Required asset not provided in manifest
 - `ASSET_INVALID`: Asset does not meet format constraints
