@@ -124,7 +124,8 @@
     "alternative_offering_ids": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "offering"
       },
       "description": "Alternative offerings to consider if this one is unavailable"
     },

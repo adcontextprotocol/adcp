@@ -503,6 +503,13 @@ const TRANSIENT_ID_NAMES = new Set([
   'key_id',
   'jwt_id',
   'kid',
+  'nonce',
+  'request_nonce',
+  'message_id',
+  // `event_id` in log-event-request is a client-side dedup key, not the
+  // event_source entity identifier (which is `event_source_id` and IS
+  // annotated). Treat as transient for coverage purposes.
+  'event_id',
 ]);
 
 function isIdShapedProperty(name) {
