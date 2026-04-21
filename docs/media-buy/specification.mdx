@@ -126,7 +126,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Seller-initiated rejection (from `pending_creatives` or `pending_start`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
 - Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
 - Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
+- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`, except that a re-cancel attempt (`canceled: true` on a buy already in `canceled`) MUST be rejected with `NOT_CANCELLABLE` — the cancellation-specific code takes precedence over the generic terminal-state rule
 - Rejection (`rejected` status) is only valid from `pending_creatives` or `pending_start`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
 - Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
@@ -251,7 +251,7 @@ Modify an existing media buy's budget, targeting, or settings.
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
+- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`, except that a re-cancel attempt (`canceled: true` on a buy already in `canceled`) MUST be rejected with `NOT_CANCELLABLE` — the cancellation-specific code takes precedence over the generic terminal-state rule
 - Orchestrators MAY cancel a media buy by setting `canceled: true` with optional `cancellation_reason`
 - Sales agents MUST transition the media buy to `canceled` status upon accepting cancellation
 - Sales agents MAY reject cancellation with error code `NOT_CANCELLABLE`
