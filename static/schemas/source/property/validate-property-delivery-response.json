@@ -5,6 +5,10 @@
   "description": "Response payload for validate_property_delivery task. Returns aggregate compliance statistics and per-record validation results.",
   "type": "object",
   "properties": {
+    "compliant": {
+      "type": "boolean",
+      "description": "Overall compliance flag for the submitted delivery — true when every record is compliant, false when any record is non_compliant. Derived from summary.non_compliant_records === 0 but surfaced at the root as a convenience signal for buyers. Agents MAY omit this field when the response represents a partial validation (e.g., when include_compliant is false and results only contains non_compliant records); consumers SHOULD fall back to summary counts if compliant is absent."
+    },
     "list_id": {
       "type": "string",
       "description": "ID of the property list validated against"

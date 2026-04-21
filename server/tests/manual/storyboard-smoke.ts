@@ -15,6 +15,8 @@ import {
   type StoryboardStepResult,
 } from '@adcp/client/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
+// Registers cross-step assertions (adcp#2639). Runner throws at start on unresolved ids.
+import '../../src/compliance/assertions/index.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;
 const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;

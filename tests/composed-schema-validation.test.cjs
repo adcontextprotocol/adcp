@@ -376,6 +376,26 @@ async function runTests() {
         'Bundled create-media-buy-request (no ref resolution)'
       );
 
+      // Regression for #2648: bundled schemas that carry local `#/$defs/...`
+      // pointers (format.json, policy-entry.json, artifact.json) must compile
+      // with a vanilla Ajv — i.e. the bundler must hoist nested `$defs` to
+      // the document root.
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'media-buy/list-creative-formats-response.json'),
+        'Bundled list-creative-formats-response (media-buy) compiles — #2648'
+      );
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'creative/list-creative-formats-response.json'),
+        'Bundled list-creative-formats-response (creative) compiles — #2648'
+      );
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'content-standards/list-content-standards-response.json'),
+        'Bundled list-content-standards-response compiles — #2648'
+      );
+
+      // Every bundled schema must be self-contained and compile standalone.
+      await testAllBundledSchemasCompile(bundledPath);
+
       // Test a response schema to verify nested refs are resolved
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/get-products-response.json'),
@@ -485,6 +505,63 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
     failedTests++;
     return false;
   }
+}
+
+/**
+ * Compile a bundled schema with a vanilla Ajv (no loadSchema). Does not
+ * validate data — just asserts the schema itself is resolvable.
+ */
+async function testBundledSchemaCompile(schemaPath, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    addFormats(ajv);
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    ajv.compile(schema);
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+    return true;
+  } catch (error) {
+    log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
+/**
+ * Walk the entire bundled/ tree and assert every schema compiles standalone.
+ * This is the real guarantee bundled/ is supposed to provide: a consumer can
+ * `new Ajv().compile(require('bundled/.../foo.json'))` without any loader.
+ */
+async function testAllBundledSchemasCompile(bundledPath) {
+  totalTests++;
+  const failures = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (entry.name.endsWith('.json')) {
+        try {
+          const ajv = new Ajv({ allErrors: true, strict: false });
+          addFormats(ajv);
+          ajv.compile(JSON.parse(fs.readFileSync(p, 'utf8')));
+        } catch (error) {
+          failures.push(`${path.relative(bundledPath, p)}: ${error.message}`);
+        }
+      }
+    }
+  };
+  walk(bundledPath);
+
+  if (failures.length === 0) {
+    log(`  \u2713 All bundled schemas compile standalone (no loadSchema)`, 'success');
+    passedTests++;
+    return true;
+  }
+  log(`  \u2717 ${failures.length} bundled schema(s) failed to compile:`, 'error');
+  for (const f of failures) log(`      ${f}`, 'error');
+  failedTests++;
+  return false;
 }
 
 runTests().catch(error => {

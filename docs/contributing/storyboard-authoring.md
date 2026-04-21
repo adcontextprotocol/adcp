@@ -57,6 +57,10 @@ Rule of thumb: if the task's **request schema has a required globally-unique sco
 
 Everything else falls into `TENANT_SCOPED_TASKS`: create/update mutations without a scope-ID, list/get operations that don't carry a single resource ID, resource-standards calls without `standards_id` in schema, etc. These must carry envelope `account { brand, operator }`.
 
+## Identity fields that flow through `$context`
+
+When a step captures a value into `$context` via `context_outputs` and a later step consumes it as `$context.<name>`, the *entity type* at both ends must match. If the value captured from a field annotated `advertiser_brand` is consumed as a field annotated `rights_holder_brand`, the lint will flag it (that's the #2627 bug: same field name, different entity). See `docs/contributing/x-entity-annotation.md` for the list of entity types and how schema authors annotate fields.
+
 Other exempt categories: payload-array-keyed sync tasks (`sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources`), global discovery (`list_creative_formats`, `get_adcp_capabilities`), global catalog reads (`get_brand_identity`, `get_rights`, `update_rights`), and the `comply_test_controller` sandbox primitive.
 
 ### Why ID-scoped tasks are exempt but storyboards still carry identity
@@ -215,6 +219,63 @@ When a rename is required, register the old code in `scripts/error-code-aliases.
 ```
 
 Aliased codes pass the lint as **warnings** during the deprecation window, giving authors time to migrate storyboards. Once the alias is removed from the file, references to the old code become lint errors. This is how renames land without breaking storyboard authorship across versions.
+
+## Asserting on branchable behaviors
+
+Some spec requirements allow multiple conformant agent behaviors — e.g. a past `start_time` on `create_media_buy` MAY be rejected with `INVALID_REQUEST` OR accepted-and-adjusted forward. A single-assertion validator that asserts only one branch forces a conformant agent that picked the other branch to silently fail.
+
+When the spec allows a branchable outcome, split the storyboard into parallel optional phases and resolve via `assert_contribution`:
+
+```yaml
+phases:
+  - id: reject_path
+    optional: true
+    steps:
+      - id: probe_reject
+        expect_error: true
+        contributes_to: behavior_handled
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+
+  - id: adjust_path
+    optional: true
+    steps:
+      - id: probe_adjust
+        contributes_to: behavior_handled
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "media_buy_id"
+
+  - id: enforcement
+    steps:
+      - id: require_either
+        task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: ["behavior_handled"]
+            description: "Agent must exhibit one of the conformant branches."
+```
+
+Failures inside an `optional: true` phase do NOT fail the storyboard — only the synthetic `assert_contribution` in the final phase does, and only when no branch contributed. Conformant agents pass exactly one branch and fail the other by design.
+
+The non-chosen branch's failing steps MUST be reported by the runner with skip reason `peer_branch_taken`, not `failed`. This keeps runner summaries accurate for conformant agents (the other-branch failures were not real failures) and keeps dashboard coverage signals clean (`peer_branch_taken` is runtime routing; `not_applicable` is for protocol coverage gaps). See `universal/storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" and `universal/runner-output-contract.yaml` > `skip_result.reasons.peer_branch_taken` for the normative rule.
+
+Canonical example: `past_start_reject_path` / `past_start_adjust_path` / `past_start_enforcement` in `universal/schema-validation.yaml`. Use the same shape for any spec `MAY` / `any_of` where observable outcomes differ across branches.
+
+Single-code `check: error_code` is still correct when the spec mandates a canonical code for a scenario (e.g. `GOVERNANCE_DENIED` on a governance-denied outcome, `NOT_CANCELLABLE` on re-cancel). The split-phase pattern applies only when the spec itself leaves the outcome branchable.
+
+### When NOT to use this pattern
+
+The parallel-optional-phases + `assert_contribution` shape is only appropriate when the **spec text itself** permits multiple observable outcomes (look for explicit `MAY`/`OR` in the normative prose, or an enum of acceptable statuses). It is **not** a tool for softening a vector because an agent's behavior drifted from the spec. Do not apply this pattern to:
+
+- **Idempotency semantics.** `idempotency_key` must be rejected when missing on mutating tasks; replay must return the cached response; conflict must surface `IDEMPOTENCY_CONFLICT`. The spec mandates single behaviors — any other outcome is non-conformant, not a valid branch.
+- **Context echo.** Responses MUST echo `context:` verbatim when the caller sent it. There is no conformant branch that omits the echo.
+- **Error-code vocabulary.** Canonical codes enumerated in `static/schemas/source/enums/error-code.json` are single-value per scenario. If a storyboard asserts `GOVERNANCE_DENIED` on a governance-denied outcome, that is the code — not one option among several.
+- **Webhook signing correctness.** RFC 9421 signing with AdCP's covered-components profile is a single verification shape; there is no alternate branch.
+
+If you find yourself reaching for the split-phase pattern to get past a failing vector, first verify the spec actually permits the branch you want to accept. If it doesn't, the fix is in the agent (or in the spec), not in the vector.
 
 ## Running the lint locally
 

@@ -1,0 +1,10 @@
+# Byte-exact files: test vectors whose SHA-256 digests are embedded in
+# specification documents. CRLF conversion on Windows checkouts silently
+# changes bytes and invalidates the recorded hashes. Enforce LF end-of-line
+# regardless of platform.
+#
+# Contributors MUST save these files as UTF-8 without BOM. Git does not
+# have a built-in BOM-strip attribute; rely on editor defaults and review
+# to keep them clean.
+static/compliance/source/test-vectors/plan-hash/** text eol=lf
+static/test-vectors/** text eol=lf

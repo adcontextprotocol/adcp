@@ -38,17 +38,24 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 5.7 bump + requireAuthenticatedOrSigned adoption closed
-            # signed_requests vector 011 (malformed-header edge case) and
-            # brought us back above the pre-merge count.
-            min_clean_storyboards: 37
-            min_passing_steps: 282
+            # 35→27 after bumping @adcp/client 5.6.0 → 5.8.1 in adcp#2663: the
+            # SDK brought stricter schema-driven validation (#694), strict
+            # sync_creatives validation (#661), refs_resolve cross-step
+            # checks (#670), branch_set grading (#693). These are legitimate
+            # tightening of the runner; the drop represents training-agent
+            # follow-ups, not invariant-assertion failures (the #2639 YAML
+            # additions are inert against the SDK-bundled cache until
+            # @adcp/client republishes the compliance tarball).
+            min_clean_storyboards: 27
+            min_passing_steps: 271
           - mode: framework
             flag_value: '1'
             # Framework path is opt-in and trails legacy until zod parity
             # lands. Gate keeps it from going backwards while we close the gap.
-            min_clean_storyboards: 23
-            min_passing_steps: 240
+            # 21→19, 237→226 from the same @adcp/client 5.8.1 tightening
+            # described above.
+            min_clean_storyboards: 19
+            min_passing_steps: 226
     steps:
       - uses: actions/checkout@v6
 

@@ -136,8 +136,23 @@
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
 #
+# omit_idempotency_key: boolean (optional — when true on a mutating-task step,
+#   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
+#   `skipIdempotencyAutoInject` so the request reaches the agent WITHOUT an
+#   `idempotency_key`. Use for missing-key rejection vectors — without this flag
+#   the SDK auto-injects a key and the agent never sees the missing-key path.
+#   Applies only to mutating tasks (create/update/cancel); ignored on reads.)
+#
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
+# contributes: boolean (optional — shorthand for `contributes_to: <enclosing phase's branch_set.id>`
+#                       introduced alongside first-class `branch_set:` declarations.
+#                       Legal only inside a phase that declares `branch_set:`; the runner's
+#                       loader resolves `contributes: true` to the phase's branch_set.id
+#                       and raises a storyboard-load error on `contributes: true` outside
+#                       a branch_set phase or on a step that also declares `contributes_to`.
+#                       See adcp-client#693 and `lint:storyboard-branch-sets` for the
+#                       full rule set.)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
 #   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
@@ -167,6 +182,8 @@
 # optional: boolean (default false — see semantics below)
 # skip_if: string (expression — phase is skipped when the expression evaluates to true,
 #                  e.g., "!test_kit.auth.api_key")
+# branch_set: object (optional — first-class declaration of branch-set membership;
+#                     see "Branch sets" section below)
 #
 # Optional phase semantics:
 #   - An `optional: true` phase always runs unless `skip_if` evaluates to true.
@@ -178,11 +195,159 @@
 #     when no optional path succeeded.
 #   - A non-optional phase that fails fails the storyboard unconditionally.
 #
+# Branch sets:
+#   A branch set is a group of peer optional phases exercising mutually
+#   exclusive agent behaviors for the same trigger — e.g., an agent that
+#   rejects a past start_time vs. an agent that accepts-and-adjusts. A
+#   later `assert_contribution` step over the set's `branch_set.id` fails
+#   the storyboard only when NO branch contributed.
+#
+#   Minimal example — two peer phases and the assertion that grades them:
+#
+#     phases:
+#       - id: past_start_reject_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_reject
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect INVALID_REQUEST ...
+#
+#       - id: past_start_adjust_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_adjust
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect media_buy_id ...
+#
+#       - id: past_start_enforcement
+#         steps:
+#           - task: assert_contribution
+#             validations:
+#               - check: any_of
+#                 allowed_values: [past_start_handled]
+#
+#   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
+#   `contributes: true` on a step inside a branch_set phase — the runner's
+#   loader resolves it to the enclosing phase's `branch_set.id`. Storyboards
+#   in this repository currently stay on the string form pending resolution
+#   of unrelated 5.8.0 schema-validation regressions; the defensive lint
+#   rules below cover both forms so the shorthand can be adopted
+#   per-storyboard once the runner upgrade lands.
+#
+#   New storyboards MUST declare branch-set membership with a `branch_set:`
+#   object. The implicit-detection fallback below exists only so pre-#2633
+#   storyboards keep running unchanged.
+#
+#   `branch_set:` field shape:
+#     - id:        non-empty string. MUST equal the `contributes_to` value
+#                  on every contributing step inside the phase and MUST
+#                  appear in the `assert_contribution` step's any_of
+#                  allowed_values.
+#     - semantics: `any_of`. No other value is supported today.
+#
+#   Per-step contribution signalling is REQUIRED on each contributing step —
+#   the phase-level `branch_set:` declares membership but does not replace
+#   the step-level flag. Runners accumulate contributions at the step level.
+#   Two equivalent forms:
+#     - `contributes: true` (preferred inside a branch_set phase; resolves
+#       to the enclosing phase's `branch_set.id`)
+#     - `contributes_to: <branch_set.id>` (string form; required outside a
+#       branch_set phase and must equal `branch_set.id` inside one)
+#
+#   Authoring rules (enforced by `lint:storyboard-branch-sets`):
+#     - A phase with `branch_set:` MUST set `optional: true`. A
+#       non-optional phase's failure would fail the storyboard
+#       unconditionally and defeat the any_of semantics.
+#     - All phases in a storyboard sharing the same `branch_set.id` MUST
+#       share the same `branch_set.semantics`.
+#     - A storyboard with a `branch_set:` declaration MUST contain an
+#       `assert_contribution` step whose `validations[].check: any_of`
+#       includes the `branch_set.id` in `allowed_values`. Any
+#       `contributes_to:` / `contributes: true` whose resolved flag has no
+#       matching assert_contribution is flagged as `orphan_contribution` —
+#       nothing grades it.
+#     - Any step inside a branch-set phase that declares `contributes_to`
+#       MUST use the value `<branch_set.id>`.
+#     - A step MUST NOT declare both `contributes` and `contributes_to`
+#       (ambiguous). `contributes: true` is legal only inside a phase
+#       that declares `branch_set:`.
+#     - If any phase declares `branch_set: { id: X, ... }`, every optional
+#       phase in the same storyboard whose steps contribute to X MUST also
+#       declare `branch_set: { id: X, ... }`. A mixed-mode storyboard (one
+#       peer declared, one peer relying on implicit detection) would be
+#       graded as a single-member set by a runner preferring the explicit
+#       declaration.
+#
+#   Runner grading:
+#     Runners MUST prefer the explicit `branch_set:` declaration when
+#     present and fall back to implicit detection otherwise (see below).
+#     - If at least one peer branch contributed the `branch_set.id`, the
+#       non-contributing branch's failing steps MUST be graded with skip
+#       reason `peer_branch_taken` (see
+#       runner-output-contract.yaml > skip_result.reasons.peer_branch_taken).
+#       They MUST NOT surface as `failed` in the storyboard summary, and
+#       MUST NOT be conflated with `not_applicable` (reserved for coverage
+#       gaps — agent didn't declare the protocol).
+#     - If no branch contributed, the final `assert_contribution` step
+#       fails the storyboard. Individual branch step failures still grade
+#       `failed` so the implementor sees what each branch observed.
+#
+#   When to use a branch set:
+#     Only when the AdCP spec permits multiple conformant behaviors for
+#     the same trigger. If the spec mandates one behavior, write a
+#     required phase — a branch set where only one branch is legal
+#     weakens the test to any_of and hides regressions. Branch sets are
+#     not for optional features (use `skip_if` and coverage flags) or
+#     for progressive disclosure (use sequential phases).
+#
+#   Authoring guidance: keep branch sets flat — two or three peer phases
+#   is typical. Nested branch sets (a branch set whose member is itself a
+#   branch set) are out of scope for runners. If a scenario needs deeper
+#   branching, restructure into separate storyboards or a linear sequence.
+#
+#   Implicit branch-set detection (DEPRECATED — pre-#2633 storyboards only):
+#     When no phase in a storyboard declares `branch_set:`, runners fall
+#     back to the legacy rule: a branch set is the set of `optional: true`
+#     phases whose steps declare the same `contributes_to: <flag>` value
+#     as a later `assert_contribution` step's
+#     `validations[].check: any_of, allowed_values: [<flag>]` target.
+#     Fragile against typos in `contributes_to:` — new storyboards MUST
+#     use the explicit form above. This fallback exists only so
+#     pre-#2633 storyboards keep running during migration.
+#
+# Cross-storyboard contradiction lint:
+#   The `lint:storyboard-contradictions` script groups every step-with-
+#   assertions across every storyboard by (task, canonicalized request
+#   fingerprint, prior-state fingerprint, env fingerprint) and flags
+#   groups whose asserted outcomes disagree in a way no conformant agent
+#   can satisfy (success ↔ error, or disjoint error-code sets).
+#
+#   Env fingerprint includes the storyboard's top-level `id:`, so two
+#   separate storyboards exercising different controller-seeded states
+#   are legitimately independent test suites and do not collide. To make
+#   two different storyboards' assertions collide — e.g., to catch
+#   "storyboard A assumes media_buy_id X is active, storyboard B
+#   assumes it is canceled" — use matching `comply_scenario:` values or
+#   shared `prerequisites.controller_seeding`.
+#
+#   Branch-set peers (two optional phases in the same storyboard sharing
+#   a `branch_set.id`) are exempt from contradiction flagging by design:
+#   any_of semantics intentionally asserts mutually exclusive outcomes.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
 #                "status_code", "http_status", "http_status_in", "error_code",
-#                "on_401_require_header", "resource_equals_agent_url", "any_of")
+#                "on_401_require_header", "resource_equals_agent_url", "any_of",
+#                "refs_resolve")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value")
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
@@ -209,6 +374,75 @@
 #   MUST NOT assert on them (that couples the conformance suite to a specific
 #   vendor's taxonomy). When a test needs to accept multiple possible codes,
 #   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
+# Cross-step integrity — use `check: refs_resolve`:
+#   `refs_resolve` asserts every ref in a source set resolves to a member of a
+#   target set, matched on declared keys. Use it when one step's response
+#   contains references (e.g., `format_ids` on `products`) that MUST exist in
+#   another step's response (e.g., `formats` from `list_creative_formats`).
+#   Without this primitive, broken references are silent until a later call
+#   (e.g., `sync_creatives`) fails at runtime, after commitments are already
+#   made.
+#
+#   Fields:
+#     source:
+#       from: current_step | context
+#           # `current_step` reads the step's task-result data;
+#           # `context` reads values captured by prior steps.
+#       path: <string>              # supports `[*]` wildcards — see below.
+#     target:
+#       from: current_step | context
+#       path: <string>
+#     match_keys: [<key>, ...]      # keys compared on each ref — e.g. [agent_url, id].
+#                                   # A ref missing any declared key is NEVER a match
+#                                   # (agents that drop a key don't fuzzy-match others
+#                                   # that also dropped it).
+#     scope:                        # optional — restrict integrity to in-scope refs.
+#       key: <string>               # e.g. `agent_url`.
+#       equals: <string>            # literal value, or `$agent_url` for the
+#                                   # runner target URL. Keys ending in `url`
+#                                   # get trailing-slash / case normalization
+#                                   # on both sides before compare. Transport
+#                                   # path canonicalization (`/mcp`, well-known
+#                                   # A2A card path) for `$agent_url` is tracked
+#                                   # in adcp-client#710 — until it lands, MCP
+#                                   # agents should expect refs to fall
+#                                   # out-of-scope when format_ids name the
+#                                   # bare agent URL.
+#     on_out_of_scope: warn | ignore | fail
+#                                   # how refs outside `scope` are graded.
+#                                   # default `warn`: pass the check, attach
+#                                   # observations naming the skipped refs.
+#                                   # `ignore`: silent. `fail`: promote to
+#                                   # missing so reports name them.
+#
+#   Path wildcards:
+#     `[*]` in a `source.path` or `target.path` flattens over arrays. So
+#     `products[*].format_ids[*]` walks every product and flattens every
+#     `format_ids` array into a single list of refs. Runners cap terminal
+#     fan-out at 10,000 values to bound malicious agent responses; paths
+#     realistic for any catalog size are well under the cap.
+#
+#   Grading output:
+#     A failing `refs_resolve` check names the specific unresolved ref tuples
+#     in `actual.missing` (projected to `match_keys`). Duplicates are collapsed
+#     on the projected tuple so one broken ref across 50 products shows up
+#     once — compliance reports stay readable.
+#
+#   Example — every `format_id` on products resolves to a format on this agent:
+#     - check: refs_resolve
+#       description: "Every format_id on products resolves to a format returned by list_creative_formats"
+#       source:
+#         from: context
+#         path: "products[*].format_ids[*]"
+#       target:
+#         from: current_step
+#         path: "formats[*].format_id"
+#       match_keys: [agent_url, id]
+#       scope:
+#         key: agent_url
+#         equals: $agent_url
+#       on_out_of_scope: warn
 #
 # --- Runner output ---
 #
@@ -387,6 +621,42 @@
 #   Error modes: signature_invalid, signature_expired, signature_key_unknown,
 #   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
 #   signature_replayed.
+#
+# task: expect_substitution_safe
+#   Assert that a creative preview (preview_html or preview_url) contains
+#   substituted catalog-item macro values that are percent-encoded per RFC 3986
+#   (unreserved-whitelist), per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+#   Runner delegates HTML parsing, URL extraction, and the encoding check to
+#   the `@adcp/client` SubstitutionObserver primitive (see test-kit
+#   substitution-observer-runner.yaml). Catches implementations that pass raw
+#   attacker bytes through substitution, including CRLF injection, bidi-override
+#   spoofing, reserved-character URL breakout, and javascript:-scheme injection.
+#
+#   Fields:
+#     source: html_inline | url_fetch  # default html_inline
+#     source_path: "<JSON pointer into previous step's response>"
+#     macro_template: "<URL template with {MACRO} placeholders>"
+#     catalog_bindings:
+#       - macro: "{SKU}"
+#         catalog_item_id: "<item_id in the synced catalog>"
+#         vector_name: "<fixture entry name, e.g. reserved-character-breakout>"
+#         # Optional overrides for custom (non-canonical-fixture) vectors:
+#         # raw_value: "<attacker-shaped input>"
+#         # expected_encoded: "<RFC 3986 unreserved-encoded form>"
+#     require_every_binding_observed: true  # default true. Opt to false only
+#                                           # when preview shows a partial
+#                                           # catalog and partial observation
+#                                           # is legitimate (document why in
+#                                           # the narrative). The old field
+#                                           # name require_all_bindings_observed
+#                                           # is deprecated.
+#     requires_contract: substitution_observer_runner
+#
+#   Error modes: substitution_encoding_violation, nested_macro_re_expansion,
+#   substitution_scheme_injection, substitution_binding_missing,
+#   preview_source_unavailable, preview_url_unusable (with sub-reason:
+#   http_status | content_type | size_exceeded | redirect_returned |
+#   ssrf_blocked | fetch_timeout).
 #
 # --- shared_receiver (deferred / out of scope v1) ---
 #

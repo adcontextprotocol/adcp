@@ -37,6 +37,9 @@ rewrite_file() {
     -e "s|](/docs/|](/dist/docs/$VERSION/|g" \
     -e "s|href=\"/docs/|href=\"/dist/docs/$VERSION/|g" \
     -e "s|\"\$schema\": \"/schemas/|\"\$schema\": \"/schemas/$VERSION/|g" \
+    -e "s|https://adcontextprotocol.org/schemas/latest/|https://adcontextprotocol.org/schemas/$VERSION/|g" \
+    -e "s|](/schemas/latest/|](/schemas/$VERSION/|g" \
+    -e "s|\`/schemas/latest/|\`/schemas/$VERSION/|g" \
     "$file" > "$tmp"
 
   if ! diff -q "$file" "$tmp" > /dev/null 2>&1; then

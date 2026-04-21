@@ -5779,6 +5779,94 @@ describe('governance creative_services purchase type', () => {
   });
 });
 
+describe('create_content_standards input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns INVALID_INPUT when scope is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is an empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: [] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope is an array (not an object)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: [],
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when no policy/policies/registry_policy_ids provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/policy|policies|registry_policy_ids/i);
+  });
+
+  it('creates standards when called with legacy policy string', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'], languages_any: ['en'] },
+      policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with spec-shape policies array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      policies: [
+        { policy_id: 'no_violence', policy_categories: ['brand_safety'], enforcement: 'must', policy: 'No violent imagery' },
+      ],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with registry_policy_ids only', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      registry_policy_ids: ['shared_brand_safety_v1'],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+});
+
 describe('storyboard governance sample_requests accepted by training agent', () => {
   beforeEach(() => {
     invalidateCache();

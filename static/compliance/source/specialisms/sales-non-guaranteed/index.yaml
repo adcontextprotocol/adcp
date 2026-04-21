@@ -216,6 +216,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_create_media_buy"
           context:
             correlation_id: "sales_non_guaranteed--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -263,7 +266,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_auction"
+            - "$context.media_buy_id"
 
           context:
             correlation_id: "sales_non_guaranteed--get_media_buys_pacing"
@@ -313,7 +316,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          media_buy_id: "mb_acme_q2_2026_auction"
+          media_buy_id: "$context.media_buy_id"
           packages:
             - product_id: "sports_display_auction"
               bid_price: 10.00
@@ -369,7 +372,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_auction"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

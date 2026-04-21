@@ -415,6 +415,41 @@ function main() {
     process.exit(1);
   }
 
+  // Branch-set lint: explicit `branch_set:` declarations must be well-formed
+  // and grade-connected to an assert_contribution step.
+  try {
+    execSync('node scripts/lint-storyboard-branch-sets.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Contradiction lint: no two storyboards may encode contradictory outcomes
+  // for the same (task, request, prior-state, env) — a conformant agent
+  // cannot satisfy both.
+  try {
+    execSync('node scripts/lint-storyboard-contradictions.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Context-entity lint: captured $context values must not flow from a field
+  // of one entity type into a consume site of a different entity type
+  // (issue #2660, rule 3; canonical case #2627).
+  try {
+    execSync('node scripts/lint-storyboard-context-entity.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);

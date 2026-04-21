@@ -8,6 +8,13 @@ track: media_buy
 required_tools:
   - sync_governance
   - create_media_buy
+
+# Cross-step assertion (adcp#2639): governance-aware sellers are exactly
+# the surface this assertion protects. If a seller propagates a denial
+# response from its governance agent but then creates the media buy
+# anyway, no per-step validation notices — this assertion does.
+invariants:
+  - governance.denial_blocks_mutation
 requires_scenarios:
   - media_buy_seller/governance_approved
   - media_buy_seller/governance_conditions

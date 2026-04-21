@@ -514,6 +514,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_create_buy_with_governance_create_media_buy"
           context:
             correlation_id: "media_buy_governance_escalation--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -562,7 +565,7 @@ phases:
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
             type: "media_buy_created"
-            media_buy_id: "mb_acme_q2_2026"
+            media_buy_id: "$context.media_buy_id"
             total_budget: 50000
             packages:
               - product_id: "sports_ctv_q2"

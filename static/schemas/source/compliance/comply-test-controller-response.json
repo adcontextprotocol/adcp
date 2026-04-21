@@ -21,10 +21,15 @@
               "force_media_buy_status",
               "force_session_status",
               "simulate_delivery",
-              "simulate_budget_spend"
+              "simulate_budget_spend",
+              "seed_product",
+              "seed_pricing_option",
+              "seed_creative",
+              "seed_plan",
+              "seed_media_buy"
             ]
           },
-          "description": "Scenarios this seller has implemented"
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."
         },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" }

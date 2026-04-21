@@ -803,6 +803,141 @@ describe('stripe-client', () => {
       const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
       expect(createCall.subscription_data).toBeUndefined();
     });
+
+    test('adds autopublish disclosure for membership-tier prices', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_membership',
+            recurring: { interval: 'year' },
+            lookup_key: 'aao_membership_professional_250',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_mem', url: 'https://checkout.stripe.com/mem' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_membership',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+        workosOrganizationId: 'org_test_123',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text?.submit?.message).toBeDefined();
+      expect(createCall.custom_text.submit.message).toMatch(/publishes your organization/i);
+      expect(createCall.custom_text.submit.message).toMatch(/member directory/i);
+    });
+
+    test('adds disclosure for invoice-based membership prices', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_invoice_mem',
+            recurring: null,
+            lookup_key: 'aao_invoice_corporate_5m',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_inv', url: 'https://checkout.stripe.com/inv' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_invoice_mem',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text?.submit?.message).toMatch(/directory/i);
+    });
+
+    test('omits disclosure for non-membership prices (e.g. event sponsorships)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_sponsorship',
+            recurring: null,
+            lookup_key: 'event_sponsorship_gold',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_spons', url: 'https://checkout.stripe.com/spons' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_sponsorship',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text).toBeUndefined();
+    });
+
+    test('omits disclosure when price has no lookup_key', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_unlabeled',
+            recurring: { interval: 'year' },
+            lookup_key: null,
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_ul', url: 'https://checkout.stripe.com/ul' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_unlabeled',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text).toBeUndefined();
+    });
   });
 
   describe('resolveLookupKeyAlias', () => {

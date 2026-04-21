@@ -23,7 +23,7 @@ interface AssetRequirements {
   min_duration_ms?: number;
   max_duration_ms?: number;
   min_resolution_dpi?: number;
-  catalog_types?: string[];
+  catalog_type?: string;
 }
 
 interface IndividualAsset {
@@ -313,7 +313,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true }, min_width: 200, max_width: 400 } }],
       assets: [
         { item_type: 'individual', asset_id: 'catalog', asset_type: 'catalog', asset_role: 'product_feed', required: true,
-          requirements: { catalog_types: ['product'] } },
+          requirements: { catalog_type: 'product' } },
       ],
     },
 
@@ -386,7 +386,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true }, min_width: 150, max_width: 300 } }],
       assets: [
         { item_type: 'individual', asset_id: 'catalog', asset_type: 'catalog', asset_role: 'product_feed', required: true,
-          requirements: { catalog_types: ['product'] } },
+          requirements: { catalog_type: 'product' } },
         { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
           requirements: { url_type: 'click_through' } },
       ],
@@ -437,9 +437,9 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'print_full_page' },
       name: 'Print full page',
       description: 'Full-page print ad. High-resolution image with bleed area. Delivered as print-ready PDF.',
-      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'in' } }],
+      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'inches' } }],
       assets: [
-        { item_type: 'individual', asset_id: 'artwork', asset_type: 'file', asset_role: 'print_creative', required: true,
+        { item_type: 'individual', asset_id: 'artwork', asset_type: 'image', asset_role: 'print_creative', required: true,
           requirements: { mime_types: ['application/pdf'], min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
       ],
     },
@@ -452,7 +452,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
-        { item_type: 'individual', asset_id: 'audio', asset_type: 'file', asset_role: 'radio_spot', required: true,
+        { item_type: 'individual', asset_id: 'audio', asset_type: 'audio', asset_role: 'radio_spot', required: true,
           requirements: { mime_types: ['audio/wav', 'audio/mpeg'], max_file_size_bytes: 20000000 } },
       ],
     },

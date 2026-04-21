@@ -567,6 +567,109 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
 }
 
 /**
+ * Hoist nested `$defs` and `definitions` blocks to the document root.
+ *
+ * After `resolveRefs` inlines a referenced schema, any local pointers it
+ * carried (e.g. `#/$defs/baseIndividualAsset` authored inside `format.json`)
+ * land wherever the inlining landed — typically deep inside an array item.
+ * The pointer is still `#/$defs/...` but the `$defs` block is no longer at
+ * the document root, so draft-07 validators (Ajv) can't resolve it.
+ *
+ * This function moves every nested `$defs` / `definitions` block up to the
+ * root, deleting it from its nested location. Identical entries across
+ * copies are deduped; conflicting entries throw.
+ *
+ * Note: `$defs` is the draft 2019-09+ name and `definitions` is the
+ * draft-07 name. Both conventions appear in our source schemas, and a
+ * local `#/...` pointer targets whichever spelling the author used, so we
+ * hoist each into its own root-level block (rather than merging them).
+ */
+function hoistNestedDefsToRoot(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  const rootDefs = { ...(schema.$defs || {}) };
+  const rootDefinitions = { ...(schema.definitions || {}) };
+
+  // Key-order-insensitive deep equality. Used to distinguish "same shape
+  // authored twice" (safe to dedupe) from "two different shapes under the
+  // same name" (a real conflict). A plain `JSON.stringify` comparison
+  // would false-positive on identical objects authored with different
+  // key order.
+  function canonicalize(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(canonicalize);
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => { acc[k] = canonicalize(value[k]); return acc; }, {});
+  }
+  function sameDef(a, b) {
+    return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+  }
+
+  // Reject reserved property names. Source schemas are trusted today, but
+  // `JSON.parse` surfaces a literal `"__proto__"` key as an own enumerable
+  // property, so a plain `target[key] = value` assignment would mutate the
+  // resulting object's prototype. Defensive, not reactive.
+  const RESERVED_DEF_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+  function mergeInto(target, key, value, originPath, blockName) {
+    if (RESERVED_DEF_KEYS.has(key)) {
+      throw new Error(
+        `Refusing to hoist reserved key \`${blockName}.${key}\` (at ${originPath}). ` +
+        `Source schemas may not use "__proto__", "constructor", or "prototype" as \`${blockName}\` entry names.`
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(target, key) && !sameDef(target[key], value)) {
+      throw new Error(
+        `Conflicting \`${blockName}.${key}\` definitions encountered while hoisting nested defs (at ${originPath}). ` +
+        `Two inlined schemas define different shapes under the same key.`
+      );
+    }
+    target[key] = value;
+  }
+
+  // Assumes every `$defs` / `definitions` block encountered during the walk
+  // is a JSON Schema keyword, not a property name in some schema-about-
+  // schemas. True for every source schema in this repo — AdCP does not
+  // author meta-schemas. Revisit if that changes: a correct disambiguation
+  // would exempt the immediate child of `properties`, `patternProperties`,
+  // and `dependentSchemas` from keyword treatment.
+  function walk(node, path) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach((item, i) => walk(item, `${path}[${i}]`));
+      return;
+    }
+
+    if (path !== '' && node.$defs && typeof node.$defs === 'object' && !Array.isArray(node.$defs)) {
+      for (const [k, v] of Object.entries(node.$defs)) {
+        mergeInto(rootDefs, k, v, `${path}.$defs.${k}`, '$defs');
+      }
+      delete node.$defs;
+    }
+    if (path !== '' && node.definitions && typeof node.definitions === 'object' && !Array.isArray(node.definitions)) {
+      for (const [k, v] of Object.entries(node.definitions)) {
+        mergeInto(rootDefinitions, k, v, `${path}.definitions.${k}`, 'definitions');
+      }
+      delete node.definitions;
+    }
+
+    for (const [k, v] of Object.entries(node)) {
+      walk(v, `${path}.${k}`);
+    }
+  }
+
+  walk(schema, '');
+
+  if (Object.keys(rootDefs).length > 0) schema.$defs = rootDefs;
+  if (Object.keys(rootDefinitions).length > 0) schema.definitions = rootDefinitions;
+
+  return schema;
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -612,6 +715,13 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 
       // Resolve all $refs
       const dereferenced = resolveRefs(schema, sourceDir, new Set([schemaPath]));
+
+      // After inlining, referenced schemas that carried local `#/$defs/...`
+      // pointers leave their `$defs` nested wherever they were inlined —
+      // which breaks draft-07 validators that expect root-level `$defs`.
+      // Hoist every nested `$defs` / `definitions` block to the root so
+      // those pointers resolve. See #2648.
+      hoistNestedDefsToRoot(dereferenced);
 
       // Update $id to indicate this is a bundled schema
       if (dereferenced.$id) {

@@ -8,6 +8,13 @@ track: campaign_governance
 required_tools:
   - check_governance
 
+# Cross-step assertion (adcp#2639): mid-flight drift can return a denial
+# re-evaluation. The assertion gates any post-denial mutation on the
+# affected plan, catching sellers that ignore a mid-campaign denial and
+# keep delivering / committing new spend.
+invariants:
+  - governance.denial_blocks_mutation
+
 narrative: |
   After a media buy is confirmed with governance approval, the governance agent monitors
   delivery. When spend drifts past a reallocation threshold — for example, one line item
