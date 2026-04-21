@@ -74,6 +74,7 @@ function* findSubstitutionBindings(node, trail) {
           yield {
             vector_name: binding.vector_name,
             has_override: typeof binding.raw_value === 'string' || typeof binding.expected_encoded === 'string',
+            has_override_reason: typeof binding.override_reason === 'string' && binding.override_reason.trim().length > 0,
             trail: [...trail, 'catalog_bindings', i, 'vector_name'],
           };
         }
@@ -98,12 +99,17 @@ function lintFile(filePath, fixtureNames) {
     if (fixtureNames.has(hit.vector_name)) continue;
     if (hit.has_override) {
       // Custom vector with inline raw_value/expected_encoded — not required to
-      // match the canonical fixture, just flag for human review.
+      // match the canonical fixture. When the author provides an explicit
+      // `override_reason: "<justification>"` on the binding, suppress the
+      // warning entirely (opt-in override is a contract feature, not a
+      // violation). Without an override_reason, emit a warn so reviewers see
+      // the non-canonical binding.
+      if (hit.has_override_reason) continue;
       violations.push({
         filePath,
         trail: hit.trail,
         name: hit.vector_name,
-        reason: `non-canonical vector (has raw_value/expected_encoded override) — verify fixture sync intentional`,
+        reason: `non-canonical vector (has raw_value/expected_encoded override) — add an \`override_reason: "..."\` field on the binding to document the justification and suppress this warning`,
         severity: 'warn',
       });
       continue;
@@ -124,6 +130,18 @@ function formatTrail(trail) {
 }
 
 function checkContractFixtureSync(contractNames, fixtureNames) {
+  // Asymmetric severity is deliberate:
+  //   - contract → fixture missing: ERROR. The contract declares a canonical
+  //     vector that doesn't exist in the fixture; any storyboard referencing
+  //     the name will fail at runtime as "vector not found." The contract is
+  //     over-claiming coverage — a real implementer-facing lie.
+  //   - fixture → contract missing: WARN. The fixture has a vector the
+  //     contract doesn't advertise; storyboards referencing it still pass
+  //     this lint (the fixture is the source of truth), but the contract's
+  //     canonical_vector_names list is under-advertising coverage. Fixable
+  //     but not a correctness issue.
+  // Future maintainers: do NOT symmetrize this to all-error without thinking
+  // through the over-claim vs under-advertise distinction.
   const violations = [];
   for (const name of contractNames) {
     if (!fixtureNames.has(name)) {
