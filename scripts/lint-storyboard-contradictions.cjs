@@ -259,15 +259,37 @@ function fingerprintRequest(req) {
  * returning different error shapes, or two storyboards seeding different
  * governance states).
  *
- * The storyboard's top-level `id:` is included: distinct storyboard files
- * exercise distinct test-kit/controller configurations that a runner
- * resets between runs. Contradictions within a single storyboard are the
- * high-value signal; cross-storyboard contradictions require an explicit
- * shared env tag (comply_scenario + prerequisites) to surface.
+ * Components:
+ *   sb         — storyboard's top-level `id:`. Ensures distinct storyboard
+ *                files aren't treated as running against the same in-memory
+ *                agent. Conservative: means cross-storyboard contradictions
+ *                are unreachable today. See #2670 for the planned removal.
+ *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
+ *                scenario but loading different test kits target different
+ *                agent fixtures.
+ *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
+ *                different prerequisite state via `comply_test_controller`
+ *                legitimately produce different outcomes for the same
+ *                request.
+ *   scenario   — step's `comply_scenario`.
+ *   auth       — step's auth override shape (type + strategy).
+ *   seed       — phase's `prerequisites.controller_seeding` (distinct from
+ *                top-level fixtures; applies phase-scoped seeding).
  */
 function fingerprintEnv(step, phase, doc) {
   const parts = [];
   if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
+  if (typeof doc?.prerequisites?.test_kit === 'string') {
+    parts.push(`test_kit=${doc.prerequisites.test_kit}`);
+  }
+  if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
+    const fixturesHash = crypto
+      .createHash('sha1')
+      .update(stableStringify(doc.fixtures))
+      .digest('hex')
+      .slice(0, 8);
+    parts.push(`fixtures=${fixturesHash}`);
+  }
   if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
   if (step.auth) {
     const auth = step.auth;

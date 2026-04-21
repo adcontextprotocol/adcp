@@ -348,6 +348,87 @@ phases:
   assert.deepEqual(contradictionsAcrossDocs({ 'a.yaml': doc }), []);
 });
 
+test('test_kit discriminates env: two storyboards sharing id+scenario but different kits', () => {
+  // Authoring hazard: two parallel storyboards copied from one template,
+  // running against different agent fixtures via different test_kit paths.
+  // They legitimately produce different outcomes for the same request
+  // shape. Env fingerprint must discriminate.
+  const docs = {
+    'acme.yaml': yaml.load(`
+id: sb_parallel
+prerequisites:
+  test_kit: "test-kits/acme-outdoor.yaml"
+phases:
+  - id: p
+    steps:
+      - id: succeed
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'osei.yaml': yaml.load(`
+id: sb_parallel
+prerequisites:
+  test_kit: "test-kits/osei-natural.yaml"
+phases:
+  - id: p
+    steps:
+      - id: fail
+        task: create_media_buy
+        sample_request: { brand: { domain: x } }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: GOVERNANCE_DENIED
+`),
+  };
+  assert.deepEqual(contradictionsAcrossDocs(docs), []);
+});
+
+test('top-level fixtures discriminates env: same id, different seeded state', () => {
+  // Two runs of the same storyboard id against different seeded prerequisite
+  // state (via top-level `fixtures:`) can legitimately assert different
+  // outcomes. Fingerprint must treat them as separate envs.
+  const docs = {
+    'approved.yaml': yaml.load(`
+id: sb_seeded
+fixtures:
+  plans:
+    - plan_id: pre_approved
+      status: approved
+phases:
+  - id: p
+    steps:
+      - id: go
+        task: create_media_buy
+        sample_request: { brand: { domain: x }, plan_id: pre_approved }
+        validations:
+          - check: field_present
+            path: media_buy_id
+`),
+    'denied.yaml': yaml.load(`
+id: sb_seeded
+fixtures:
+  plans:
+    - plan_id: pre_approved
+      status: denied
+phases:
+  - id: p
+    steps:
+      - id: nope
+        task: create_media_buy
+        sample_request: { brand: { domain: x }, plan_id: pre_approved }
+        expect_error: true
+        validations:
+          - check: error_code
+            value: GOVERNANCE_DENIED
+`),
+  };
+  assert.deepEqual(contradictionsAcrossDocs(docs), []);
+});
+
 test('auth override discriminates env: valid key vs random-invalid key', () => {
   const doc = yaml.load(`
 id: sb_auth

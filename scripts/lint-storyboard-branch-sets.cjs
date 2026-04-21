@@ -129,6 +129,45 @@ function collectAssertedFlags(doc) {
 }
 
 /**
+ * Walk the source tree and build `Map<doc.id, Set<flag>>` of asserted flags
+ * per storyboard/scenario. `orphan_contribution` checks consume this to
+ * honor `requires_scenarios:` references — a flag asserted in a linked
+ * scenario is legitimately consumed.
+ *
+ * Duplicate `id:` across files is a source bug: which file "wins" becomes
+ * order-dependent on filesystem iteration, and the wrong file's asserted
+ * flags could mask a real orphan elsewhere. Throw immediately so the
+ * collision surfaces at lint time rather than as a silent false negative.
+ */
+function buildScenarioFlagIndex(sourceDir) {
+  const index = new Map();
+  const sources = new Map();
+  for (const file of walkYaml(sourceDir)) {
+    let doc;
+    try {
+      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue;
+    }
+    if (!doc || typeof doc !== 'object') continue;
+    const id = doc.id;
+    if (typeof id !== 'string' || id.length === 0) continue;
+    const prior = sources.get(id);
+    if (prior && prior !== file) {
+      throw new Error(
+        `lint-storyboard-branch-sets: duplicate storyboard id "${id}" in ` +
+          `${path.relative(sourceDir, prior)} and ` +
+          `${path.relative(sourceDir, file)}. IDs must be unique across the ` +
+          'source tree so requires_scenarios resolution is deterministic.',
+      );
+    }
+    sources.set(id, file);
+    index.set(id, collectAssertedFlags(doc));
+  }
+  return index;
+}
+
+/**
  * Lint a single parsed storyboard doc. Returns an array of violations shaped
  * as `{ rule, phaseId, stepId?, ...rule-specific payload }`. File paths are
  * threaded on at the caller.
@@ -136,14 +175,28 @@ function collectAssertedFlags(doc) {
  * Accepts an options object so tests can exercise future `semantics` values
  * without mutating module state.
  */
-function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
+function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS, scenarioFlagIndex } = {}) {
   const violations = [];
   if (!doc || typeof doc !== 'object') return violations;
   const phases = Array.isArray(doc.phases) ? doc.phases : [];
 
   const semanticsById = new Map();
   const declaredBranchSetIds = new Set();
+  // A contribution is legitimately consumed if any of (a) this doc asserts
+  // it via assert_contribution any_of, or (b) a scenario the doc declares
+  // in `requires_scenarios:` asserts it. The two kinds are unioned so a
+  // parent storyboard that delegates its grading to a shared scenario
+  // doesn't trigger orphan_contribution.
   const assertedFlags = collectAssertedFlags(doc);
+  if (scenarioFlagIndex && Array.isArray(doc.requires_scenarios)) {
+    for (const scenarioId of doc.requires_scenarios) {
+      if (typeof scenarioId !== 'string') continue;
+      const scenarioFlags = scenarioFlagIndex.get(scenarioId);
+      if (scenarioFlags) {
+        for (const flag of scenarioFlags) assertedFlags.add(flag);
+      }
+    }
+  }
 
   // Pass 1: gather declared branch_set.ids so pass 2 can enforce peer
   // completeness against contributes_to on peer phases that haven't been
@@ -315,6 +368,7 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
 
 function lint() {
   const files = walkYaml(SOURCE_DIR);
+  const scenarioFlagIndex = buildScenarioFlagIndex(SOURCE_DIR);
   const allViolations = [];
   for (const file of files) {
     let doc;
@@ -326,7 +380,7 @@ function lint() {
       continue;
     }
     const relFile = path.relative(SOURCE_DIR, file);
-    for (const v of lintDoc(doc)) {
+    for (const v of lintDoc(doc, { scenarioFlagIndex })) {
       allViolations.push({ ...v, file: relFile });
     }
   }
@@ -359,5 +413,6 @@ module.exports = {
   lint,
   lintDoc,
   collectAssertedFlags,
+  buildScenarioFlagIndex,
   formatMessage,
 };
