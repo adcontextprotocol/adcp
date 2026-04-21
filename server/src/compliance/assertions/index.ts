@@ -9,6 +9,8 @@
 
 import './context-no-secret-echo.js';
 import './idempotency-conflict-no-payload-leak.js';
+import './governance-denial-blocks-mutation.js';
 
 export { ASSERTION_ID as CONTEXT_NO_SECRET_ECHO } from './context-no-secret-echo.js';
 export { ASSERTION_ID as IDEMPOTENCY_CONFLICT_NO_PAYLOAD_LEAK } from './idempotency-conflict-no-payload-leak.js';
+export { ASSERTION_ID as GOVERNANCE_DENIAL_BLOCKS_MUTATION } from './governance-denial-blocks-mutation.js';

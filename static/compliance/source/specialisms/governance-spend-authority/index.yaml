@@ -9,6 +9,13 @@ required_tools:
   - sync_plans
   - check_governance
 
+# Cross-step assertion (adcp#2639): silent on approval runs; fires only
+# if a seller surfaces a denial signal mid-flow and then still mutates
+# the plan's resources. Kept wired here so any future "conditions not
+# met → denied" phase added to this storyboard is automatically gated.
+invariants:
+  - governance.denial_blocks_mutation
+
 narrative: |
   The buyer's governance agent evaluates a media buy that falls within spending authority but
   triggers policy conditions — for example, the buy targets a channel that requires weekly

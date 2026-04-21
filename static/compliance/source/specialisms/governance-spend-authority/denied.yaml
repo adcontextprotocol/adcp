@@ -8,6 +8,14 @@ required_tools:
   - sync_plans
   - check_governance
 
+# Cross-step assertion (adcp#2639): once a plan is denied, no subsequent
+# step in the same run may acquire a resource for that plan. Catches the
+# failure mode where a seller surfaces the denial response but still
+# creates the media buy / activates the signal / syncs the property list
+# anyway. Plan-scoped — unrelated plans proceed normally.
+invariants:
+  - governance.denial_blocks_mutation
+
 narrative: |
   The buyer's governance agent registers a plan with strict spending authority. The buyer
   then proposes a media buy that exceeds the agent's per-transaction threshold. The
