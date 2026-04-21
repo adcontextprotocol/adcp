@@ -129,9 +129,23 @@
     const agent = params.get('agent');
     const error = params.get('error');
 
+    // Only accept same-origin path redirects (defense-in-depth;
+    // server validates before storing, but we revalidate here).
+    function safeReturnTo(raw) {
+      if (!raw || typeof raw !== 'string') return null;
+      if (raw.length > 512) return null;
+      if (!raw.startsWith('/')) return null;
+      if (raw.startsWith('//') || raw.startsWith('/\\')) return null;
+      return raw;
+    }
+    const returnTo = success ? safeReturnTo(params.get('return_to')) : null;
+
     const content = document.getElementById('content');
 
     if (success) {
+      const returningInstruction = returnTo
+        ? `Returning to your dashboard…`
+        : `You can close this tab and return to your conversation.`;
       content.innerHTML = `
         <div class="oauth-complete__header">
           <div class="oauth-complete__icon oauth-complete__icon--success">&#10003;</div>
@@ -143,10 +157,14 @@
         </div>
         <div class="oauth-complete__footer">
           <p class="oauth-complete__instruction">
-            You can close this tab and return to your conversation.
+            ${returningInstruction}
+            ${returnTo ? ` <a href="${escapeHtml(returnTo)}">Go now</a>.` : ''}
           </p>
         </div>
       `;
+      if (returnTo) {
+        setTimeout(() => { window.location.replace(returnTo); }, 1200);
+      }
     } else {
       content.innerHTML = `
         <div class="oauth-complete__header">

@@ -39,6 +39,18 @@ function sanitizeErrorMessage(error: unknown): string {
     .replace(/[<>]/g, '');
 }
 
+/**
+ * Validate that a return_to value is a safe same-origin path,
+ * preventing open redirects and javascript:/data: URIs.
+ */
+function sanitizeReturnTo(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 512) return undefined;
+  if (!value.startsWith('/')) return undefined;
+  if (value.startsWith('//') || value.startsWith('/\\')) return undefined;
+  if (/[\x00-\x1f]/.test(value)) return undefined;
+  return value;
+}
+
 // Type for token response
 interface TokenResponse {
   access_token: string;
@@ -188,7 +200,8 @@ export function createAgentOAuthRouter(): Router {
    */
   router.get('/start', requireAuth, async (req: Request, res: Response) => {
     try {
-      const { agent_context_id, pending_task, pending_params } = req.query;
+      const { agent_context_id, pending_task, pending_params, return_to } = req.query;
+      const returnTo = sanitizeReturnTo(return_to);
 
       // codeql[js/user-controlled-bypass] - agent context ID from query is validated and used as a lookup key
       if (!agent_context_id || typeof agent_context_id !== 'string') {
@@ -294,6 +307,7 @@ export function createAgentOAuthRouter(): Router {
         redirectUri,
         agentUrl: agentContext.agent_url,
         pendingRequest,
+        returnTo,
       });
 
       // Build authorization URL
@@ -378,7 +392,14 @@ export function createAgentOAuthRouter(): Router {
       logger.info({ agentUrl: flow.agentUrl, hasPendingRequest: !!flow.pendingRequest }, 'OAuth tokens saved successfully');
 
       // Redirect to success page - user can return to their conversation (Slack or web)
-      res.redirect(`/oauth-complete.html?success=true&agent=${encodeURIComponent(agentHost)}`);
+      const successParams = new URLSearchParams({
+        success: 'true',
+        agent: agentHost,
+      });
+      if (flow.returnTo) {
+        successParams.set('return_to', flow.returnTo);
+      }
+      res.redirect(`/oauth-complete.html?${successParams.toString()}`);
     } catch (error) {
       logger.error({ error }, 'OAuth callback failed');
       const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
