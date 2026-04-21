@@ -37,6 +37,17 @@ narrative: |
   validates the supported: true behavior; sellers declaring supported: false
   MUST skip this storyboard (they have no replay window to test).
 
+  **Cache-growth defense (MUST, not yet runtime-graded).** Per
+  security.mdx bullet 8 on the idempotency section, sellers MUST apply per-agent
+  rate limits on idempotency-cache inserts and MUST return RATE_LIMITED when the
+  per-agent insert rate exceeds the configured ceiling. The recommended
+  first-deployment ceiling is 60 inserts/sec sustained per agent (3,600/min)
+  with burst allowance to 300/sec over rolling 10-second windows. This storyboard
+  does not yet drive the high-volume burst that would exercise the ceiling —
+  runtime grading is tracked as a follow-up once a burst-runner test-kit
+  contract is defined. Sellers SHOULD self-attest to this requirement until the
+  runtime phase lands.
+
 agent:
   interaction_model: media_buy_seller
   capabilities:

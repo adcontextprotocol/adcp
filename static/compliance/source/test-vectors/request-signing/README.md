@@ -43,7 +43,8 @@ test-vectors/request-signing/
 │   ├── 023-multi-valued-content-digest.json → request_signature_header_malformed (step 1; RFC 9530 dict duplicate algorithm)
 │   ├── 024-unquoted-string-param.json     → request_signature_header_malformed (step 1; RFC 8941 §3.3 string values must be quoted)
 │   ├── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; alg=EdDSA with crv=P-256 is impossible per RFC 8037)
-│   └── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
+│   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
+│   └── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json                   Ed25519, no content-digest
     ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
