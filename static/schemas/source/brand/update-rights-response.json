@@ -11,7 +11,8 @@
       "properties": {
         "rights_id": {
           "type": "string",
-          "description": "Rights grant identifier"
+          "description": "Rights grant identifier",
+          "x-entity": "rights_grant"
         },
         "terms": {
           "$ref": "/schemas/brand/rights-terms.json",
