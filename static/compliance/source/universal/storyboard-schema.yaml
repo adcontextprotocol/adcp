@@ -437,6 +437,42 @@
 #   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
 #   signature_replayed.
 #
+# task: expect_substitution_safe
+#   Assert that a creative preview (preview_html or preview_url) contains
+#   substituted catalog-item macro values that are percent-encoded per RFC 3986
+#   (unreserved-whitelist), per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+#   Runner delegates HTML parsing, URL extraction, and the encoding check to
+#   the `@adcp/client` SubstitutionObserver primitive (see test-kit
+#   substitution-observer-runner.yaml). Catches implementations that pass raw
+#   attacker bytes through substitution, including CRLF injection, bidi-override
+#   spoofing, reserved-character URL breakout, and javascript:-scheme injection.
+#
+#   Fields:
+#     source: html_inline | url_fetch  # default html_inline
+#     source_path: "<JSON pointer into previous step's response>"
+#     macro_template: "<URL template with {MACRO} placeholders>"
+#     catalog_bindings:
+#       - macro: "{SKU}"
+#         catalog_item_id: "<item_id in the synced catalog>"
+#         vector_name: "<fixture entry name, e.g. reserved-character-breakout>"
+#         # Optional overrides for custom (non-canonical-fixture) vectors:
+#         # raw_value: "<attacker-shaped input>"
+#         # expected_encoded: "<RFC 3986 unreserved-encoded form>"
+#     require_every_binding_observed: true  # default true. Opt to false only
+#                                           # when preview shows a partial
+#                                           # catalog and partial observation
+#                                           # is legitimate (document why in
+#                                           # the narrative). The old field
+#                                           # name require_all_bindings_observed
+#                                           # is deprecated.
+#     requires_contract: substitution_observer_runner
+#
+#   Error modes: substitution_encoding_violation, nested_macro_re_expansion,
+#   substitution_scheme_injection, substitution_binding_missing,
+#   preview_source_unavailable, preview_url_unusable (with sub-reason:
+#   http_status | content_type | size_exceeded | redirect_returned |
+#   ssrf_blocked | fetch_timeout).
+#
 # --- shared_receiver (deferred / out of scope v1) ---
 #
 # Storyboards with multiple webhook-triggering steps MUST use per-step receiver

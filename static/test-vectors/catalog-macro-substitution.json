@@ -51,6 +51,14 @@
       "value": "VIN-\u202E1234",
       "template": "https://track.example/imp?v={VEHICLE_ID}",
       "expected": "https://track.example/imp?v=VIN-%E2%80%AE1234"
+    },
+    {
+      "name": "url-scheme-injection-neutralized",
+      "description": "A catalog value containing `javascript:alert(0)` substituted into an href-whole-value position (e.g., `<a href=\"{CLICK}\">`) would otherwise execute as a javascript: scheme URL. The strict unreserved-whitelist rule percent-encodes the colon and parens so the browser parses the result as a relative URL against the base, neutralizing the injection. Parentheses `(` and `)` are NOT in RFC 3986 `unreserved` (they are sub-delims), so the strict rule encodes them — encodeURIComponent-based encoders that leave parens alone FAIL this vector, which is how the runtime observer (#2638) distinguishes strict-RFC-3986 encoders from permissive ones.",
+      "macro": "{CLICK}",
+      "value": "javascript:alert(0)",
+      "template": "https://track.example/go?c={CLICK}",
+      "expected": "https://track.example/go?c=javascript%3Aalert%280%29"
     }
   ]
 }
