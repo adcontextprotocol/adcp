@@ -64,7 +64,11 @@
 #
 # prerequisites:
 #   description: string (what must be true before running this storyboard)
-#   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml")
+#   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml").
+#     Always a single path — test kits are not composed through this field. See
+#     "Test kit flavors" below for the two shapes a test kit may take and how
+#     storyboards compose brand identity with harness coordination when they need
+#     both.
 #   controller_seeding: boolean (optional — when true, the runner auto-injects a
 #     fixtures phase that seeds every entry in the storyboard's top-level
 #     `fixtures:` block via `comply_test_controller` before the main phases run.
@@ -116,6 +120,80 @@
 #   `fixtures:` block before 4.0. New storyboards authored after this spec edit
 #   MUST NOT hardcode fixture IDs without a corresponding `fixtures:` block or a
 #   test-kit substitution.)
+#
+# --- Test kit flavors ---
+#
+# Files under `static/compliance/source/test-kits/` come in two shapes. The
+# distinction is not enforced by a separate field today — it's identified by
+# which fixture data the kit carries.
+#
+#   Brand kit — carries a brand identity and authentication fixture. Declares:
+#     id                 string (short identifier)
+#     auth.api_key       string (`demo-<kit>-v1` pattern; the demo Bearer the
+#                        runner sends on positive api-key probes)
+#     auth.probe_task    string (the protected read the runner calls under
+#                        `auth: none` and with a random-invalid key)
+#     brand              object (house + brand_id + names + logos + colors +
+#                        fonts + tone — full brand.json payload)
+#     + optional products, creatives, pricing_options, destinations, etc.
+#
+#   Today's brand kits: acme-outdoor, bistro-oranje, nova-motors, osei-natural,
+#   summit-foods. Used by storyboards that exercise brand-specific AdCP protocol
+#   flows (creative, media-buy, signals, governance, etc.).
+#
+#   Runner contract — carries a harness coordination contract. Declares:
+#     id                 string (short identifier)
+#     applies_to         object or list (which storyboards/specialisms consume
+#                        this contract, e.g., `{ specialism: signed-requests }`)
+#     + contract-specific fields describing how the runner should pre-configure
+#       the agent under test (e.g., `receiver_urls:`, `retry_replay_contract:`
+#       for webhook-receiver-runner; `endpoint_modes:` for signed-requests)
+#
+#   Today's runner contracts: signed-requests-runner, substitution-observer-
+#   runner, webhook-receiver-runner. They carry no credentials today — the
+#   runner injects no auth for these storyboards because the storyboards test
+#   harness infrastructure (signature verification, webhook receiver
+#   coordination, URL substitution observability), not brand-specific AdCP
+#   flows. A future runner contract could legitimately carry its own test-
+#   coordination principal (e.g., a callback-authenticating receiver), so the
+#   "no credentials" property is temporal, not structural.
+#
+# Enforcement. `scripts/lint-storyboard-test-kits.cjs` fails the build if a
+# kit under `test-kits/` declares neither `auth.api_key` nor `applies_to` —
+# that's the bimodal partition this section describes. The lint tolerates
+# kits that declare both (the future-branded-runner case above).
+#
+# Composition. Storyboards that need BOTH a brand identity AND a harness
+# contract declare the brand kit in `prerequisites.test_kit` and opt into the
+# runner contract through the `requires_contract: <runner_id>` field on
+# specific assertion tasks that need it — today that's `expect_substitution_safe`
+# and `expect_webhook*` (see their task definitions below for the per-task
+# field shape). When the named contract is not in scope for the runner, the
+# task grades as `not_applicable` rather than failing. Example:
+# `specialisms/sales-catalog-driven/index.yaml` declares
+# `prerequisites.test_kit: "test-kits/acme-outdoor.yaml"` and its
+# `expect_substitution_safe` step carries `requires_contract:
+# substitution_observer_runner`.
+#
+# Storyboards that test pure harness infrastructure without a specific brand
+# (e.g., `specialisms/signed-requests/index.yaml`,
+# `universal/webhook-emission.yaml`) point `prerequisites.test_kit` directly
+# at the runner contract and fall back on `task_default:` when any
+# `$test_kit.operations.<name>` reference resolves to null (see Step field
+# docs).
+#
+# `test_kit=<path>` in the contradiction-lint fingerprint disambiguates the
+# two flavors — `auth=kit_default` resolves to the kit's api_key for brand
+# kits and to no-credential for runner contracts, but the two never collide
+# because the `test_kit=` component separates them.
+#
+# Future: if a storyboard ever needs to compose TWO runner contracts
+# simultaneously (e.g., signed-requests + substitution-observer), the step-
+# level `requires_contract:` field will need to accept a list. Not reachable
+# today.
+#
+# See `docs/contributing/storyboard-authoring.md` for the author-workflow
+# side of kit selection.
 #
 # phases: array of Phase objects
 #
