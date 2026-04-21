@@ -72,6 +72,23 @@ test('schema-derived set covers known mutating tasks', () => {
   }
 });
 
+test('schema-derived set does not over-match read-only tasks', () => {
+  // Negative anchor: if a read-only request schema ever starts listing
+  // idempotency_key in required (spec drift, accidental copy-paste), the
+  // contradiction lint would silently over-discriminate state paths. Lock
+  // in a handful of anchor reads so the bug surfaces here, not in a
+  // false-positive at build time.
+  const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+  for (const task of [
+    'get_products',
+    'get_signals',
+    'list_creative_formats',
+    'get_adcp_capabilities',
+  ]) {
+    assert.ok(!derived.has(task), `read-only ${task} must not be in mutating set`);
+  }
+});
+
 test('source tree has no contradictions', () => {
   const contradictions = lint();
   assert.deepEqual(

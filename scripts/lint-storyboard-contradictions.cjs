@@ -78,6 +78,13 @@ const MUTATING_EXCEPTIONS = new Set([
   // do mutate controller state the next step observes, so the contradiction
   // lint must treat them as mutations.
   'comply_test_controller',
+  // Schema description: "Naturally idempotent — `session_id` is the dedup
+  // boundary, and terminating an already-terminated session is a no-op that
+  // returns the same terminal state." The termination still transitions
+  // active → terminated, and a later si_send_message on the same session_id
+  // asserts against that terminal state; the contradiction lint must
+  // discriminate pre- vs post-termination state paths.
+  'si_terminate_session',
 ]);
 
 /**
@@ -90,14 +97,19 @@ const MUTATING_EXCEPTIONS = new Set([
  * different output needs (tool-only here, refs+tools there).
  */
 function loadMutatingTasksFromSchemas(schemasDir) {
-  const tools = new Set();
+  // Map<task, srcPath> so same-task-name across subdirs surfaces as an
+  // explicit collision rather than silently deduping through Set.add.
+  const origins = new Map();
   function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
+      // Real directories only. Skip symlinks to avoid unbounded recursion
+      // if a schemas subtree symlinks back to itself.
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
         walk(p);
         continue;
       }
+      if (!entry.isFile()) continue;
       if (!entry.name.endsWith('-request.json')) continue;
       let schema;
       try {
@@ -106,13 +118,21 @@ function loadMutatingTasksFromSchemas(schemasDir) {
         continue;
       }
       const required = Array.isArray(schema.required) ? schema.required : [];
-      if (required.includes('idempotency_key')) {
-        tools.add(entry.name.replace(/-request\.json$/, '').replace(/-/g, '_'));
+      if (!required.includes('idempotency_key')) continue;
+      const task = entry.name.replace(/-request\.json$/, '').replace(/-/g, '_');
+      const prior = origins.get(task);
+      if (prior && prior !== p) {
+        throw new Error(
+          `lint-storyboard-contradictions: task name "${task}" derives from two schema files: ` +
+            `${path.relative(schemasDir, prior)} and ${path.relative(schemasDir, p)}. ` +
+            'Rename one of the files (the hyphen-to-underscore conversion collides).',
+        );
       }
+      origins.set(task, p);
     }
   }
   walk(schemasDir);
-  return tools;
+  return new Set(origins.keys());
 }
 
 /**

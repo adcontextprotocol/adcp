@@ -240,8 +240,7 @@
 #   forms are semantically identical; `contributes: true` is preferred
 #   inside a branch_set phase because it eliminates the typo surface (the
 #   string form must equal `branch_set.id` exactly). Authors may use
-#   either. `universal/schema-validation.yaml` and `universal/security.yaml`
-#   use the shorthand as reference examples.
+#   either; the lint enforces both.
 #
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633
