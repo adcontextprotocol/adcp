@@ -1,0 +1,150 @@
+---
+title: Known spec ambiguities
+description: "Open AdCP spec ambiguities affecting conformance testing, with workarounds and issue links. Each item is removed as the underlying issue closes."
+"og:title": "AdCP — Known spec ambiguities"
+---
+
+# Known spec ambiguities
+
+This page enumerates **open spec ambiguities** that new AdCP implementers hit during conformance testing. Each item has a workaround so you can make progress while the underlying issue resolves.
+
+Entries are removed as the upstream issues close. If you hit something not listed here that the [troubleshooting guide](/docs/building/implementation/storyboard-troubleshooting) also doesn't cover, file an issue on [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp) and it will land here within a release.
+
+## Classification
+
+Each entry is tagged:
+
+- **Tracked** — acknowledged gap, issue filed, workaround documented here.
+- **Under review** — decision pending, interim behavior documented here.
+- **Resolved** — decision landed but vectors/SDK may still lag; interim guidance applies until the lag clears, then the entry is removed.
+
+---
+
+## Response-envelope shape: `errors[]` vs `adcp_error`
+
+**Status.** Under review — [#2587](https://github.com/adcontextprotocol/adcp/issues/2587).
+
+**The ambiguity.** Some storyboards assert responses carry an `errors: [...]` array; older or transitional ones assert a single `adcp_error: {...}` object. Spec prose doesn't commit unambiguously to one shape.
+
+**Interim guidance.** Return `errors: [...]` (array). It subsumes the single-error case and matches the newer storyboards. Track [#2587](https://github.com/adcontextprotocol/adcp/issues/2587) for the final normative commit.
+
+**How it bites.** You implement one shape; half the vectors pass, the others fail with envelope-shape mismatch messages. Both implementations are defensible readings of the current spec; the fix is a spec decision, not an agent change.
+
+---
+
+## `past_start` handling: reject vs accept-and-adjust
+
+**Status.** Resolved — [#2389](https://github.com/adcontextprotocol/adcp/pull/2389) (merged).
+
+**Historical context.** The `schema_validation > past_start_date_reject` vector used to assert `error_code: INVALID_REQUEST`. Agents that accept-and-adjust past start times (also spec-conformant) silently failed the vector.
+
+**Current state.** The storyboard was split into `past_start_reject_path` and `past_start_adjust_path`, both optional, both contributing to a `past_start_handled` flag. The final phase asserts at least one of the two contributed. Either behavior is now explicitly conformant.
+
+**Why this still appears here.** Listed for the cross-reference. If you are on a repo state pre-[#2389](https://github.com/adcontextprotocol/adcp/pull/2389), upgrade; the old single-branch vector no longer exists on `main`.
+
+---
+
+## Other `any_of` assertions still tested as single-branch
+
+**Status.** Tracked — [#2605](https://github.com/adcontextprotocol/adcp/issues/2605).
+
+**The ambiguity.** The `past_start` case was the most visible one, but the spec has other points where multiple behaviors are conformant yet vectors only probe one branch. Candidates listed in [#2605](https://github.com/adcontextprotocol/adcp/issues/2605):
+
+- Response-envelope shape (covered separately above)
+- `recancel` error-message text
+- Webhook-delivery retry cadence
+
+**Interim guidance.** If you pick a spec-conformant branch and the vector fails, check whether the storyboard YAML has a single-branch assertion (`check: error_code, value: "X"`) rather than a multi-branch one (`check: error_code, allowed_values: [...]`). If it's single-branch on a spec `any_of`, file an issue linked to [#2605](https://github.com/adcontextprotocol/adcp/issues/2605) and use the `skipVectors` operator escape while the fix lands.
+
+**How it bites.** Silently — you read the spec, pick a valid branch, and can't explain why the vector fails. Reading the vector YAML is the fastest diagnostic.
+
+---
+
+## Idempotency `missing_key` vector unreachable through SDK
+
+**Status.** Tracked — [#2607](https://github.com/adcontextprotocol/adcp/issues/2607).
+
+**The ambiguity.** The storyboard `idempotency > create_media_buy_missing_key` asserts that agents reject a mutating request missing `idempotency_key` with `INVALID_REQUEST` or `VALIDATION_ERROR`. But the reference `@adcp/client` SDK auto-injects `idempotency_key` client-side, so the vector body leaves the client with the key populated — the agent never sees the malformed request.
+
+**Interim guidance.** Implement missing-key rejection in your agent anyway — the spec MUST still stands. Don't rely on the storyboard to verify it; unit-test directly against a raw-HTTP request. The planned fix (raw-HTTP probe, parallel to signing vectors) will land in the storyboard runner before 3.0 GA.
+
+**How it bites.** The vector passes vacuously today — your agent appears conformant on this assertion regardless of whether it actually rejects missing-key inputs.
+
+---
+
+## Storyboards asserting fields not required by response schemas
+
+**Status.** Tracked — [#2604](https://github.com/adcontextprotocol/adcp/issues/2604).
+
+**The ambiguity.** Certain storyboards assert response fields (`list_id` echo, catalog counts, `pricing_options`, `vendor_cost`) that the corresponding response schemas mark as optional. An agent that omits the optional field is schema-conformant but vector-nonconformant.
+
+**Interim guidance.** Include the optional fields the vectors assert even when your implementation would normally omit them. The assertion set is narrower than the full optional-field space — start by running the storyboards once, reading which optional fields the failing assertions reference, and adding those to your response builder.
+
+**How it bites.** Schema validation passes, vector assertions fail, and the vector's error message points at a field you didn't realize was expected.
+
+---
+
+## `check_governance` conditional-approval response shape
+
+**Status.** Tracked — [#2603](https://github.com/adcontextprotocol/adcp/issues/2603).
+
+**The ambiguity.** The `check_governance` response can carry a `conditions` field when governance approves the buy conditionally, but the field's shape is not defined in the response schema. Implementers have variously returned `string[]`, `{id, description}[]`, or free-form strings.
+
+**Interim guidance.** Return `conditions: [{id: string, description: string}]` — structured, explicit, and forward-compatible with a future `satisfied_at` or `satisfied_by` field. Track [#2603](https://github.com/adcontextprotocol/adcp/issues/2603).
+
+**How it bites.** Vectors for conditional-approval scenarios may or may not assert on the `conditions` shape depending on when they were written. If your shape differs, vectors fail with opaque "field shape" messages.
+
+---
+
+## `$context.*` placeholder resolution rules
+
+**Status.** Under review — [#2589](https://github.com/adcontextprotocol/adcp/issues/2589).
+
+**The ambiguity.** Storyboards use `$context.correlation_id` placeholders that are resolved at vector-dispatch time from captured response fields. The resolution rules (what qualifies as a valid source, how to report an unresolvable placeholder, whether `$context.*` resolution failures are MUST-echo or MAY-echo in error responses) aren't fully normative.
+
+**Interim guidance.** When your response participates in a context echo, echo every key from the request's `context` object back in the response. Don't filter context to a known-good subset. Error responses follow the same echo rule — include `context` even on error.
+
+**How it bites.** Context echo failures cascade: a step that depends on a captured `$context.correlation_id` from an earlier step fails because the earlier step's response didn't carry `context` back. The error message surfaces at the dependent step, not at the true source.
+
+---
+
+## Error-code taxonomy drift
+
+**Status.** Under review — [#2588](https://github.com/adcontextprotocol/adcp/issues/2588).
+
+**The ambiguity.** Historical storyboards have used `INVALID_STATE`, `INVALID_TRANSITION`, and `INVALID_STATE_TRANSITION` for overlapping conditions. The lint at `scripts/lint-error-codes.cjs` tightens the canonical set, but some storyboards may still assert variants.
+
+**Interim guidance.** Return `INVALID_STATE_TRANSITION` for invalid state transitions (pausing a completed buy, approving an archived creative, etc.). If a storyboard asserts a different variant, it's stale — `lint-error-codes.cjs` is the canonical source of which codes exist.
+
+**How it bites.** You return the canonical code; a stale vector asserts the old variant; the vector fails with a misleading "wrong error code" message.
+
+---
+
+## Storyboard fixtures use hardcoded ids
+
+**Status.** Tracked — [#2585](https://github.com/adcontextprotocol/adcp/issues/2585).
+
+**The ambiguity.** Many storyboard `sample_request` blocks hardcode `product_id: "test-product"`, `pricing_option_id: "test-pricing"`, account domains, etc. If your sandbox doesn't happen to seed these exact ids, every dependent vector fails with `PRODUCT_NOT_FOUND` or similar.
+
+**Interim guidance.** Seed the fixtures via `comply_test_controller.seed_product` (or your sandbox's equivalent) before the storyboards run. Two ids are load-bearing across many scenarios: `test-product`, `test-pricing`. Seed them first.
+
+**How it bites.** Fails the very first vector. Easy to diagnose, boring to work around — but the first-time implementer doesn't know the fixture ids are shared across storyboards.
+
+---
+
+## Submitting new entries
+
+When filing a new ambiguity, include:
+
+- **What the spec says** — quote or link the ambiguous sentence.
+- **What the vector asserts** — the specific `check:` and `value:`/`allowed_values:` from the YAML.
+- **What you did** — the branch your implementation took.
+- **Why both are defensible** — why your reading of the spec is not obviously wrong.
+
+That triage is what separates "spec ambiguity" from "implementation bug." The first belongs here; the second belongs in [troubleshooting](/docs/building/implementation/storyboard-troubleshooting).
+
+## Related
+
+- [Storyboard troubleshooting](/docs/building/implementation/storyboard-troubleshooting) — failure-mode lookup for error messages.
+- [Compliance test controller](/docs/building/implementation/comply-test-controller) — sandbox tool for fixture seeding.
+- [Error handling](/docs/building/implementation/error-handling) — canonical error-code taxonomy.

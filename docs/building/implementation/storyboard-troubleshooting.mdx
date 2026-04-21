@@ -1,0 +1,115 @@
+---
+title: Storyboard troubleshooting
+description: "Common failure patterns when running compliance storyboards against an AdCP agent, and how to diagnose them without reading SDK source."
+"og:title": "AdCP — Storyboard troubleshooting"
+---
+
+# Storyboard troubleshooting
+
+If you are a first-time AdCP implementer running compliance storyboards against your agent, you will see error messages that are hard to act on without internal knowledge of the test runner. This page maps the most common ones to the fix path.
+
+Each section shows the raw error text you will see, the underlying cause, and the fix. Read top-to-bottom the first time, then treat it as a lookup.
+
+## `PRODUCT_NOT_FOUND: Package 0: Product not found: test-product`
+
+**What the runner is telling you.** The storyboard's `sample_request` hardcodes `product_id: "test-product"` (and a corresponding `pricing_option_id: "test-pricing"`). Your catalog doesn't contain a product with that id, so your agent correctly returns `PRODUCT_NOT_FOUND`. The storyboard expected that product to exist.
+
+**Fix.** Seed the fixture before the storyboard runs. Three mechanisms exist, in order of preference:
+
+1. **`comply_test_controller.seed_product`** — if your agent exposes the [compliance test controller](/docs/building/implementation/comply-test-controller), the runner can seed products on-demand before each scenario. This is the canonical path.
+2. **Static seed at sandbox provisioning** — your sandbox environment pre-seeds a product with `id: "test-product"` and `id: "test-pricing"` as part of tenant setup. Documented in your agent's sandbox README.
+3. **Alias your catalog** — if your catalog uses different ids for its test fixtures, expose them under the storyboard-expected ids as aliases. Least preferred because it bleeds test taxonomy into your production schema.
+
+Both `test-product` and `test-pricing` are recurring fixture ids across storyboards — seed them once.
+
+## `expected error="request_signature_required", got error="(none)"`
+
+**What the runner is telling you.** The storyboard sent an unsigned request to an endpoint that declares `request_signing: required`. The runner expected a `401` with an `RFC 9421`-style `WWW-Authenticate: Signature ...` challenge. Your agent returned a `401` with no challenge header, or a non-401 response.
+
+The runner reads the error code from the `WWW-Authenticate` header — specifically from the `error=` field inside the challenge — not from the JSON body. An unauthenticated 401 without a challenge is indistinguishable to the runner from "endpoint accidentally open."
+
+**Fix.** On 401 from a signing-required endpoint, emit:
+
+```
+WWW-Authenticate: Signature realm="adcp", error="request_signature_required"
+```
+
+See [security.mdx §Request signing](/docs/building/implementation/security) for the full challenge grammar. The reference implementation uses a `signatureErrorCodeFromCause()` helper that maps internal signing-verifier errors to the canonical `error=` codes — if you are building from scratch, that mapping is the authoritative source.
+
+## `Response contains errors array` OR `expected errors[], got adcp_error`
+
+**What the runner is telling you.** The AdCP response envelope shape is under clarification ([#2587](https://github.com/adcontextprotocol/adcp/issues/2587)). Some storyboards assert `errors: [...]` (array, multiple errors), some assert `adcp_error: {...}` (single object). Your agent returned one shape, the vector asserted the other.
+
+**Fix for now.** Return `errors: [...]` (the array shape). Rationale: the array shape can represent the single-error case trivially (`[{code, message, recovery, ...}]`), so it is the strictly more expressive envelope. The `adcp_error` shape is being phased out but remains referenced in older storyboards.
+
+Track [#2587](https://github.com/adcontextprotocol/adcp/issues/2587) for the definitive envelope decision before 3.0 GA.
+
+## `Context echo failed: expected context.correlation_id="...", got undefined`
+
+**What the runner is telling you.** Every storyboard step sets `context.correlation_id` to a known string and asserts the response echoes it back. Your response either omitted `context` entirely or omitted `correlation_id` inside it.
+
+**Fix.** Every response envelope MUST include a `context` object, and the `context` object MUST echo any keys the request's `context` object included. The minimum echo is `correlation_id` when set — don't filter context to a known-good subset, echo it wholesale.
+
+See [#2589](https://github.com/adcontextprotocol/adcp/issues/2589) for the MUST-echo rules. Common mis-implementation: the agent swallows `context` in its response builder because "the caller sent it, they don't need it back." They do — it's how async flows correlate back to the originating request.
+
+## `Storyboard expected capability X but agent didn't declare it`
+
+**What the runner is telling you.** The storyboard requires a capability (e.g., `signed_requests`, `webhook_emission`, `sales_proposal_mode`) that your agent didn't include in its `get_capabilities` response. The runner should auto-skip vectors that probe capabilities the agent doesn't claim, but something either broke that skip logic or the capability WAS declared and the vector still failed.
+
+**Fix.** First, verify your `get_capabilities` response lists every capability you actually support:
+
+- `signed_requests` if any endpoint declares `request_signing: required`
+- `webhook_emission` if your agent emits webhooks at all
+- Named specialisms (`governance_spend_authority`, `sales_proposal_mode`, etc.) for vertical-specific behavior
+
+If the capability IS declared and the vector still runs and fails, the storyboard runner's capability gate is broken for that vector — file an issue against the runner, not your agent. The `skipVectors` operator escape hatch exists for this case while the fix lands.
+
+## `INVALID_STATE vs INVALID_TRANSITION — which is canonical?`
+
+**What the error taxonomy is telling you.** Different storyboards have historically used `INVALID_STATE`, `INVALID_TRANSITION`, and `INVALID_STATE_TRANSITION` interchangeably. The enum and lint were tightened ([#2588](https://github.com/adcontextprotocol/adcp/issues/2588)) but some storyboards may still assert variants.
+
+**Fix.** Return `INVALID_STATE_TRANSITION` for operations that attempt an invalid state transition (e.g., pausing a media buy that's already completed). If a storyboard asserts a different variant, it's stale — check the error-code lint (`scripts/lint-error-codes.cjs`) against the vector; the lint is the authoritative source for which codes exist.
+
+## `Request signature verified but storyboard still failed`
+
+**What the runner is telling you.** Your signature verifier accepted the request, but the storyboard asserted something *downstream* — a header echo, an idempotency-key handling rule, a capability gate. The signature itself isn't the issue; look at the assertion text.
+
+**Common trap.** The storyboard for signing-required endpoints uses a raw-HTTP probe (not the SDK client path) specifically so the SDK can't auto-inject headers. If you test locally with the SDK, missing-header cases pass; when CI runs the probe, they fail. Always test signing-required endpoints against the raw-HTTP probe, not the SDK.
+
+## `idempotency > create_media_buy_missing_key` silently passes
+
+**What is actually happening.** The storyboard is supposed to send a `create_media_buy` with no `idempotency_key` and assert your agent rejects it with `INVALID_REQUEST`. But the reference `@adcp/client` SDK auto-injects an `idempotency_key` before the request leaves the client — so your agent sees a populated key and correctly doesn't reject, and the vector has nothing to probe.
+
+**What to know.** This is a known SDK-layer/agent-layer inversion ([#2607](https://github.com/adcontextprotocol/adcp/issues/2607)). Until the runner adopts a raw-HTTP probe for this vector (parallel to how signing vectors bypass the SDK), "missing key rejection" is an SDK-layer concern: the SDK enforces client-side, the agent never sees the malformed request.
+
+**Fix.** For your own agent, implement missing-key rejection anyway — the spec MUST still stands. Don't rely on the storyboard to verify it; unit-test it directly against a raw-HTTP request.
+
+## `account` or `brand` stripped from request
+
+**What the runner is telling you.** Your agent's declared schema marks `account` or `brand` as optional, and the SDK client is stripping it from the request before send as a result. The storyboard expects it present.
+
+**Fix.** Declare `account` and `brand` as required in your agent's input schema for every mutating operation. The SDK honors declared schemas — strip behavior follows from the declaration. Non-mutating operations (discovery-style reads) may omit them.
+
+## Operator escape hatches
+
+When a storyboard appears broken in a way you can't fix from the agent side:
+
+- **`skipVectors: ['vector-id', ...]`** in the runner config — skips specific vectors while fixes land. Use sparingly; each skip is an unverified assertion on your scorecard.
+- **`comply_test_controller.seed_scenario`** — seeds a richer baseline than individual fixture ids. Useful for scenarios that depend on many pre-existing objects.
+- **Run one storyboard** via `server/tests/manual/run-one-storyboard.ts <id>` to iterate without waiting for the full suite.
+
+## Before filing a bug against the runner
+
+If a storyboard fails and nothing above explains it, confirm these before filing:
+
+1. Reproduce from a clean `npm ci` — node_modules drift accounts for most "why is this suddenly failing" reports.
+2. Run the same vector via the single-storyboard runner — isolates runner state-carryover from real failures.
+3. Check `known-ambiguities.mdx` — the vector may be an unresolved spec ambiguity, not an agent bug.
+4. Grep the storyboard YAML for the error string — the vector's `description:` often states exactly what is being asserted, which is faster than reading runner source.
+
+## Related
+
+- [Compliance test controller](/docs/building/implementation/comply-test-controller) — sandbox tool for seeding fixtures and forcing state transitions.
+- [Known ambiguities](/docs/building/implementation/known-ambiguities) — open spec gaps with workarounds.
+- [Error handling](/docs/building/implementation/error-handling) — canonical error-code taxonomy.
+- [Security](/docs/building/implementation/security) — signing challenge grammar, webhook verification.
