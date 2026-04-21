@@ -253,7 +253,7 @@ The agent adds the creative to its library and assigns it to the package in one 
 
 Creative review proceeds independently of the media buy outcome. Sellers MUST NOT skip review solely because the buy did not activate, and a buy rejection does not by itself imply rejection of the submitted creatives — a creative rejection MUST be a deliberate review decision with its own `rejection_reason`, not implicit from the containing buy's status. Sellers MAY deprioritize review of creatives that currently have no active assignments, provided review completes before any future assignment activates.
 
-**Capability-flag scope.** `inline_creative_management: true` advertises that the sales agent accepts inline creatives on `create_media_buy`; it does **not** tie the inline creative's lifecycle to the buy. The decoupled library lifecycle applies regardless of whether the creative was submitted inline or via `sync_creatives`.
+**Capability-flag scope.** `inline_creative_management: true` advertises that the sales agent accepts inline creatives on `create_media_buy`; it does **not** tie the inline creative's lifecycle to the buy. The decoupled library lifecycle applies regardless of submission path.
 
 ### Multi-seller distribution
 
