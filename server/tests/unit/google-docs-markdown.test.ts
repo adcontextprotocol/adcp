@@ -115,6 +115,26 @@ describe('extractMarkdownFromDocsResponse', () => {
     expect(md).toContain('[click here](https://example.com)');
   });
 
+  it('preserves leading whitespace on styled runs (no word-run collision)', () => {
+    // Google commonly emits runs like `" bold"` with the space on the
+    // styled run rather than the adjacent plain run. If we only restore
+    // trailing whitespace, `hello` + ` bold` → `hello**bold**` with no
+    // inter-word space. We preserve both sides.
+    const md = extractMarkdownFromDocsResponse({
+      body: { content: [{
+        paragraph: {
+          elements: [
+            { textRun: { content: 'hello', textStyle: {} } },
+            { textRun: { content: ' bold ', textStyle: { bold: true } } },
+            { textRun: { content: 'world\n', textStyle: {} } },
+          ],
+          paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+        },
+      }] },
+    });
+    expect(md).toBe('hello **bold** world');
+  });
+
   it('stacks bold + link correctly', () => {
     const md = extractMarkdownFromDocsResponse({
       body: { content: [{
@@ -234,6 +254,34 @@ describe('extractMarkdownFromDocsResponse', () => {
       }] },
     });
     expect(md).toContain('| a\\\\\\|b |');
+  });
+
+  it('maps horizontalRule nodes to markdown `---` separator', () => {
+    const md = extractMarkdownFromDocsResponse({
+      body: { content: [
+        paragraph('Above'),
+        { horizontalRule: {} },
+        paragraph('Below'),
+      ] as any },
+    });
+    expect(md).toContain('---');
+    expect(md.indexOf('Above')).toBeLessThan(md.indexOf('---'));
+    expect(md.indexOf('---')).toBeLessThan(md.indexOf('Below'));
+  });
+
+  it('silently skips sectionBreak and tableOfContents nodes', () => {
+    const md = extractMarkdownFromDocsResponse({
+      body: { content: [
+        paragraph('Top'),
+        { sectionBreak: {} },
+        { tableOfContents: {} },
+        paragraph('Body'),
+      ] as any },
+    });
+    expect(md).toContain('Top');
+    expect(md).toContain('Body');
+    // No markdown artifacts from the skipped nodes
+    expect(md).not.toMatch(/sectionBreak|tableOfContents/);
   });
 
   it('handles empty documents gracefully', () => {

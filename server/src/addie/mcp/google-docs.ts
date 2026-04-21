@@ -159,6 +159,12 @@ interface GoogleDocsApiDocument {
     content?: Array<{
       paragraph?: GoogleDocsApiParagraph;
       table?: GoogleDocsApiTable;
+      // Other structural elements we explicitly handle or skip:
+      //   sectionBreak, tableOfContents — silently skipped
+      //   horizontalRule — mapped to `---`
+      sectionBreak?: unknown;
+      tableOfContents?: unknown;
+      horizontalRule?: unknown;
     }>;
   };
   lists?: Record<string, { listProperties?: { nestingLevels?: Array<{ glyphType?: string }> } }>;
@@ -217,6 +223,13 @@ export function extractMarkdownFromDocsResponse(doc: GoogleDocsApiDocument): str
     } else if (item.table) {
       const rendered = renderTable(item.table, listsMeta);
       if (rendered) lines.push(rendered);
+    } else if (item.horizontalRule) {
+      lines.push('---');
+    } else if (item.sectionBreak !== undefined || item.tableOfContents !== undefined) {
+      // Page breaks and TOCs don't translate to markdown; skip silently.
+    } else {
+      // Unknown node — log for visibility but don't fail.
+      logger.debug({ keys: Object.keys(item) }, 'Google Docs: unhandled content node');
     }
   }
 
@@ -276,28 +289,31 @@ function headingPrefixFor(style: string | undefined): string | null {
 
 function renderTextRun(textRun: NonNullable<GoogleDocsApiParagraph['elements']>[number]['textRun']): string | null {
   if (!textRun?.content) return null;
-  let text = textRun.content;
-  // Strip Docs' trailing \n from intermediate elements — the paragraph
-  // renderer adds its own newlines.
+  const raw = textRun.content;
   const style = textRun.textStyle ?? {};
 
-  // Skip wrapping purely whitespace content so we don't emit **[space]**.
-  if (!text.trim()) return text;
+  // Skip wrapping purely-whitespace runs so we don't emit `** **` or
+  // swallow inter-word spacing. Returning the raw run preserves the
+  // whitespace between adjacent styled runs.
+  if (!raw.trim()) return raw;
+
+  // Preserve both leading AND trailing whitespace around the styled core.
+  // Google often emits a run like " bold" (leading space, bolded); if we
+  // only restored trailing whitespace, `"hello" + " bold"` would render
+  // as `hello**bold**` with no space between words.
+  // Note: `underline` is intentionally not mapped — markdown has no
+  // native underline syntax.
+  const leading = raw.match(/^\s+/)?.[0] ?? '';
+  const trailing = raw.match(/\s+$/)?.[0] ?? '';
+  let core = raw.trim();
 
   const link = style.link?.url;
+  if (style.strikethrough) core = `~~${core}~~`;
+  if (style.italic) core = `*${core}*`;
+  if (style.bold) core = `**${core}**`;
+  if (link) core = `[${core}](${link})`;
 
-  // Apply inline marks from inside out: strikethrough, italic, bold, link.
-  if (style.strikethrough) text = `~~${text.trim()}~~${trailingWhitespace(text)}`;
-  if (style.italic) text = `*${text.trim()}*${trailingWhitespace(text)}`;
-  if (style.bold) text = `**${text.trim()}**${trailingWhitespace(text)}`;
-  if (link) text = `[${text.trim()}](${link})${trailingWhitespace(text)}`;
-
-  return text;
-}
-
-function trailingWhitespace(s: string): string {
-  const match = s.match(/\s+$/);
-  return match ? match[0] : '';
+  return `${leading}${core}${trailing}`;
 }
 
 function renderTable(
