@@ -349,6 +349,108 @@ step_task:
     - ssrf_blocked               # ssrf_policy deny-hit, with specific rule id in the detail
     - fetch_timeout              # exceeded max_connect_seconds or timeout_seconds
 
+# --- PHASE_TEMPLATE: canonical three-step substitution-safety phase ---
+#
+# This block is ADVISORY documentation, not a runtime-enforced schema. Future
+# storyboard authors adding a third, fourth, or Nth consumer of this contract
+# SHOULD copy the shape below and substitute the placeholders marked with
+# `<<PLACEHOLDER>>` — domain, catalog_id prefix, correlation_id prefix, step-id
+# slug stem, narrative pronoun. Deviating from the template is legitimate
+# (different specialisms have different observation points and format needs);
+# the value is that starting from the template avoids silent drift on the
+# load-bearing fields (`require_every_binding_observed: true`, fixture-lookup
+# binding shape, `requires_contract: substitution_observer_runner`).
+#
+# Existing consumers to reference:
+#   - specialisms/sales-catalog-driven/index.yaml        (substitution_safety)
+#   - specialisms/creative-generative/index.yaml         (catalog_substitution_safety)
+#
+# Placeholders:
+#   <<SPECIALISM_SLUG>>      e.g., sales_catalog_driven, creative_generative
+#   <<DOMAIN>>               fictional brand domain from the chosen test-kit
+#                            (amsterdam-steakhouse.example, acmeoutdoor.example, …)
+#   <<CATALOG_ID_PREFIX>>    a stable prefix that will NOT collide with other
+#                            catalogs synced earlier in the storyboard
+#   <<CORRELATION_ID_PREFIX>> matching kebab slug for correlation_id values
+#   <<BUILD_TASK>>           the preview-returning task for the specialism —
+#                            typically `build_creative` + `include_preview: true`,
+#                            or `preview_creative` where native
+#   <<BUILD_SCHEMA_REF>>     matching schema_ref for the build task
+#   <<BUILD_RESPONSE_SCHEMA_REF>>
+#   <<TARGET_FORMAT_ID>>     a format_id the agent advertises and that accepts
+#                            the chosen macro family (e.g., creative.adcontextprotocol.org/
+#                            product_carousel_3_to_10 for DPA-shaped specialisms)
+#   <<TEMPLATE_URL>>         the URL template whose macro positions the runner
+#                            will observe (must contain the macro used in
+#                            catalog_bindings)
+#
+# phase_template:
+#   id: <<SPECIALISM_SLUG>>_substitution_safety
+#   title: "Catalog-item macro substitution safety"
+#   narrative: |
+#     Per docs/creative/universal-macros#substitution-safety-catalog-item-macros,
+#     sales/creative agents MUST normalize catalog-item values to Unicode NFC
+#     and then percent-encode them such that only RFC 3986 `unreserved`
+#     characters remain unescaped before substituting them into a URL context.
+#     Nested macro expansion is prohibited.
+#
+#     This phase exercises the rule with attacker-shaped catalog values drawn
+#     from the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+#     The phase is gated on the `substitution_observer_runner` test-kit
+#     contract — runners that do not advertise it grade the expect step as
+#     `not_applicable` while the earlier sync and build steps still run.
+#
+#     Scope note: this phase validates substitution on the PREVIEW surface
+#     only. Sellers with divergent preview vs impression-time substitution
+#     paths MAY pass here while failing at serve time; serve-time attestation
+#     or log-introspection observability is tracked separately.
+#   steps:
+#     - id: sync_substitution_probe_catalog
+#       task: sync_catalogs
+#       stateful: true
+#       sample_request:
+#         catalogs:
+#           - catalog_id: <<CATALOG_ID_PREFIX>>_substitution_probe_v1
+#             type: "product"
+#             content_id_type: "sku"
+#             items:
+#               - { item_id: "reserved_char_breakout",  sku: "00013&cmd=drop"        , … }
+#               - { item_id: "nested_expansion",        sku: "vacancy-{DEVICE_ID}-42", … }
+#               - { item_id: "non_ascii",               sku: "café-amsterdam"        , … }
+#               - { item_id: "crlf_injection",          sku: "abc\r\nHost: evil.ex"  , … }
+#               - { item_id: "bidi_override",           sku: "VIN-\u202E1234"        , … }
+#               # Optional: nfc_normalization uses NFD value "cafe\u0301-amsterdam"
+#               # Specialisms with whole-value macro binding MAY add url_scheme_injection
+#
+#     - id: build_substitution_probe_creative
+#       task: <<BUILD_TASK>>
+#       stateful: true
+#       sample_request:
+#         # The message/brief MUST ask for the literal macro token in the
+#         # tracker URL (unsubstituted) so the runner observes it at preview
+#         # time. Pre-declaring a structured tracker in the request (where
+#         # the build task supports it) is preferable when available.
+#         target_format_id: <<TARGET_FORMAT_ID>>
+#         include_preview: true
+#
+#     - id: expect_substitution_safe
+#       task: expect_substitution_safe
+#       requires_contract: substitution_observer_runner
+#       source: html_inline
+#       source_path: "/creative_manifest/preview_html"
+#       macro_template: <<TEMPLATE_URL>>
+#       require_every_binding_observed: true      # DO NOT opt to false unless
+#                                                 # partial catalog preview is
+#                                                 # legitimate and the narrative
+#                                                 # explains why — silent-strip
+#                                                 # bypass risk otherwise.
+#       catalog_bindings:
+#         - { macro: "{SKU}", catalog_item_id: "reserved_char_breakout",  vector_name: "reserved-character-breakout" }
+#         - { macro: "{SKU}", catalog_item_id: "nested_expansion",        vector_name: "nested-expansion-preserved-as-literal" }
+#         - { macro: "{SKU}", catalog_item_id: "non_ascii",               vector_name: "non-ascii-utf8-percent-encoding" }
+#         - { macro: "{SKU}", catalog_item_id: "crlf_injection",          vector_name: "crlf-injection-neutralized" }
+#         - { macro: "{SKU}", catalog_item_id: "bidi_override",           vector_name: "bidi-override-neutralized" }
+
 # --- @adcp/client primitives the runner consumes ---
 #
 # The runner does NOT reimplement HTML parsing, URL extraction, or the RFC
