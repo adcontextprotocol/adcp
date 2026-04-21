@@ -39,6 +39,7 @@ jobs:
 
     - name: Check browser-facing Agentic Advertising links
       run: npm run check:owned-links
+      timeout-minutes: 5
 
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json

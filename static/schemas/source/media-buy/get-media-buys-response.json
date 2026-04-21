@@ -13,7 +13,8 @@
         "properties": {
           "media_buy_id": {
             "type": "string",
-            "description": "Seller's unique identifier for the media buy"
+            "description": "Seller's unique identifier for the media buy",
+            "x-entity": "media_buy"
           },
           "account": {
             "$ref": "/schemas/core/account.json",
@@ -141,7 +142,8 @@
                 },
                 "package_id": {
                   "type": "string",
-                  "description": "Package affected, when the change targeted a specific package."
+                  "description": "Package affected, when the change targeted a specific package.",
+                  "x-entity": "package"
                 },
                 "ext": {
                   "$ref": "/schemas/core/ext.json"
@@ -165,11 +167,13 @@
               "properties": {
                 "package_id": {
                   "type": "string",
-                  "description": "Seller's package identifier"
+                  "description": "Seller's package identifier",
+                  "x-entity": "package"
                 },
                 "product_id": {
                   "type": "string",
-                  "description": "Product identifier this package is purchased from"
+                  "description": "Product identifier this package is purchased from",
+                  "x-entity": "product"
                 },
                 "budget": {
                   "type": "number",
@@ -248,7 +252,8 @@
                     "properties": {
                       "creative_id": {
                         "type": "string",
-                        "description": "Creative identifier"
+                        "description": "Creative identifier",
+                        "x-entity": "creative"
                       },
                       "approval_status": {
                         "$ref": "/schemas/enums/creative-approval-status.json"

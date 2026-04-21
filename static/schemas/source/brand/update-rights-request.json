@@ -14,7 +14,8 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "Rights grant identifier from acquire_rights response"
+      "description": "Rights grant identifier from acquire_rights response",
+      "x-entity": "rights_grant"
     },
     "end_date": {
       "type": "string",
@@ -28,7 +29,8 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries."
+      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries.",
+      "x-entity": "vendor_pricing_option"
     },
     "paused": {
       "type": "boolean",

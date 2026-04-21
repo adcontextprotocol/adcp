@@ -254,6 +254,7 @@ attacker_value_catalog:
     - nested-expansion-preserved-as-literal
     - crlf-injection-neutralized
     - non-ascii-utf8-percent-encoding
+    - nfc-normalization-before-encoding
     - mixed-path-and-query-contexts
     - bidi-override-neutralized
     - url-scheme-injection-neutralized
@@ -348,6 +349,141 @@ step_task:
     - redirect_returned          # 3xx without follow
     - ssrf_blocked               # ssrf_policy deny-hit, with specific rule id in the detail
     - fetch_timeout              # exceeded max_connect_seconds or timeout_seconds
+
+# --- PHASE_TEMPLATE: canonical three-step substitution-safety phase ---
+#
+# This block is ADVISORY documentation, not a runtime-enforced schema. Future
+# storyboard authors adding a third, fourth, or Nth consumer of this contract
+# SHOULD copy the shape below and substitute the placeholders marked with
+# `<<PLACEHOLDER>>` — domain, catalog_id prefix, correlation_id prefix, step-id
+# slug stem, narrative pronoun. Deviating from the template is legitimate
+# (different specialisms have different observation points and format needs);
+# the value is that starting from the template avoids silent drift on the
+# load-bearing fields (`require_every_binding_observed: true`, fixture-lookup
+# binding shape, `requires_contract: substitution_observer_runner`).
+#
+# Existing consumers to reference:
+#   - specialisms/sales-catalog-driven/index.yaml        (substitution_safety)
+#   - specialisms/creative-generative/index.yaml         (catalog_substitution_safety)
+#
+# Placeholders:
+#   <<SPECIALISM_SLUG>>              e.g., sales_catalog_driven, creative_generative
+#   <<BRAND_DOMAIN>>                 fictional brand domain from the chosen test-kit
+#                                    (amsterdam-steakhouse.example, acmeoutdoor.example, …)
+#   <<OPERATOR_DOMAIN>>               typically pinnacle-agency.example across kits
+#   <<CATALOG_ID_PREFIX>>            a stable prefix that will NOT collide with other
+#                                    catalogs synced earlier in the storyboard
+#   <<PHASE_ID>>                     substitution_safety | catalog_substitution_safety | …
+#   <<CORRELATION_ID_PREFIX>>        kebab-slug form of <<SPECIALISM_SLUG>>
+#   <<BUILD_TASK>>                   preview-returning task — typically `build_creative`
+#                                    with `include_preview: true`, or `preview_creative`
+#                                    where native. Match the specialism's existing
+#                                    preview-producing step.
+#   <<BUILD_SCHEMA_REF>>             schema_ref for the build task request
+#   <<BUILD_RESPONSE_SCHEMA_REF>>    response_schema_ref for the build task
+#   <<BUILD_COMPLY_SCENARIO>>        creative_flow (match the existing specialism)
+#   <<TARGET_FORMAT_ID>>             an OBJECT `{ agent_url, id }` the agent advertises —
+#                                    e.g., `{ agent_url: "https://creative.adcontextprotocol.org",
+#                                    id: "product_carousel_3_to_10" }` for DPA shapes. Not a scalar.
+#   <<TEMPLATE_URL>>                 the URL template whose macro positions the runner
+#                                    will observe (must contain the macro used in
+#                                    catalog_bindings)
+#   <<MESSAGE_BRIEF>>                natural-language brief. For generative specialisms,
+#                                    MUST explicitly ask for the literal macro token
+#                                    (unsubstituted) so the observer catches the template;
+#                                    for template-shaped specialisms, describe the
+#                                    catalog-driven render.
+#   <<IDEMPOTENCY_PREFIX>>           convention: `<<SPECIALISM_SLUG>>_<<PHASE_ID>>_<step-id>`
+#                                    for `$generate:uuid_v4#<prefix>` inputs.
+#
+# phase_template:
+#   id: <<PHASE_ID>>
+#   title: "Catalog-item macro substitution safety"
+#   narrative: |
+#     Per docs/creative/universal-macros#substitution-safety-catalog-item-macros,
+#     sales/creative agents MUST normalize catalog-item values to Unicode NFC
+#     and then percent-encode them such that only RFC 3986 `unreserved`
+#     characters remain unescaped before substituting them into a URL context.
+#     Nested macro expansion is prohibited.
+#
+#     This phase exercises the rule with attacker-shaped catalog values drawn
+#     from the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+#     The phase is gated on the `substitution_observer_runner` test-kit
+#     contract — runners that do not advertise it grade the expect step as
+#     `not_applicable` while the earlier sync and build steps still run.
+#
+#     Scope note: this phase validates substitution on the PREVIEW surface
+#     only. Sellers with divergent preview vs impression-time substitution
+#     paths MAY pass here while failing at serve time; serve-time attestation
+#     or log-introspection observability is tracked separately (#2651).
+#
+#   steps:
+#     - id: sync_substitution_probe_catalog
+#       task: sync_catalogs
+#       schema_ref: "media-buy/sync-catalogs-request.json"
+#       response_schema_ref: "media-buy/sync-catalogs-response.json"
+#       doc_ref: "/media-buy/task-reference/sync_catalogs"
+#       stateful: true
+#       sample_request:
+#         account:
+#           brand: { domain: "<<BRAND_DOMAIN>>" }
+#           operator: "<<OPERATOR_DOMAIN>>"
+#         catalogs:
+#           - catalog_id: <<CATALOG_ID_PREFIX>>_substitution_probe_v1
+#             type: "product"
+#             content_id_type: "sku"
+#             items:
+#               # Minimum 3 vectors (canonical baseline). Specialisms with higher
+#               # risk profile (generative, user-text-in-copy) SHOULD add crlf +
+#               # bidi; specialisms with template-bound substitution MAY stay at 3.
+#               - { item_id: "reserved_char_breakout",  sku: "00013&cmd=drop"        , … }
+#               - { item_id: "nested_expansion",        sku: "vacancy-{DEVICE_ID}-42", … }
+#               - { item_id: "non_ascii",               sku: "café-amsterdam"        , … }
+#               # OPTIONAL — add for higher-risk specialisms:
+#               # - { item_id: "crlf_injection",        sku: "abc\r\nHost: evil.ex"  , … }
+#               # - { item_id: "bidi_override",         sku: "VIN-\u202E1234"        , … }
+#               # - { item_id: "nfc_normalization",     sku: "cafe\u0301-amsterdam"  , … }
+#               # Specialisms with whole-value macro binding MAY add url_scheme_injection.
+#         idempotency_key: "$generate:uuid_v4#<<IDEMPOTENCY_PREFIX>>_sync_substitution_probe_catalog"
+#         context: { correlation_id: "<<CORRELATION_ID_PREFIX>>--sync_substitution_probe_catalog" }
+#
+#     - id: build_substitution_probe_creative
+#       task: <<BUILD_TASK>>
+#       schema_ref: <<BUILD_SCHEMA_REF>>
+#       response_schema_ref: <<BUILD_RESPONSE_SCHEMA_REF>>
+#       comply_scenario: <<BUILD_COMPLY_SCENARIO>>
+#       stateful: true
+#       sample_request:
+#         message: <<MESSAGE_BRIEF>>
+#         target_format_id:
+#           agent_url: <<TARGET_FORMAT_ID.agent_url>>
+#           id: <<TARGET_FORMAT_ID.id>>
+#         account:
+#           brand: { domain: "<<BRAND_DOMAIN>>" }
+#           operator: "<<OPERATOR_DOMAIN>>"
+#         quality: "draft"
+#         include_preview: true
+#         idempotency_key: "$generate:uuid_v4#<<IDEMPOTENCY_PREFIX>>_build_substitution_probe_creative"
+#         context: { correlation_id: "<<CORRELATION_ID_PREFIX>>--build_substitution_probe_creative" }
+#
+#     - id: expect_substitution_safe
+#       task: expect_substitution_safe
+#       requires_contract: substitution_observer_runner
+#       source: html_inline
+#       source_path: "/creative_manifest/preview_html"
+#       macro_template: <<TEMPLATE_URL>>
+#       # LOAD-BEARING: Setting `require_every_binding_observed: false` bypasses
+#       # the silent-strip detection called out in the #2647 security review —
+#       # a seller that emits `?sku=` (empty value) instead of substituting the
+#       # macro passes the test with zero observed bindings. Only legitimate
+#       # when partial-catalog preview is a documented specialism feature AND
+#       # the narrative explicitly justifies the deviation.
+#       require_every_binding_observed: true
+#       catalog_bindings:
+#         - { macro: "{SKU}", catalog_item_id: "reserved_char_breakout",  vector_name: "reserved-character-breakout" }
+#         - { macro: "{SKU}", catalog_item_id: "nested_expansion",        vector_name: "nested-expansion-preserved-as-literal" }
+#         - { macro: "{SKU}", catalog_item_id: "non_ascii",               vector_name: "non-ascii-utf8-percent-encoding" }
+#         # Add the corresponding bindings when items above are expanded.
 
 # --- @adcp/client primitives the runner consumes ---
 #

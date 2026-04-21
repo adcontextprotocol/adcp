@@ -5,6 +5,7 @@
   "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
   "type": "string",
   "pattern": "^[a-z0-9_]+$",
+  "x-entity": "advertiser_brand",
   "examples": [
     "tide",
     "cheerios",

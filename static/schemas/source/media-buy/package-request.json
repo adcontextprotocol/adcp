@@ -13,7 +13,8 @@
     },
     "product_id": {
       "type": "string",
-      "description": "Product ID for this package"
+      "description": "Product ID for this package",
+      "x-entity": "product"
     },
     "format_ids": {
       "type": "array",
@@ -33,7 +34,8 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "ID of the selected pricing option from the product's pricing_options array"
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
     },
     "bid_price": {
       "type": "number",

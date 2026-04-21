@@ -145,6 +145,14 @@
 #
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
+# contributes: boolean (optional — shorthand for `contributes_to: <enclosing phase's branch_set.id>`
+#                       introduced alongside first-class `branch_set:` declarations.
+#                       Legal only inside a phase that declares `branch_set:`; the runner's
+#                       loader resolves `contributes: true` to the phase's branch_set.id
+#                       and raises a storyboard-load error on `contributes: true` outside
+#                       a branch_set phase or on a step that also declares `contributes_to`.
+#                       See adcp-client#693 and `lint:storyboard-branch-sets` for the
+#                       full rule set.)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
 #   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
@@ -226,6 +234,14 @@
 #               - check: any_of
 #                 allowed_values: [past_start_handled]
 #
+#   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
+#   `contributes: true` on a step inside a branch_set phase — the runner's
+#   loader resolves it to the enclosing phase's `branch_set.id`. The two
+#   forms are semantically identical; `contributes: true` is preferred
+#   inside a branch_set phase because it eliminates the typo surface (the
+#   string form must equal `branch_set.id` exactly). Authors may use
+#   either; the lint enforces both.
+#
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633
 #   storyboards keep running unchanged.
@@ -237,10 +253,14 @@
 #                  allowed_values.
 #     - semantics: `any_of`. No other value is supported today.
 #
-#   `contributes_to:` on the contributing step is still REQUIRED — the
-#   phase-level `branch_set:` declares membership but does not replace
-#   per-step contribution signalling. Runners accumulate contributions at
-#   the step level, not the phase level.
+#   Per-step contribution signalling is REQUIRED on each contributing step —
+#   the phase-level `branch_set:` declares membership but does not replace
+#   the step-level flag. Runners accumulate contributions at the step level.
+#   Two equivalent forms:
+#     - `contributes: true` (preferred inside a branch_set phase; resolves
+#       to the enclosing phase's `branch_set.id`)
+#     - `contributes_to: <branch_set.id>` (string form; required outside a
+#       branch_set phase and must equal `branch_set.id` inside one)
 #
 #   Authoring rules (enforced by `lint:storyboard-branch-sets`):
 #     - A phase with `branch_set:` MUST set `optional: true`. A
@@ -250,9 +270,15 @@
 #       share the same `branch_set.semantics`.
 #     - A storyboard with a `branch_set:` declaration MUST contain an
 #       `assert_contribution` step whose `validations[].check: any_of`
-#       includes the `branch_set.id` in `allowed_values`.
+#       includes the `branch_set.id` in `allowed_values`. Any
+#       `contributes_to:` / `contributes: true` whose resolved flag has no
+#       matching assert_contribution is flagged as `orphan_contribution` —
+#       nothing grades it.
 #     - Any step inside a branch-set phase that declares `contributes_to`
 #       MUST use the value `<branch_set.id>`.
+#     - A step MUST NOT declare both `contributes` and `contributes_to`
+#       (ambiguous). `contributes: true` is legal only inside a phase
+#       that declares `branch_set:`.
 #     - If any phase declares `branch_set: { id: X, ... }`, every optional
 #       phase in the same storyboard whose steps contribute to X MUST also
 #       declare `branch_set: { id: X, ... }`. A mixed-mode storyboard (one
@@ -297,11 +323,31 @@
 #     use the explicit form above. This fallback exists only so
 #     pre-#2633 storyboards keep running during migration.
 #
+# Cross-storyboard contradiction lint:
+#   The `lint:storyboard-contradictions` script groups every step-with-
+#   assertions across every storyboard by (task, canonicalized request
+#   fingerprint, prior-state fingerprint, env fingerprint) and flags
+#   groups whose asserted outcomes disagree in a way no conformant agent
+#   can satisfy (success ↔ error, or disjoint error-code sets).
+#
+#   Env fingerprint includes the storyboard's top-level `id:`, so two
+#   separate storyboards exercising different controller-seeded states
+#   are legitimately independent test suites and do not collide. To make
+#   two different storyboards' assertions collide — e.g., to catch
+#   "storyboard A assumes media_buy_id X is active, storyboard B
+#   assumes it is canceled" — use matching `comply_scenario:` values or
+#   shared `prerequisites.controller_seeding`.
+#
+#   Branch-set peers (two optional phases in the same storyboard sharing
+#   a `branch_set.id`) are exempt from contradiction flagging by design:
+#   any_of semantics intentionally asserts mutually exclusive outcomes.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
 #                "status_code", "http_status", "http_status_in", "error_code",
-#                "on_401_require_header", "resource_equals_agent_url", "any_of")
+#                "on_401_require_header", "resource_equals_agent_url", "any_of",
+#                "refs_resolve")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value")
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
@@ -328,6 +374,75 @@
 #   MUST NOT assert on them (that couples the conformance suite to a specific
 #   vendor's taxonomy). When a test needs to accept multiple possible codes,
 #   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
+# Cross-step integrity — use `check: refs_resolve`:
+#   `refs_resolve` asserts every ref in a source set resolves to a member of a
+#   target set, matched on declared keys. Use it when one step's response
+#   contains references (e.g., `format_ids` on `products`) that MUST exist in
+#   another step's response (e.g., `formats` from `list_creative_formats`).
+#   Without this primitive, broken references are silent until a later call
+#   (e.g., `sync_creatives`) fails at runtime, after commitments are already
+#   made.
+#
+#   Fields:
+#     source:
+#       from: current_step | context
+#           # `current_step` reads the step's task-result data;
+#           # `context` reads values captured by prior steps.
+#       path: <string>              # supports `[*]` wildcards — see below.
+#     target:
+#       from: current_step | context
+#       path: <string>
+#     match_keys: [<key>, ...]      # keys compared on each ref — e.g. [agent_url, id].
+#                                   # A ref missing any declared key is NEVER a match
+#                                   # (agents that drop a key don't fuzzy-match others
+#                                   # that also dropped it).
+#     scope:                        # optional — restrict integrity to in-scope refs.
+#       key: <string>               # e.g. `agent_url`.
+#       equals: <string>            # literal value, or `$agent_url` for the
+#                                   # runner target URL. Keys ending in `url`
+#                                   # get trailing-slash / case normalization
+#                                   # on both sides before compare. Transport
+#                                   # path canonicalization (`/mcp`, well-known
+#                                   # A2A card path) for `$agent_url` is tracked
+#                                   # in adcp-client#710 — until it lands, MCP
+#                                   # agents should expect refs to fall
+#                                   # out-of-scope when format_ids name the
+#                                   # bare agent URL.
+#     on_out_of_scope: warn | ignore | fail
+#                                   # how refs outside `scope` are graded.
+#                                   # default `warn`: pass the check, attach
+#                                   # observations naming the skipped refs.
+#                                   # `ignore`: silent. `fail`: promote to
+#                                   # missing so reports name them.
+#
+#   Path wildcards:
+#     `[*]` in a `source.path` or `target.path` flattens over arrays. So
+#     `products[*].format_ids[*]` walks every product and flattens every
+#     `format_ids` array into a single list of refs. Runners cap terminal
+#     fan-out at 10,000 values to bound malicious agent responses; paths
+#     realistic for any catalog size are well under the cap.
+#
+#   Grading output:
+#     A failing `refs_resolve` check names the specific unresolved ref tuples
+#     in `actual.missing` (projected to `match_keys`). Duplicates are collapsed
+#     on the projected tuple so one broken ref across 50 products shows up
+#     once — compliance reports stay readable.
+#
+#   Example — every `format_id` on products resolves to a format on this agent:
+#     - check: refs_resolve
+#       description: "Every format_id on products resolves to a format returned by list_creative_formats"
+#       source:
+#         from: context
+#         path: "products[*].format_ids[*]"
+#       target:
+#         from: current_step
+#         path: "formats[*].format_id"
+#       match_keys: [agent_url, id]
+#       scope:
+#         key: agent_url
+#         equals: $agent_url
+#       on_out_of_scope: warn
 #
 # --- Runner output ---
 #

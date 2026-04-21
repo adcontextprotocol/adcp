@@ -9,7 +9,8 @@
       "properties": {
         "account_id": {
           "type": "string",
-          "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+          "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)",
+          "x-entity": "account"
         }
       },
       "required": ["account_id"],
@@ -24,7 +25,8 @@
         "operator": {
           "type": "string",
           "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
         },
         "sandbox": {
           "type": "boolean",

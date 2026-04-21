@@ -14,11 +14,13 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "Rights offering identifier from get_rights response"
+      "description": "Rights offering identifier from get_rights response",
+      "x-entity": "rights_grant"
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "Selected pricing option from the rights offering"
+      "description": "Selected pricing option from the rights offering",
+      "x-entity": "vendor_pricing_option"
     },
     "buyer": {
       "$ref": "/schemas/core/brand-ref.json",

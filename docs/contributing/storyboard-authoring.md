@@ -57,6 +57,10 @@ Rule of thumb: if the task's **request schema has a required globally-unique sco
 
 Everything else falls into `TENANT_SCOPED_TASKS`: create/update mutations without a scope-ID, list/get operations that don't carry a single resource ID, resource-standards calls without `standards_id` in schema, etc. These must carry envelope `account { brand, operator }`.
 
+## Identity fields that flow through `$context`
+
+When a step captures a value into `$context` via `context_outputs` and a later step consumes it as `$context.<name>`, the *entity type* at both ends must match. If the value captured from a field annotated `advertiser_brand` is consumed as a field annotated `rights_holder_brand`, the lint will flag it (that's the #2627 bug: same field name, different entity). See `docs/contributing/x-entity-annotation.md` for the list of entity types and how schema authors annotate fields.
+
 Other exempt categories: payload-array-keyed sync tasks (`sync_accounts`, `sync_governance`, `sync_catalogs`, `sync_event_sources`), global discovery (`list_creative_formats`, `get_adcp_capabilities`), global catalog reads (`get_brand_identity`, `get_rights`, `update_rights`), and the `comply_test_controller` sandbox primitive.
 
 ### Why ID-scoped tasks are exempt but storyboards still carry identity

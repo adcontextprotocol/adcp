@@ -18,7 +18,8 @@
             "properties": {
               "audience_id": {
                 "type": "string",
-                "description": "Audience ID from the request (buyer's identifier)"
+                "description": "Audience ID from the request (buyer's identifier)",
+                "x-entity": "audience"
               },
               "name": {
                 "type": "string",

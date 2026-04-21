@@ -19,7 +19,8 @@
       "type": "array",
       "description": "Filter to specific media buys by publisher ID. If omitted, returns creative delivery across all matching media buys.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "media_buy"
       },
       "minItems": 1
     },
@@ -27,7 +28,8 @@
       "type": "array",
       "description": "Filter to specific creatives by ID. If omitted, returns delivery for all creatives matching the other filters.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "creative"
       },
       "minItems": 1
     },

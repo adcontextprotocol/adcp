@@ -7,11 +7,13 @@
   "properties": {
     "account_id": {
       "type": "string",
-      "description": "Account identifier. Present when the response spans or is scoped to a specific account."
+      "description": "Account identifier. Present when the response spans or is scoped to a specific account.",
+      "x-entity": "account"
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's media buy identifier. Present when the request was scoped to a single media buy."
+      "description": "Publisher's media buy identifier. Present when the request was scoped to a single media buy.",
+      "x-entity": "media_buy"
     },
     "currency": {
       "type": "string",
@@ -51,11 +53,13 @@
         "properties": {
           "creative_id": {
             "type": "string",
-            "description": "Creative identifier"
+            "description": "Creative identifier",
+            "x-entity": "creative"
           },
           "media_buy_id": {
             "type": "string",
-            "description": "Publisher's media buy identifier for this creative. Present when the request spanned multiple media buys, so the buyer can correlate each creative to its media buy."
+            "description": "Publisher's media buy identifier for this creative. Present when the request spanned multiple media buys, so the buyer can correlate each creative to its media buy.",
+            "x-entity": "media_buy"
           },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",

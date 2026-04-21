@@ -19,7 +19,8 @@
       "type": "array",
       "description": "Array of media buy IDs to retrieve. When omitted, returns a paginated set of accessible media buys matching status_filter.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "media_buy"
       },
       "minItems": 1
     },

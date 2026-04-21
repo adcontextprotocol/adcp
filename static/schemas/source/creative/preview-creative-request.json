@@ -147,7 +147,8 @@
     },
     "creative_id": {
       "type": "string",
-      "description": "Creative identifier for context. Used in variant mode."
+      "description": "Creative identifier for context. Used in variant mode.",
+      "x-entity": "creative"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
