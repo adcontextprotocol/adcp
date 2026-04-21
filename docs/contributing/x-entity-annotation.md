@@ -109,7 +109,7 @@ High-level groupings (see the registry for full descriptions):
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
-| Plans & governance | `media_plan`, `governance_plan`, `content_standards`, `task` |
+| Plans & governance | `media_plan`, `governance_plan`, `policy`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option` |
 | SI | `si_session` |
 

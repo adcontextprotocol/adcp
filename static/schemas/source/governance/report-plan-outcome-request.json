@@ -14,7 +14,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "The plan this outcome is for."
+      "description": "The plan this outcome is for.",
+      "x-entity": "governance_plan"
     },
     "check_id": {
       "type": "string",

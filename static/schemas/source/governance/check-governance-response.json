@@ -21,7 +21,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Echoed from request."
+      "description": "Echoed from request.",
+      "x-entity": "governance_plan"
     },
     "explanation": {
       "type": "string",
@@ -39,11 +40,13 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations)."
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations).",
+            "x-entity": "policy"
           },
           "source_plan_id": {
             "type": "string",
-            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance)."
+            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
+            "x-entity": "governance_plan"
           },
           "severity": {
             "$ref": "/schemas/enums/escalation-severity.json"

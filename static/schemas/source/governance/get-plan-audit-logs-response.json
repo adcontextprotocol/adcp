@@ -14,7 +14,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Plan identifier."
+            "description": "Plan identifier.",
+            "x-entity": "governance_plan"
           },
           "plan_version": {
             "type": "integer",
@@ -236,7 +237,8 @@
                 },
                 "plan_id": {
                   "type": "string",
-                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio."
+                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio.",
+                  "x-entity": "governance_plan"
                 },
                 "caller": {
                   "type": "string",
@@ -292,7 +294,8 @@
                         "type": "string"
                       },
                       "policy_id": {
-                        "type": "string"
+                        "type": "string",
+                        "x-entity": "policy"
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"

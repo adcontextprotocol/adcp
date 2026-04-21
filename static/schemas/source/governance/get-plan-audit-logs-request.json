@@ -15,7 +15,8 @@
     "plan_ids": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "governance_plan"
       },
       "minItems": 1,
       "description": "Plan IDs to retrieve. For a single plan, pass a one-element array."
@@ -23,7 +24,8 @@
     "portfolio_plan_ids": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "governance_plan"
       },
       "minItems": 1,
       "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."

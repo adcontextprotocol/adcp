@@ -27,6 +27,7 @@
     "property",
     "media_plan",
     "governance_plan",
+    "policy",
     "content_standards",
     "task",
     "si_session"
@@ -54,6 +55,7 @@
     "property": "A publisher property in the seller's view. Appears in property/* and referenced by core/property.json.",
     "media_plan": "A media plan (distinct from media_buy — a plan can have multiple buys or precede a buy). `plan_id` in governance/sync-plans-request and related schemas when the scope is media planning.",
     "governance_plan": "A governance plan (AI Act, consent, suitability). `plan_id` in governance/* schemas when the scope is governance, not media planning.",
+    "policy": "A governance policy identifier (e.g., 'uk_hfss', 'us_coppa') from the policy registry or a bespoke inline policy scoped to a plan. `policy_id` in governance/policy-entry.json, governance/policy-ref.json, governance/sync-plans-request (policies and portfolio.shared_policy_ids), governance/check-governance-response (findings), and governance/get-plan-audit-logs-response (audit entries).",
     "content_standards": "A content-standards document. `standards_id` in content-standards/* schemas.",
     "task": "An async task handle (governance check, validation result). `task_id` across core/tasks-* schemas.",
     "si_session": "A sponsored-intelligence conversation session. `session_id` in sponsored-intelligence/* schemas."
