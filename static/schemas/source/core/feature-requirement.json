@@ -31,7 +31,8 @@
     },
     "policy_id": {
       "type": "string",
-      "description": "Optional attribution — when this requirement exists to satisfy a specific policy, policy_id references the authorizing PolicyEntry. Reserved field; populated by producers in 3.1 and later (see issue #2303). Governance agents MAY ignore in 3.0."
+      "description": "Optional attribution — when this requirement exists to satisfy a specific policy, policy_id references the authorizing PolicyEntry. Reserved field; populated by producers in 3.1 and later (see issue #2303). Governance agents MAY ignore in 3.0.",
+      "$comment": "x-entity deliberately omitted — a PolicyEntry reference can resolve to either a governance_registry_policy or a governance_inline_policy depending on the authorizing entry's source. See issue #2685."
     }
   },
   "required": ["feature_id"],

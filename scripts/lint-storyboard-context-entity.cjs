@@ -509,6 +509,17 @@ const TRANSIENT_ID_NAMES = new Set([
   'event_id',
 ]);
 
+/**
+ * A leaf may deliberately opt out of the entity-id registry — the two
+ * `findings[].policy_id` ambiguous sites do this today, because the namespace
+ * can't be resolved from the leaf alone. Authors declare the opt-out with a
+ * `$comment` starting `"x-entity deliberately omitted"`. The gap lister
+ * skips these leaves so they don't re-appear as noise on every run.
+ */
+function isDeliberatelyOmitted(node) {
+  return typeof node?.$comment === 'string' && node.$comment.startsWith('x-entity deliberately omitted');
+}
+
 function isIdShapedProperty(name) {
   if (TRANSIENT_ID_NAMES.has(name)) return false;
   return /_id$|_ids$/.test(name) || name === 'id';
@@ -546,7 +557,7 @@ function collectIdFields(node, trail, seen, file, annotatedByEntity, unannotated
           const list = annotatedByEntity.get(info.entity) || [];
           list.push({ file, path: [...trail, name].join('.') });
           annotatedByEntity.set(info.entity, list);
-        } else if (info.isStringLike) {
+        } else if (info.isStringLike && !isDeliberatelyOmitted(value)) {
           unannotated.push({ file, path: [...trail, name].join('.') });
         }
       }
