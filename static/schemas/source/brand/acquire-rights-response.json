@@ -11,7 +11,8 @@
       "properties": {
         "rights_id": {
           "type": "string",
-          "description": "Rights grant identifier"
+          "description": "Rights grant identifier",
+          "x-entity": "rights_grant"
         },
         "status": {
           "type": "string",
@@ -20,7 +21,8 @@
         },
         "brand_id": {
           "type": "string",
-          "description": "Brand identifier of the rights subject"
+          "description": "Brand identifier of the rights subject",
+          "x-entity": "rights_holder_brand"
         },
         "terms": {
           "$ref": "/schemas/brand/rights-terms.json",
@@ -82,7 +84,8 @@
       "title": "AcquireRightsPendingApproval",
       "properties": {
         "rights_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_grant"
         },
         "status": {
           "type": "string",
@@ -90,7 +93,8 @@
           "description": "Rights require approval from the rights holder"
         },
         "brand_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_holder_brand"
         },
         "detail": {
           "type": "string",
@@ -115,7 +119,8 @@
       "title": "AcquireRightsRejected",
       "properties": {
         "rights_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_grant"
         },
         "status": {
           "type": "string",
@@ -123,7 +128,8 @@
           "description": "Rights request was rejected"
         },
         "brand_id": {
-          "type": "string"
+          "type": "string",
+          "x-entity": "rights_holder_brand"
         },
         "reason": {
           "type": "string",

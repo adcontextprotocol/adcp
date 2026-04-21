@@ -10,7 +10,8 @@
       "properties": {
         "brand_id": {
           "type": "string",
-          "description": "Brand identifier"
+          "description": "Brand identifier",
+          "x-entity": "advertiser_brand"
         },
         "house": {
           "type": "object",

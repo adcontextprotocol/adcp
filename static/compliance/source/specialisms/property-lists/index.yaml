@@ -297,8 +297,9 @@ phases:
         expected: |
           Return validation results:
           - compliant: boolean overall status
+          - summary aggregates compliant/non_compliant/not_covered/unidentified counts
           - Per-placement compliance status
-          - Violations with details (property, list, severity)
+          - features[] entries on each non_compliant record explaining the breach
 
         sample_request:
           account:
@@ -308,12 +309,12 @@ phases:
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "outdoormagazine.example"
               impressions: 50000
             - record_id: "delivery_random_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "randomsite.example"
               impressions: 200
@@ -369,12 +370,12 @@ phases:
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "outdoormagazine.example"
               impressions: 50000
             - record_id: "delivery_hiking_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "hikingtrails.example"
               impressions: 30000
@@ -413,7 +414,7 @@ phases:
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "randomsite.example"
               impressions: 500
