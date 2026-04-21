@@ -7,6 +7,8 @@ summary: "Social media platform that accepts audience segments, native creatives
 track: audiences
 required_tools:
   - sync_audiences
+  - sync_catalogs
+  - sync_creatives
 
 narrative: |
   You run a social media platform — Snap, Meta, TikTok, Pinterest, or any walled garden that
@@ -273,6 +275,148 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_social--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: catalog_driven_dynamic_ads
+    title: "Catalog-driven dynamic product ads"
+    narrative: |
+      Social platforms routinely ship dynamic product ads (Snap Dynamic Ads, Meta DPA,
+      TikTok Dynamic Showcase): the buyer pushes a product catalog and the platform
+      renders per-impression creative pulling product images, titles, and tracker URLs
+      from catalog items. The creative template references catalog-item macros
+      (`{SKU}`, `{GTIN}`) whose values resolve to the specific item shown at
+      impression time.
+
+      This phase exercises the catalog-acceptance leg of that flow: push a small inline
+      product catalog (with `content_id_type: "sku"` declared so macro resolution binds
+      to the right field), then push a DPA creative template using the AdCP-native
+      `product_carousel_3_to_10` format on `creative.adcontextprotocol.org`. Real
+      social-platform formats (Meta `native_carousel`, Snap dynamic ad set, TikTok
+      dynamic showcase) are platform-specific refinements tracked as follow-ups on
+      #2640; the AdCP-native format is the interop baseline.
+
+      Runtime substitution-safety checks (that the emitted tracker URLs percent-encode
+      the macro values per `docs/creative/universal-macros#substitution-safety-catalog-item-macros`)
+      require the substitution-observer contract tracked in #2638; phases gated on
+      that contract activate when runners advertise it.
+
+    steps:
+      - id: sync_product_catalog
+        title: "Push a product catalog"
+        narrative: |
+          The buyer pushes a small inline product catalog — the shape social platforms
+          accept for dynamic product ads. Your platform validates each item and
+          returns per-item approval status.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Return per-catalog results with catalog_id, action, item_count, and
+          items_approved counts.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "acme_gear_spring_2026"
+              type: "product"
+              content_id_type: "sku"
+              name: "Acme Outdoor — Spring 2026 Gear"
+              items:
+                - item_id: "trail_pro_3000"
+                  title: "Trail Pro 3000 Backpack"
+                  description: "65L expedition pack with torso-length adjustment."
+                  url: "https://acmeoutdoor.example/gear/trail-pro-3000"
+                  image_url: "https://cdn.acmeoutdoor.example/gear/trail-pro-3000.jpg"
+                  price:
+                    amount: 289.00
+                    currency: "USD"
+                - item_id: "summit_tent_2p"
+                  title: "Summit 2P Ultralight Tent"
+                  description: "2-person four-season tent, 1.8kg packed."
+                  url: "https://acmeoutdoor.example/gear/summit-tent-2p"
+                  image_url: "https://cdn.acmeoutdoor.example/gear/summit-tent-2p.jpg"
+                  price:
+                    amount: 549.00
+                    currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#sales_social_catalog_driven_dynamic_ads_sync_product_catalog"
+          context:
+            correlation_id: "sales_social--sync_product_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Catalog has an ID"
+          - check: field_present
+            path: "catalogs[0].item_count"
+            description: "Catalog reports item count"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_social--sync_product_catalog"
+            description: "Context correlation_id returned unchanged"
+
+      - id: sync_dpa_creative
+        title: "Push a dynamic product ad creative with catalog-item macros"
+        narrative: |
+          The buyer pushes a creative template whose tracker URLs reference
+          catalog-item macros (`{SKU}`, `{GTIN}`). At impression time, your platform
+          substitutes each catalog item's values into the template to render the
+          per-impression ad.
+
+          The template uses the AdCP-native `product_carousel_3_to_10` format
+          (see `docs/creative/channels/carousels.mdx`). Per #2620, values substituted
+          into URL contexts MUST be percent-encoded such that only RFC 3986 unreserved
+          characters remain unescaped; nested macro expansion is prohibited. This step
+          validates that the template is accepted into the library; runtime
+          substitution validation is tracked under #2638.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the DPA creative template. Per-creative action: created or updated.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_dpa_spring_2026"
+              name: "Acme Outdoor — Spring DPA template"
+              format_id:
+                agent_url: "https://creative.adcontextprotocol.org"
+                id: "product_carousel_3_to_10"
+              assets:
+                impression_pixel:
+                  asset_type: "url"
+                  url: "https://track.acmeoutdoor.example/imp?sku={SKU}&gtin={GTIN}&mb={MEDIA_BUY_ID}"
+                click_url:
+                  asset_type: "url"
+                  url: "https://track.acmeoutdoor.example/click?sku={SKU}"
+
+          idempotency_key: "$generate:uuid_v4#sales_social_catalog_driven_dynamic_ads_sync_dpa_creative"
+          context:
+            correlation_id: "sales_social--sync_dpa_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_social--sync_dpa_creative"
             description: "Context correlation_id returned unchanged"
   - id: event_logging
     title: "Conversion event tracking"

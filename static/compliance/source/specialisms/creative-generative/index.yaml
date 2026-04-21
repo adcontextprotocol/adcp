@@ -6,6 +6,10 @@ category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
 required_tools:
   - build_creative
+# Note: sync_catalogs is NOT in required_tools. The catalog_augmented_generation
+# phase below is additive — brief-only generative agents (pure-prompt DSPs) pass
+# the other phases without claiming catalog support. Agents that do not implement
+# sync_catalogs grade that phase not_applicable rather than fail the specialism.
 
 narrative: |
   You run a generative creative platform — an AI ad network, a generative DSP, or any system
@@ -417,4 +421,123 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "creative_generative--build_production"
+            description: "Context correlation_id returned unchanged"
+
+  - id: catalog_augmented_generation
+    title: "Catalog-augmented generation"
+    narrative: |
+      Generative platforms routinely hydrate catalog items into the generation context:
+      the buyer pushes a product catalog, and each generated creative references a specific
+      catalog item (via `{SKU}`, `{GTIN}`, or the catalog-item family) in its impression
+      trackers and click trackers. This is how generative DSPs produce per-SKU dynamic
+      creative at scale.
+
+      This phase exercises the catalog-acceptance leg and emits a generative build that
+      includes catalog-item macros in its tracker URL assets. `preview_creative` is the
+      natural observation point for the runtime substitution-safety check tracked in
+      #2638 — when the substitution-observer contract lands, a runner can assert that
+      the previewed HTML contains percent-encoded catalog-item values per
+      `docs/creative/universal-macros#substitution-safety-catalog-item-macros`.
+
+    steps:
+      - id: sync_generation_catalog
+        title: "Push a product catalog for generation"
+        narrative: |
+          The buyer pushes a small inline catalog. Your agent will use these items as the
+          hydration targets for subsequent generated creatives.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Return per-catalog results with catalog_id, action, item_count, and
+          items_approved counts.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "acme_generative_source"
+              type: "product"
+              content_id_type: "sku"
+              name: "Acme Outdoor — Generative source feed"
+              items:
+                - item_id: "peak_jacket_x"
+                  title: "Peak Jacket X"
+                  description: "Goretex 3L shell, seam-taped, 280g."
+                  url: "https://acmeoutdoor.example/gear/peak-jacket-x"
+                  image_url: "https://cdn.acmeoutdoor.example/gear/peak-jacket-x.jpg"
+                  price:
+                    amount: 449.00
+                    currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_augmented_generation_sync_generation_catalog"
+          context:
+            correlation_id: "creative_generative--sync_generation_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Catalog has an ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_generative--sync_generation_catalog"
+            description: "Context correlation_id returned unchanged"
+
+      - id: build_catalog_aware_creative
+        title: "Generate a creative bound to a catalog item"
+        narrative: |
+          The buyer asks your agent to build a creative for a specific catalog item.
+          The generated manifest MUST include tracker URLs with catalog-item macros
+          (`{SKU}`, `{GTIN}`) so impression-time substitution renders per-SKU output.
+
+          Per #2620, the substitution step MUST percent-encode catalog-item values
+          against the RFC 3986 unreserved set — but the substitution itself happens at
+          serve time, not in the build_creative response. Runtime observability is
+          tracked in #2638.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a creative manifest whose tracker assets include catalog-item
+          macros ({SKU} or {GTIN}) and whose format references a catalog-capable
+          format declared by the agent.
+
+        sample_request:
+          message: "Generate a 300x250 display ad for the Peak Jacket X, using our catalog feed for product fields and tracker URLs."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          quality: "draft"
+          include_preview: true
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_augmented_generation_build_catalog_aware_creative"
+          context:
+            correlation_id: "creative_generative--build_catalog_aware_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Generated manifest includes format_id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_generative--build_catalog_aware_creative"
             description: "Context correlation_id returned unchanged"
