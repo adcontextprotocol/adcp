@@ -125,8 +125,9 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
 - Seller-initiated rejection (from `pending_creatives` or `pending_start`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
 - Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
-- Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`, except that a re-cancel attempt (`canceled: true` on a buy already in `canceled`) MUST be rejected with `NOT_CANCELLABLE` — the cancellation-specific code takes precedence over the generic terminal-state rule
+- Sales agents MAY reject buyer cancellation of a non-terminal media buy with error code `NOT_CANCELLABLE` (e.g., when the seller contractually refuses mid-flight cancellation)
+- When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
+- All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Rejection (`rejected` status) is only valid from `pending_creatives` or `pending_start`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
 - Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
@@ -251,10 +252,11 @@ Modify an existing media buy's budget, targeting, or settings.
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`, except that a re-cancel attempt (`canceled: true` on a buy already in `canceled`) MUST be rejected with `NOT_CANCELLABLE` — the cancellation-specific code takes precedence over the generic terminal-state rule
+- When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
+- All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Orchestrators MAY cancel a media buy by setting `canceled: true` with optional `cancellation_reason`
 - Sales agents MUST transition the media buy to `canceled` status upon accepting cancellation
-- Sales agents MAY reject cancellation with error code `NOT_CANCELLABLE`
+- Sales agents MAY reject cancellation of a non-terminal media buy with error code `NOT_CANCELLABLE`
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
 - Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_DEADLINE_EXCEEDED`
 - Orchestrators MAY add new packages to an existing media buy via `new_packages`. Sales agents that support this MUST advertise `add_packages` in `valid_actions`. Sales agents that do not support adding packages MUST reject with `UNSUPPORTED_FEATURE`.
