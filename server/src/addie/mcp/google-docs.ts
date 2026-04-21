@@ -312,6 +312,11 @@ function renderTable(
     return paragraphs
       .map(p => p.paragraph ? renderParagraph(p.paragraph, listsMeta) ?? '' : '')
       .join(' ')
+      // Escape backslashes *first*, then pipes. Otherwise an existing
+      // literal `\|` in the cell (rare but possible in raw text content)
+      // would become `\\|` — which GFM reads as "escaped backslash,
+      // literal pipe" and breaks the cell out into a new column.
+      .replace(/\\/g, '\\\\')
       .replace(/\|/g, '\\|')
       .replace(/\n+/g, ' ')
       .trim();

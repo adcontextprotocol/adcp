@@ -214,6 +214,28 @@ describe('extractMarkdownFromDocsResponse', () => {
     expect(md).toContain('| a\\|b |');
   });
 
+  it('escapes backslashes before pipes in table cells (codeql 1304)', () => {
+    // Without backslash-first escaping, `a\|b` becomes `a\\|b` which GFM
+    // reads as "escaped backslash + literal pipe" and splits the cell.
+    // With correct escaping, it becomes `a\\\|b` → "escaped backslash +
+    // escaped pipe" which renders as the literal `a\|b` the user typed.
+    const md = extractMarkdownFromDocsResponse({
+      body: { content: [{
+        table: {
+          tableRows: [
+            { tableCells: [
+              { content: [paragraph('Header')] },
+            ] },
+            { tableCells: [
+              { content: [paragraph('a\\|b')] },
+            ] },
+          ],
+        },
+      }] },
+    });
+    expect(md).toContain('| a\\\\\\|b |');
+  });
+
   it('handles empty documents gracefully', () => {
     const md = extractMarkdownFromDocsResponse({ title: 'Empty', body: { content: [] } });
     expect(md).toBe('');
