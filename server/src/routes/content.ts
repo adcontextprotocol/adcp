@@ -24,6 +24,9 @@ import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
 import { fetchPathPageviewCounts } from '../services/posthog-query.js';
 import { safeFetch } from '../utils/url-security.js';
+import { generateIllustration } from '../services/illustration-generator.js';
+import { createIllustration, approveIllustration } from '../db/illustration-db.js';
+import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 
 const logger = createLogger('content-routes');
 
@@ -54,6 +57,42 @@ interface ProposeContentRequest {
   };
   authors?: ContentAuthor[];
   status?: 'draft' | 'pending_review' | 'published';
+}
+
+/**
+ * Fire-and-forget: generate a Gemini cover image for a newly-submitted
+ * perspective and auto-approve it so the review dashboard has something
+ * to show. Mirrors the digest-publisher pattern: errors are logged but
+ * never fail the caller — submission succeeds even if Gemini is down or
+ * rate-limited.
+ *
+ * Caller should skip this when the perspective already has a
+ * featured_image_url (the submitter provided their own) or no meaningful
+ * title/body to prompt on.
+ */
+async function generateCoverImageForPendingReview(
+  perspectiveId: string,
+  title: string,
+  category: string | null,
+  excerpt: string | null,
+): Promise<void> {
+  const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
+    title,
+    category: category ?? 'Perspective',
+    excerpt: excerpt ?? undefined,
+  });
+
+  const illustration = await createIllustration({
+    perspective_id: perspectiveId,
+    image_data: imageBuffer,
+    prompt_used: promptUsed,
+    status: 'generated',
+    c2pa_signed_at: c2pa?.signedAt,
+    c2pa_manifest_digest: c2pa?.manifestDigest,
+  });
+
+  await approveIllustration(illustration.id, perspectiveId);
+  logger.info({ perspectiveId }, 'Cover image generated and approved for pending_review content');
 }
 
 /**
@@ -465,6 +504,27 @@ export async function proposeContentForUser(
     ).catch(err => {
       logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
     });
+
+    // Auto-generate a cover image unless the submitter already provided
+    // one. Fire-and-forget: errors never block the submission response.
+    // Only meaningful for article-type perspectives — link shares use
+    // the external site's og:image.
+    const shouldAutoGenerate = content_type === 'article'
+      && !featured_image_url
+      && !!perspective.title;
+    if (shouldAutoGenerate) {
+      generateCoverImageForPendingReview(
+        perspective.id,
+        perspective.title,
+        perspective.category ?? null,
+        perspective.excerpt ?? null,
+      ).catch(err => {
+        logger.warn(
+          { err, perspectiveId: perspective.id },
+          'Auto cover-image generation failed — post will enter review without an image'
+        );
+      });
+    }
   } else if (status === 'published') {
     notifyPublishedPost({
       slackChannelId: committeeSlackChannelId ?? undefined,
@@ -740,6 +800,25 @@ export async function approveContentForUser(
       });
     }
   }
+
+  // Auto-resolve any open escalations Addie filed about this specific
+  // perspective (escalate_to_admin passes perspective_id when linking
+  // an escalation to a draft). Fire-and-forget — approval succeeds
+  // even if the escalation resolve query errors. See #2702.
+  resolveEscalationsForPerspective(
+    contentId,
+    user.id,
+    `Auto-resolved: content approved by reviewer`
+  ).then(ids => {
+    if (ids.length > 0) {
+      logger.info(
+        { contentId, reviewerId: user.id, resolvedEscalationIds: ids },
+        'Auto-resolved escalations linked to approved content'
+      );
+    }
+  }).catch(err => {
+    logger.warn({ err, contentId }, 'Failed to auto-resolve linked escalations');
+  });
 
   return {
     success: true,
