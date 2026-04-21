@@ -369,6 +369,11 @@ export async function handleValidatePropertyDelivery(
       nonCompliantImpressions += impressions;
     }
 
+    // Per validation-result.json (additionalProperties: false), allowed
+    // keys are identifier, record_id, status, impressions, features,
+    // authorization, ext. Violations belong in `features[]` as the spec's
+    // machine-readable channel — a "record:list_membership" feature with
+    // status: failed carries the same signal.
     return {
       identifier: { type: 'domain', value: domain },
       ...(record.record_id ? { record_id: record.record_id } : {}),
