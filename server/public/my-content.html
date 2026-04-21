@@ -1266,7 +1266,7 @@
           response = await fetch('/api/content/propose', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify({ ...data, status: statusValue })
           });
         }
 
