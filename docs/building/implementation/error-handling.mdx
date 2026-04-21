@@ -137,7 +137,13 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 
 ## Standard Error Codes
 
-AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+
+**Not-found precedence.** When a referenced identifier does not resolve, sellers SHOULD return the resource-specific code when the resolved type is known from the request: `PRODUCT_NOT_FOUND` for `product_id`, `PACKAGE_NOT_FOUND` for `package_id`, `MEDIA_BUY_NOT_FOUND` for `media_buy_id`, `CREATIVE_NOT_FOUND` for `creative_id`, `SIGNAL_NOT_FOUND` for `signal_id`, `SESSION_NOT_FOUND` for SI `session_id`, `ACCOUNT_NOT_FOUND` for `account_id`. Fall back to `REFERENCE_NOT_FOUND` for resource types without a dedicated code (property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources). Clients SHOULD switch on `error.code` first — the resource-specific codes let clients dispatch without parsing `error.field`.
+
+**Polymorphic parameters.** When the unresolved identifier was supplied via a polymorphic or untyped parameter (a field that accepts multiple resource types), sellers MUST use `REFERENCE_NOT_FOUND` even if a resource-specific code exists for the resolved type. Using the type-specific code on a polymorphic parameter leaks the resolved type to an unauthorized caller.
+
+**Uniform response for inaccessible references.** For every not-found code (`REFERENCE_NOT_FOUND`, `SIGNAL_NOT_FOUND`, `CREATIVE_NOT_FOUND`, and the others above), sellers MUST return the same code, message, and shape for "exists but the caller lacks access" as for "does not exist" — never distinguish the two, which would enable cross-tenant enumeration. For `REFERENCE_NOT_FOUND` specifically, sellers MUST NOT leak the resolved resource type via `error.field`, `error.details`, or a resource-qualified `error.message`; `error.field` MAY name the input parameter that carried the unresolved reference but MUST NOT disclose the resolved type. Sellers SHOULD also keep response latency and error-object shape indistinguishable between the two cases.
 
 ### Authentication and Access
 
@@ -187,6 +193,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 | `RATE_LIMITED` | transient | Request rate exceeded | Wait for `retry_after` seconds, then retry |
 | `SERVICE_UNAVAILABLE` | transient | Seller service temporarily unavailable | Retry with exponential backoff |
 | `CONFLICT` | transient | Concurrent modification detected | Re-read the resource and retry with current state |
+| `REFERENCE_NOT_FOUND` | correctable | Generic fallback for referenced resources without a dedicated not-found code. See [Not-found precedence](#standard-error-codes) | Verify the identifier via the appropriate discovery task; prefer a resource-specific code when one exists |
 
 ## Recovery Classification
 
