@@ -253,6 +253,48 @@
     .tier-item button {
       flex-shrink: 0;
     }
+    .speakers-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .speaker-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+    }
+    .speaker-item .speaker-row-1 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto auto auto;
+      gap: var(--space-2);
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+    .speaker-item .speaker-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+    .speaker-item input, .speaker-item textarea {
+      padding: var(--space-2);
+      font-size: var(--text-sm);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .speaker-item textarea {
+      min-height: 60px;
+      resize: vertical;
+    }
+    .speaker-item button.reorder,
+    .speaker-item button.remove {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+    }
     .stats-row {
       display: flex;
       gap: var(--space-4);
@@ -563,6 +605,21 @@
             <label>Max Attendees</label>
             <input type="number" id="maxAttendees" placeholder="Leave empty for unlimited">
           </div>
+        </div>
+
+        <!-- Speakers -->
+        <div class="section-divider">
+          <div class="section-title">Speakers</div>
+        </div>
+
+        <div class="form-group">
+          <small style="display: block; margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            Add people who will speak or present. Appears on the event detail page in the order listed.
+          </small>
+          <div id="speakersList" class="speakers-list"></div>
+          <button type="button" class="btn btn-secondary btn-small" onclick="addSpeaker()" style="margin-top: var(--space-2);">
+            + Add Speaker
+          </button>
         </div>
 
         <!-- Sponsorship -->
@@ -931,6 +988,8 @@
       document.getElementById('eventGroupSection').style.display = 'none';
       document.getElementById('committeeSection').style.display = 'none';
       sponsorshipTierCount = 0;
+      speakersState = [];
+      renderSpeakers();
       toggleLocationFields();
       toggleSponsorshipTiers();
       toggleAccessSection();
@@ -1022,7 +1081,31 @@
       document.getElementById('committeeSection').style.display = 'block';
       loadLinkedCommittees(id);
 
+      // Load speakers (only available via GET-by-id, not in the list endpoint)
+      speakersState = [];
+      renderSpeakers();
+      loadSpeakers(id);
+
       document.getElementById('eventModal').style.display = 'flex';
+    }
+
+    async function loadSpeakers(eventId) {
+      try {
+        const res = await fetch(`/api/admin/events/${eventId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        speakersState = (data.speakers || []).map(sp => ({
+          name: sp.name || '',
+          title: sp.title || '',
+          company: sp.company || '',
+          bio: sp.bio || '',
+          headshot_url: sp.headshot_url || '',
+          link_url: sp.link_url || '',
+        }));
+        renderSpeakers();
+      } catch (error) {
+        console.error('Error loading speakers:', error);
+      }
     }
 
     // Load event group info
@@ -1232,6 +1315,7 @@
         },
         recap_html: recapEditor?.getHTML() || null,
         recap_video_url: document.getElementById('recapVideoUrl').value || null,
+        speakers: getSpeakers(),
       };
 
       try {
@@ -1650,6 +1734,77 @@
       return tiers;
     }
 
+    // Speakers — maintained as an in-memory array, re-rendered on each mutation.
+    let speakersState = [];
+
+    function renderSpeakers() {
+      const list = document.getElementById('speakersList');
+      if (!list) return;
+      if (speakersState.length === 0) {
+        list.innerHTML = '<p style="font-size: var(--text-sm); color: var(--color-text-muted); margin: 0;">No speakers yet. Click "Add Speaker" to get started.</p>';
+        return;
+      }
+      list.innerHTML = speakersState.map((sp, i) => `
+        <div class="speaker-item" data-index="${i}">
+          <div class="speaker-row-1">
+            <input type="text" data-field="name" placeholder="Name *" value="${escapeHtml(sp.name || '')}" required>
+            <input type="text" data-field="title" placeholder="Title" value="${escapeHtml(sp.title || '')}">
+            <input type="text" data-field="company" placeholder="Company" value="${escapeHtml(sp.company || '')}">
+            <button type="button" class="btn btn-secondary reorder" onclick="moveSpeaker(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button>
+            <button type="button" class="btn btn-secondary reorder" onclick="moveSpeaker(${i}, 1)" ${i === speakersState.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
+            <button type="button" class="btn btn-danger remove" onclick="removeSpeaker(${i})" title="Remove">X</button>
+          </div>
+          <div class="speaker-row-2">
+            <input type="url" data-field="headshot_url" placeholder="Headshot URL (https://...)" value="${escapeHtml(sp.headshot_url || '')}">
+            <input type="url" data-field="link_url" placeholder="Profile / LinkedIn URL" value="${escapeHtml(sp.link_url || '')}">
+          </div>
+          <textarea data-field="bio" placeholder="Short bio">${escapeHtml(sp.bio || '')}</textarea>
+        </div>
+      `).join('');
+
+      // Wire inputs to update speakersState in place so the array always reflects the form.
+      list.querySelectorAll('.speaker-item').forEach((el) => {
+        const index = parseInt(el.dataset.index, 10);
+        el.querySelectorAll('[data-field]').forEach((input) => {
+          input.addEventListener('input', () => {
+            speakersState[index][input.dataset.field] = input.value;
+          });
+        });
+      });
+    }
+
+    function addSpeaker() {
+      speakersState.push({ name: '', title: '', company: '', bio: '', headshot_url: '', link_url: '' });
+      renderSpeakers();
+    }
+
+    function removeSpeaker(i) {
+      speakersState.splice(i, 1);
+      renderSpeakers();
+    }
+
+    function moveSpeaker(i, delta) {
+      const j = i + delta;
+      if (j < 0 || j >= speakersState.length) return;
+      const [sp] = speakersState.splice(i, 1);
+      speakersState.splice(j, 0, sp);
+      renderSpeakers();
+    }
+
+    function getSpeakers() {
+      // Drop rows with no name (treated as empty slots the user abandoned).
+      return speakersState
+        .map((sp) => ({
+          name: (sp.name || '').trim(),
+          title: (sp.title || '').trim() || undefined,
+          company: (sp.company || '').trim() || undefined,
+          bio: (sp.bio || '').trim() || undefined,
+          headshot_url: (sp.headshot_url || '').trim() || undefined,
+          link_url: (sp.link_url || '').trim() || undefined,
+        }))
+        .filter((sp) => sp.name.length > 0);
+    }
+
     // Format date for datetime-local input
     function formatDateTimeLocal(date) {
       const year = date.getFullYear();
@@ -1662,10 +1817,13 @@
 
     // Escape HTML
     function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     // Initialize on load

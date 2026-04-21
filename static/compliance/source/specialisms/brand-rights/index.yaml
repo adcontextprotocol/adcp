@@ -116,9 +116,6 @@ phases:
 
           context:
             correlation_id: "brand_rights--get_brand_identity"
-        context_outputs:
-          - path: "brand_id"
-            key: "brand_id"
 
         validations:
           - check: response_schema
@@ -170,9 +167,13 @@ phases:
       - id: get_rights
         title: "Discover available rights"
         narrative: |
-          The buyer calls get_rights to see what content generation rights the brand
-          offers. Each right specifies the type of content, pricing, duration, and
-          any constraints (impression caps, geo restrictions, etc.).
+          The buyer calls get_rights to search across the agent's full rights
+          roster (talent, music, stock media, etc.). `buyer_brand` identifies
+          the advertiser so the agent can apply compatibility filtering
+          (competitor exclusions, dietary conflicts from the buyer's
+          brand.json). The optional `brand_id` filter — which scopes results
+          to a specific rights-holder brand (e.g., a named athlete) — is
+          omitted here so the agent returns its full catalog.
         task: get_rights
         schema_ref: "brand/get-rights-request.json"
         response_schema_ref: "brand/get-rights-response.json"
@@ -189,7 +190,8 @@ phases:
           query: "image generation rights for advertising"
           uses:
             - "ai_generated_image"
-          brand_id: "$context.brand_id"
+          buyer_brand:
+            domain: "acmeoutdoor.example"
 
           context:
             correlation_id: "brand_rights--get_rights"
@@ -239,6 +241,10 @@ phases:
           - Terms and constraints
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "standard_monthly"
           buyer:
@@ -313,6 +319,10 @@ phases:
           - Error indicates the rights period is invalid or expired
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "standard_monthly"
           buyer:

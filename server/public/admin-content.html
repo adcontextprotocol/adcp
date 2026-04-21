@@ -582,15 +582,17 @@
 
   <!-- Review Modal -->
   <div id="reviewModal" class="modal-overlay">
-    <div class="modal" style="max-width: 800px;">
+    <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
       <button class="modal-close" onclick="closeReviewModal()" aria-label="Close">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <h2>Review Content</h2>
       <div id="reviewContent">
         <h3 id="reviewTitle"></h3>
+        <p id="reviewSubtitle" style="color: var(--color-text-secondary); margin: var(--space-2) 0 var(--space-3);"></p>
         <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0; font-style: italic;"></p>
         <div id="reviewDetails" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></div>
+        <div id="reviewExternalLink" style="margin-top: var(--space-4); display: none;"></div>
         <div id="reviewArticleContent" class="article-content" style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);"></div>
       </div>
       <div class="modal-buttons" id="reviewButtons">
@@ -691,6 +693,12 @@
 
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('mainContent').classList.remove('hidden');
+
+        // Admins land on All Content — editors need a full view of the library,
+        // not just what they personally authored.
+        if (isAdmin) {
+          switchTab('all');
+        }
       } catch (err) {
         console.error('Init error:', err);
         document.getElementById('loading').innerHTML =
@@ -1692,15 +1700,37 @@
       const item = pendingContent.find(c => c.id === id);
       if (!item) return;
       reviewingContent = item;
-      document.getElementById('reviewTitle').textContent = item.title;
+      document.getElementById('reviewTitle').textContent = item.title || '(untitled)';
+      const subtitleEl = document.getElementById('reviewSubtitle');
+      if (item.subtitle) { subtitleEl.textContent = item.subtitle; subtitleEl.style.display = ''; }
+      else { subtitleEl.textContent = ''; subtitleEl.style.display = 'none'; }
       document.getElementById('reviewExcerpt').textContent = item.excerpt || '';
       document.getElementById('reviewDetails').innerHTML = DOMPurify.sanitize(`
-        <p><strong>Type:</strong> ${item.content_type} <strong>Collection:</strong> ${item.collection?.committee_name || 'Personal'}</p>
-        <p><strong>Proposed by:</strong> ${item.proposer?.name || 'Unknown'} on ${formatDate(item.proposed_at)}</p>
+        <p><strong>Type:</strong> ${esc(item.content_type)} <strong>Collection:</strong> ${esc(item.collection?.committee_name || 'Personal')}</p>
+        <p><strong>Proposed by:</strong> ${esc(item.proposer?.name || 'Unknown')} on ${esc(formatDate(item.proposed_at))}</p>
       `);
+      const linkEl = document.getElementById('reviewExternalLink');
+      if (item.external_url) {
+        const site = item.external_site_name ? ` (${esc(item.external_site_name)})` : '';
+        linkEl.innerHTML = DOMPurify.sanitize(
+          `<strong>External link:</strong> <a href="${esc(item.external_url)}" target="_blank" rel="noopener noreferrer">${esc(item.external_url)}</a>${site}`
+        );
+        linkEl.style.display = '';
+      } else {
+        linkEl.innerHTML = '';
+        linkEl.style.display = 'none';
+      }
       const el = document.getElementById('reviewArticleContent');
-      if (item.content) { el.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false })); el.style.display = ''; }
-      else { el.innerHTML = ''; el.style.display = 'none'; }
+      if (item.content) {
+        el.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false }));
+        el.style.display = '';
+      } else if (item.content_type === 'link') {
+        el.innerHTML = '<p style="color: var(--color-text-muted); font-style: italic;">No article body — this submission links to an external URL above.</p>';
+        el.style.display = '';
+      } else {
+        el.innerHTML = '<p style="color: var(--color-text-muted); font-style: italic;">No article body was submitted.</p>';
+        el.style.display = '';
+      }
       document.getElementById('rejectionReason').value = '';
       document.getElementById('reviewButtons').classList.remove('hidden');
       document.getElementById('rejectForm').classList.add('hidden');

@@ -8,8 +8,8 @@
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
 
   <link rel="stylesheet" href="/design-system.css">
-  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-TlkYLW9MJOrj6RxsljqD44MEH0KhYCqO9KfXIldmopHGZS+i/Rl7Gp6M1po8HDYh" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-bXvQH1Lsb1ep3ELgrEP/gCyaZJjYVLbvFjIkJNNWGZW2ruKS9ZijCBAdMoP0m0OA" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-b5hg04N6F0rvyz1a/GVoPPY0JcqGTARCmEuFCqwQKX3zq7LsxhV+n+6Ykh2pQOCH" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
   <script src="/nav.js"></script>
   <style>
     body { padding-top: 60px; background: var(--color-bg-page); }
@@ -322,6 +322,61 @@
       }
     }
 
+    /* Speakers Section */
+    .speakers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .speaker-card {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--color-gray-50);
+      border-radius: 10px;
+      align-items: flex-start;
+    }
+    .speaker-headshot {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--color-gray-200);
+    }
+    .speaker-headshot-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      font-size: 1.1rem;
+      letter-spacing: 0.05em;
+    }
+    .speaker-info { min-width: 0; }
+    .speaker-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 0.15rem;
+      color: var(--color-text-heading);
+    }
+    .speaker-name-link {
+      color: inherit;
+      text-decoration: none;
+    }
+    .speaker-name-link:hover { text-decoration: underline; }
+    .speaker-subline {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      margin: 0 0 0.4rem;
+    }
+    .speaker-bio {
+      font-size: 0.875rem;
+      color: var(--color-text);
+      margin: 0;
+      line-height: 1.45;
+    }
+
     /* Sponsors Section */
     .sponsors-grid {
       display: grid;
@@ -529,6 +584,9 @@
       <p>The event you're looking for doesn't exist or has been removed.</p>
       <a href="/events" class="btn btn-primary">View All Events</a>
     </div>
+    <div id="draftBanner" style="display: none; background: var(--color-warning-100, #fef3c7); border: 1px solid var(--color-warning-300, #fcd34d); color: var(--color-warning-800, #92400e); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;">
+      <strong>Draft preview</strong> — this event is not yet published. Only admins can see this page. Set status to <em>Published</em> in <a href="/admin/events" style="color: inherit; text-decoration: underline;">admin → events</a> to make it public.
+    </div>
     <div id="content" style="display: none;"></div>
   </div>
 
@@ -543,6 +601,7 @@
         const data = await res.json();
         const event = data.event;
         const sponsors = data.sponsors || [];
+        const speakers = data.speakers || [];
         const registrationCount = data.registration_count || 0;
         const industryGathering = data.industry_gathering || null;
         const myRegistration = data.my_registration || null;
@@ -552,8 +611,11 @@
         // Update meta tags
         updateMetaTags(event);
 
-        renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration);
+        renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration, speakers);
 
+        if (data.draft_preview) {
+          document.getElementById('draftBanner').style.display = 'block';
+        }
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
       } catch (error) {
@@ -583,7 +645,7 @@
       }
     }
 
-    function renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration) {
+    function renderEvent(event, sponsors, registrationCount, industryGathering, myRegistration, speakers = []) {
       const startDate = new Date(event.start_time);
       const endDate = event.end_time ? new Date(event.end_time) : null;
       const eventTimezone = event.timezone || 'America/New_York';
@@ -732,6 +794,37 @@
           <div class="event-section">
             <h2 class="section-title">About This Event</h2>
             <div class="event-description">${renderDescription(event.description)}</div>
+          </div>
+        `;
+      }
+
+      // Speakers
+      if (speakers.length > 0) {
+        html += `
+          <div class="event-section">
+            <h2 class="section-title">Speakers</h2>
+            <div class="speakers-grid">
+              ${speakers.map(sp => {
+                const initials = (sp.name || '').split(/\s+/).map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
+                const subline = [sp.title, sp.company].filter(Boolean).map(escapeHtml).join(' · ');
+                const headshot = sp.headshot_url
+                  ? `<img src="${escapeHtml(sp.headshot_url)}" alt="${escapeHtml(sp.name)}" class="speaker-headshot">`
+                  : `<div class="speaker-headshot speaker-headshot-fallback">${escapeHtml(initials || '·')}</div>`;
+                const nameEl = sp.link_url
+                  ? `<a href="${escapeHtml(sp.link_url)}" target="_blank" rel="noopener noreferrer" class="speaker-name-link">${escapeHtml(sp.name)}</a>`
+                  : `<span>${escapeHtml(sp.name)}</span>`;
+                return `
+                  <div class="speaker-card">
+                    ${headshot}
+                    <div class="speaker-info">
+                      <h3 class="speaker-name">${nameEl}</h3>
+                      ${subline ? `<p class="speaker-subline">${subline}</p>` : ''}
+                      ${sp.bio ? `<p class="speaker-bio">${escapeHtml(sp.bio)}</p>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
           </div>
         `;
       }
@@ -1008,10 +1101,13 @@
     }
 
     function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     /**

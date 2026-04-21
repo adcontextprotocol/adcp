@@ -950,6 +950,33 @@ describe('session state', () => {
       expect(key).toBe('open:default');
     });
 
+    it('falls back to plans[0].brand.domain for sync_plans-style requests', () => {
+      const key = sessionKeyFromArgs(
+        { plans: [{ plan_id: 'p1', brand: { domain: 'acme.example' } }] },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('prefers top-level brand over plans[0]', () => {
+      const key = sessionKeyFromArgs(
+        {
+          brand: { domain: 'acme.example' },
+          plans: [{ plan_id: 'p1', brand: { domain: 'other.example' } }],
+        },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('returns open:default when plans is empty or brand is malformed', () => {
+      expect(sessionKeyFromArgs({ plans: [] }, 'open')).toBe('open:default');
+      expect(sessionKeyFromArgs({ plans: [{}] }, 'open')).toBe('open:default');
+      expect(
+        sessionKeyFromArgs({ plans: [{ brand: { domain: 'bad domain!' } }] }, 'open'),
+      ).toBe('open:default');
+    });
+
     it('falls back to open mode when training mode has no userId', () => {
       const key = sessionKeyFromArgs(
         { account: { brand: { domain: 'test.example' }, operator: 'test.example' } },
@@ -5749,6 +5776,94 @@ describe('governance creative_services purchase type', () => {
     expect(creativeAction).toBeDefined();
     expect(creativeAction!.committed).toBe(5000);
     expect(creativeAction!.seller_reference).toBe('creative_order_001');
+  });
+});
+
+describe('create_content_standards input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns INVALID_INPUT when scope is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is an empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: [] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope is an array (not an object)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: [],
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when no policy/policies/registry_policy_ids provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/policy|policies|registry_policy_ids/i);
+  });
+
+  it('creates standards when called with legacy policy string', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'], languages_any: ['en'] },
+      policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with spec-shape policies array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      policies: [
+        { policy_id: 'no_violence', policy_categories: ['brand_safety'], enforcement: 'must', policy: 'No violent imagery' },
+      ],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with registry_policy_ids only', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      registry_policy_ids: ['shared_brand_safety_v1'],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
   });
 });
 

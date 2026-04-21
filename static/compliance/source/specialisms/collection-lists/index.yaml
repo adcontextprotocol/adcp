@@ -116,7 +116,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "novamotors.example"
+            operator: "pinnacle-agency.example"
           brand:
             domain: "novamotors.example"
           name: "Nova Motors approved programs"
@@ -183,7 +183,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "novamotors.example"
+            operator: "pinnacle-agency.example"
           name_contains: "Nova Motors"
 
           context:
@@ -222,7 +222,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "novamotors.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "collection_lists--get_collection_list"
@@ -272,7 +272,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "novamotors.example"
+            operator: "pinnacle-agency.example"
           base_collections:
             - selection_type: "distribution_ids"
               identifiers:
@@ -330,7 +330,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "novamotors.example"
+            operator: "pinnacle-agency.example"
 
           idempotency_key: "$generate:uuid_v4#collection_lists_delete_list_delete_collection_list"
           context:

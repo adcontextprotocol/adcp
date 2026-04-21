@@ -116,8 +116,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -176,12 +176,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K total budget. Adults 25-54, US and Canada. Looking for a balanced plan across CTV, online video, and display."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_proposal_mode--get_products_brief"
@@ -250,12 +248,10 @@ phases:
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_proposal_mode--get_products_refine"
@@ -317,12 +313,12 @@ phases:
           - valid_actions: creative sync, pause, get_delivery
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           proposal_id: "balanced_reach_q2"
           total_budget: 50000
           start_time: "2026-04-01T00:00:00Z"
@@ -331,6 +327,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_proposal_mode_accept_proposal_create_media_buy"
           context:
             correlation_id: "sales_proposal_mode--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -412,8 +411,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -424,6 +423,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
                   mime_type: "video/mp4"
             - creative_id: "video_15s_trail_pro"
               name: "Trail Pro 3000 - 15s Online Video"
@@ -434,6 +436,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-15s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 15000
                   mime_type: "video/mp4"
 
           idempotency_key: "$generate:uuid_v4#sales_proposal_mode_creative_sync_sync_creatives"
@@ -482,10 +487,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_proposal"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

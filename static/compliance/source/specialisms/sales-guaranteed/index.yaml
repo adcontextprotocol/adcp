@@ -125,8 +125,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -184,12 +184,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Guaranteed premium video on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US only. Need completion rate SLA."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_guaranteed--get_products_brief"
@@ -259,12 +257,12 @@ phases:
           value is not in MediaBuy.status — IO review is modelled at the task layer only.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -284,6 +282,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_create_buy_submitted_create_media_buy"
           context:
             correlation_id: "sales_guaranteed--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -331,10 +332,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_guaranteed"
+            - "$context.media_buy_id"
 
           context:
             correlation_id: "sales_guaranteed--get_media_buys_active"
@@ -383,8 +384,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -395,6 +396,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
                   mime_type: "video/mp4"
 
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_creative_sync_sync_creatives"
@@ -443,10 +447,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_guaranteed"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

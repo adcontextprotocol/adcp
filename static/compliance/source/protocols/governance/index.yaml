@@ -105,8 +105,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -148,8 +148,8 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "https://governance.pinnacle-agency.example"
                   authentication:
@@ -206,7 +206,7 @@ phases:
           plans:
             - plan_id: "gov_acme_q2_2027"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
               budget:
                 total: 50000
@@ -273,11 +273,11 @@ phases:
           buying_mode: "brief"
           brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
           brand:
-            domain: "acmeoutdoor.com"
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "media_buy_governance_escalation--get_products_brief"
@@ -338,13 +338,17 @@ phases:
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           binding:
             type: "media_buy"
             account:
               brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
             total_budget: 50000
             packages:
               - product_id: "sports_ctv_q2"
@@ -405,14 +409,18 @@ phases:
           - approved_at: timestamp of approval
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_escalated"
           binding:
             type: "media_buy"
             account:
               brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
             total_budget: 50000
             packages:
               - product_id: "sports_ctv_q2"
@@ -420,7 +428,7 @@ phases:
               - product_id: "outdoor_video_q2"
                 budget: 20000
           human_approval:
-            approved_by: "jsmith@pinnacle-agency.com"
+            approved_by: "jsmith@pinnacle-agency.example"
             approved_at: "2026-04-03T14:22:00Z"
             conditions:
               - "Weekly delivery reporting required"
@@ -484,10 +492,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           brand:
-            domain: "acmeoutdoor.com"
+            domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_q2_approved"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
@@ -506,6 +514,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_create_buy_with_governance_create_media_buy"
           context:
             correlation_id: "media_buy_governance_escalation--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -546,11 +557,15 @@ phases:
           - status: recorded
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
             type: "media_buy_created"
-            media_buy_id: "mb_acme_q2_2026"
+            media_buy_id: "$context.media_buy_id"
             total_budget: 50000
             packages:
               - product_id: "sports_ctv_q2"
@@ -606,6 +621,10 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
 
           context:

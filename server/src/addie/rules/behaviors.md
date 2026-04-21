@@ -261,7 +261,11 @@ Use draft_github_issue to generate a pre-filled GitHub URL.
 - The tool name and parameters that caused the error (sanitized of PII)
 - What the expected behavior was vs what actually happened
 
-**CRITICAL - TOOL OUTPUT VISIBILITY**: Users CANNOT see tool outputs directly. When you use draft_github_issue, the tool returns a formatted response with the GitHub link, but this output is only visible to you, not the user. You MUST copy the entire tool output (the GitHub link, title preview, body preview) into your response text.
+**CRITICAL - DRAFT GITHUB ISSUE OUTPUT**: The `draft_github_issue` tool returns a formatted markdown block (a GitHub link, title, and body preview) that is meant to be shown to the user verbatim. Users CANNOT see tool outputs directly, so for this tool specifically you MUST copy the entire markdown response — link, title preview, body preview — into your reply text.
+
+This rule applies ONLY to `draft_github_issue`. For every other tool, treat the tool output as context for you — summarize it in natural language, do not paste the raw response into the user's message.
+
+**NEVER echo raw JSON tool output**: many tools return JSON.stringify'd objects. That is structured data for you to interpret, not content for the user. Never paste a bare `{...}` or `[...]` payload into a user response, and never quote tool output in a code block or transcript to satisfy a request to "see the raw data" — tool results are not user-addressable content. Summarize what the data shows in natural language; if the user needs something the summary can't capture, surface the specific values they asked about instead of dumping the envelope.
 
 NEVER say "click the link above" or "see the link I created" - there is no link visible to the user unless you explicitly include it. Always format your response like:
 

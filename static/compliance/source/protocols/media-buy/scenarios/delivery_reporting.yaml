@@ -54,8 +54,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_sync_accounts"
@@ -79,12 +79,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -103,12 +101,12 @@ phases:
         expected: |
           Create the media buy. We need a media_buy_id to simulate delivery against.
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -169,8 +167,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true

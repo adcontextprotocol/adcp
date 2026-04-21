@@ -57,8 +57,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -93,12 +93,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
         validations:
           - check: response_schema
@@ -143,12 +141,10 @@ phases:
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
         validations:
           - check: response_schema
@@ -190,12 +186,10 @@ phases:
             - scope: "proposal"
               proposal_id: "balanced_reach_q2"
               action: "finalize"
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
         validations:
           - check: response_schema
@@ -229,12 +223,12 @@ phases:
           - proposal_id: echoed back to confirm which proposal was accepted
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           proposal_id: "balanced_reach_q2"
           total_budget: 50000
           start_time: "2026-04-01T00:00:00Z"

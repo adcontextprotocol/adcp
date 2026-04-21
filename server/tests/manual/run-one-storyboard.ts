@@ -12,25 +12,6 @@ import { listAllComplianceStoryboards, runStoryboard, getComplianceCacheDir } fr
 import type { Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
 import { StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
-import { SingleAgentClient } from '@adcp/client';
-
-// See run-storyboards.ts for why this monkey-patch is necessary.
-const ProtoAny = SingleAgentClient.prototype as unknown as {
-  getRequestSchema: (t: string) => unknown;
-  validateRequest: (t: string, p: Record<string, unknown>) => void;
-};
-ProtoAny.validateRequest = function (taskType: string, params: Record<string, unknown>): void {
-  const schema = this.getRequestSchema(taskType) as { parse?: (p: unknown) => unknown } | null | undefined;
-  if (!schema || typeof schema.parse !== 'function') return;
-  try {
-    const { brand_manifest: _bm, buyer_ref: _br, ...rest } = params;
-    schema.parse(rest);
-  } catch (err) {
-    const issues = (err as { issues?: Array<{ path: Array<string|number>; message: string }> }).issues
-      ?.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') ?? String(err);
-    throw new Error(`Request validation failed for ${taskType}: ${issues}`);
-  }
-};
 
 const AUTH_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN ?? 'storyboard-diag-token';
 process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
@@ -59,7 +40,23 @@ function brandForStoryboard(s: Storyboard): StoryboardRunOptions['brand'] | unde
 }
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({
+  limit: '5mb',
+  verify: (req, _res, buf) => {
+    (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+  },
+}));
+app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  const suffix = req.path.replace(/^\/\.well-known\/oauth-protected-resource/, '') || '/';
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({
+    resource: `${proto}://${host}${suffix}`,
+    authorization_servers: [`${proto}://${host}/auth`],
+    bearer_methods_supported: ['header'],
+  });
+});
 app.use('/api/training-agent', createTrainingAgentRouter());
 const server = http.createServer(app);
 server.listen(0, '127.0.0.1', async () => {
@@ -78,6 +75,7 @@ server.listen(0, '127.0.0.1', async () => {
       replayStore: new InMemoryReplayStore(),
       revocationStore: new InMemoryRevocationStore(),
     },
+    request_signing: { transport: 'mcp' },
     ...(brand && { brand }),
   });
   console.log(JSON.stringify(result, null, 2));

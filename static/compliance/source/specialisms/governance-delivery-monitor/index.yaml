@@ -105,7 +105,7 @@ phases:
           plans:
             - plan_id: "gov_acme_delivery_monitor"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Delivery-phase governance with drift detection and rebalancing"
               budget:
                 total: 40000
@@ -165,13 +165,17 @@ phases:
           - monitoring: delivery phase governance is active
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           tool: "create_media_buy"
           payload:
             account:
               brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
             total_budget: 40000
             packages:
               - product_id: "sports_ctv_q2"
@@ -223,8 +227,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_acme_q2_2026"
           include_package_daily_breakdown: true
@@ -277,6 +281,10 @@ phases:
           - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"

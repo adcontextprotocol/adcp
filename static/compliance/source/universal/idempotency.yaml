@@ -37,6 +37,17 @@ narrative: |
   validates the supported: true behavior; sellers declaring supported: false
   MUST skip this storyboard (they have no replay window to test).
 
+  **Cache-growth defense (MUST, not yet runtime-graded).** Per
+  security.mdx bullet 8 on the idempotency section, sellers MUST apply per-agent
+  rate limits on idempotency-cache inserts and MUST return RATE_LIMITED when the
+  per-agent insert rate exceeds the configured ceiling. The recommended
+  first-deployment ceiling is 60 inserts/sec sustained per agent (3,600/min)
+  with burst allowance to 300/sec over rolling 10-second windows. This storyboard
+  does not yet drive the high-volume burst that would exercise the ceiling —
+  runtime grading is tracked as a follow-up once a burst-runner test-kit
+  contract is defined. Sellers SHOULD self-attest to this requirement until the
+  runtime phase lands.
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -112,6 +123,16 @@ phases:
       A create_media_buy request without idempotency_key MUST be rejected. The schema
       marks the field as required, so this is typically caught at validation time.
 
+      The reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating
+      tasks via `applyIdempotencyInvariant` + client-side shaping. Without an
+      explicit opt-out this vector would never reach the agent with a missing key
+      — the runner would inject one before dispatch, and the vector would silently
+      pass for every SDK-speaking agent regardless of enforcement. The step below
+      sets `omit_idempotency_key: true` so the runner skips both its own
+      invariant application and the SDK's auto-inject. Do not remove the flag:
+      without it, "certified" agents all carry an unverified assertion on this
+      vector.
+
     steps:
       - id: create_media_buy_missing_key
         title: "Missing idempotency_key returns INVALID_REQUEST"
@@ -125,6 +146,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_handling
         expect_error: true
+        omit_idempotency_key: true
         stateful: false
         expected: |
           Reject with:

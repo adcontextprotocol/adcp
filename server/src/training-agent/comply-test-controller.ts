@@ -1,13 +1,20 @@
 /**
- * Comply test controller for the training agent.
+ * Training-agent wrapper around the SDK's comply_test_controller.
  *
- * Implements the TestControllerStore interface from @adcp/client backed
- * by session state — state machine transition tables, delivery/budget
- * simulations, etc. Dispatch and error handling are local since the
- * SDK's handleTestControllerRequest is not publicly exported.
+ * The SDK owns the scenario dispatcher, response envelope, and per-scenario
+ * enum validation (`@adcp/client` exports `handleTestControllerRequest`,
+ * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
+ * adds the two things the SDK intentionally leaves to the seller: a sandbox
+ * gate on the top-level `account.sandbox` flag, and a per-request
+ * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
-import { TestControllerError } from '@adcp/client';
+import {
+  CONTROLLER_SCENARIOS,
+  TestControllerError,
+  enforceMapCap,
+  handleTestControllerRequest,
+} from '@adcp/client';
 import type { TestControllerStore } from '@adcp/client';
 import type {
   TrainingContext,
@@ -18,7 +25,6 @@ import type {
   ComplyBudgetSimulation,
 } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
-import { deriveStatus } from './task-handlers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -62,26 +68,7 @@ const SI_SESSION_TRANSITIONS: Record<string, string[]> = {
 
 const SI_SESSION_TERMINAL = new Set(['complete', 'terminated']);
 
-/**
- * Per-Map cap on `complyExtensions`. These Maps are keyed by caller-supplied
- * IDs (account_id, session_id, media_buy_id) and, since they are persisted
- * with the session, a sandbox caller could otherwise loop with fresh IDs
- * until the SDK's 5 MB session cap throws `PAYLOAD_TOO_LARGE` at flush —
- * which aborts the request after the response was sent. Cap here so the
- * rejection happens at the mutation site with a clear error code.
- */
-const MAX_COMPLY_ENTRIES_PER_MAP = 1000;
-
-function enforceComplyCap<V>(map: Map<string, V>, key: string, kind: string): void {
-  if (!map.has(key) && map.size >= MAX_COMPLY_ENTRIES_PER_MAP) {
-    throw new TestControllerError(
-      'INVALID_STATE',
-      `Too many ${kind} entries in this sandbox session (limit ${MAX_COMPLY_ENTRIES_PER_MAP}). Clear the session or reuse an existing id.`,
-    );
-  }
-}
-
-// ── Session extensions ────────────────────────────────────────────
+// ── Session accessors (used by other handlers) ──────────────────────
 
 /** Get delivery simulation data for a media buy (used by get_media_buy_delivery). */
 export function getDeliverySimulation(session: SessionState, mediaBuyId: string): ComplyDeliveryAccumulator | undefined {
@@ -154,7 +141,7 @@ function createStore(session: SessionState): TestControllerStore {
       }
 
       validateTransition(ACCOUNT_TRANSITIONS, ACCOUNT_TERMINAL, prev, status, 'account');
-      enforceComplyCap(ext.accountStatuses, accountId, 'account status');
+      enforceMapCap(ext.accountStatuses, accountId, 'account statuses');
       ext.accountStatuses.set(accountId, status);
       return { success: true, previous_state: prev, current_state: status, message: `Account ${accountId} transitioned from ${prev} to ${status}` };
     },
@@ -206,7 +193,7 @@ function createStore(session: SessionState): TestControllerStore {
         if (status === 'terminated' && !terminationReason) {
           throw new TestControllerError('INVALID_PARAMS', 'termination_reason is required when status = terminated');
         }
-        enforceComplyCap(ext.siSessions, sessionId, 'si session');
+        enforceMapCap(ext.siSessions, sessionId, 'si sessions');
         ext.siSessions.set(sessionId, { status, terminationReason });
         return { success: true, previous_state: 'active', current_state: status, message: `Session ${sessionId} transitioned from active to ${status}` };
       }
@@ -245,7 +232,7 @@ function createStore(session: SessionState): TestControllerStore {
       const ext = session.complyExtensions;
       let cumulative = ext.deliverySimulations.get(mediaBuyId);
       if (!cumulative) {
-        enforceComplyCap(ext.deliverySimulations, mediaBuyId, 'delivery simulation');
+        enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
         cumulative = {
           impressions: 0,
           clicks: 0,
@@ -316,7 +303,7 @@ function createStore(session: SessionState): TestControllerStore {
       const computedSpend = Math.round(budgetAmount * (spendPercentage / 100) * 100) / 100;
 
       const ext = session.complyExtensions;
-      enforceComplyCap(ext.budgetSimulations, entityId, 'budget simulation');
+      enforceMapCap(ext.budgetSimulations, entityId, 'budget simulations');
       ext.budgetSimulations.set(entityId, {
         spendPercentage,
         computedSpend: { amount: computedSpend, currency },
@@ -338,6 +325,11 @@ function createStore(session: SessionState): TestControllerStore {
 
 // ── Tool definition ───────────────────────────────────────────────
 
+const SCENARIO_ENUM = ['list_scenarios', ...Object.values(CONTROLLER_SCENARIOS)] as const;
+
+// JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
+// top-level `account` (sandbox gate) and `brand` (session keying) — both
+// exempt extensions per the SDK's documented wrapper pattern.
 export const COMPLY_TEST_CONTROLLER_TOOL = {
   name: 'comply_test_controller',
   description: 'Forces seller-side state transitions that a buyer agent cannot trigger directly — creative review outcomes, account status changes, delivery data, budget consumption. Sandbox only (requires account.sandbox: true). NOT for normal buyer operations. Call with scenario: "list_scenarios" first to see available scenarios and required params.',
@@ -348,15 +340,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
     properties: {
       scenario: {
         type: 'string',
-        enum: [
-          'list_scenarios',
-          'force_creative_status',
-          'force_account_status',
-          'force_media_buy_status',
-          'force_session_status',
-          'simulate_delivery',
-          'simulate_budget_spend',
-        ],
+        enum: [...SCENARIO_ENUM],
         description: 'The seller-side transition to trigger.',
       },
       params: {
@@ -369,90 +353,6 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
     required: ['scenario'],
   },
 };
-
-// ── Scenario dispatch ─────────────────────────────────────────────
-
-const SCENARIO_MAP: Array<[keyof TestControllerStore, string]> = [
-  ['forceCreativeStatus', 'force_creative_status'],
-  ['forceAccountStatus', 'force_account_status'],
-  ['forceMediaBuyStatus', 'force_media_buy_status'],
-  ['forceSessionStatus', 'force_session_status'],
-  ['simulateDelivery', 'simulate_delivery'],
-  ['simulateBudgetSpend', 'simulate_budget_spend'],
-];
-
-function listScenarios(store: TestControllerStore): string[] {
-  return SCENARIO_MAP
-    .filter(([method]) => typeof store[method] === 'function')
-    .map(([, scenario]) => scenario);
-}
-
-async function dispatch(store: TestControllerStore, input: Record<string, unknown>): Promise<object> {
-  const scenario = input.scenario as string;
-  if (!scenario) {
-    return { success: false, error: 'INVALID_PARAMS', error_detail: 'Missing required field: scenario' };
-  }
-
-  if (scenario === 'list_scenarios') {
-    return { success: true, scenarios: listScenarios(store) };
-  }
-
-  const params = input.params as Record<string, unknown> | undefined;
-  try {
-    switch (scenario) {
-      case 'force_creative_status':
-        if (!store.forceCreativeStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.creative_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_creative_status requires params.creative_id and params.status' };
-        return await store.forceCreativeStatus(params.creative_id as string, params.status as never, params.rejection_reason as string | undefined);
-
-      case 'force_account_status':
-        if (!store.forceAccountStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.account_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_account_status requires params.account_id and params.status' };
-        return await store.forceAccountStatus(params.account_id as string, params.status as never);
-
-      case 'force_media_buy_status':
-        if (!store.forceMediaBuyStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.media_buy_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_media_buy_status requires params.media_buy_id and params.status' };
-        return await store.forceMediaBuyStatus(params.media_buy_id as string, params.status as never, params.rejection_reason as string | undefined);
-
-      case 'force_session_status': {
-        if (!store.forceSessionStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.session_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_session_status requires params.session_id and params.status' };
-        const validSessionStatuses = ['complete', 'terminated'];
-        if (!validSessionStatuses.includes(params.status as string)) return { success: false, error: 'INVALID_PARAMS', error_detail: `Invalid session status: ${params.status}` };
-        return await store.forceSessionStatus(params.session_id as string, params.status as 'complete' | 'terminated', params.termination_reason as string | undefined);
-      }
-
-      case 'simulate_delivery':
-        if (!store.simulateDelivery) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.media_buy_id) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_delivery requires params.media_buy_id' };
-        return await store.simulateDelivery(params.media_buy_id as string, {
-          impressions: params.impressions as number | undefined,
-          clicks: params.clicks as number | undefined,
-          reported_spend: params.reported_spend as { amount: number; currency: string } | undefined,
-          conversions: params.conversions as number | undefined,
-        });
-
-      case 'simulate_budget_spend':
-        if (!store.simulateBudgetSpend) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (params?.spend_percentage === undefined || params?.spend_percentage === null) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_budget_spend requires params.spend_percentage' };
-        if (!params?.account_id && !params?.media_buy_id) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_budget_spend requires params.account_id or params.media_buy_id' };
-        return await store.simulateBudgetSpend({
-          account_id: params.account_id as string | undefined,
-          media_buy_id: params.media_buy_id as string | undefined,
-          spend_percentage: params.spend_percentage as number,
-        });
-
-      default:
-        return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'Unrecognized scenario name' };
-    }
-  } catch (err) {
-    if (err instanceof TestControllerError) {
-      return { success: false, error: err.code, error_detail: err.message, ...(err.currentState !== undefined && { current_state: err.currentState }) };
-    }
-    return { success: false, error: 'INTERNAL_ERROR', error_detail: 'An unexpected error occurred in the test controller store' };
-  }
-}
 
 // ── Main handler ──────────────────────────────────────────────────
 
@@ -469,6 +369,5 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const store = createStore(session);
-  return dispatch(store, args as Record<string, unknown>);
+  return handleTestControllerRequest(store, args as Record<string, unknown>);
 }
-

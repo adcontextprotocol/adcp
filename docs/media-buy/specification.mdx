@@ -125,17 +125,22 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
 - Seller-initiated rejection (from `pending_creatives` or `pending_start`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
 - Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
-- Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
+- Sales agents MAY reject buyer cancellation of a non-terminal media buy with error code `NOT_CANCELLABLE` (e.g., when the seller contractually refuses mid-flight cancellation)
+- When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
+- All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Rejection (`rejected` status) is only valid from `pending_creatives` or `pending_start`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
 - Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
+- **Creative assignments are released on buy rejection or cancellation; the creatives themselves remain in the creative library.** When a media buy transitions to `rejected` or `canceled`, all package-creative assignments on that media buy are released. The creatives persist in the creative library per [assignment state and creative state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate) and MAY be referenced by `creative_id` in a subsequent `create_media_buy` or `sync_creatives` call, regardless of submission path (inline creatives submitted on the rejected/canceled `create_media_buy` enter the library on the same lifecycle as `sync_creatives` uploads).
+- **Creative review is independent of buy outcome.** Sales agents MUST NOT implicitly reject a creative because its containing buy was rejected; a creative rejection MUST be a deliberate review decision with its own `rejection_reason`. If the buy was rejected because a creative violated content policy, the sales agent MAY reject that creative — but only via the normal review path with its own `rejection_reason`; the buy's `rejected` status is not itself sufficient.
+- **Observability of released assignments.** The media-buy-level `canceled` or `rejected` transition (surfaced in the buy's `history` and in the webhook notifications required above) IS the audit record for all its released assignments; buyers MUST NOT rely on per-assignment diff observability. Released assignments no longer appear in `get_media_buys` responses for that buy. Buyers confirming reusability SHOULD call `list_creatives` to verify the creative is still in the library and observe its current status. Package-scoped deadlines (`creative_deadline`) on the prior package have no bearing on the creative's eligibility for a new buy.
+- **Retention.** Sales agents SHOULD retain released creatives in the library for at least 90 days after the last assignment is released. A normative retention floor is specified in the creative retention contract tracked under [#2260](https://github.com/adcontextprotocol/adcp/issues/2260); until that contract lands, buyers relying on long-horizon reuse SHOULD verify persistence via `list_creatives` before referencing a released creative on a new buy.
 
 **Package-level lifecycle:**
 
 Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_DEADLINE_EXCEEDED`. When absent, the media buy's `creative_deadline` applies. `CREATIVE_REJECTED` is reserved for content policy failures.
-- Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active.
+- Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active. Creative assignments on the canceled package are released per the media-buy-level rule above; creatives assigned to other active packages on the same media buy are unaffected.
 - Sales agents MUST retain delivery data for canceled packages. When `include_snapshot` is true, sales agents SHOULD return a final snapshot reflecting delivery state at the time of cancellation.
 - When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sellers that support mid-flight package additions advertise `add_packages` in `valid_actions` — the buyer can add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
 
@@ -251,10 +256,11 @@ Modify an existing media buy's budget, targeting, or settings.
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
-- Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
+- When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
+- All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Orchestrators MAY cancel a media buy by setting `canceled: true` with optional `cancellation_reason`
 - Sales agents MUST transition the media buy to `canceled` status upon accepting cancellation
-- Sales agents MAY reject cancellation with error code `NOT_CANCELLABLE`
+- Sales agents MAY reject cancellation of a non-terminal media buy with error code `NOT_CANCELLABLE`
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
 - Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_DEADLINE_EXCEEDED`
 - Orchestrators MAY add new packages to an existing media buy via `new_packages`. Sales agents that support this MUST advertise `add_packages` in `valid_actions`. Sales agents that do not support adding packages MUST reject with `UNSUPPORTED_FEATURE`.

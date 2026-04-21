@@ -720,13 +720,14 @@ Closed list — governance agents MUST NOT extend or shrink it; any addition is 
 - `committedBudget` — derived from downstream `check_governance` / `report_plan_outcome` activity
 - `committedByType` — derived from the same activity
 
-None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields.
+None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields. Implementations that discover additional GA-internal fields on their persisted plan state beyond this list MUST treat those fields as **IN the preimage** until the profile version bumps — fail-safe toward inclusion, not exclusion. The "anything that looks like bookkeeping → strip" shortcut silently diverges every implementation that guesses differently; the safe default is "if it is not on the closed list, it is part of the hash."
 
 All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
 
 - **`ext` is part of the preimage.** Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext` on a plan; a value that changes between re-syncs invalidates every outstanding governance_context token for the plan even when the buyer's declared intent is unchanged (consistent with idempotency's treatment of `ext`).
 - **`delegations[].expires_at`** is declared intent and SHOULD be stable across re-syncs of the same plan; regenerating it from "now + N days" on every sync causes hash churn.
 - **Array order** in `policy_ids`, `policy_categories`, `custom_policies`, `approved_sellers`, `delegations`, `countries`, `regions`, `channels.required`, `channels.allowed` is not semantically meaningful, but JCS preserves it. Buyers SHOULD emit these in stable order across re-syncs.
+- **JCS does not Unicode-normalize.** Per RFC 8785 §3.2.5, JCS preserves strings as-supplied — visually-indistinguishable Unicode variants (Latin `a` vs Cyrillic `а`, NFC-vs-NFD compositions, confusable homoglyphs) produce distinct bytes and therefore distinct hashes. `plan_hash` detects this divergence correctly at the cryptographic layer, but the plan-semantics layer does not: two plans whose `policy_ids` or `policy_categories` differ only by a homoglyph substitution authorize different enforcement outcomes at the governance agent and at downstream consumers. Buyers and governance agents SHOULD validate `policy_ids` and `policy_categories` against a canonical allowlist server-side before emitting or evaluating them. This is a plan-content rule, not a hashing rule — `plan_hash` integrity is intact either way; the allowlist is what prevents a homograph substitution from producing a different authorization decision.
 
 #### Governance-agent obligations
 
@@ -752,8 +753,6 @@ Sellers persist and forward `governance_context` verbatim and perform the [15-st
 4. Decode the entry-level `plan_hash` to 32 raw bytes and byte-compare to the claim. A mismatch means the retained audit record disagrees with the signed token — either the token was tampered with or the record was, and the governance agent's integrity is in question.
 5. Optionally: recompute `plan_hash` from the governance agent's retained per-revision plan record (if the auditor has authenticated access to the governance agent's revision store) and byte-compare again. A mismatch here means the governance agent's own store was tampered with between signing and audit.
 
-Auditors MUST use constant-time byte comparison (e.g., `crypto.timingSafeEqual` in Node) on all three comparisons.
-
 **Buyer-side compliance recipe.** A buyer whose own tooling wants to verify its governance agent is producing honest tokens:
 
 1. Observe `governance_context` tokens flowing through the protocol envelope to sellers (the buyer already has these; no retrieval needed).
@@ -763,9 +762,15 @@ Auditors MUST use constant-time byte comparison (e.g., `crypto.timingSafeEqual` 
 
 This path catches a misbehaving governance vendor without involving the seller, the auditor, or the protocol. The data is already on the buyer's side.
 
+**Constant-time comparison.** All three verifier types — governance-agent self-integrity, auditor, and buyer-side compliance — SHOULD use constant-time byte comparison (e.g., `crypto.timingSafeEqual` in Node, `hmac.compare_digest` in Python, `crypto/subtle.ConstantTimeCompare` in Go) when comparing `plan_hash` digests. Timing side channels on a SHA-256-length comparison are not practically exploitable today; the rule is cheap insurance against future deployments that re-use the comparison code on shorter digests or against adversaries with co-tenancy on the verifier host.
+
+#### Privacy considerations
+
+`plan_hash` changes across re-syncs reveal that the plan mutated, even without revealing *what* mutated. Parties retaining tokens long-term (sellers forwarding `governance_context` verbatim, auditors, regulators) can infer plan-mutation cadence from the sequence of distinct hashes they observe for a given `plan_id`. For most deployments this is acceptable or desired — mutation-cadence is part of the audit signal. Sensitive governance deployments where mutation frequency itself is commercially or operationally sensitive (e.g., a buyer does not want a seller to infer re-planning cadence across its campaign portfolio) SHOULD factor this into token-retention policy: shorter seller-side retention windows for `governance_context`, or periodic rotation of the plan's `jti` namespace to break cross-token linkability.
+
 #### Reference test vectors
 
-Ten vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) pin the canonicalization bit-exactly: a minimal plan, a plan exercising every optional field, a bookkeeping-stripped case (GA-internal fields present on the stored plan but stripped before hashing, yielding the same hash as the bookkeeping-absent equivalent), paired vectors proving that omitted-vs-explicit-null, array order in `policy_categories`, and rotating `ext.trace_id` all produce distinct hashes, and a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5. Each vector records the preimage, the canonical JCS bytes, the SHA-256 hex digest, and the final `plan_hash` claim value. Governance agents and auditor verifiers MUST reproduce these hashes bit-exactly.
+Eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) pin the canonicalization bit-exactly: a minimal plan, a plan exercising every optional field, a bookkeeping-stripped case (GA-internal fields present on the stored plan but stripped before hashing, yielding the same hash as the bookkeeping-absent equivalent), paired vectors proving that omitted-vs-explicit-null, array order in `policy_categories`, and rotating `ext.trace_id` all produce distinct hashes, a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5, and a numeric-canonicalization case with fractional percentages that pins library choice over hand-rolled `JSON.stringify + key sort`. Each vector records the preimage, the canonical JCS bytes, the SHA-256 hex digest, and the final `plan_hash` claim value. Governance agents and auditor verifiers MUST reproduce these hashes bit-exactly.
 
 ### Governance phases
 

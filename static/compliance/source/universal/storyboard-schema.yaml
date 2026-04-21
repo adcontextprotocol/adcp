@@ -45,6 +45,57 @@
 # prerequisites:
 #   description: string (what must be true before running this storyboard)
 #   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml")
+#   controller_seeding: boolean (optional — when true, the runner auto-injects a
+#     fixtures phase that seeds every entry in the storyboard's top-level
+#     `fixtures:` block via `comply_test_controller` before the main phases run.
+#     Storyboards that hardcode fixture IDs in sample_request payloads SHOULD
+#     declare this and populate `fixtures:`. Missing `seed_*` support on the
+#     agent grades the storyboard `not_applicable`, not failed.)
+#
+# fixtures: object (optional — declarative prerequisite state the runner seeds via
+#   comply_test_controller before executing phases. Structure:
+#     fixtures:
+#       products:
+#         - product_id: "test-product"
+#           delivery_type: "non_guaranteed"
+#           pricing_options:
+#             - pricing_option_id: "test-pricing"
+#               pricing_model: "cpm"
+#       creatives:
+#         - creative_id: "campaign_hero_video"
+#           status: "approved"
+#           format_id: { id: "video_30s" }
+#       plans:
+#         - plan_id: "gov_acme_q2_2027"
+#           budget: { total: 30000, currency: "USD" }
+#       media_buys:
+#         - media_buy_id: "mb_acme_q2_2026_auction"
+#           status: "active"
+#   Each top-level key maps to a seed_* scenario (products → seed_product,
+#   pricing_options → seed_pricing_option, creatives → seed_creative,
+#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key dependency DAG
+#   the runner MUST honor when auto-seeding:
+#
+#     product ──┬─→ pricing_option
+#               ├─→ plan
+#               └─→ media_buy
+#     creative ────→ media_buy
+#     plan ────────→ media_buy
+#
+#   Products seed before pricing_options and plans that reference them;
+#   products, creatives, and plans all seed before media_buys that reference
+#   them. See docs/building/implementation/comply-test-controller.mdx for the
+#   full seeding semantics and per-scenario param shapes.
+#
+#   Storyboards SHOULD prefer the `fixtures:` block over hardcoded sample_request
+#   IDs whose existence the runner cannot verify.
+#
+#   Hardcoded-literal fixtures in sample_request (e.g., product_id: "test-product"
+#   without a matching `fixtures:` entry) are permitted through 3.x for existing
+#   storyboards that pre-seed matching IDs out of band, and SHOULD migrate to the
+#   `fixtures:` block before 4.0. New storyboards authored after this spec edit
+#   MUST NOT hardcode fixture IDs without a corresponding `fixtures:` block or a
+#   test-kit substitution.)
 #
 # phases: array of Phase objects
 #
@@ -85,12 +136,36 @@
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
 #
+# omit_idempotency_key: boolean (optional — when true on a mutating-task step,
+#   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
+#   `skipIdempotencyAutoInject` so the request reaches the agent WITHOUT an
+#   `idempotency_key`. Use for missing-key rejection vectors — without this flag
+#   the SDK auto-injects a key and the agent never sees the missing-key path.
+#   Applies only to mutating tasks (create/update/cancel); ignored on reads.)
+#
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
 #   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
 #   Storyboard authors should prefer expressing gating through step ordering when possible.
+#
+# context_outputs: array of ContextOutput objects (optional — capture values from
+#   this step's response into the runner's context accumulator so later steps can
+#   reference them via $context.<name>). Each entry:
+#     - name: string (the context variable to populate; MUST be unique within the
+#             storyboard run)
+#       path: string (JSON path against this step's response body, e.g.
+#             "media_buy_id", "accounts[0].account_id", "plans[0].plan_id")
+#   Runner behavior:
+#   - Captures occur AFTER the step's validations pass. A failed step MUST NOT
+#     populate the context accumulator — downstream $context.<name> references
+#     resolve to an unresolved_substitution error, which grades the dependent
+#     step as failed rather than the storyboard passing on fabricated state.
+#   - Paths that do not resolve in the response body are a runner-side grading
+#     failure on THIS step (capture_path_not_resolvable), not the downstream
+#     reader — the capture declared a contract that the response did not meet.
+#   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #
 # validations: array of Validation objects (optional)
 #
@@ -99,6 +174,8 @@
 # optional: boolean (default false — see semantics below)
 # skip_if: string (expression — phase is skipped when the expression evaluates to true,
 #                  e.g., "!test_kit.auth.api_key")
+# branch_set: object (optional — first-class declaration of branch-set membership;
+#                     see "Branch sets" section below)
 #
 # Optional phase semantics:
 #   - An `optional: true` phase always runs unless `skip_if` evaluates to true.
@@ -110,6 +187,116 @@
 #     when no optional path succeeded.
 #   - A non-optional phase that fails fails the storyboard unconditionally.
 #
+# Branch sets:
+#   A branch set is a group of peer optional phases exercising mutually
+#   exclusive agent behaviors for the same trigger — e.g., an agent that
+#   rejects a past start_time vs. an agent that accepts-and-adjusts. A
+#   later `assert_contribution` step over the set's `branch_set.id` fails
+#   the storyboard only when NO branch contributed.
+#
+#   Minimal example — two peer phases and the assertion that grades them:
+#
+#     phases:
+#       - id: past_start_reject_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_reject
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect INVALID_REQUEST ...
+#
+#       - id: past_start_adjust_path
+#         optional: true
+#         branch_set:
+#           id: past_start_handled
+#           semantics: any_of
+#         steps:
+#           - id: create_buy_past_start_adjust
+#             task: create_media_buy
+#             contributes_to: past_start_handled
+#             # ... expect media_buy_id ...
+#
+#       - id: past_start_enforcement
+#         steps:
+#           - task: assert_contribution
+#             validations:
+#               - check: any_of
+#                 allowed_values: [past_start_handled]
+#
+#   New storyboards MUST declare branch-set membership with a `branch_set:`
+#   object. The implicit-detection fallback below exists only so pre-#2633
+#   storyboards keep running unchanged.
+#
+#   `branch_set:` field shape:
+#     - id:        non-empty string. MUST equal the `contributes_to` value
+#                  on every contributing step inside the phase and MUST
+#                  appear in the `assert_contribution` step's any_of
+#                  allowed_values.
+#     - semantics: `any_of`. No other value is supported today.
+#
+#   `contributes_to:` on the contributing step is still REQUIRED — the
+#   phase-level `branch_set:` declares membership but does not replace
+#   per-step contribution signalling. Runners accumulate contributions at
+#   the step level, not the phase level.
+#
+#   Authoring rules (enforced by `lint:storyboard-branch-sets`):
+#     - A phase with `branch_set:` MUST set `optional: true`. A
+#       non-optional phase's failure would fail the storyboard
+#       unconditionally and defeat the any_of semantics.
+#     - All phases in a storyboard sharing the same `branch_set.id` MUST
+#       share the same `branch_set.semantics`.
+#     - A storyboard with a `branch_set:` declaration MUST contain an
+#       `assert_contribution` step whose `validations[].check: any_of`
+#       includes the `branch_set.id` in `allowed_values`.
+#     - Any step inside a branch-set phase that declares `contributes_to`
+#       MUST use the value `<branch_set.id>`.
+#     - If any phase declares `branch_set: { id: X, ... }`, every optional
+#       phase in the same storyboard whose steps contribute to X MUST also
+#       declare `branch_set: { id: X, ... }`. A mixed-mode storyboard (one
+#       peer declared, one peer relying on implicit detection) would be
+#       graded as a single-member set by a runner preferring the explicit
+#       declaration.
+#
+#   Runner grading:
+#     Runners MUST prefer the explicit `branch_set:` declaration when
+#     present and fall back to implicit detection otherwise (see below).
+#     - If at least one peer branch contributed the `branch_set.id`, the
+#       non-contributing branch's failing steps MUST be graded with skip
+#       reason `peer_branch_taken` (see
+#       runner-output-contract.yaml > skip_result.reasons.peer_branch_taken).
+#       They MUST NOT surface as `failed` in the storyboard summary, and
+#       MUST NOT be conflated with `not_applicable` (reserved for coverage
+#       gaps — agent didn't declare the protocol).
+#     - If no branch contributed, the final `assert_contribution` step
+#       fails the storyboard. Individual branch step failures still grade
+#       `failed` so the implementor sees what each branch observed.
+#
+#   When to use a branch set:
+#     Only when the AdCP spec permits multiple conformant behaviors for
+#     the same trigger. If the spec mandates one behavior, write a
+#     required phase — a branch set where only one branch is legal
+#     weakens the test to any_of and hides regressions. Branch sets are
+#     not for optional features (use `skip_if` and coverage flags) or
+#     for progressive disclosure (use sequential phases).
+#
+#   Authoring guidance: keep branch sets flat — two or three peer phases
+#   is typical. Nested branch sets (a branch set whose member is itself a
+#   branch set) are out of scope for runners. If a scenario needs deeper
+#   branching, restructure into separate storyboards or a linear sequence.
+#
+#   Implicit branch-set detection (DEPRECATED — pre-#2633 storyboards only):
+#     When no phase in a storyboard declares `branch_set:`, runners fall
+#     back to the legacy rule: a branch set is the set of `optional: true`
+#     phases whose steps declare the same `contributes_to: <flag>` value
+#     as a later `assert_contribution` step's
+#     `validations[].check: any_of, allowed_values: [<flag>]` target.
+#     Fragile against typos in `contributes_to:` — new storyboards MUST
+#     use the explicit form above. This fallback exists only so
+#     pre-#2633 storyboards keep running during migration.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
@@ -120,6 +307,28 @@
 # allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
 # description: string (human-readable description of validation)
 #
+# Error-shape validation — use `check: error_code`:
+#   The `error_code` check is shape-agnostic. The runner resolves the code from
+#   any of the transport-binding locations defined by the client detection
+#   order (see docs/building/implementation/transport-errors#client-detection-order):
+#   - `adcp_error.code` (MCP structuredContent, A2A artifact DataPart, JSON-RPC
+#     error.data, MCP text-fallback content JSON)
+#   - `errors[0].code` (task-payload errors array, top-level or under payload)
+#   A storyboard SHOULD assert error shape via `check: error_code` rather than
+#   `check: field_present, path: "errors"` or `path: "adcp_error"` — pinning to
+#   a specific shape makes the validator flakey against conformant agents that
+#   surface errors on the other layer.
+#
+# Error-code vocabulary:
+#   Every code referenced in a `value:` or `allowed_values:` under `check: error_code`
+#   MUST exist in the canonical enum at `static/schemas/source/enums/error-code.json`
+#   (or be registered as a deprecation alias). The `lint:error-codes` script
+#   enforces this at build time — references to undefined codes fail the build.
+#   Sellers MAY emit vendor-specific codes outside the enum, but storyboards
+#   MUST NOT assert on them (that couples the conformance suite to a specific
+#   vendor's taxonomy). When a test needs to accept multiple possible codes,
+#   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
 # --- Runner output ---
 #
 # How a runner MUST report validation results — including which fields a
@@ -128,6 +337,31 @@
 # distinguish not_applicable vs. no_phases vs. missing_tool — is defined in
 # runner-output-contract.yaml. Storyboard authors SHOULD assume failures will
 # be rendered with that detail and write descriptions accordingly.
+#
+# Runner grading codes introduced by the context accumulator and fixture
+# seeding:
+#
+#   capture_path_not_resolvable
+#       Emitted on the capturing step when a `context_outputs:` entry's
+#       `path` does not resolve against the step's response body. The step
+#       grades as failed — the capture declared a contract that the response
+#       did not meet. Distinct from unresolved_substitution so tooling can
+#       discriminate "producer contract breach" from "consumer missing state."
+#
+#   unresolved_substitution
+#       Emitted on a consumer step when a referenced $context.<name> or
+#       {{prior_step.<id>.<field>}} value is not populated at step-execution
+#       time (either because the producer step failed, was skipped, or never
+#       ran). The step grades as failed. Also used at preflight when a
+#       substitution is statically unresolvable (e.g., {{runner.webhook_url:*}}
+#       on a run with no webhook receiver) to grade the entire storyboard
+#       not_applicable before execution.
+#
+#   fixture_seed_unsupported
+#       Emitted when a storyboard's `prerequisites.controller_seeding` requires
+#       a seed_* scenario the seller does not implement (returned as
+#       UNKNOWN_SCENARIO). The storyboard grades not_applicable (coverage gap),
+#       not failed.
 #
 # --- Webhook receiver (optional, for outbound-webhook conformance) ---
 #
@@ -273,6 +507,42 @@
 #   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
 #   signature_replayed.
 #
+# task: expect_substitution_safe
+#   Assert that a creative preview (preview_html or preview_url) contains
+#   substituted catalog-item macro values that are percent-encoded per RFC 3986
+#   (unreserved-whitelist), per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+#   Runner delegates HTML parsing, URL extraction, and the encoding check to
+#   the `@adcp/client` SubstitutionObserver primitive (see test-kit
+#   substitution-observer-runner.yaml). Catches implementations that pass raw
+#   attacker bytes through substitution, including CRLF injection, bidi-override
+#   spoofing, reserved-character URL breakout, and javascript:-scheme injection.
+#
+#   Fields:
+#     source: html_inline | url_fetch  # default html_inline
+#     source_path: "<JSON pointer into previous step's response>"
+#     macro_template: "<URL template with {MACRO} placeholders>"
+#     catalog_bindings:
+#       - macro: "{SKU}"
+#         catalog_item_id: "<item_id in the synced catalog>"
+#         vector_name: "<fixture entry name, e.g. reserved-character-breakout>"
+#         # Optional overrides for custom (non-canonical-fixture) vectors:
+#         # raw_value: "<attacker-shaped input>"
+#         # expected_encoded: "<RFC 3986 unreserved-encoded form>"
+#     require_every_binding_observed: true  # default true. Opt to false only
+#                                           # when preview shows a partial
+#                                           # catalog and partial observation
+#                                           # is legitimate (document why in
+#                                           # the narrative). The old field
+#                                           # name require_all_bindings_observed
+#                                           # is deprecated.
+#     requires_contract: substitution_observer_runner
+#
+#   Error modes: substitution_encoding_violation, nested_macro_re_expansion,
+#   substitution_scheme_injection, substitution_binding_missing,
+#   preview_source_unavailable, preview_url_unusable (with sub-reason:
+#   http_status | content_type | size_exceeded | redirect_returned |
+#   ssrf_blocked | fetch_timeout).
+#
 # --- shared_receiver (deferred / out of scope v1) ---
 #
 # Storyboards with multiple webhook-triggering steps MUST use per-step receiver
@@ -286,6 +556,78 @@
 # fan-in storyboards will either flesh out the semantics or adopt a different
 # idiom (e.g., per-step receivers with cross-step assertions on aggregate
 # observations).
+#
+# --- Context accumulator and substitution ---
+#
+# The runner maintains a storyboard-run-scoped context accumulator populated from
+# three sources (evaluated in this precedence, high to low):
+#
+#   1. Step `context_outputs:` captures (populated after a step's validations pass)
+#   2. Storyboard-root `context:` block (literal values fixed at run start)
+#   3. Test-kit substitutions where explicitly scoped into context
+#
+# Two substitution syntaxes are supported in `sample_request` payloads:
+#
+#   $context.<name>               — single-token substitution. The runner replaces
+#                                    the literal string "$context.<name>" with the
+#                                    captured value. Example:
+#                                      account_id: '$context.account_id'
+#                                    resolves to the account_id captured from an
+#                                    earlier step. Works inside scalar values and
+#                                    inside array elements.
+#
+#   {{prior_step.<id>.<field>}}   — Mustache-style interpolation for webhook
+#                                    filters, operation_id matching, and any other
+#                                    cross-step reference. Resolves against the
+#                                    named prior step's captured response fields.
+#                                    Used by expect_webhook and expect_*_webhook_*
+#                                    assertion steps (see Webhook-assertion steps
+#                                    above) and by storyboards correlating an
+#                                    async operation_id across steps.
+#
+# Runner requirements:
+#   - Substitution runs at step-execution time, after resolving the test-kit
+#     overlay and before applying auth. The agent under test receives the
+#     substituted value — it MUST NOT see the literal `$context.foo` or `{{...}}`
+#     token on the wire (see Unresolved substitution behavior below for the one
+#     legitimate exception: preflight not_applicable grading when a substitution
+#     is statically unresolvable).
+#   - $context.<name> referencing an unpopulated name (the capturing step failed
+#     or did not run) grades the referencing step as failed with
+#     `unresolved_substitution`. The storyboard MUST NOT proceed with a fabricated
+#     default — test outcomes on synthesized state are not signal.
+#   - Captured values are typed as the JSON path resolved against the response;
+#     numeric and object captures are preserved (they do not round-trip through
+#     string coercion).
+#
+# --- Context echo contract (agent-facing) ---
+#
+# Agents under test MUST obey the following when a storyboard sends a `context:`
+# block on its sample_request:
+#
+#   1. Successful responses MUST echo the `context` object verbatim. The agent
+#      MUST NOT mutate, filter, or reorder fields. The echo applies whether the
+#      response is synchronous (`completed`) or asynchronous (`submitted` /
+#      `working`).
+#   2. Error responses MUST also echo the `context` object verbatim. Context is
+#      used as a correlation surface; dropping it on failure prevents buyers from
+#      correlating errors with the originating call.
+#   3. Agents MUST NOT synthesize a `context` object when the caller did not
+#      send one. A storyboard whose `sample_request` lacks `context:` MUST see
+#      the response lack `context:` — fabricating `{ correlation_id: "..." }` on
+#      the agent side is a conformance failure because the storyboard validator
+#      is asserting on what-the-caller-sent, not what-the-agent-invented.
+#   4. Agents MUST NOT parse or act on `context` contents — see
+#      docs/building/integration/context-sessions.mdx for the normative
+#      agent-facing rules. The storyboard runner's validators rely on verbatim
+#      echo and will fail any mutation.
+#
+# Runners MUST NOT auto-inject an implicit `context:` block on sample_request
+# payloads the storyboard did not declare. Storyboards that want to assert on
+# `context.correlation_id` MUST declare the context block explicitly on each
+# sample_request. This keeps the sample_request an honest shape of what the
+# agent will receive, and prevents an agent from passing only because the
+# runner compensated for its missing contract.
 #
 # --- Unresolved substitution behavior ---
 #

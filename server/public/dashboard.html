@@ -2103,7 +2103,7 @@
             title: 'Add your company logo',
             message: 'Upload a logo so your company appears in the member directory and on the homepage. <a href="/logo-preview" style="color:inherit;text-decoration:underline">Preview how logos look</a>.',
             actionLabel: 'Add logo',
-            actionUrl: '/dashboard-settings#logo'
+            actionUrl: '/member-profile#logo'
           });
         } else if (!isPersonalAccount && profile.resolved_brand?.logo_url && !profile.resolved_brand?.logo_url_dark && !dismissedAlerts.includes('missing-logo-dark')) {
           alerts.push({
@@ -2126,7 +2126,7 @@
               ? 'Help others learn about you by adding a description.'
               : 'Help others learn about your organization by adding a tagline.',
             actionLabel: 'Add Description',
-            actionUrl: '/dashboard-settings#profile'
+            actionUrl: '/member-profile#tagline'
           });
         }
 

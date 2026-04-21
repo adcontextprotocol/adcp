@@ -56,8 +56,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -97,6 +99,10 @@ phases:
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "pending-creatives-transition-v1"
           start_time: "2026-08-01T00:00:00Z"
           end_time: "2026-08-31T23:59:59Z"
@@ -149,14 +155,21 @@ phases:
         expected: |
           The seller ingests the creative and returns status active (or approved).
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "acme-outdoor-display-q3"
               name: "Acme Outdoor Q3 display"
               format_id: "$context.format_id"
-              content:
-                media_url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
+                  width: 300
+                  height: 250
+                  mime_type: "image/jpeg"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_sync_creative"
           context:
@@ -178,8 +191,10 @@ phases:
           status should be pending_start (or active if the flight has started).
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -217,8 +232,10 @@ phases:
           The media buy's persisted status is pending_start (or active). valid_actions
           no longer includes sync_creatives as a required next step.
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"
 

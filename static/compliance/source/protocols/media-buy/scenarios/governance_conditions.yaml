@@ -61,7 +61,7 @@ phases:
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Q2 CTV campaign with reporting requirements"
               budget:
                 total: 100000
@@ -97,8 +97,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_seller_setup_sync_accounts"
@@ -122,8 +122,8 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
                   categories: ["budget_authority", "brand_policy"]
@@ -148,12 +148,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "CTV and connected TV inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -176,12 +174,12 @@ phases:
           - governance_context: token from the governance agent
           - conditions visible to the buyer
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

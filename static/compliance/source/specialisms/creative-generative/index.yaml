@@ -6,6 +6,10 @@ category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
 required_tools:
   - build_creative
+# Note: sync_catalogs is NOT in required_tools. The catalog_augmented_generation
+# phase below is additive — brief-only generative agents (pure-prompt DSPs) pass
+# the other phases without claiming catalog support. Agents that do not implement
+# sync_catalogs grade that phase not_applicable rather than fail the specialism.
 
 narrative: |
   You run a generative creative platform — an AI ad network, a generative DSP, or any system
@@ -169,8 +173,10 @@ phases:
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "draft"
           include_preview: true
 
@@ -231,14 +237,18 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "draft"
           include_preview: true
 
@@ -300,12 +310,14 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
               cta:
                 asset_type: "text"
-                text: "Shop Now"
+                content: "Shop Now"
           target_format_ids:
             - agent_url: "https://your-agent.example.com"
               id: "display_300x250_generative"
@@ -313,8 +325,10 @@ phases:
               id: "display_728x90_generative"
             - agent_url: "https://your-agent.example.com"
               id: "display_320x50_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "production"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_multi_format_build_multi_format"
@@ -370,17 +384,21 @@ phases:
               generated_image:
                 asset_type: "image"
                 url: "https://your-agent.example.com/generated/abc123-refined.jpg"
+                width: 300
+                height: 250
               headline:
                 asset_type: "text"
-                text: "Summer Sale — 40% Off All Gear"
+                content: "Summer Sale — 40% Off All Gear"
               cta:
                 asset_type: "text"
-                text: "Shop Now"
+                content: "Shop Now"
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
-          brand:
-            domain: "acme-outdoor.example.com"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           quality: "production"
           include_preview: true
 
@@ -404,3 +422,319 @@ phases:
             path: "context.correlation_id"
             value: "creative_generative--build_production"
             description: "Context correlation_id returned unchanged"
+
+  - id: catalog_augmented_generation
+    title: "Catalog-augmented generation"
+    narrative: |
+      Generative platforms routinely hydrate catalog items into the generation context:
+      the buyer pushes a product catalog, and each generated creative references a specific
+      catalog item (via `{SKU}`, `{GTIN}`, or the catalog-item family) in its impression
+      trackers and click trackers. This is how generative DSPs produce per-SKU dynamic
+      creative at scale.
+
+      This phase exercises the catalog-acceptance leg and emits a generative build that
+      includes catalog-item macros in its tracker URL assets. `preview_creative` is the
+      natural observation point for the runtime substitution-safety check tracked in
+      #2638 — when the substitution-observer contract lands, a runner can assert that
+      the previewed HTML contains percent-encoded catalog-item values per
+      `docs/creative/universal-macros#substitution-safety-catalog-item-macros`.
+
+    steps:
+      - id: sync_generation_catalog
+        title: "Push a product catalog for generation"
+        narrative: |
+          The buyer pushes a small inline catalog. Your agent will use these items as the
+          hydration targets for subsequent generated creatives.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Return per-catalog results with catalog_id, action, item_count, and
+          items_approved counts.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "acme_generative_source"
+              type: "product"
+              content_id_type: "sku"
+              name: "Acme Outdoor — Generative source feed"
+              items:
+                - item_id: "peak_jacket_x"
+                  title: "Peak Jacket X"
+                  description: "Goretex 3L shell, seam-taped, 280g."
+                  url: "https://acmeoutdoor.example/gear/peak-jacket-x"
+                  image_url: "https://cdn.acmeoutdoor.example/gear/peak-jacket-x.jpg"
+                  price:
+                    amount: 449.00
+                    currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_augmented_generation_sync_generation_catalog"
+          context:
+            correlation_id: "creative_generative--sync_generation_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Catalog has an ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_generative--sync_generation_catalog"
+            description: "Context correlation_id returned unchanged"
+
+      - id: build_catalog_aware_creative
+        title: "Generate a creative bound to a catalog item"
+        narrative: |
+          The buyer asks your agent to build a creative for a specific catalog item.
+          The generated manifest MUST include tracker URLs with catalog-item macros
+          (`{SKU}`, `{GTIN}`) so impression-time substitution renders per-SKU output.
+
+          Per #2620, the substitution step MUST percent-encode catalog-item values
+          against the RFC 3986 unreserved set — but the substitution itself happens at
+          serve time, not in the build_creative response. Runtime observability is
+          tracked in #2638.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a creative manifest whose tracker assets include catalog-item
+          macros ({SKU} or {GTIN}) and whose format references a catalog-capable
+          format declared by the agent.
+
+        sample_request:
+          message: "Generate a 300x250 display ad for the Peak Jacket X, using our catalog feed for product fields and tracker URLs."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          quality: "draft"
+          include_preview: true
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_augmented_generation_build_catalog_aware_creative"
+          context:
+            correlation_id: "creative_generative--build_catalog_aware_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Generated manifest includes format_id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_generative--build_catalog_aware_creative"
+            description: "Context correlation_id returned unchanged"
+
+  - id: catalog_substitution_safety
+    title: "Catalog-item macro substitution safety"
+    narrative: |
+      Per docs/creative/universal-macros#substitution-safety-catalog-item-macros,
+      sales and creative agents MUST percent-encode catalog-item macro values
+      such that only RFC 3986 `unreserved` characters remain unescaped before
+      substituting them into a URL context. Nested macro expansion is prohibited.
+
+      This phase exercises the rule with five canonical attacker-shaped
+      catalog values drawn from the fixture at
+      `static/test-vectors/catalog-macro-substitution.json`:
+      reserved-char breakout, nested-expansion preservation, non-ASCII UTF-8,
+      CRLF injection, and bidi-override neutralization. Generative pipelines
+      have a higher risk profile on bidi-override than template pipelines
+      (LLM-generated copy with embedded user text can round-trip bidi
+      controls into attribute contexts), so this phase exercises bidi
+      alongside the baseline vectors. The two remaining fixture vectors —
+      `mixed-path-and-query-contexts` (requires the same macro in two URL
+      positions) and `url-scheme-injection-neutralized` (requires an
+      href-whole-value macro binding) — are unit-test-layer conformance only;
+      runtime observation in a storyboard requires specialism-specific
+      template shapes tracked as follow-ups.
+
+      `build_creative`-with-`include_preview: true` is the natural observation
+      point on a generative specialism — the substitution-observer runner
+      (#2638) parses the returned `preview_html` and asserts each macro
+      position carries the fixture's `expected_encoded` form, not the raw
+      attacker bytes.
+
+      Scope note: this phase validates substitution on the PREVIEW surface
+      only. Sellers with divergent preview vs impression-time substitution
+      paths MAY pass here while failing at serve time; serve-time attestation
+      or log-introspection observability is deferred (#2651, out-of-scope v1
+      per the observer contract).
+
+      The `expect_substitution_safe` step is gated on the
+      `substitution_observer_runner` test-kit contract (see
+      `test-kits/substitution-observer-runner.yaml`). Runners that do not
+      advertise the contract grade the step as `not_applicable` — the earlier
+      `sync_substitution_probe_catalog` and `build_substitution_probe_creative`
+      steps still run (exercising the catalog-acceptance and build paths),
+      but the substituted-URL assertion is skipped.
+
+    steps:
+      - id: sync_substitution_probe_catalog
+        title: "Push a probe catalog with attacker-shaped values"
+        narrative: |
+          Push a small probe catalog whose `sku` fields contain three of the
+          canonical attacker-shaped values from the substitution-safety
+          fixture. The agent MUST accept the payload at sync_catalogs — the
+          encoding rule applies at substitution time, not at ingest — but
+          subsequent build_creative output must percent-encode each value.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Catalog accepted with per-item counts. Runner captures the
+          catalog_id + item_ids for the downstream assertion binding.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "creative_generative_substitution_probe_v1"
+              type: "product"
+              content_id_type: "sku"
+              name: "Substitution safety probe"
+              items:
+                # item_id names the vector; the `sku` field carries the
+                # attacker-shaped value that substitution must encode.
+                - item_id: "reserved_char_breakout"
+                  sku: "00013&cmd=drop"
+                  title: "Reserved-char breakout probe"
+                  url: "https://acmeoutdoor.example/probe/reserved"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/reserved.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "nested_expansion"
+                  sku: "vacancy-{DEVICE_ID}-42"
+                  title: "Nested-expansion probe"
+                  url: "https://acmeoutdoor.example/probe/nested"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/nested.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "non_ascii"
+                  sku: "café-amsterdam"
+                  title: "Non-ASCII UTF-8 probe"
+                  url: "https://acmeoutdoor.example/probe/non-ascii"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/non-ascii.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "crlf_injection"
+                  sku: "abc\r\nHost: evil.example"
+                  title: "CRLF injection probe"
+                  url: "https://acmeoutdoor.example/probe/crlf"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/crlf.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "bidi_override"
+                  sku: "VIN-\u202E1234"
+                  title: "Bidi-override probe"
+                  url: "https://acmeoutdoor.example/probe/bidi"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/bidi.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_substitution_safety_sync_substitution_probe_catalog"
+          context:
+            correlation_id: "creative_generative--sync_substitution_probe_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Probe catalog accepted"
+
+      - id: build_substitution_probe_creative
+        title: "Generate a creative with catalog-item macros bound to the probe"
+        narrative: |
+          Generate a draft creative that uses `{SKU}` in its impression tracker
+          URL and request `include_preview: true` so the substitution-observer
+          runner has a preview surface to inspect.
+
+          The `message` is a natural-language brief; a generative agent that
+          ignores the `{SKU}` directive (generates its own macro, inlines an
+          encoded value, omits the tracker) fails the downstream
+          `expect_substitution_safe` step with `substitution_binding_missing`.
+          To keep that failure mode diagnostically clear, this step validates
+          the creative_manifest contains `{SKU}` unsubstituted in at least
+          one tracker asset before the observer runs.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Creative manifest returned with preview_html populated. Impression
+          tracker asset includes {SKU} unsubstituted in its template (to be
+          resolved at impression time against catalog items).
+
+        sample_request:
+          message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Include the `{SKU}` macro as a literal token in the impression tracker URL — the platform resolves it per-impression against catalog items."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250_generative"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          quality: "draft"
+          include_preview: true
+
+          idempotency_key: "$generate:uuid_v4#creative_generative_catalog_substitution_safety_build_substitution_probe_creative"
+          context:
+            correlation_id: "creative_generative--build_substitution_probe_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Creative manifest returned"
+
+      - id: expect_substitution_safe
+        title: "Assert substituted tracker URLs percent-encode attacker shapes"
+        narrative: |
+          The runner inspects the preview_html from the previous step, extracts
+          tracker URLs that bind `{SKU}` to a probe catalog item, and asserts
+          each value is percent-encoded per RFC 3986 (unreserved-whitelist).
+          Raw-byte leakage fails. Every declared binding MUST be observed — a
+          generative agent that silently strips `{SKU}` rather than
+          substituting it fails with `substitution_binding_missing`.
+        task: expect_substitution_safe
+        requires_contract: substitution_observer_runner
+        source: html_inline
+        source_path: "/creative_manifest/preview_html"
+        macro_template: "https://track.example/imp?sku={SKU}"
+        require_every_binding_observed: true
+        catalog_bindings:
+          # Each binding: `catalog_item_id` is the item_id in the probe
+          # catalog; `vector_name` is the fixture entry whose raw_value and
+          # expected_encoded the runner loads from the unit-test fixture.
+          - macro: "{SKU}"
+            catalog_item_id: "reserved_char_breakout"
+            vector_name: "reserved-character-breakout"
+          - macro: "{SKU}"
+            catalog_item_id: "nested_expansion"
+            vector_name: "nested-expansion-preserved-as-literal"
+          - macro: "{SKU}"
+            catalog_item_id: "non_ascii"
+            vector_name: "non-ascii-utf8-percent-encoding"
+          - macro: "{SKU}"
+            catalog_item_id: "crlf_injection"
+            vector_name: "crlf-injection-neutralized"
+          - macro: "{SKU}"
+            catalog_item_id: "bidi_override"
+            vector_name: "bidi-override-neutralized"

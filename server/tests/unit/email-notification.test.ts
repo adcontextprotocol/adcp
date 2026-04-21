@@ -244,6 +244,101 @@ describe('Email Notifications', () => {
         })
       );
     });
+
+    it('omits the listing section when no listing is provided', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'test@example.com',
+        organizationName: 'Acme Corp',
+        workosOrganizationId: 'org_acme',
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      expect(sendCall?.html).not.toContain('Your listing is live');
+      expect(sendCall?.text).not.toContain('Your listing is live');
+    });
+
+    it('includes a listing section with view/edit/privacy links when a profile was created', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'test@example.com',
+        organizationName: 'Acme Corp',
+        workosOrganizationId: 'org_acme',
+        listing: { slug: 'acme-corp', action: 'created' },
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      // Section header in both HTML and text
+      expect(sendCall?.html).toContain('Your listing is live');
+      expect(sendCall?.text).toContain('Your listing is live');
+      // "created" wording communicates the auto-creation
+      expect(sendCall?.html).toContain('We created it when your membership activated');
+      // Slug display line in HTML
+      expect(sendCall?.html).toContain('/members/acme-corp');
+      // Text fallback has plain URLs (not routed through tracker)
+      expect(sendCall?.text).toContain('https://agenticadvertising.org/members/acme-corp');
+      expect(sendCall?.text).toContain('https://agenticadvertising.org/member-profile?org=org_acme');
+      expect(sendCall?.text).toContain('#field-is-public');
+      // HTML link tracker names identify each CTA
+      expect(sendCall?.html).toContain('cta_listing_view');
+      expect(sendCall?.html).toContain('cta_listing_edit');
+      expect(sendCall?.html).toContain('cta_listing_privacy');
+    });
+
+    it('uses "published" wording when an existing draft is flipped public', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'test@example.com',
+        organizationName: 'Acme Corp',
+        workosOrganizationId: 'org_acme',
+        listing: { slug: 'acme-corp', action: 'published' },
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      expect(sendCall?.html).toContain('we published it when your membership activated');
+      // Should NOT say "created" — that would be misleading for pre-existing drafts
+      expect(sendCall?.html).not.toContain('We created it when your membership activated');
+    });
+
+    it('omits the listing section for a noop (profile already public)', async () => {
+      // Contract with the webhook handler: when ensureMemberProfilePublished
+      // returns action === 'noop', the handler does NOT pass `listing`.
+      // This test pins the rendered-output invariant that matters:
+      // a member who already had a public listing should never be told it
+      // "just went live".
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'test@example.com',
+        organizationName: 'Acme Corp',
+        workosOrganizationId: 'org_acme',
+        // no listing — matching the webhook behavior for action === 'noop'
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      expect(sendCall?.html).not.toContain('Your listing is live');
+      expect(sendCall?.text).not.toContain('Your listing is live');
+      expect(sendCall?.html).not.toContain('cta_listing_view');
+    });
+
+    it('escapes slugs with HTML-sensitive characters in the display line', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'test@example.com',
+        organizationName: 'Weird Corp',
+        workosOrganizationId: 'org_weird',
+        listing: { slug: 'a&b<c>"d', action: 'created' },
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      // Raw slug must not appear unescaped in HTML display
+      expect(sendCall?.html).not.toContain('<c>');
+      expect(sendCall?.html).toContain('&amp;');
+    });
   });
 
   describe('sendUserSignupEmail', () => {
