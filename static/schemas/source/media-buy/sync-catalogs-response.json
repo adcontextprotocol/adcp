@@ -35,7 +35,7 @@
               "item_count": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Total number of items in the catalog after sync"
+                "description": "Total number of items in the catalog after sync. Required when action is 'created', 'updated', or 'unchanged'. Omitted on 'failed' and 'deleted'."
               },
               "items_approved": {
                 "type": "integer",
