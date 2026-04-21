@@ -10,20 +10,15 @@
  * explicit declaration so typos and undeclared peers can't silently break the
  * any_of semantics.
  *
- * Rules:
- *   1. Every phase with `branch_set:` MUST set `optional: true`.
- *   2. `branch_set:` MUST carry a non-empty `id` (string) and a `semantics`
- *      equal to `any_of`. Other semantics values are reserved for future
- *      revisions and not yet implemented by runners.
- *   3. All phases in the same storyboard sharing a `branch_set.id` MUST
- *      share the same `branch_set.semantics`.
- *   4. A storyboard containing phases that declare `branch_set:` MUST also
- *      contain an `assert_contribution` step whose `validations[].check: any_of`
- *      includes that `branch_set.id` in `allowed_values`.
- *   5. Any step inside a branch-set phase that declares `contributes_to: X`
- *      MUST use `X === branch_set.id`. A mismatch grades the agent against a
- *      flag the assertion does not consume — a silent no-op we are trying to
- *      eliminate.
+ * Rules (each violation carries a stable `rule` ID — tests assert on it):
+ *   not_optional         — phase with branch_set: is not optional: true
+ *   shape                — branch_set is not an object
+ *   missing_id           — branch_set.id is missing or not a non-empty string
+ *   bad_semantics        — branch_set.semantics is not a supported value
+ *   semantics_conflict   — peer phases share branch_set.id but differ on semantics
+ *   no_assertion         — declared branch_set.id has no matching assert_contribution any_of
+ *   contributes_to_mismatch — step inside branch_set phase has contributes_to != branch_set.id
+ *   peer_not_declared    — phase contributes_to a declared branch_set.id without declaring branch_set:
  */
 
 'use strict';
@@ -35,6 +30,40 @@ const yaml = require('js-yaml');
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
 
 const SUPPORTED_SEMANTICS = new Set(['any_of']);
+
+const RULE_MESSAGES = {
+  shape: () => '`branch_set:` must be an object with `id` and `semantics` fields',
+  missing_id: () => '`branch_set.id` must be a non-empty string',
+  bad_semantics: ({ semantics, supported }) =>
+    `\`branch_set.semantics\` must be one of [${[...supported].join(', ')}] ` +
+    `(got ${JSON.stringify(semantics)})`,
+  not_optional: ({ id }) =>
+    `phase declares \`branch_set: ${id}\` but is not \`optional: true\`. ` +
+    'A non-optional phase would fail the storyboard unconditionally and defeat the any_of semantics.',
+  semantics_conflict: ({ id, prior, current }) =>
+    `branch_set "${id}" has conflicting semantics across peer phases ` +
+    `(saw ${JSON.stringify(prior)} and ${JSON.stringify(current)})`,
+  no_assertion: ({ id }) =>
+    `branch_set "${id}" has no matching \`assert_contribution\` step ` +
+    'with `check: any_of, allowed_values: [...]` including the id. ' +
+    'Without the assertion the branch set is dead — nothing grades it.',
+  contributes_to_mismatch: ({ id, contribution }) =>
+    `step declares \`contributes_to: ${JSON.stringify(contribution)}\` ` +
+    `inside branch_set "${id}". Inside a branch_set phase, contributes_to ` +
+    'MUST equal `branch_set.id` so the assertion consumes what the step produces.',
+  peer_not_declared: ({ id }) =>
+    `phase has a step with \`contributes_to: ${id}\` but the phase itself ` +
+    `does not declare \`branch_set: { id: ${id}, ... }\`. Another phase in this ` +
+    'storyboard already declares that branch set — in mixed mode the runner ' +
+    "would see a single-member set and grade this peer's failing steps as " +
+    '`failed` instead of `peer_branch_taken`.',
+};
+
+function formatMessage(violation) {
+  const builder = RULE_MESSAGES[violation.rule];
+  if (!builder) return `unknown rule ${violation.rule}`;
+  return builder(violation);
+}
 
 function walkYaml(dir) {
   const out = [];
@@ -73,26 +102,60 @@ function collectAssertedFlags(doc) {
   return flags;
 }
 
-function lintStoryboard(relFile, doc, violations) {
-  if (!doc || typeof doc !== 'object') return;
+/**
+ * Lint a single parsed storyboard doc. Returns an array of violations shaped
+ * as `{ rule, phaseId, stepId?, ...rule-specific payload }`. File paths are
+ * threaded on at the caller.
+ *
+ * Accepts an options object so tests can exercise future `semantics` values
+ * without mutating module state.
+ */
+function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
+  const violations = [];
+  if (!doc || typeof doc !== 'object') return violations;
   const phases = Array.isArray(doc.phases) ? doc.phases : [];
 
-  // id → semantics observed so far (rule 3)
   const semanticsById = new Map();
+  const declaredBranchSetIds = new Set();
   const assertedFlags = collectAssertedFlags(doc);
 
+  // Pass 1: gather declared branch_set.ids so pass 2 can enforce peer
+  // completeness against contributes_to on peer phases that haven't been
+  // declared yet.
   for (const phase of phases) {
     const bs = phase?.branch_set;
-    if (bs === undefined || bs === null) continue;
+    if (bs && typeof bs === 'object' && !Array.isArray(bs) && typeof bs.id === 'string' && bs.id.length > 0) {
+      declaredBranchSetIds.add(bs.id);
+    }
+  }
 
-    const phaseId = phase.id || '<unnamed>';
+  for (const phase of phases) {
+    const phaseId = phase?.id || '<unnamed>';
+    const bs = phase?.branch_set;
+
+    if (bs === undefined || bs === null) {
+      // Rule 6 (peer_not_declared): the phase doesn't declare branch_set, but
+      // if a peer does, any step here contributing to that peer's id is a
+      // mixed-mode authoring error.
+      if (phase?.optional === true) {
+        const steps = Array.isArray(phase?.steps) ? phase.steps : [];
+        for (const step of steps) {
+          const c = step?.contributes_to;
+          if (typeof c === 'string' && declaredBranchSetIds.has(c)) {
+            violations.push({
+              rule: 'peer_not_declared',
+              phaseId,
+              stepId: step?.id || '<unnamed>',
+              id: c,
+            });
+          }
+        }
+      }
+      continue;
+    }
 
     if (typeof bs !== 'object' || Array.isArray(bs)) {
-      violations.push({
-        file: relFile,
-        phaseId,
-        message: '`branch_set:` must be an object with `id` and `semantics` fields',
-      });
+      violations.push({ rule: 'shape', phaseId });
       continue;
     }
 
@@ -100,96 +163,78 @@ function lintStoryboard(relFile, doc, violations) {
     const semantics = bs.semantics;
 
     if (typeof id !== 'string' || id.length === 0) {
+      violations.push({ rule: 'missing_id', phaseId });
+      continue;
+    }
+
+    if (typeof semantics !== 'string' || !supportedSemantics.has(semantics)) {
       violations.push({
-        file: relFile,
+        rule: 'bad_semantics',
         phaseId,
-        message: '`branch_set.id` must be a non-empty string',
+        semantics,
+        supported: supportedSemantics,
       });
       continue;
     }
 
-    if (typeof semantics !== 'string' || !SUPPORTED_SEMANTICS.has(semantics)) {
-      violations.push({
-        file: relFile,
-        phaseId,
-        message:
-          `\`branch_set.semantics\` must be one of [${[...SUPPORTED_SEMANTICS].join(', ')}] ` +
-          `(got ${JSON.stringify(semantics)})`,
-      });
-      continue;
-    }
-
-    // Rule 1: branch_set phases must be optional.
     if (phase.optional !== true) {
-      violations.push({
-        file: relFile,
-        phaseId,
-        message:
-          `phase declares \`branch_set: ${id}\` but is not \`optional: true\`. ` +
-          'A non-optional phase would fail the storyboard unconditionally and defeat the any_of semantics.',
-      });
+      violations.push({ rule: 'not_optional', phaseId, id });
     }
 
-    // Rule 3: peer phases in the same set share semantics.
     const prior = semanticsById.get(id);
     if (prior !== undefined && prior !== semantics) {
       violations.push({
-        file: relFile,
+        rule: 'semantics_conflict',
         phaseId,
-        message:
-          `branch_set "${id}" has conflicting semantics across peer phases ` +
-          `(saw ${JSON.stringify(prior)} and ${JSON.stringify(semantics)})`,
+        id,
+        prior,
+        current: semantics,
       });
     } else {
       semanticsById.set(id, semantics);
     }
 
-    // Rule 4: storyboard asserts over this branch_set.id.
     if (!assertedFlags.has(id)) {
-      violations.push({
-        file: relFile,
-        phaseId,
-        message:
-          `branch_set "${id}" has no matching \`assert_contribution\` step ` +
-          'with `check: any_of, allowed_values: [...]` including the id. ' +
-          'Without the assertion the branch set is dead — nothing grades it.',
-      });
+      violations.push({ rule: 'no_assertion', phaseId, id });
     }
 
-    // Rule 5: contributes_to inside the phase matches branch_set.id.
     const steps = Array.isArray(phase.steps) ? phase.steps : [];
     for (const step of steps) {
       const contribution = step?.contributes_to;
       if (contribution === undefined || contribution === null) continue;
       if (typeof contribution !== 'string' || contribution !== id) {
         violations.push({
-          file: relFile,
+          rule: 'contributes_to_mismatch',
           phaseId,
           stepId: step?.id || '<unnamed>',
-          message:
-            `step declares \`contributes_to: ${JSON.stringify(contribution)}\` ` +
-            `inside branch_set "${id}". Inside a branch_set phase, contributes_to ` +
-            'MUST equal `branch_set.id` so the assertion consumes what the step produces.',
+          id,
+          contribution,
         });
       }
     }
   }
+
+  return violations;
 }
 
 function lint() {
   const files = walkYaml(SOURCE_DIR);
-  const violations = [];
+  const allViolations = [];
   for (const file of files) {
     let doc;
     try {
+      // YAML parse errors are handled by the schema-validation pass in the
+      // build pipeline; skip unparseable files here rather than double-reporting.
       doc = yaml.load(fs.readFileSync(file, 'utf8'));
     } catch {
       continue;
     }
     const relFile = path.relative(SOURCE_DIR, file);
-    lintStoryboard(relFile, doc, violations);
+    for (const v of lintDoc(doc)) {
+      allViolations.push({ ...v, file: relFile });
+    }
   }
-  return violations;
+  return allViolations;
 }
 
 function main() {
@@ -202,7 +247,7 @@ function main() {
   console.error(`✗ storyboard branch-set lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
     const loc = v.stepId ? `${v.file}:${v.phaseId}/${v.stepId}` : `${v.file}:${v.phaseId}`;
-    console.error(`  ${loc} — ${v.message}`);
+    console.error(`  ${loc} — ${formatMessage(v)}`);
   }
   console.error(
     '\nSee static/compliance/source/universal/storyboard-schema.yaml ("Branch sets" section) for the normative rules.',
@@ -212,4 +257,11 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { SUPPORTED_SEMANTICS, lint, collectAssertedFlags };
+module.exports = {
+  SUPPORTED_SEMANTICS,
+  RULE_MESSAGES,
+  lint,
+  lintDoc,
+  collectAssertedFlags,
+  formatMessage,
+};

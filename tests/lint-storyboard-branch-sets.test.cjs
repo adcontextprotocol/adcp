@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 /**
- * Tests for the storyboard branch-set lint.
- *
- * Two concerns:
- *   1. Source tree guard — every real storyboard under static/compliance/source
+ * Tests for the storyboard branch-set lint. Two concerns:
+ *   1. Source-tree guard — every real storyboard under static/compliance/source
  *      passes the lint. Prevents regression when authors add branch_set
  *      declarations.
- *   2. Synthetic fixtures — each rule produces the expected violation when
- *      broken. Uses the exported `collectAssertedFlags` helper and an in-test
- *      harness over the internal per-doc logic by re-implementing the walker
- *      against a single in-memory doc. Keeps the lint script's own code path
- *      unchanged.
+ *   2. Per-rule coverage — each rule ID fires when its authoring hazard is
+ *      present. Tests import lintDoc directly so they exercise the real code
+ *      path, not a parallel re-implementation, and assert on the `rule` field
+ *      so message wording can evolve without breaking tests.
  */
 
 'use strict';
@@ -19,64 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const yaml = require('js-yaml');
 
-const lintModule = require('../scripts/lint-storyboard-branch-sets.cjs');
-const { lint, collectAssertedFlags, SUPPORTED_SEMANTICS } = lintModule;
-
-/**
- * Run the lint logic against a single in-memory storyboard doc. Mirrors the
- * per-file logic inside the lint script, which is the reason the per-file
- * function isn't exported — keeping the exported surface small while still
- * letting tests target individual rules.
- */
-function lintDoc(doc) {
-  const violations = [];
-  const phases = Array.isArray(doc?.phases) ? doc.phases : [];
-  const semanticsById = new Map();
-  const asserted = collectAssertedFlags(doc);
-
-  for (const phase of phases) {
-    const bs = phase?.branch_set;
-    if (bs === undefined || bs === null) continue;
-
-    const phaseId = phase.id || '<unnamed>';
-
-    if (typeof bs !== 'object' || Array.isArray(bs)) {
-      violations.push({ phaseId, rule: 'shape' });
-      continue;
-    }
-    const { id, semantics } = bs;
-    if (typeof id !== 'string' || id.length === 0) {
-      violations.push({ phaseId, rule: 'missing_id' });
-      continue;
-    }
-    if (typeof semantics !== 'string' || !SUPPORTED_SEMANTICS.has(semantics)) {
-      violations.push({ phaseId, rule: 'bad_semantics' });
-      continue;
-    }
-    if (phase.optional !== true) {
-      violations.push({ phaseId, rule: 'not_optional' });
-    }
-    const prior = semanticsById.get(id);
-    if (prior !== undefined && prior !== semantics) {
-      violations.push({ phaseId, rule: 'semantics_conflict' });
-    } else {
-      semanticsById.set(id, semantics);
-    }
-    if (!asserted.has(id)) {
-      violations.push({ phaseId, rule: 'no_assertion' });
-    }
-    const steps = Array.isArray(phase.steps) ? phase.steps : [];
-    for (const step of steps) {
-      const c = step?.contributes_to;
-      if (c === undefined || c === null) continue;
-      if (typeof c !== 'string' || c !== id) {
-        violations.push({ phaseId, rule: 'contributes_to_mismatch', stepId: step?.id });
-      }
-    }
-  }
-
-  return violations;
-}
+const { lint, lintDoc, collectAssertedFlags } = require('../scripts/lint-storyboard-branch-sets.cjs');
 
 test('source tree passes the branch-set lint', () => {
   const violations = lint();
@@ -84,11 +24,11 @@ test('source tree passes the branch-set lint', () => {
     violations,
     [],
     'real storyboards have branch-set violations:\n' +
-      violations.map((v) => `  ${v.file}:${v.phaseId} ${v.stepId || ''} — ${v.message}`).join('\n'),
+      violations.map((v) => `  ${v.file}:${v.phaseId} ${v.stepId || ''} — ${v.rule}`).join('\n'),
   );
 });
 
-test('rule 1: branch_set phase must be optional: true', () => {
+test('not_optional: branch_set phase must be optional: true', () => {
   const doc = yaml.load(`
 phases:
   - id: required_branch
@@ -101,14 +41,11 @@ phases:
           - check: any_of
             allowed_values: [flag]
 `);
-  const v = lintDoc(doc);
-  assert.ok(
-    v.some((x) => x.phaseId === 'required_branch' && x.rule === 'not_optional'),
-    `expected not_optional violation, got: ${JSON.stringify(v)}`,
-  );
+  const rules = lintDoc(doc).map((v) => v.rule);
+  assert.ok(rules.includes('not_optional'), `expected not_optional in ${JSON.stringify(rules)}`);
 });
 
-test('rule 2: semantics must be a supported value', () => {
+test('bad_semantics: semantics must be supported', () => {
   const doc = yaml.load(`
 phases:
   - id: p
@@ -122,32 +59,25 @@ phases:
           - check: any_of
             allowed_values: [flag]
 `);
-  const v = lintDoc(doc);
   assert.deepEqual(
-    v.map((x) => x.rule),
+    lintDoc(doc).map((v) => v.rule),
     ['bad_semantics'],
   );
 });
 
-test('rule 3: peer phases must share semantics', () => {
-  // Construct a doc where two phases share branch_set.id. The second peer's
-  // semantics differs and has already been accepted (SUPPORTED_SEMANTICS only
-  // includes any_of today, so this test locks in the check as we add more).
-  // We temporarily expand SUPPORTED_SEMANTICS by monkey-patching — otherwise
-  // the second phase would fail rule 2 first.
-  const SEM_ANY = 'any_of';
-  const SEM_NEW = 'future_semantics';
-  SUPPORTED_SEMANTICS.add(SEM_NEW);
-  try {
-    const doc = yaml.load(`
+test('semantics_conflict: peer phases must share semantics (injected supported set)', () => {
+  // Only any_of is supported today, so we can't exercise this rule with a
+  // second real value. Injecting supportedSemantics lets the test cover the
+  // rule without mutating module state — the real code path is unchanged.
+  const doc = yaml.load(`
 phases:
   - id: peer_a
     optional: true
-    branch_set: { id: shared, semantics: ${SEM_ANY} }
+    branch_set: { id: shared, semantics: any_of }
     steps: []
   - id: peer_b
     optional: true
-    branch_set: { id: shared, semantics: ${SEM_NEW} }
+    branch_set: { id: shared, semantics: future_semantics }
     steps: []
   - id: assert_it
     steps:
@@ -156,17 +86,16 @@ phases:
           - check: any_of
             allowed_values: [shared]
 `);
-    const v = lintDoc(doc);
-    assert.ok(
-      v.some((x) => x.phaseId === 'peer_b' && x.rule === 'semantics_conflict'),
-      `expected semantics_conflict on peer_b, got: ${JSON.stringify(v)}`,
-    );
-  } finally {
-    SUPPORTED_SEMANTICS.delete(SEM_NEW);
-  }
+  const violations = lintDoc(doc, {
+    supportedSemantics: new Set(['any_of', 'future_semantics']),
+  });
+  assert.ok(
+    violations.some((v) => v.rule === 'semantics_conflict' && v.phaseId === 'peer_b'),
+    `expected semantics_conflict on peer_b, got: ${JSON.stringify(violations)}`,
+  );
 });
 
-test('rule 4: branch_set.id must have a matching assert_contribution any_of', () => {
+test('no_assertion: branch_set.id must be consumed by an assert_contribution any_of', () => {
   const doc = yaml.load(`
 phases:
   - id: lonely
@@ -174,14 +103,14 @@ phases:
     branch_set: { id: unreferenced, semantics: any_of }
     steps: []
 `);
-  const v = lintDoc(doc);
+  const violations = lintDoc(doc);
   assert.deepEqual(
-    v.map((x) => ({ phaseId: x.phaseId, rule: x.rule })),
-    [{ phaseId: 'lonely', rule: 'no_assertion' }],
+    violations.map((v) => ({ rule: v.rule, phaseId: v.phaseId })),
+    [{ rule: 'no_assertion', phaseId: 'lonely' }],
   );
 });
 
-test('rule 5: contributes_to inside a branch_set phase must equal branch_set.id', () => {
+test('contributes_to_mismatch: step contributes_to must equal branch_set.id', () => {
   const doc = yaml.load(`
 phases:
   - id: p
@@ -199,11 +128,71 @@ phases:
           - check: any_of
             allowed_values: [flag]
 `);
-  const v = lintDoc(doc);
-  const mismatches = v.filter((x) => x.rule === 'contributes_to_mismatch');
-  assert.deepEqual(mismatches, [
-    { phaseId: 'p', rule: 'contributes_to_mismatch', stepId: 's_bad' },
-  ]);
+  const mismatches = lintDoc(doc).filter((v) => v.rule === 'contributes_to_mismatch');
+  assert.deepEqual(
+    mismatches.map((v) => ({ phaseId: v.phaseId, stepId: v.stepId })),
+    [{ phaseId: 'p', stepId: 's_bad' }],
+  );
+});
+
+test('peer_not_declared: mixed-mode peer with contributes_to to a declared id', () => {
+  // Authoring hazard this rule exists for: one peer migrates to the explicit
+  // branch_set form, a sibling optional peer still relies on implicit
+  // contributes_to. A runner preferring the explicit declaration would see a
+  // single-member set and grade the sibling as `failed` instead of
+  // `peer_branch_taken`.
+  const doc = yaml.load(`
+phases:
+  - id: explicit_peer
+    optional: true
+    branch_set: { id: shared_flag, semantics: any_of }
+    steps:
+      - id: contributes_step
+        contributes_to: shared_flag
+  - id: implicit_peer
+    optional: true
+    steps:
+      - id: legacy_step
+        contributes_to: shared_flag
+  - id: assert_it
+    steps:
+      - task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: [shared_flag]
+`);
+  const violations = lintDoc(doc);
+  const peerViolations = violations.filter((v) => v.rule === 'peer_not_declared');
+  assert.deepEqual(
+    peerViolations.map((v) => ({ phaseId: v.phaseId, stepId: v.stepId, id: v.id })),
+    [{ phaseId: 'implicit_peer', stepId: 'legacy_step', id: 'shared_flag' }],
+  );
+});
+
+test('pure-implicit storyboards do not trip peer_not_declared', () => {
+  // A storyboard with no branch_set: declarations at all stays in implicit
+  // mode and must not fire peer_not_declared — rule 6 only activates when at
+  // least one phase in the storyboard has adopted the explicit form.
+  const doc = yaml.load(`
+phases:
+  - id: peer_a
+    optional: true
+    steps:
+      - id: a
+        contributes_to: shared
+  - id: peer_b
+    optional: true
+    steps:
+      - id: b
+        contributes_to: shared
+  - id: assert_it
+    steps:
+      - task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: [shared]
+`);
+  assert.deepEqual(lintDoc(doc), []);
 });
 
 test('collectAssertedFlags pulls every any_of flag from every assert_contribution step', () => {
