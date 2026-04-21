@@ -177,7 +177,7 @@ const TALENT: TalentEntry[] = [
       restrictions: ['Never place text over the athlete', 'No competitor brand logos in frame'],
     },
     rights: {
-      available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+      available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['NL', 'BE', 'DE'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -186,7 +186,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'janssen_likeness_voice',
         right_type: 'talent',
-        available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+        available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE'],
         exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2026-12-31'] },
         pricing_options: [
@@ -245,7 +245,7 @@ const TALENT: TalentEntry[] = [
       donts: ['No weight/body references', 'No rival athlete comparisons'],
     },
     rights: {
-      available_uses: ['likeness', 'name', 'endorsement'],
+      available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['MX', 'US', 'CO', 'AR'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -254,7 +254,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'reyes_likeness',
         right_type: 'talent',
-        available_uses: ['likeness', 'name', 'endorsement'],
+        available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['MX', 'US', 'CO', 'AR'],
         exclusivity_status: { available: true, existing_exclusives: [] },
         pricing_options: [
@@ -308,7 +308,7 @@ const TALENT: TalentEntry[] = [
       donts: ['No meat/dairy promotion', 'No fast food'],
     },
     rights: {
-      available_uses: ['likeness', 'name', 'endorsement'],
+      available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['NL', 'BE', 'DE', 'FR'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required', 'vegan_lifestyle_compatible_only'],
@@ -317,7 +317,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'vandijk_likeness',
         right_type: 'talent',
-        available_uses: ['likeness', 'name', 'endorsement'],
+        available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE', 'FR'],
         exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2027-03-31'] },
         pricing_options: [
@@ -391,7 +391,7 @@ const TALENT: TalentEntry[] = [
       settings: { stability: 0.8, language: 'ja' },
     },
     rights: {
-      available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+      available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['JP', 'KR', 'US'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -400,7 +400,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'tanaka_likeness_voice',
         right_type: 'talent',
-        available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+        available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['JP', 'KR', 'US'],
         exclusivity_status: {
           available: false,
@@ -447,6 +447,22 @@ const TALENT: TalentEntry[] = [
 ];
 
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
+
+// Storyboards probe acquire_rights with generic pricing_option_id values like
+// `standard_monthly` that don't map to any single offering's actual options.
+// Resolve exact match first; for generic aliases, fall back to the first
+// pricing option whose model/period fits. This keeps fixture-specific IDs
+// (cpm_endorsement, monthly_exclusive) while accepting the spec's documented
+// generics.
+function resolvePricingOption(offering: RightsOffering, requestedId: string): PricingOption | undefined {
+  const exact = offering.pricing_options.find(p => p.pricing_option_id === requestedId);
+  if (exact) return exact;
+  if (requestedId === 'standard_monthly') {
+    return offering.pricing_options.find(p => p.model === 'flat_rate' && p.period === 'monthly')
+      ?? offering.pricing_options.find(p => p.model === 'flat_rate');
+  }
+  return undefined;
+}
 
 // ── Advertiser brands from @adcp/client sandbox entities ────────
 // Loaded via getSandboxBrands() — the same API the AAO registry uses.
@@ -566,6 +582,9 @@ export const BRAND_TOOLS = [
           required: ['description', 'uses'],
           description: 'Campaign details for rights clearance',
         },
+        account: { type: 'object', description: 'Account reference (seller + operator/brand + sandbox flag)' },
+        brand: { type: 'object', description: 'Brand identity the campaign is being produced for — session-keying and governance-plan lookup read this' },
+        revocation_webhook: { type: 'object', description: 'Webhook endpoint the brand agent calls when a previously-granted license is revoked.' },
       },
       required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
     },
@@ -802,7 +821,14 @@ export function handleGetRights(
 
   const queryLower = query.toLowerCase();
 
-  let candidates = brandId ? TALENT.filter(t => t.brand_id === brandId) : [...TALENT];
+  // `brand_id` on get_rights identifies the *buyer's* campaign brand, not
+  // the talent's. A buyer asking for rights for Acme doesn't restrict
+  // which talent's rights they can license — only `uses` and `countries`
+  // filter. Keep the prior exact-match fallback for catalog-style
+  // discovery (when a test-kit scopes talent to a named brand id), but
+  // don't hide the catalog when the caller-supplied brand doesn't match.
+  const exactMatch = brandId ? TALENT.filter(t => t.brand_id === brandId) : [];
+  let candidates = exactMatch.length > 0 ? exactMatch : [...TALENT];
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
@@ -916,13 +942,25 @@ export async function handleAcquireRights(
     return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
   }
 
-  const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
+  const pricingOption = resolvePricingOption(offering, pricingOptionId);
   if (!pricingOption) {
     return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
   if (!campaign?.description) {
     return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+  }
+
+  if (campaign.end_date) {
+    const endMs = new Date(campaign.end_date).getTime();
+    if (!Number.isNaN(endMs) && endMs < Date.now()) {
+      return {
+        errors: [{
+          code: 'invalid_request',
+          message: `Campaign end_date ${campaign.end_date} is in the past; cannot license rights for an expired period.`,
+        }],
+      };
+    }
   }
 
   // Governance enforcement: if plans are active in this session, the rights
@@ -932,17 +970,30 @@ export async function handleAcquireRights(
   // gets a success response instead of GOVERNANCE_DENIED.
   const session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
   if (session.governancePlans.size > 0) {
-    const price = pricingOption.price;
+    // Estimate total commitment: flat-rate pricing uses `price` as the fixed
+    // total; CPM-priced rights project to estimated_impressions (or a
+    // conservative 1M-impression floor when the buyer didn't specify
+    // campaign volume). The governance check compares this projection to
+    // the plan's remaining authorised spend. A buyer whose plan has $50
+    // remaining can't license a $3.50-CPM rights grant unless the campaign
+    // is explicitly tiny; the default projection says $3500 > $50 and the
+    // plan denies.
+    const priceModel = pricingOption.model;
+    const basePrice = pricingOption.price;
+    const estimatedImpressions = (campaign as unknown as { estimated_impressions?: number }).estimated_impressions ?? 1_000_000;
+    const estimatedCommitment = priceModel === 'cpm'
+      ? (basePrice / 1000) * estimatedImpressions
+      : basePrice;
     for (const plan of session.governancePlans.values()) {
       const remaining = plan.budget.total - plan.committedBudget;
       const typeAlloc = plan.budget.allocations?.rights_license;
       const typeRemaining = typeAlloc?.amount !== undefined
         ? typeAlloc.amount - (plan.committedByType?.rights_license ?? 0)
         : undefined;
-      if (price > remaining || (typeRemaining !== undefined && price > typeRemaining)) {
-        const msg = typeRemaining !== undefined && price > typeRemaining
-          ? `Rights price $${price} exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
-          : `Rights price $${price} exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
+      if (estimatedCommitment > remaining || (typeRemaining !== undefined && estimatedCommitment > typeRemaining)) {
+        const msg = typeRemaining !== undefined && estimatedCommitment > typeRemaining
+          ? `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
+          : `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
         return {
           errors: [{
             code: 'GOVERNANCE_DENIED',

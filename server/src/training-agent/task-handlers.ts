@@ -60,7 +60,7 @@ function adcpError(code: string, opts: { message: string; details?: unknown; rec
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
-type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string; targeting?: PackageTargeting };
+type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string; targeting?: PackageTargeting; targeting_overlay?: PackageTargeting };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
@@ -91,6 +91,7 @@ interface PackageInput {
   end_time?: string;
   format_ids?: FormatID[];
   targeting?: PackageTargeting;
+  targeting_overlay?: PackageTargeting;
 }
 
 interface CreativeAssignmentInput {
@@ -1449,6 +1450,35 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       continue;
     }
 
+    // Reject unworkable measurement_terms (TERMS_REJECTED). Checked BEFORE
+    // bid_price / other field validation so buyers see the terms-level
+    // rejection first — correcting a one-sided measurement proposal is
+    // typically an earlier-round concern than a missing bid_price.
+    // Matches the `measurement_terms_rejected` storyboard's aggressive
+    // baseline probe (max_variance_percent: 0, measurement_window: "c30").
+    const terms = (pkg as unknown as { measurement_terms?: { billing_measurement?: { max_variance_percent?: number; measurement_window?: string } } }).measurement_terms;
+    const bm = terms?.billing_measurement;
+    if (bm) {
+      if (typeof bm.max_variance_percent === 'number' && bm.max_variance_percent < 0.5) {
+        errors.push({
+          code: 'TERMS_REJECTED',
+          message: `${pkgLabel}: measurement_terms.billing_measurement.max_variance_percent ${bm.max_variance_percent} is below our minimum of 0.5%. Third-party measurement variance can't be guaranteed tighter than 0.5%.`,
+          field: `packages[${i}].measurement_terms.billing_measurement.max_variance_percent`,
+          recovery: 'correctable',
+        });
+        continue;
+      }
+      if (bm.measurement_window === 'c30') {
+        errors.push({
+          code: 'TERMS_REJECTED',
+          message: `${pkgLabel}: measurement_window "c30" is not supported. Use "c3" or "c7" for guaranteed windows.`,
+          field: `packages[${i}].measurement_terms.billing_measurement.measurement_window`,
+          recovery: 'correctable',
+        });
+        continue;
+      }
+    }
+
     // Check bid vs floor price (floor_price exists on all pricing models except CPA)
     const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
     const isAuction = pricing.pricing_model !== 'cpa'
@@ -1489,34 +1519,13 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
-    // Reject unworkable measurement_terms (TERMS_REJECTED). Our publishers
-    // don't guarantee zero-variance measurement or C30 windows; probes that
-    // ask for either should be rejected so buyers can correct and retry.
-    // Matches the `measurement_terms_rejected` storyboard's aggressive
-    // baseline probe.
-    const terms = (pkg as unknown as { measurement_terms?: { billing_measurement?: { max_variance_percent?: number; measurement_window?: string } } }).measurement_terms;
-    const bm = terms?.billing_measurement;
-    if (bm) {
-      if (typeof bm.max_variance_percent === 'number' && bm.max_variance_percent < 0.5) {
-        errors.push({
-          code: 'TERMS_REJECTED',
-          message: `${pkgLabel}: measurement_terms.billing_measurement.max_variance_percent ${bm.max_variance_percent} is below our minimum of 0.5%. Third-party measurement variance can't be guaranteed tighter than 0.5%.`,
-          field: `packages[${i}].measurement_terms.billing_measurement.max_variance_percent`,
-          recovery: 'correctable',
-        });
-      }
-      if (bm.measurement_window === 'c30') {
-        errors.push({
-          code: 'TERMS_REJECTED',
-          message: `${pkgLabel}: measurement_window "c30" is not supported. Use "c3" or "c7" for guaranteed windows.`,
-          field: `packages[${i}].measurement_terms.billing_measurement.measurement_window`,
-          recovery: 'correctable',
-        });
-      }
-    }
 
-    // Don't build package state if there are any validation errors (atomic create)
-    const targetingResult = validateTargeting(pkg.targeting, `packages[${i}].targeting`);
+    // Don't build package state if there are any validation errors (atomic create).
+    // Spec field is `targeting_overlay`; `targeting` is an alias we accept for
+    // backward compat with storyboards authored before the rename.
+    const incomingTargeting = (pkg as unknown as { targeting_overlay?: unknown; targeting?: unknown }).targeting_overlay
+      ?? pkg.targeting;
+    const targetingResult = validateTargeting(incomingTargeting, `packages[${i}].targeting_overlay`);
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
     }
@@ -1596,7 +1605,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-      ...(pkg.targeting && { targeting: pkg.targeting }),
+      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       creative_assignments: [],
     })),
   };
@@ -1662,7 +1671,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
               creative_id: cid,
               approval_status: 'approved' as const,
             })),
-            ...(pkg.targeting && { targeting: pkg.targeting }),
+            ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -2163,8 +2172,9 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         }
       }
 
-      if (update.targeting !== undefined) {
-        const targetingResult = validateTargeting(update.targeting, `packages[${pkgId}].targeting`);
+      const updateTargeting = update.targeting_overlay ?? update.targeting;
+      if (updateTargeting !== undefined) {
+        const targetingResult = validateTargeting(updateTargeting, `packages[${pkgId}].targeting_overlay`);
         if (targetingResult.errors.length) {
           return { errors: targetingResult.errors };
         }
@@ -2210,7 +2220,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
 
       const pkgId = `pkg-${mb.packages.length + i}`;
-      const targetingResult = validateTargeting(npkg.targeting, `new_packages[${i}].targeting`);
+      const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
+      const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
