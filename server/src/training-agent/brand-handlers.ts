@@ -448,22 +448,6 @@ const TALENT: TalentEntry[] = [
 
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
-// Storyboards probe acquire_rights with generic pricing_option_id values like
-// `standard_monthly` that don't map to any single offering's actual options.
-// Resolve exact match first; for generic aliases, fall back to the first
-// pricing option whose model/period fits. This keeps fixture-specific IDs
-// (cpm_endorsement, monthly_exclusive) while accepting the spec's documented
-// generics.
-function resolvePricingOption(offering: RightsOffering, requestedId: string): PricingOption | undefined {
-  const exact = offering.pricing_options.find(p => p.pricing_option_id === requestedId);
-  if (exact) return exact;
-  if (requestedId === 'standard_monthly') {
-    return offering.pricing_options.find(p => p.model === 'flat_rate' && p.period === 'monthly')
-      ?? offering.pricing_options.find(p => p.model === 'flat_rate');
-  }
-  return undefined;
-}
-
 // ── Advertiser brands from @adcp/client sandbox entities ────────
 // Loaded via getSandboxBrands() — the same API the AAO registry uses.
 // New sandbox brands added to the SDK appear here automatically.
@@ -821,14 +805,7 @@ export function handleGetRights(
 
   const queryLower = query.toLowerCase();
 
-  // `brand_id` on get_rights identifies the *buyer's* campaign brand, not
-  // the talent's. A buyer asking for rights for Acme doesn't restrict
-  // which talent's rights they can license — only `uses` and `countries`
-  // filter. Keep the prior exact-match fallback for catalog-style
-  // discovery (when a test-kit scopes talent to a named brand id), but
-  // don't hide the catalog when the caller-supplied brand doesn't match.
-  const exactMatch = brandId ? TALENT.filter(t => t.brand_id === brandId) : [];
-  let candidates = exactMatch.length > 0 ? exactMatch : [...TALENT];
+  let candidates = brandId ? TALENT.filter(t => t.brand_id === brandId) : [...TALENT];
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
@@ -942,7 +919,7 @@ export async function handleAcquireRights(
     return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
   }
 
-  const pricingOption = resolvePricingOption(offering, pricingOptionId);
+  const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
     return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }

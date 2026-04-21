@@ -69,12 +69,11 @@ interface EventInput {
 interface PerformanceFeedbackInput extends ToolArgs {
   media_buy_id: string;
   measurement_period: { start: string; end: string };
-  performance_index?: number;
+  performance_index: number;
   package_id?: string;
   creative_id?: string;
   metric_type?: string;
   feedback_source?: string;
-  feedback?: { satisfaction?: string; notes?: string; [k: string]: unknown };
   idempotency_key?: string;
 }
 
@@ -265,10 +264,9 @@ export const CATALOG_EVENT_TOOLS = [
         creative_id: { type: 'string' },
         metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'roas', 'cpa', 'engagement_rate'] },
         feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'blended'] },
-        feedback: { type: 'object', description: 'Structured feedback object (alternative to flat fields)' },
         idempotency_key: { type: 'string' },
       },
-      required: ['media_buy_id', 'measurement_period'],
+      required: ['media_buy_id', 'measurement_period', 'performance_index'],
     },
   },
 ];
@@ -551,18 +549,9 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     };
   }
 
-  // performance_index is the AdCP-spec metric, but implementers commonly
-  // also accept a structured `feedback` object (satisfaction/notes) — derive
-  // a synthetic index when the flat field is absent so test harnesses that
-  // exercise the conversational feedback shape still pass.
-  const satisfactionIndex: Record<string, number> = { positive: 1.2, neutral: 1.0, negative: 0.7 };
-  const derivedIndex = req.feedback?.satisfaction && typeof req.feedback.satisfaction === 'string'
-    ? satisfactionIndex[req.feedback.satisfaction.toLowerCase()]
-    : undefined;
-  const effectiveIndex = req.performance_index ?? derivedIndex;
-  if (effectiveIndex == null || effectiveIndex < 0) {
+  if (req.performance_index == null || req.performance_index < 0) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'performance_index (or feedback.satisfaction) is required and must be >= 0' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'performance_index must be >= 0' }],
     };
   }
 
@@ -579,7 +568,7 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     success: true,
     media_buy_id: req.media_buy_id,
     measurement_period: req.measurement_period,
-    performance_index: effectiveIndex,
+    performance_index: req.performance_index,
     ...(req.package_id && { package_id: req.package_id }),
     ...(req.metric_type && { metric_type: req.metric_type }),
   };
