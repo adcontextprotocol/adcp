@@ -796,7 +796,14 @@
         const data = complianceMap?.get(agent.url);
         const cs = data?.status;
         const history = data?.history;
-        const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+        const hostname = (() => {
+          try {
+            const u = new URL(agent.url);
+            return u.hostname + u.pathname + u.search + u.hash;
+          } catch {
+            return agent.url;
+          }
+        })();
         const authInfo = data?.authStatus;
         const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
