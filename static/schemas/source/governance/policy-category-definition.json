@@ -39,7 +39,7 @@
           },
           "policy_ids": {
             "type": "array",
-            "items": { "type": "string", "x-entity": "governance_policy" },
+            "items": { "type": "string", "x-entity": "governance_registry_policy" },
             "description": "Registry policy IDs that implement this framework."
           }
         },

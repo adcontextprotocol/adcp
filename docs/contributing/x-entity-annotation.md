@@ -109,11 +109,13 @@ High-level groupings (see the registry for full descriptions). *Categories below
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
-| Plans & governance | `media_plan`, `governance_plan`, `governance_policy`, `governance_check`, `content_standards`, `task` |
+| Plans & governance | `media_plan`, `governance_plan`, `governance_registry_policy`, `governance_inline_policy`, `governance_check`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option` |
 | SI | `si_session`, `offering` |
 
-**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_policy` identifies a rule inside or referenced by a plan (*"which rule?"* — e.g., `uk_hfss`); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
+**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_registry_policy` / `governance_inline_policy` identify a rule inside or referenced by a plan (*"which rule?"*); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
+
+**Registry vs. inline policy:** registry-scoped `policy_id`s (e.g., `uk_hfss`, `us_coppa`) are globally unique and stable across organizations; inline-scoped `policy_id`s are plan-scoped (same id string in a different plan = different rule). In AdCP task schemas, `policy-entry.json` always represents inline policies — registry policies are served out-of-band by the policy registry API. If a finding's `policy_id` could reference either namespace (the two ambiguous sites: `check-governance-response::findings[].policy_id`, audit log entries), leave it un-annotated with a `$comment` — a captured value of unknown namespace can't be safely fed into either consumer.
 
 The registry file is the source of truth. To see every annotated field across the repo: `git grep -l x-entity static/schemas/source`.
 
