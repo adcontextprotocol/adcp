@@ -147,13 +147,31 @@ function toListResponse(state: PropertyListState) {
 }
 
 function extractDomains(properties: unknown[]): string[] {
-  return properties
-    .map(p => {
-      if (typeof p === 'string') return p;
-      if (typeof p === 'object' && p !== null && 'domain' in p) return (p as { domain: string }).domain;
-      return null;
-    })
-    .filter((d): d is string => d !== null);
+  const domains: string[] = [];
+  for (const p of properties) {
+    if (typeof p === 'string') {
+      domains.push(p);
+      continue;
+    }
+    if (typeof p !== 'object' || p === null) continue;
+    const obj = p as Record<string, unknown>;
+    if (typeof obj.domain === 'string') {
+      domains.push(obj.domain);
+      continue;
+    }
+    // Property selection shape: { selection_type: 'identifiers', identifiers: [{ type, value }] }
+    if (Array.isArray(obj.identifiers)) {
+      for (const ident of obj.identifiers) {
+        if (typeof ident === 'object' && ident !== null) {
+          const identObj = ident as { type?: string; value?: unknown };
+          if ((identObj.type === 'domain' || identObj.type === 'subdomain') && typeof identObj.value === 'string') {
+            domains.push(identObj.value);
+          }
+        }
+      }
+    }
+  }
+  return domains;
 }
 
 // ── Handlers ─────────────────────────────────────────────────────
@@ -371,6 +389,7 @@ export async function handleValidatePropertyDelivery(
   const totalImpressions = compliantImpressions + nonCompliantImpressions;
 
   return {
+    compliant: nonCompliantRecords === 0,
     list_id: req.list_id,
     summary: {
       total_records: records.length,
