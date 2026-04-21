@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { Reader } from '@contentauth/c2pa-node';
 import { attachC2PAIfEnabled } from '../../src/services/illustration-generator.js';
 import { resetC2PASignerCache } from '../../src/services/c2pa.js';
+import * as c2pa from '../../src/services/c2pa.js';
 import * as errorNotifier from '../../src/addie/error-notifier.js';
 
 const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'c2pa');
@@ -55,10 +56,10 @@ afterEach(() => {
 });
 
 describe('attachC2PAIfEnabled', () => {
-  it('returns the input unchanged when signing is disabled', () => {
+  it('returns the input unchanged when signing is disabled', async () => {
     delete process.env.C2PA_SIGNING_ENABLED;
     const input = { imageBuffer: testPng, promptUsed: 'test prompt' };
-    const result = attachC2PAIfEnabled(input, { title: 'Test hero' });
+    const result = await attachC2PAIfEnabled(input, { title: 'Test hero' });
     expect(result.imageBuffer).toBe(testPng);
     expect(result.c2pa).toBeUndefined();
   });
@@ -68,7 +69,7 @@ describe('attachC2PAIfEnabled', () => {
     process.env.C2PA_CERT_PEM_B64 = CERT_B64;
     process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
 
-    const result = attachC2PAIfEnabled(
+    const result = await attachC2PAIfEnabled(
       { imageBuffer: testPng, promptUsed: 'test prompt with private bits' },
       { title: 'Test hero', category: 'The Prompt', editionDate: '2026-04-20' },
     );
@@ -94,7 +95,7 @@ describe('attachC2PAIfEnabled', () => {
     process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
 
     const secretPrompt = 'author-private visual-description-that-should-not-leak';
-    const result = attachC2PAIfEnabled(
+    const result = await attachC2PAIfEnabled(
       { imageBuffer: testPng, promptUsed: secretPrompt },
       { title: 'Hero' },
     );
@@ -105,46 +106,98 @@ describe('attachC2PAIfEnabled', () => {
     expect(serialized).toContain('prompt_sha256');
   });
 
-  it('returns the unsigned result and alerts when signing throws on malformed input', () => {
+  it('signs a WebP buffer by normalizing through sharp before handing to c2pa', async () => {
+    process.env.C2PA_SIGNING_ENABLED = 'true';
+    process.env.C2PA_CERT_PEM_B64 = CERT_B64;
+    process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
+
+    // Gemini's image model occasionally returns non-PNG formats (webp, jpeg).
+    // c2pa-node throws "type is unsupported" when handed those bytes under
+    // an image/png declaration; the sharp re-encode is the guardrail.
+    const webpBuffer = await sharp({
+      create: { width: 64, height: 64, channels: 4, background: { r: 10, g: 10, b: 200, alpha: 1 } },
+    })
+      .webp()
+      .toBuffer();
+
+    const result = await attachC2PAIfEnabled(
+      { imageBuffer: webpBuffer, promptUsed: 'ok' },
+      { title: 'WebP hero' },
+    );
+
+    expect(result.c2pa).toBeDefined();
+    const reader = await Reader.fromAsset({ buffer: result.imageBuffer, mimeType: 'image/png' });
+    expect(reader.getActive()?.title).toBe('WebP hero');
+  });
+
+  it('returns the unsigned result and alerts when sharp rejects the input', async () => {
     process.env.C2PA_SIGNING_ENABLED = 'true';
     process.env.C2PA_CERT_PEM_B64 = CERT_B64;
     process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
     delete process.env.C2PA_STRICT;
 
-    // Valid cert/key but the buffer is not a PNG — Builder.sign throws when
-    // trying to parse the PNG ancillary-chunk structure. This exercises the
-    // real sign-failure fallback, not a startup-config error.
-    const notAPng = Buffer.from('this is plain text, definitely not PNG bytes');
-    const input = { imageBuffer: notAPng, promptUsed: 'test' };
-    const result = attachC2PAIfEnabled(input, { title: 'Hero' });
+    // Exercises the catch-block fallback via the sharp-reencode phase: if
+    // Gemini ever returns bytes sharp cannot decode, we still return unsigned
+    // and fire the alert instead of blocking the caller.
+    const notAnImage = Buffer.from('this is plain text, definitely not image bytes');
+    const input = { imageBuffer: notAnImage, promptUsed: 'test' };
+    const result = await attachC2PAIfEnabled(input, { title: 'Hero' });
 
-    expect(result.imageBuffer).toBe(notAPng);
+    expect(result.imageBuffer).toBe(notAnImage);
     expect(result.c2pa).toBeUndefined();
     expect(errorNotifier.notifySystemError).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'c2pa-illustration-signing' }),
     );
   });
 
-  it('rethrows the signing error in strict mode', () => {
-    process.env.C2PA_SIGNING_ENABLED = 'true';
-    process.env.C2PA_CERT_PEM_B64 = CERT_B64;
-    process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
-    process.env.C2PA_STRICT = 'true';
-
-    const notAPng = Buffer.from('not PNG');
-    const input = { imageBuffer: notAPng, promptUsed: 'test' };
-
-    expect(() => attachC2PAIfEnabled(input, { title: 'Hero' })).toThrow();
-    expect(errorNotifier.notifySystemError).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not fire the error alert on the happy path', () => {
+  it('returns the unsigned result and alerts when signC2PA itself throws post-sharp', async () => {
     process.env.C2PA_SIGNING_ENABLED = 'true';
     process.env.C2PA_CERT_PEM_B64 = CERT_B64;
     process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
     delete process.env.C2PA_STRICT;
 
-    const result = attachC2PAIfEnabled(
+    // Regression coverage for the original "type is unsupported" production
+    // bug: a buffer sharp accepts but the sign layer rejects must still fall
+    // back cleanly. Spy on signC2PA so the sharp step succeeds and the throw
+    // originates from the sign layer.
+    vi.spyOn(c2pa, 'signC2PA').mockImplementation(() => {
+      throw new Error('simulated c2pa-node sign failure');
+    });
+
+    const result = await attachC2PAIfEnabled(
+      { imageBuffer: testPng, promptUsed: 'test' },
+      { title: 'Hero' },
+    );
+
+    // Fallback returns the original (unsigned) input result — not the
+    // re-encoded buffer — so callers never ship something we half-processed.
+    expect(result.imageBuffer).toBe(testPng);
+    expect(result.c2pa).toBeUndefined();
+    expect(errorNotifier.notifySystemError).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'c2pa-illustration-signing' }),
+    );
+  });
+
+  it('rethrows the signing error in strict mode', async () => {
+    process.env.C2PA_SIGNING_ENABLED = 'true';
+    process.env.C2PA_CERT_PEM_B64 = CERT_B64;
+    process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
+    process.env.C2PA_STRICT = 'true';
+
+    const notAnImage = Buffer.from('not an image');
+    const input = { imageBuffer: notAnImage, promptUsed: 'test' };
+
+    await expect(attachC2PAIfEnabled(input, { title: 'Hero' })).rejects.toThrow();
+    expect(errorNotifier.notifySystemError).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire the error alert on the happy path', async () => {
+    process.env.C2PA_SIGNING_ENABLED = 'true';
+    process.env.C2PA_CERT_PEM_B64 = CERT_B64;
+    process.env.C2PA_PRIVATE_KEY_PEM_B64 = KEY_B64;
+    delete process.env.C2PA_STRICT;
+
+    const result = await attachC2PAIfEnabled(
       { imageBuffer: testPng, promptUsed: 'ok' },
       { title: 'Hero' },
     );
