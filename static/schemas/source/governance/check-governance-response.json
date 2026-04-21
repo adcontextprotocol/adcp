@@ -149,35 +149,66 @@
   "allOf": [
     {
       "if": {
-        "properties": { "status": { "const": "conditions" } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "const": "conditions"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
-        "required": ["conditions"],
+        "required": [
+          "conditions"
+        ],
         "properties": {
-          "conditions": { "minItems": 1 }
+          "conditions": {
+            "minItems": 1
+          }
         }
       }
     },
     {
       "if": {
-        "properties": { "status": { "const": "denied" } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "const": "denied"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
-        "required": ["findings"],
+        "required": [
+          "findings"
+        ],
         "properties": {
-          "findings": { "minItems": 1 }
+          "findings": {
+            "minItems": 1
+          }
         }
       }
     },
     {
       "if": {
-        "properties": { "status": { "enum": ["approved", "conditions"] } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "conditions"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
-        "required": ["expires_at"]
+        "required": [
+          "expires_at"
+        ]
       }
     }
   ]

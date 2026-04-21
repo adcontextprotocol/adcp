@@ -118,11 +118,23 @@
             "allOf": [
               {
                 "if": {
-                  "properties": { "action": { "enum": ["created", "updated", "unchanged"] } },
-                  "required": ["action"]
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "created",
+                        "updated",
+                        "unchanged"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
                 },
                 "then": {
-                  "required": ["item_count"]
+                  "required": [
+                    "item_count"
+                  ]
                 }
               }
             ]

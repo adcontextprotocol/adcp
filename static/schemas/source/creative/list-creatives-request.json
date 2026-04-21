@@ -94,6 +94,25 @@
     }
   },
   "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "include_pricing": {
+            "const": true
+          }
+        },
+        "required": [
+          "include_pricing"
+        ]
+      },
+      "then": {
+        "required": [
+          "account"
+        ]
+      }
+    }
+  ],
   "examples": [
     {
       "description": "List all approved creatives",
