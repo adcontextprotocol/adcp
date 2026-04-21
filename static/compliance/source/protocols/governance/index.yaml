@@ -41,6 +41,51 @@ prerequisites:
     URL. The test kit provides a sample brand (Acme Outdoor) with campaign parameters
     and a governance configuration with spending authority limits.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_ctv_q2"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "sports_ctv_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 45.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+  plans:
+    - plan_id: "gov_acme_q2_2027"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+      budget:
+        total: 50000
+        currency: "USD"
+        reallocation_threshold: 20000
+      flight:
+        start: "2027-04-01T00:00:00Z"
+        end: "2027-06-30T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "weekly_reporting_over_10k"
+          enforcement: "must"
+          policy: "Weekly reporting required for buys over $10K."
+        - policy_id: "seller_concentration_cap"
+          enforcement: "must"
+          policy: "No single-seller concentration above 60% of total budget."
 
 phases:
   - id: capability_discovery
