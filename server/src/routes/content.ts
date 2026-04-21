@@ -15,7 +15,10 @@ import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
+import type { SlackBlockMessage } from '../slack/types.js';
 import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
+import { getEditorialChannel } from '../db/system-settings-db.js';
+import { escapeSlackText } from '../utils/slack-escape.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
@@ -54,61 +57,121 @@ interface ProposeContentRequest {
 }
 
 /**
- * Notify a working group's Slack channel about pending content
+ * Notify reviewers that content has entered pending_review.
+ *
+ * Posts to both (a) the working group's Slack channel if one is configured
+ * (keeps WG-specific review flows working) and (b) the system-wide editorial
+ * review channel if one is configured (central queue for admins and
+ * committee leads regardless of WG). Either, both, or neither may exist —
+ * that's fine, we just skip what's missing.
  */
-async function notifyWorkingGroupOfPendingContent(
+async function notifyPendingReview(
   workingGroupId: string,
-  perspective: { id: string; title: string; slug: string },
+  perspective: {
+    id: string;
+    title: string;
+    slug: string;
+    excerpt: string | null;
+    content_type: string;
+  },
   authorName: string
 ): Promise<void> {
   const pool = getPool();
 
-  // Get the working group's Slack channel
-  const wgResult = await pool.query(
-    `SELECT name, slack_channel_id FROM working_groups WHERE id = $1`,
-    [workingGroupId]
-  );
+  // Fetch the working group and committee leads in one trip so we can include
+  // lead names in the message (helps reviewers know who to tag or assign).
+  const [wgResult, leadersResult, editorialChannel] = await Promise.all([
+    pool.query(
+      `SELECT name, slack_channel_id FROM working_groups WHERE id = $1`,
+      [workingGroupId]
+    ),
+    pool.query(
+      `SELECT u.first_name, u.last_name, u.email
+         FROM working_group_leaders wgl
+         LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+         LEFT JOIN users u ON u.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
+         WHERE wgl.working_group_id = $1
+           AND u.workos_user_id IS NOT NULL
+         LIMIT 10`,
+      [workingGroupId]
+    ),
+    getEditorialChannel(),
+  ]);
 
-  if (wgResult.rows.length === 0 || !wgResult.rows[0].slack_channel_id) {
-    logger.debug({ workingGroupId }, 'Working group has no Slack channel, skipping notification');
+  if (wgResult.rows.length === 0) {
+    logger.warn({ workingGroupId }, 'Working group not found for pending-review notification');
     return;
   }
 
-  const { name: wgName, slack_channel_id: slackChannelId } = wgResult.rows[0];
+  const { name: wgName, slack_channel_id: wgChannelId } = wgResult.rows[0];
+  const editorialChannelId = editorialChannel.channel_id;
 
-  try {
-    await sendChannelMessage(slackChannelId, {
-      text: `New content pending review: "${perspective.title}" by ${authorName}`,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `📝 *New content submitted for review*\n\n*Title:* ${perspective.title}\n*Author:* ${authorName}\n*Collection:* ${wgName}`,
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Review Content',
-                emoji: true,
-              },
-              url: `https://agenticadvertising.org/dashboard/content?status=pending_review`,
-              action_id: 'review_content',
-            },
-          ],
-        },
-      ],
-    });
-
-    logger.info({ workingGroupId, perspectiveId: perspective.id, slackChannelId }, 'Sent pending content notification to working group');
-  } catch (error) {
-    logger.error({ error, workingGroupId, perspectiveId: perspective.id }, 'Failed to send pending content notification');
+  if (!wgChannelId && !editorialChannelId) {
+    logger.debug({ workingGroupId }, 'No Slack channels configured for pending-review notification');
+    return;
   }
+
+  const leadNames: string[] = leadersResult.rows
+    .map(r => (r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : r.email?.split('@')[0] || null))
+    .filter((n): n is string => !!n);
+
+  const safeTitle = escapeSlackText(perspective.title, 180);
+  const safeAuthor = escapeSlackText(authorName, 80);
+  const safeWg = escapeSlackText(wgName, 80);
+  const safeExcerpt = perspective.excerpt ? escapeSlackText(perspective.excerpt, 240) : null;
+  const leadLine = leadNames.length > 0
+    ? `\n*Leads:* ${leadNames.map(n => escapeSlackText(n, 60)).join(', ')}`
+    : '';
+  const excerptLine = safeExcerpt ? `\n\n> ${safeExcerpt}` : '';
+  const reviewUrl = `https://agenticadvertising.org/dashboard/content?status=pending_review&id=${encodeURIComponent(perspective.id)}`;
+  const typeLabel = perspective.content_type === 'link' ? 'Link' : 'Article';
+
+  const message: SlackBlockMessage = {
+    text: `${typeLabel} pending review: "${safeTitle}" by ${safeAuthor}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `📝 *New ${typeLabel.toLowerCase()} submitted for review*\n\n*Title:* ${safeTitle}\n*Author:* ${safeAuthor}\n*Committee:* ${safeWg}${leadLine}${excerptLine}`,
+        },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Review', emoji: true },
+            url: reviewUrl,
+            action_id: 'review_content',
+            style: 'primary',
+          },
+        ],
+      },
+    ],
+  };
+
+  const targets: Array<{ channelId: string; label: string }> = [];
+  if (wgChannelId) targets.push({ channelId: wgChannelId, label: 'working group' });
+  // Avoid double-posting if WG and editorial channels are the same
+  if (editorialChannelId && editorialChannelId !== wgChannelId) {
+    targets.push({ channelId: editorialChannelId, label: 'editorial' });
+  }
+
+  await Promise.all(targets.map(async ({ channelId, label }) => {
+    try {
+      await sendChannelMessage(channelId, message);
+      logger.info(
+        { workingGroupId, perspectiveId: perspective.id, channelId, target: label },
+        'Sent pending content notification'
+      );
+    } catch (error) {
+      logger.error(
+        { error, workingGroupId, perspectiveId: perspective.id, channelId, target: label },
+        'Failed to send pending content notification'
+      );
+    }
+  }));
 }
 
 /**
@@ -339,9 +402,19 @@ export async function proposeContentForUser(
     committeeSlug,
   }, 'Content proposed via direct function call');
 
-  // Notify working group if content needs review
+  // Notify working group and editorial reviewers if content needs review
   if (status === 'pending_review') {
-    notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
+    notifyPendingReview(
+      committeeId,
+      {
+        id: perspective.id,
+        title: perspective.title,
+        slug: perspective.slug,
+        excerpt: perspective.excerpt ?? null,
+        content_type: perspective.content_type,
+      },
+      authorName
+    ).catch(err => {
       logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
     });
   } else if (status === 'published') {
