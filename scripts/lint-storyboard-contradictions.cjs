@@ -58,49 +58,76 @@ const crypto = require('node:crypto');
 const yaml = require('js-yaml');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
+const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 
 /**
- * AdCP task names that MUTATE server state. Prior-state discrimination
- * depends on this list — a step whose prior phase contains only read tasks
- * is at the same "state" as a step with no prior phases.
+ * Tasks whose state mutations are invisible to the idempotency-key heuristic
+ * below — they don't require `idempotency_key` in their request schema
+ * (typically because they are naturally idempotent or session-scoped) but
+ * still change observable agent state that a later step's outcome depends on.
  *
- * Keep in sync with TENANT_SCOPED_TASKS in lint-storyboard-scoping.cjs where
- * overlap exists; reads like list_creative_formats/get_products are
- * intentionally NOT here.
+ * Each entry must be justified. Adding to this set without a schema-level
+ * reason is a drift hazard; prefer declaring `idempotency_key` required on
+ * the request schema instead.
+ */
+const MUTATING_EXCEPTIONS = new Set([
+  // Schema description: "Naturally idempotent: the `scenario` enum is either
+  // a lookup (`list_scenarios`) or a state-forcing operation whose target
+  // state is carried in the payload (`force_*_status`, `simulate_*`), so
+  // replays converge to the same observable state." The controller scenarios
+  // do mutate controller state the next step observes, so the contradiction
+  // lint must treat them as mutations.
+  'comply_test_controller',
+]);
+
+/**
+ * Read every `*-request.json` under `SCHEMAS_DIR` and return the set of
+ * task names that require `idempotency_key`. Task name is derived from the
+ * filename: `create-media-buy-request.json` → `create_media_buy`.
+ *
+ * Mirrors the pattern in `scripts/build-compliance.cjs:loadMutatingSchemaRefs`;
+ * kept local rather than shared because the two lints have slightly
+ * different output needs (tool-only here, refs+tools there).
+ */
+function loadMutatingTasksFromSchemas(schemasDir) {
+  const tools = new Set();
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('-request.json')) continue;
+      let schema;
+      try {
+        schema = JSON.parse(fs.readFileSync(p, 'utf8'));
+      } catch {
+        continue;
+      }
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (required.includes('idempotency_key')) {
+        tools.add(entry.name.replace(/-request\.json$/, '').replace(/-/g, '_'));
+      }
+    }
+  }
+  walk(schemasDir);
+  return tools;
+}
+
+/**
+ * AdCP task names that MUTATE server state. Derived at module load by
+ * reading request schemas' `required: [idempotency_key]` declarations
+ * (source of truth for "this task is a mutation"), plus documented
+ * exceptions for naturally-idempotent tasks that still change state.
+ *
+ * Prior-state discrimination in the contradiction lint depends on this
+ * set — a step whose prior phase contains only read tasks is at the same
+ * "state" as a step with no prior phases.
  */
 const MUTATING_TASKS = new Set([
-  'create_media_buy',
-  'update_media_buy',
-  'sync_creatives',
-  'creative_approval',
-  'sync_accounts',
-  'sync_governance',
-  'sync_plans',
-  'sync_catalogs',
-  'sync_event_sources',
-  'activate_signal',
-  'provide_performance_feedback',
-  'acquire_rights',
-  'update_rights',
-  'log_event',
-  'calibrate_content',
-  'create_property_list',
-  'update_property_list',
-  'delete_property_list',
-  'create_collection_list',
-  'update_collection_list',
-  'delete_collection_list',
-  'create_content_standards',
-  'update_content_standards',
-  'report_plan_outcome',
-  'report_usage',
-  'build_creative',
-  // Test-controller primitives mutate the runner's controller state; a
-  // later comply_test_controller assertion depends on what prior ones did.
-  'comply_test_controller',
-  // Sponsored-intelligence session primitives mutate session state.
-  'si_initiate_session',
-  'si_send_message',
+  ...loadMutatingTasksFromSchemas(SCHEMAS_DIR),
+  ...MUTATING_EXCEPTIONS,
 ]);
 
 /**
@@ -459,7 +486,9 @@ if (require.main === module) main();
 
 module.exports = {
   MUTATING_TASKS,
+  MUTATING_EXCEPTIONS,
   SKIP_TASKS,
+  loadMutatingTasksFromSchemas,
   normalizeRequestValue,
   canonicalizeRequest,
   fingerprintRequest,
