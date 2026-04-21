@@ -144,15 +144,25 @@ export async function handleCreateContentStandards(
   ctx: TrainingContext,
 ) {
   const req = args as {
-    scope: {
+    scope?: {
       countries_all?: string[];
       channels_any?: string[];
       languages_any?: string[];
       description?: string;
     };
-    policy: string;
+    policy?: string;
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
+
+  if (!req.scope || typeof req.scope !== 'object' || Array.isArray(req.scope)) {
+    return { errors: [{ code: 'INVALID_INPUT', message: "'scope' is required and must be an object with at least 'languages_any'." }] };
+  }
+  if (!Array.isArray(req.scope.languages_any) || req.scope.languages_any.length === 0) {
+    return { errors: [{ code: 'INVALID_INPUT', message: "'scope.languages_any' is required and must be a non-empty array of language codes." }] };
+  }
+  if (!req.policy || typeof req.policy !== 'string') {
+    return { errors: [{ code: 'INVALID_INPUT', message: "'policy' is required and must be a string." }] };
+  }
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 

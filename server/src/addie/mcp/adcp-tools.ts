@@ -131,7 +131,10 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
     area: 'governance',
     description: 'Create content standards (brand safety rules) for campaign compliance',
     validate: (params) => {
-      if (!params.name) return 'name is required.';
+      const scope = params.scope as { languages_any?: unknown } | undefined;
+      if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return 'scope is required (object with languages_any, optional countries_all/channels_any/description).';
+      if (!Array.isArray(scope.languages_any) || scope.languages_any.length === 0) return 'scope.languages_any is required (non-empty array of language codes).';
+      if (!params.policy || typeof params.policy !== 'string') return 'policy is required (natural-language policy string).';
       return null;
     },
   },

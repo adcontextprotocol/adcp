@@ -5779,6 +5779,74 @@ describe('governance creative_services purchase type', () => {
   });
 });
 
+describe('create_content_standards input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns INVALID_INPUT when scope is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is an empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: [] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope is an array (not an object)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: [],
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when policy is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/policy/i);
+  });
+
+  it('creates standards when scope and policy are valid', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'], languages_any: ['en'] },
+      policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+});
+
 describe('storyboard governance sample_requests accepted by training agent', () => {
   beforeEach(() => {
     invalidateCache();
