@@ -4,7 +4,7 @@ description: "Open AdCP spec gaps that affect compliance testing — with workar
 "og:title": "AdCP — Known spec ambiguities"
 ---
 
-This page enumerates spec gaps that currently affect storyboard conformance: places where the spec allows multiple conformant behaviors but the storyboard vectors assert only one branch, where a response field is asserted but not yet required by the schema, or where a testing-infrastructure quirk prevents a vector from probing through the reference SDK.
+This page enumerates spec gaps that currently affect storyboard conformance. Each entry covers one of three patterns: a spec `MAY` branch where vectors assert one outcome, a response field storyboards assert that the schema does not yet require, or a testing-infrastructure quirk that prevents a vector from probing through the reference SDK.
 
 **Entries are removed as the underlying issue closes.** If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
 
@@ -15,13 +15,6 @@ If a storyboard fails on a behavior you believe is spec-conformant, search this 
 For the opposite direction — failures that are **not** in this list and do have clean fixes — see the [storyboard troubleshooting guide](/docs/building/implementation/storyboard-troubleshooting).
 
 ## Current ambiguities
-
-### `past_start` — reject vs. accept-and-adjust
-
-- **Storyboards**: `universal/schema-validation.yaml` phases `past_start_reject_path` / `past_start_adjust_path` / `past_start_enforcement`.
-- **Gap**: resolved in [#2389](https://github.com/adcontextprotocol/adcp/pull/2389) — the storyboard now accepts either branch via parallel optional phases + `assert_contribution`. Agents that chose either outcome pass.
-- **Status**: **closed**. Listed here for historical reference; if you still see failures, pull the latest compliance build.
-- **Pattern to replicate**: see [storyboard authoring — Asserting on branchable behaviors](/docs/contributing/storyboard-authoring#asserting-on-branchable-behaviors) for the shape any future `MAY` branch should follow.
 
 ### `check_governance` `conditions` field shape
 

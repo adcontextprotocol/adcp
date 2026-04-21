@@ -32,7 +32,7 @@ The storyboard sent an unsigned request to an operation declared in `get_adcp_ca
 
 The reference SDK constructs these errors via `RequestSignatureError` from `@adcp/client/signing` with `.code: RequestSignatureErrorCode`. The full taxonomy (`request_signature_required`, `request_signature_header_malformed`, `request_signature_tag_invalid`, `request_signature_window_invalid`, `request_signature_key_unknown`, etc.) is enumerated in that module. Your agent SHOULD surface the same code on the challenge so SDK-speaking callers can recover automatically.
 
-See the [request-signing error-code discovery path](/docs/building/implementation/security#request-signing) for the challenge-header format and the [transport-error binding order](/docs/building/implementation/transport-errors).
+See [Signed Requests (Transport Layer)](/docs/building/implementation/security#signed-requests-transport-layer) for the challenge-header format and the [transport-error binding order](/docs/building/implementation/transport-errors).
 
 ## Response envelope drift
 
@@ -83,7 +83,7 @@ The runner encountered a mutating step that expected either authenticated creden
 Two codes that are easy to confuse:
 
 - **`INVALID_STATE`** — the canonical AdCP media-buy error code for "the resource is in a state that doesn't allow this action." Used on `create_media_buy`/`update_media_buy`/`pause`/`resume`/`cancel` against a media buy that cannot transition as requested. See `media-buy/specification.mdx` and `media-buy/media-buys/index.mdx` for authoritative usage.
-- **`INVALID_TRANSITION`** — specific to the `comply_test_controller` sandbox primitive. Emitted when a runner requests a state-machine transition the seller rejects (e.g., forcing `approved` → `archived` without going through `active`). See [Compliance test controller](/docs/building/implementation/comply-test-controller#state-machine-transitions).
+- **`INVALID_TRANSITION`** — specific to the `comply_test_controller` sandbox primitive. Emitted when a runner requests a state-machine transition the seller rejects (e.g., forcing `approved` → `archived` without going through `active`). See [Compliance test controller — Scenarios](/docs/building/implementation/comply-test-controller#scenarios).
 
 A storyboard vector that asserts `INVALID_STATE` on a production task but your agent returns `INVALID_TRANSITION` is an error-code vocabulary mismatch — `INVALID_TRANSITION` is not in the canonical enum at `static/schemas/source/enums/error-code.json` and should not appear outside the compliance test controller.
 
@@ -91,4 +91,4 @@ A storyboard vector that asserts `INVALID_STATE` on a production task but your a
 
 If you hit a failure that doesn't map to anything here, check the [known spec ambiguities](/docs/building/implementation/known-ambiguities) page — some storyboards are blocked on resolved-but-unreleased spec gaps, and the workaround is tracked there.
 
-Still stuck? File an issue at [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp/issues) with the full runner output, and the storyboard author can usually narrow the pattern from the error signature in under an hour.
+Still stuck? File an issue at [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp/issues) with the full runner output and the storyboard name. Maintainers can usually narrow the pattern from the error signature.
