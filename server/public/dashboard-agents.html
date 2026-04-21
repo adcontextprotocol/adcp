@@ -1409,49 +1409,61 @@
         if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
 
         try {
-          // Try the tool-based resolution endpoint first
           const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
 
           if (res.ok) {
             const data = await res.json();
+            const bundles = Array.isArray(data.bundles) ? data.bundles : [];
+            const supportedProtocols = Array.isArray(data.supported_protocols) ? data.supported_protocols : [];
+            const specialisms = Array.isArray(data.specialisms) ? data.specialisms : [];
             let html = '';
 
-            // Show detected tools
-            if (data.tools && data.tools.length > 0) {
-              html += '<div class="storyboard-map-tools">Tools detected: ';
-              html += data.tools.map(t => '<code>' + escapeHtml(t) + '</code>').join(' ');
+            if (data.capabilities_probe_error) {
+              html += '<div style="padding:var(--space-2) var(--space-3);margin-bottom:var(--space-2);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);font-size:var(--text-xs);color:var(--color-warning-800);">';
+              html += 'Capabilities probe warning: ' + escapeHtml(String(data.capabilities_probe_error));
               html += '</div>';
             }
 
-            if (data.total_applicable === 0) {
+            if (supportedProtocols.length > 0 || specialisms.length > 0) {
+              html += '<div class="storyboard-map-tools" style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">';
+              if (supportedProtocols.length > 0) {
+                html += 'Protocols: ' + supportedProtocols.map(p => '<code>' + escapeHtml(String(p)) + '</code>').join(' ');
+              }
+              if (specialisms.length > 0) {
+                html += (supportedProtocols.length > 0 ? ' &nbsp;·&nbsp; ' : '') + 'Specialisms: ';
+                html += specialisms.map(s => '<code>' + escapeHtml(String(s)) + '</code>').join(' ');
+              }
+              html += '</div>';
+            }
+
+            const totalStoryboards = typeof data.total_storyboards === 'number'
+              ? data.total_storyboards
+              : bundles.reduce((n, b) => n + (Array.isArray(b.storyboards) ? b.storyboards.length : 0), 0);
+
+            if (totalStoryboards === 0) {
               html += '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">';
-              html += 'No applicable storyboards found. Your agent may not expose AdCP tools yet.';
+              html += specialisms.length === 0
+                ? 'No applicable storyboards found. Your agent has not declared any AdCP specialisms yet.'
+                : 'Your agent declared specialisms, but no storyboards matched them.';
               html += '</div>';
               panel.innerHTML = html;
               return;
             }
 
-            // Render track groups
-            const trackLabels = { core: 'Core', products: 'Products', media_buy: 'Media Buy', creative: 'Creative', governance: 'Governance', campaign_governance: 'Campaign Governance', signals: 'Signals', si: 'Sponsored Intelligence', audiences: 'Audiences', error_handling: 'Error Handling', general: 'General' };
-            const trackOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'campaign_governance', 'signals', 'si', 'audiences', 'error_handling', 'general'];
-
-            const sortedTracks = Object.keys(data.storyboards).sort((a, b) => {
-              const ai = trackOrder.indexOf(a);
-              const bi = trackOrder.indexOf(b);
-              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-            });
-
-            for (const track of sortedTracks) {
-              const storyboards = data.storyboards[track];
-              const label = trackLabels[track] || track;
+            for (const bundle of bundles) {
+              const storyboards = Array.isArray(bundle.storyboards) ? bundle.storyboards : [];
+              if (storyboards.length === 0) continue;
+              const kindLabel = bundle.kind === 'specialism' ? 'Specialism' : bundle.kind === 'protocol' ? 'Protocol' : (bundle.kind || 'Bundle');
+              const label = kindLabel + (bundle.id ? ': ' + bundle.id : '');
               html += '<div class="storyboard-track-group">';
               html += '<div class="storyboard-track-header"><span>' + escapeHtml(label) + '</span><span class="storyboard-track-count">' + storyboards.length + ' storyboard' + (storyboards.length === 1 ? '' : 's') + '</span></div>';
 
               for (const sb of storyboards) {
                 html += '<div class="storyboard-map-item">';
                 html += '<div>';
-                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title) + '</div>';
-                html += '<div class="storyboard-map-item-meta">' + sb.step_count + ' steps</div>';
+                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title || sb.id) + '</div>';
+                if (sb.summary) html += '<div class="storyboard-map-item-meta">' + escapeHtml(sb.summary) + '</div>';
+                html += '<div class="storyboard-map-item-meta">' + (sb.step_count || 0) + ' steps</div>';
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
                 html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" style="border:none;background:none;padding:0;font-size:var(--text-xs);color:var(--color-primary-600);cursor:pointer;">Preview</button>';
@@ -1462,48 +1474,69 @@
               html += '</div>';
             }
 
-            // Show what's not applicable
-            const notApplicable = data.total_available - data.total_applicable;
-            if (notApplicable > 0) {
-              html += '<details style="margin-top:var(--space-2);">';
-              html += '<summary style="font-size:var(--text-xs);color:var(--color-text-tertiary);cursor:pointer;">Other capabilities (' + notApplicable + ' storyboards not matched)</summary>';
-              html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);padding:var(--space-2) 0;">These storyboards require tools your agent doesn\'t expose yet. Implement the required tools to unlock them.</div>';
-              html += '</details>';
-            }
-
             panel.innerHTML = html;
-          } else {
-            // Check if auth is needed
-            const errBody = await res.json().catch(() => ({}));
-            if (errBody.needs_auth) {
-              panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Save an auth token using the connect form above, then try again.</div>';
-              return;
-            }
+            return;
+          }
 
-            // Fallback to flat list if agent can't be reached
-            panel.innerHTML = '<em>Loading storyboards...</em>';
-            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
-            const data = await fallback.json();
-            if (!data.storyboards || data.storyboards.length === 0) {
-              panel.innerHTML = '<em>No storyboards available yet.</em>';
-              return;
-            }
-            let html = '<div style="font-size:var(--text-xs);color:var(--color-warning-600);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
-            html += '<div class="storyboard-picker">';
-            for (const sb of data.storyboards) {
-              html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-              html += '<div>';
-              html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-              html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-              html += '</div>';
-              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
-              html += '</div>';
+          // Non-2xx — surface specific reason before falling back
+          const errBody = await res.json().catch(() => ({}));
+
+          if (errBody.needs_auth) {
+            panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Authorize or save an auth token using the connect form above, then try again.</div>';
+            return;
+          }
+
+          if (errBody.unknown_specialism && Array.isArray(errBody.declared_specialisms)) {
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            html += '<strong>Unknown specialism.</strong> Your agent declared specialisms that aren\'t in the compliance cache:';
+            html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">';
+            html += errBody.declared_specialisms.map(s => escapeHtml(String(s))).join(', ');
+            html += '</div>';
+            if (Array.isArray(errBody.known_specialisms) && errBody.known_specialisms.length > 0) {
+              html += '<details style="margin-top:var(--space-2);"><summary style="cursor:pointer;font-size:var(--text-xs);">Known specialisms (' + errBody.known_specialisms.length + ')</summary>';
+              html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">';
+              html += errBody.known_specialisms.map(s => escapeHtml(String(s))).join(', ');
+              html += '</div></details>';
             }
             html += '</div>';
             panel.innerHTML = html;
+            return;
           }
-        } catch {
-          panel.innerHTML = '<em>Failed to load storyboards.</em>';
+
+          const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
+          const msg = errBody.error || ('HTTP ' + res.status);
+          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);margin-bottom:var(--space-3);">';
+          html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
+          html += '</div>';
+
+          try {
+            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
+            if (fallback.ok) {
+              const fdata = await fallback.json();
+              if (fdata.storyboards && fdata.storyboards.length > 0) {
+                html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">Showing all available storyboards:</div>';
+                html += '<div class="storyboard-picker">';
+                for (const sb of fdata.storyboards) {
+                  html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
+                  html += '<div>';
+                  html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
+                  html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+                  html += '</div>';
+                  html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
+                  html += '</div>';
+                }
+                html += '</div>';
+              }
+            }
+          } catch (fallbackErr) {
+            console.error('Storyboard fallback failed:', fallbackErr);
+          }
+
+          panel.innerHTML = html;
+        } catch (err) {
+          console.error('Failed to load storyboards:', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          panel.innerHTML = '<div style="padding:var(--space-3);color:var(--color-error-700);font-size:var(--text-sm);">Failed to load storyboards: ' + escapeHtml(msg) + '</div>';
         }
       }
 
