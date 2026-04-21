@@ -877,6 +877,10 @@ export function buildCatalog(): CatalogProduct[] {
       id: 'sports_ctv_q2',
       name: 'Sports CTV Q2 (storyboard fixture)',
       source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      // `governance_spend_authority` references `pricing_option_id:
+      // "cpm_guaranteed"` on this product — add as an alias so the
+      // create_media_buy step resolves.
+      pricingAliases: ['cpm_guaranteed'],
     },
   ];
   for (const alias of aliases) {
