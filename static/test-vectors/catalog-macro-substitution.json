@@ -2,7 +2,7 @@
   "$schema_version": "1.0",
   "name": "Catalog-item macro substitution — conformance fixtures",
   "spec_reference": "docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros",
-  "description": "Reference vectors for the percent-encoding + nested-expansion rules on buyer-controlled catalog-item macros. Sales agents SHOULD reproduce each `expected` output bit-exactly. Vectors cover: (1) reserved-character URL breakout, (2) nested-expansion literal preservation, (3) CRLF injection (closed by the unreserved-whitelist rule), (4) non-ASCII UTF-8 encoding.",
+  "description": "Reference vectors for the NFC normalization + percent-encoding + nested-expansion rules on buyer-controlled catalog-item macros. Sales agents SHOULD reproduce each `expected` output bit-exactly. All `value` fields are as-supplied (may include NFD); the substitution pipeline MUST normalize to NFC before encoding per docs/creative/universal-macros#substitution-safety-catalog-item-macros. Vectors cover: (1) reserved-character URL breakout, (2) nested-expansion literal preservation, (3) CRLF injection, (4) non-ASCII UTF-8 encoding (NFC input), (5) NFC normalization from NFD input, (6) mixed path/query substitution, (7) bidi-override neutralization, (8) URL-scheme injection neutralization.",
   "vectors": [
     {
       "name": "reserved-character-breakout",
@@ -51,6 +51,14 @@
       "value": "VIN-\u202E1234",
       "template": "https://track.example/imp?v={VEHICLE_ID}",
       "expected": "https://track.example/imp?v=VIN-%E2%80%AE1234"
+    },
+    {
+      "name": "nfc-normalization-before-encoding",
+      "description": "Catalog value in Unicode NFD (base `e` U+0065 + combining acute U+0301) MUST be normalized to NFC (single codepoint U+00E9) BEFORE percent-encoding. Without normalization, the NFD form would encode to `e%CC%81` instead of the NFC form's `%C3%A9`. Two implementations that both satisfy the unreserved-whitelist rule diverge if they don't share a normalization form. NFC is the web-platform convention (WHATWG URL, HTML5 DOM). The `value` field below shows the NFD input (`cafe\\u0301-amsterdam`); implementations that skip NFC normalization fail this vector.",
+      "macro": "{STORE_ID}",
+      "value": "cafe\u0301-amsterdam",
+      "template": "https://track.example/imp?s={STORE_ID}",
+      "expected": "https://track.example/imp?s=caf%C3%A9-amsterdam"
     },
     {
       "name": "url-scheme-injection-neutralized",
