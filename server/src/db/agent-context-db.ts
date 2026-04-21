@@ -23,6 +23,7 @@ export interface AgentContext {
   auth_type: AuthType;
   // OAuth info (never expose actual tokens!)
   has_oauth_token: boolean;
+  has_oauth_refresh_token: boolean;
   oauth_token_expires_at: Date | null;
   has_oauth_client: boolean;
   // Discovery cache
@@ -145,6 +146,7 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
@@ -181,6 +183,7 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
@@ -216,6 +219,7 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
@@ -259,6 +263,7 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         FALSE as has_oauth_token,
+        FALSE as has_oauth_refresh_token,
         oauth_token_expires_at,
         FALSE as has_oauth_client,
         tools_discovered,
@@ -343,6 +348,7 @@ export class AgentContextDatabase {
          auth_token_hint,
          auth_type,
          oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+         oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
          oauth_token_expires_at,
          oauth_client_id IS NOT NULL as has_oauth_client,
          tools_discovered,
@@ -580,10 +586,13 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Check if OAuth tokens are valid (exist and not expired)
+   * Check if OAuth tokens are valid (exist and not expired, or refreshable)
    */
   hasValidOAuthTokens(context: AgentContext): boolean {
     if (!context.has_oauth_token) return false;
+    // A refresh token lets us mint a new access token on demand, so auth is
+    // still valid even if the access token is near/past expiry.
+    if (context.has_oauth_refresh_token) return true;
     if (!context.oauth_token_expires_at) return true;
 
     // Expired if within 5 minutes of expiration
