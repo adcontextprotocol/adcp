@@ -44,19 +44,21 @@ Each entry is tagged:
 
 ---
 
-## Other `any_of` assertions still tested as single-branch
+## Re-cancel: `NOT_CANCELLABLE` vs `INVALID_STATE`
 
-**Status.** Tracked — [#2605](https://github.com/adcontextprotocol/adcp/issues/2605).
+**Status.** Resolved at the vector level — [#2605](https://github.com/adcontextprotocol/adcp/issues/2605). A spec-side decision on whether to canonicalize one code remains open.
 
-**The ambiguity.** The `past_start` case was the most visible one, but the spec has other points where multiple behaviors are conformant yet vectors only probe one branch. Candidates listed in [#2605](https://github.com/adcontextprotocol/adcp/issues/2605):
+**The ambiguity.** A second cancel on a media buy that is already `canceled` satisfies two spec rules at once:
+- [`media-buy/specification.mdx` §129, §254](https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/specification.mdx): "Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`"
+- [`update_media_buy.mdx` §675](https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/task-reference/update_media_buy.mdx): "`NOT_CANCELLABLE` — Media buy or package cannot be canceled"
 
-- Response-envelope shape (covered separately above)
-- `recancel` error-message text
-- Webhook-delivery retry cadence
+Both codes are defensible for a re-cancel. Pick either.
 
-**Interim guidance.** If you pick a spec-conformant branch and the vector fails, check whether the storyboard YAML has a single-branch assertion (`check: error_code, value: "X"`) rather than a multi-branch one (`check: error_code, allowed_values: [...]`). If it's single-branch on a spec `any_of`, file an issue linked to [#2605](https://github.com/adcontextprotocol/adcp/issues/2605) and use the `skipVectors` operator escape while the fix lands.
+**Current state.** The `invalid_transitions > second_cancel` vector now accepts either code via `allowed_values: ["NOT_CANCELLABLE", "INVALID_STATE"]`. Other error-code assertions across the storyboards were audited against the spec; no further single-branch narrowings of a documented `any_of` were found. Lists of rejected codes in other vectors (e.g. idempotency conflicts, validation failures, product lookup errors) already use `allowed_values`.
 
-**How it bites.** Silently — you read the spec, pick a valid branch, and can't explain why the vector fails. Reading the vector YAML is the fastest diagnostic.
+**Remaining ask (spec-side).** Pick one code as canonical for re-cancel — the ambiguity is a spec readability cost, not an interop problem. Tracked at [#2605](https://github.com/adcontextprotocol/adcp/issues/2605).
+
+**Audit completeness.** The full audit covered every `check: error_code` in `static/compliance/source/`. Findings: one widening (above); the other single-branch assertions (`VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `INVALID_STATE` for pause/resume on canceled, `MEDIA_BUY_NOT_FOUND`, `PACKAGE_NOT_FOUND`, `TERMS_REJECTED`) are spec-locked to one code per canonical source and are not ambiguous. The `past_start` case remains resolved by [#2389](https://github.com/adcontextprotocol/adcp/pull/2389) (dual-path with `any_of` enforcement).
 
 ---
 

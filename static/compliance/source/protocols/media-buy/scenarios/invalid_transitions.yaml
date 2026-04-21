@@ -2,7 +2,7 @@ id: media_buy_seller/invalid_transitions
 version: "1.0.0"
 title: "Seller rejects illegal state transitions and unknown references"
 category: media_buy_seller
-summary: "Validates that the seller returns structured AdCP errors (MEDIA_BUY_NOT_FOUND, PACKAGE_NOT_FOUND, NOT_CANCELLABLE) rather than 500s or undefined behavior when the buyer references missing entities or attempts forbidden state transitions."
+summary: "Validates that the seller returns structured AdCP errors (MEDIA_BUY_NOT_FOUND, PACKAGE_NOT_FOUND, and NOT_CANCELLABLE-or-INVALID_STATE on re-cancel) rather than 500s or undefined behavior when the buyer references missing entities or attempts forbidden state transitions."
 track: media_buy
 required_tools:
   - get_products
@@ -17,8 +17,11 @@ narrative: |
 
   - MEDIA_BUY_NOT_FOUND — buyer references a media_buy_id that does not exist.
   - PACKAGE_NOT_FOUND — media_buy_id is valid but package_id inside it is not.
-  - NOT_CANCELLABLE — buyer cancels the same media buy twice; the second cancel must
-    be rejected because canceled is terminal.
+  - Re-cancel terminal-state rejection — buyer cancels the same media buy twice;
+    the second cancel must be rejected. Either NOT_CANCELLABLE (cancellation-
+    rejection path, update_media_buy.mdx §675) or INVALID_STATE (terminal-state-
+    update path, specification.mdx §129) is spec-conformant — both are accepted
+    by this scenario pending a spec decision at adcp#2605.
 
   All three probes use hard `check: error_code` assertions so a seller that returns
   a 500 or swallows the error fails the scenario outright. Recovery hints, correlation
@@ -242,6 +245,16 @@ phases:
 
       - id: second_cancel
         title: "Re-cancel the canceled buy"
+        narrative: |
+          Cancelling a buy that is already canceled satisfies two spec rules at
+          once: the terminal-state-update rule at media-buy/specification.mdx
+          §129 ("MUST reject updates to media buys in terminal states (completed,
+          rejected, canceled) with error code INVALID_STATE") and the
+          cancellation-rejection option at update_media_buy.mdx §675
+          ("NOT_CANCELLABLE — Media buy or package cannot be canceled"). Both
+          codes are spec-conformant for this case. Until the spec picks one
+          (see adcp#2605), this vector accepts either. Recovery hint and
+          context echo are still asserted.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -251,7 +264,9 @@ phases:
         stateful: true
         expected: |
           Reject with:
-          - code: NOT_CANCELLABLE
+          - code: NOT_CANCELLABLE (cancellation-rejection path) OR
+                  INVALID_STATE (terminal-state-update path) —
+                  both spec-conformant; see adcp#2605
           - recovery: correctable
           - context echoed unchanged
 
@@ -262,13 +277,13 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           canceled: true
-          cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"
+          cancellation_reason: "Deliberate re-cancel to force terminal-state rejection"
           context:
             correlation_id: "invalid_transitions--second_cancel"
         validations:
           - check: error_code
-            value: "NOT_CANCELLABLE"
-            description: "Error code is NOT_CANCELLABLE on re-cancel of canceled buy"
+            allowed_values: ["NOT_CANCELLABLE", "INVALID_STATE"]
+            description: "Error code is NOT_CANCELLABLE (cancellation-rejection path) or INVALID_STATE (terminal-state-update path) — both spec-conformant on re-cancel; see adcp#2605"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"
