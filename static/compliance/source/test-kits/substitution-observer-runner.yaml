@@ -5,12 +5,14 @@
 #     to assert the RFC 3986 percent-encoding rule from
 #     docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros.
 #   - Current consumers (when phases are gated on this contract):
-#     - specialisms/sales-catalog-driven/index.yaml
-#     - specialisms/creative-generative/index.yaml
-#     - specialisms/sales-social/index.yaml (catalog_driven_dynamic_ads phase)
+#     - specialisms/sales-catalog-driven/index.yaml (substitution_safety phase)
+#     - specialisms/creative-generative/index.yaml (catalog_substitution_safety phase)
+#   - Deferred pending observation-hook design (#2651):
+#     - specialisms/sales-social/index.yaml — social platforms substitute at
+#       serve time in proprietary renderers; no AdCP-level preview hook.
 #   - Future consumers: sales-retail-media (post-retail-media-epic),
 #     sales-broadcast-tv dynamic-creative phases, and anywhere else catalog
-#     values expand into URL contexts.
+#     values expand into URL contexts through a previewable surface.
 #
 # The #2620 rule: sales agents MUST percent-encode catalog-item macro values
 # such that only RFC 3986 `unreserved` characters remain unescaped before
@@ -43,7 +45,7 @@ applies_to:
   specialisms:
     - sales_catalog_driven
     - creative_generative
-    - sales_social
+    # sales_social deferred — no AdCP-level preview hook (see #2651).
   universals: []
 
 description: |

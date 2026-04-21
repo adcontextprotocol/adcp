@@ -550,14 +550,32 @@ phases:
       such that only RFC 3986 `unreserved` characters remain unescaped before
       substituting them into a URL context. Nested macro expansion is prohibited.
 
-      This phase exercises the rule with attacker-shaped catalog values drawn
-      from the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`:
-      reserved-char breakout, nested-expansion preservation, and non-ASCII
-      UTF-8. `preview_creative` / `build_creative`-with-`include_preview` is
-      the natural observation point on a generative specialism — the
-      substitution-observer runner (#2638) parses the returned `preview_html`
-      and asserts each macro position carries the fixture's `expected_encoded`
-      form, not the raw attacker bytes.
+      This phase exercises the rule with five canonical attacker-shaped
+      catalog values drawn from the fixture at
+      `static/test-vectors/catalog-macro-substitution.json`:
+      reserved-char breakout, nested-expansion preservation, non-ASCII UTF-8,
+      CRLF injection, and bidi-override neutralization. Generative pipelines
+      have a higher risk profile on bidi-override than template pipelines
+      (LLM-generated copy with embedded user text can round-trip bidi
+      controls into attribute contexts), so this phase exercises bidi
+      alongside the baseline vectors. The two remaining fixture vectors —
+      `mixed-path-and-query-contexts` (requires the same macro in two URL
+      positions) and `url-scheme-injection-neutralized` (requires an
+      href-whole-value macro binding) — are unit-test-layer conformance only;
+      runtime observation in a storyboard requires specialism-specific
+      template shapes tracked as follow-ups.
+
+      `build_creative`-with-`include_preview: true` is the natural observation
+      point on a generative specialism — the substitution-observer runner
+      (#2638) parses the returned `preview_html` and asserts each macro
+      position carries the fixture's `expected_encoded` form, not the raw
+      attacker bytes.
+
+      Scope note: this phase validates substitution on the PREVIEW surface
+      only. Sellers with divergent preview vs impression-time substitution
+      paths MAY pass here while failing at serve time; serve-time attestation
+      or log-introspection observability is deferred (#2651, out-of-scope v1
+      per the observer contract).
 
       The `expect_substitution_safe` step is gated on the
       `substitution_observer_runner` test-kit contract (see
@@ -616,6 +634,18 @@ phases:
                   url: "https://acmeoutdoor.example/probe/non-ascii"
                   image_url: "https://cdn.acmeoutdoor.example/probe/non-ascii.jpg"
                   price: { amount: 1.00, currency: "USD" }
+                - item_id: "crlf_injection"
+                  sku: "abc\r\nHost: evil.example"
+                  title: "CRLF injection probe"
+                  url: "https://acmeoutdoor.example/probe/crlf"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/crlf.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "bidi_override"
+                  sku: "VIN-\u202E1234"
+                  title: "Bidi-override probe"
+                  url: "https://acmeoutdoor.example/probe/bidi"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/bidi.jpg"
+                  price: { amount: 1.00, currency: "USD" }
 
           idempotency_key: "$generate:uuid_v4#creative_generative_catalog_substitution_safety_sync_substitution_probe_catalog"
           context:
@@ -633,6 +663,14 @@ phases:
           Generate a draft creative that uses `{SKU}` in its impression tracker
           URL and request `include_preview: true` so the substitution-observer
           runner has a preview surface to inspect.
+
+          The `message` is a natural-language brief; a generative agent that
+          ignores the `{SKU}` directive (generates its own macro, inlines an
+          encoded value, omits the tracker) fails the downstream
+          `expect_substitution_safe` step with `substitution_binding_missing`.
+          To keep that failure mode diagnostically clear, this step validates
+          the creative_manifest contains `{SKU}` unsubstituted in at least
+          one tracker asset before the observer runs.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
@@ -641,10 +679,11 @@ phases:
         stateful: true
         expected: |
           Creative manifest returned with preview_html populated. Impression
-          tracker asset includes {SKU} bound to the probe catalog's items.
+          tracker asset includes {SKU} unsubstituted in its template (to be
+          resolved at impression time against catalog items).
 
         sample_request:
-          message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Use {SKU} in the impression tracker URL."
+          message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Use the literal `{SKU}` macro (unsubstituted) in at least one impression tracker URL so the platform can resolve it per-impression against catalog items."
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
@@ -693,3 +732,9 @@ phases:
           - macro: "{SKU}"
             catalog_item_id: "non_ascii"
             vector_name: "non-ascii-utf8-percent-encoding"
+          - macro: "{SKU}"
+            catalog_item_id: "crlf_injection"
+            vector_name: "crlf-injection-neutralized"
+          - macro: "{SKU}"
+            catalog_item_id: "bidi_override"
+            vector_name: "bidi-override-neutralized"
