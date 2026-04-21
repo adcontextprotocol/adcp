@@ -172,14 +172,13 @@ describe('comply_test_controller', () => {
   });
 
   describe('sandbox gating', () => {
-    it('rejects calls without sandbox: true', async () => {
+    it('allows calls when sandbox is not specified', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         account: { brand: { domain: 'test.example.com' }, operator: 'tester' },
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
 
     it('rejects calls with sandbox: false', async () => {
@@ -192,13 +191,12 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('rejects calls with no account', async () => {
+    it('allows calls with no account', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
   });
 

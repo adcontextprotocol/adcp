@@ -6482,20 +6482,20 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
     expect(mediaBuyId).toBeDefined();
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account,
       media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(targeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('persists collection_list_exclude in package targeting', async () => {
@@ -6525,11 +6525,11 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('update_media_buy round-trips targeting changes', async () => {
@@ -6558,7 +6558,7 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting: initialTargeting,
+        targeting_overlay: initialTargeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
@@ -6571,14 +6571,14 @@ describe('AdCP protocol compliance', () => {
     await simulateCallTool(server, 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
-      packages: [{ package_id: packageId, targeting: newTargeting }],
+      packages: [{ package_id: packageId, targeting_overlay: newTargeting }],
     });
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account, media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(newTargeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(newTargeting);
   });
 
   it('rejects malformed targeting with VALIDATION_ERROR', async () => {
