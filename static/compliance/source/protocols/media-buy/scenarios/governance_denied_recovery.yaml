@@ -184,13 +184,16 @@ phases:
             - product_id: "$context.product_id"
               budget: 50000
               pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "governance_denied_recovery--create_media_buy_denied"
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
             description: "Error code is GOVERNANCE_DENIED"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_denied_recovery--create_media_buy_denied"
+            description: "Response echoes context.correlation_id verbatim on error responses (echo contract applies to both success and failure)"
 
   - id: buy_retried
     title: "Corrected buy within plan — governance approves"
@@ -226,6 +229,9 @@ phases:
             - product_id: "$context.product_id"
               budget: 8000
               pricing_option_id: "$context.pricing_option_id"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
