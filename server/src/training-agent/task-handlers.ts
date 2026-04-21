@@ -1603,6 +1603,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   return {
     media_buys: buys.map(mb => {
       const status = deriveStatus(mb);
+      const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
@@ -1612,6 +1613,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         updated_at: mb.updatedAt,
         valid_actions: validActionsForStatus(status),
         currency: mb.currency,
+        total_budget: totalBudget,
         start_time: mb.startTime,
         end_time: mb.endTime,
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
