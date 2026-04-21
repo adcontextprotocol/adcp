@@ -174,6 +174,8 @@
 # optional: boolean (default false — see semantics below)
 # skip_if: string (expression — phase is skipped when the expression evaluates to true,
 #                  e.g., "!test_kit.auth.api_key")
+# branch_set: object (optional — first-class declaration of branch-set membership;
+#                     see "Branch sets" section below)
 #
 # Optional phase semantics:
 #   - An `optional: true` phase always runs unless `skip_if` evaluates to true.
@@ -185,42 +187,69 @@
 #     when no optional path succeeded.
 #   - A non-optional phase that fails fails the storyboard unconditionally.
 #
-# Per-step grading in any_of branch patterns:
-#   An "aggregation flag" is the shared `contributes_to: <flag>` value that
-#   peer optional phases use to signal "this branch succeeded" toward a later
-#   `assert_contribution` check over that flag. When two or more optional
-#   phases declare `contributes_to: <flag>` for the same aggregation flag,
-#   they form a branch set. At most one branch is typically taken by a
-#   conformant agent — the others observe the non-chosen outcome and their
-#   steps' assertions (e.g., `expect_error: true` on the reject branch vs.
-#   `field_present: media_buy_id` on the accept branch) cannot both pass on
-#   the same agent.
+# Branch sets (first-class declaration):
+#   A branch set is a group of peer optional phases exercising mutually
+#   exclusive agent behaviors for the same trigger — e.g., an agent that
+#   rejects a past start_time vs. an agent that accepts-and-adjusts. At most
+#   one branch is typically taken by a conformant agent; a later
+#   `assert_contribution` step over the set's shared flag fails the
+#   storyboard only when NO branch contributed.
 #
-#   Authoring constraint: every phase in a branch set MUST set
-#   `optional: true`. A non-optional phase that also declares `contributes_to`
-#   matching a branch-set flag is a storyboard authoring error — failures in
-#   that phase would fail the storyboard unconditionally regardless of peer
-#   branch contribution, defeating the any_of semantics.
+#   Phases in a branch set SHOULD declare membership with a `branch_set:`
+#   object:
 #
-#   Runners MUST grade per-step results in a branch set as follows:
-#     - If at least one peer branch contributed the aggregation flag, the
-#       non-contributing branch's failing steps MUST be graded with skip
-#       reason `peer_branch_taken` (see
-#       runner-output-contract.yaml > skip_result.reasons.peer_branch_taken).
-#       They MUST NOT surface as `failed` in the storyboard summary, and
-#       MUST NOT be conflated with `not_applicable` (which is reserved for
-#       coverage gaps — agent didn't declare the protocol).
-#     - If no branch contributed the flag, the final `assert_contribution`
-#       step is what fails the storyboard — individual branch step failures
-#       still grade `failed` so the implementor sees what each branch
-#       observed.
+#     branch_set:
+#       id: <flag>              # required — matches `contributes_to` on the
+#                               #  phase's contributing step and the
+#                               #  assertion step's any_of allowed_values
+#       semantics: any_of       # required — only `any_of` is supported in
+#                               #  v1. `at_least_n` and `all_of` are
+#                               #  reserved for future revisions and MUST
+#                               #  NOT be used by storyboards today.
 #
-#   Runner detection:
-#     A branch set is the set of `optional: true` phases whose steps declare
-#     the same `contributes_to: <flag>` value as a later `assert_contribution`
-#     step's `validations[].check: any_of, allowed_values: [<flag>]` target.
-#     Nested branch sets (a branch set whose member is itself a branch set)
-#     are out of scope for runners.
+#   Authoring constraints (enforced by `lint:storyboard-branch-sets`):
+#     - Every phase with `branch_set:` MUST set `optional: true`. A
+#       non-optional phase whose failure would fail the storyboard
+#       unconditionally cannot be a branch-set member — the any_of
+#       semantics would be defeated.
+#     - All phases in a storyboard that share the same `branch_set.id`
+#       MUST share the same `branch_set.semantics`.
+#     - A storyboard with a `branch_set:` declaration MUST contain an
+#       `assert_contribution` step whose `validations[].check: any_of`
+#       includes the `branch_set.id` in `allowed_values`.
+#     - Any step inside a branch-set phase that declares
+#       `contributes_to: <value>` MUST use `<value> == branch_set.id`.
+#       (Mismatched contributions would grade the agent against a flag the
+#       assertion doesn't consume — a silent-no-op authoring bug that #2633
+#       is designed to prevent.)
+#
+#   Runner behavior:
+#     Runners MUST prefer the explicit `branch_set:` declaration when
+#     present. When `branch_set:` is absent, runners fall back to the
+#     legacy implicit detection rule (see "Implicit branch-set detection"
+#     below) so pre-#2633 storyboards keep working unchanged.
+#
+#     Runners MUST grade per-step results in a branch set as follows:
+#       - If at least one peer branch contributed the `branch_set.id`, the
+#         non-contributing branch's failing steps MUST be graded with skip
+#         reason `peer_branch_taken` (see
+#         runner-output-contract.yaml > skip_result.reasons.peer_branch_taken).
+#         They MUST NOT surface as `failed` in the storyboard summary, and
+#         MUST NOT be conflated with `not_applicable` (which is reserved
+#         for coverage gaps — agent didn't declare the protocol).
+#       - If no branch contributed the flag, the final `assert_contribution`
+#         step is what fails the storyboard — individual branch step
+#         failures still grade `failed` so the implementor sees what each
+#         branch observed.
+#
+#   Implicit branch-set detection (fallback — pre-#2633 storyboards):
+#     A branch set is the set of `optional: true` phases whose steps
+#     declare the same `contributes_to: <flag>` value as a later
+#     `assert_contribution` step's `validations[].check: any_of,
+#     allowed_values: [<flag>]` target. Fragile against typos in
+#     `contributes_to:` — prefer the explicit `branch_set:` form for new
+#     storyboards. Nested branch sets (a branch set whose member is itself
+#     a branch set) are out of scope for runners under either form.
 #
 #   Authoring guidance (not a runner rule): storyboards SHOULD keep branch
 #   sets flat — two or three peer phases is typical. If a scenario needs

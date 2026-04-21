@@ -353,6 +353,9 @@ phases:
       in the parallel adjust path below. Either path satisfies the temporal
       enforcement assertion at the end.
     optional: true
+    branch_set:
+      id: past_start_handled
+      semantics: any_of
 
     steps:
       - id: create_buy_past_start_reject
@@ -421,6 +424,9 @@ phases:
       accept-with-adjustment response returns a media_buy_id, and the agent
       is trusted to have adjusted the date per its own policy.
     optional: true
+    branch_set:
+      id: past_start_handled
+      semantics: any_of
 
     steps:
       - id: create_buy_past_start_adjust
