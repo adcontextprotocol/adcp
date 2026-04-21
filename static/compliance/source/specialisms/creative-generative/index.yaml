@@ -683,7 +683,7 @@ phases:
           resolved at impression time against catalog items).
 
         sample_request:
-          message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Use the literal `{SKU}` macro (unsubstituted) in at least one impression tracker URL so the platform can resolve it per-impression against catalog items."
+          message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Include the `{SKU}` macro as a literal token in the impression tracker URL — the platform resolves it per-impression against catalog items."
           target_format_id:
             agent_url: "https://your-agent.example.com"
             id: "display_300x250_generative"
