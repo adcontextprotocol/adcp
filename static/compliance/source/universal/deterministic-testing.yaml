@@ -919,6 +919,7 @@ phases:
           Return a session with a session_id.
 
         sample_request:
+          intent: "comply test — initiate deterministic SI session"
           identity:
             user_type: 'consumer'
           supported_capabilities:
