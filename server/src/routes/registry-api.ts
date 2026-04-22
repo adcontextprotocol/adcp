@@ -74,6 +74,7 @@ import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
+import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
@@ -3584,6 +3585,28 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   }
 
+  /**
+   * Ensure an agent_context exists so the UI can hand the user a working
+   * `/api/oauth/agent/start?agent_context_id=...` link even if they never
+   * opened the connect form. Idempotent.
+   */
+  async function ensureAgentContextId(orgId: string, agentUrl: string, userId: string): Promise<string | null> {
+    try {
+      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      if (!context) {
+        context = await agentContextDb.create({
+          organization_id: orgId,
+          agent_url: agentUrl,
+          created_by: userId,
+        });
+      }
+      return context.id;
+    } catch (err) {
+      logger.warn({ err, orgId, agentUrl }, "Failed to ensure agent context for OAuth challenge");
+      return null;
+    }
+  }
+
   router.put("/registry/agents/:encodedUrl/lifecycle", ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -3932,6 +3955,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       try {
         const caps = await testCapabilityDiscovery(agentUrl, { ...(auth && { auth }) });
         profile = caps.profile;
+
+        // The SDK swallows the agent's 401 into steps[0].error; surface it as
+        // a structured challenge so the UI can route the user to the OAuth
+        // flow instead of rendering a storyboard list they can't run.
+        const probeStep = caps.steps?.[0];
+        if (probeStep && !probeStep.passed && isOAuthRequiredErrorMessage(probeStep.error)) {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "This agent requires OAuth authorization. Connect via OAuth to run storyboards.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
       } catch (connectErr) {
         if (!auth) {
           return res.status(422).json({
@@ -4080,6 +4116,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           ...(context && { context }),
         });
 
+        if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.json({
+            ...result,
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
+
         res.json(result);
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
@@ -4143,6 +4188,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           storyboards: [req.params.storyboardId],
           ...(auth && { auth }),
         });
+
+        if (complyResult.overall_status === 'auth_required') {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "Agent requires OAuth authorization. Connect via OAuth to run this storyboard.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
 
         // Record the run (pass storyboard ID for per-storyboard status materialization)
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
@@ -4241,6 +4295,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);
+
+        if (userResult.overall_status === 'auth_required') {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "Agent requires OAuth authorization. Connect via OAuth to compare against the reference agent.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
 
         // Annotate storyboard steps with both results
         const comparisonPhases = storyboard.phases.map((phase) => ({
