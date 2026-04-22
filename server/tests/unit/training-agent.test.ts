@@ -3147,7 +3147,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'omit', id: firstProductId }],
+      refine: [{ scope: 'product', action: 'omit', product_id: firstProductId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3174,7 +3174,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'more_like_this', id: sourceId }],
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: sourceId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3192,6 +3192,35 @@ describe('get_products refine mode', () => {
 
     // Should have more than just the source product
     expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+
+  it('defaults missing action to include on product scope', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'default-action.example' }, operator: 'default-action.example' };
+
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const products = initial.products as Array<Record<string, unknown>>;
+    const firstProductId = products[0].product_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: firstProductId }],
+    });
+
+    const refinedProducts = refined.products as Array<Record<string, unknown>>;
+    const refinedIds = refinedProducts.map(p => p.product_id);
+    expect(refinedIds).toContain(firstProductId);
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('product');
+    expect(refinementApplied[0].product_id).toBe(firstProductId);
   });
 });
 

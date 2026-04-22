@@ -200,8 +200,8 @@ Each entry is a discriminated union on `scope`:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"product"` |
-| `id` | string | Yes | Product ID from a previous `get_products` response |
-| `action` | string | Yes | `"include"`: return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). |
+| `product_id` | string | Yes | Product ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). When omitted, the seller treats the entry as `"include"`. |
 | `ask` | string | No | What the buyer is asking for. For `"include"`: specific changes (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
 
 #### scope: "proposal"
@@ -209,8 +209,8 @@ Each entry is a discriminated union on `scope`:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"proposal"` |
-| `id` | string | Yes | Proposal ID from a previous `get_products` response |
-| `action` | string | Yes | `"include"`: return with updated allocations and pricing. `"omit"`: exclude from the response. |
+| `proposal_id` | string | Yes | Proposal ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return with updated allocations and pricing. `"omit"`: exclude from the response. `"finalize"`: request firm pricing and inventory hold (transitions a draft proposal to committed). When omitted, the seller treats the entry as `"include"`. |
 | `ask` | string | No | What the buyer is asking for (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `action` is `"omit"`. |
 
 ### refinement_applied (response)
@@ -219,8 +219,9 @@ When the seller receives a `refine` array, the response includes `refinement_app
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scope` | string | No | Echoes the scope from the corresponding `refine` entry for cross-validation. |
-| `id` | string | No | Echoes the id from the corresponding `refine` entry (for product and proposal scopes). |
+| `scope` | string | Yes | Echoes the scope (`"request"` / `"product"` / `"proposal"`) from the corresponding `refine` entry. |
+| `product_id` | string | Yes when `scope` is `"product"` | Echoes `product_id` from the corresponding refine entry. |
+| `proposal_id` | string | Yes when `scope` is `"proposal"` | Echoes `proposal_id` from the corresponding refine entry. |
 | `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
 | `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
 

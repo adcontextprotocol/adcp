@@ -187,7 +187,8 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
 - Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
 - Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
-- Orchestrators MUST provide `scope`, `id`, and `action` for each product and proposal entry in `refine`
+- Orchestrators MUST provide `scope` and `product_id` for each product entry in `refine`, and `scope` and `proposal_id` for each proposal entry
+- Orchestrators MAY omit `action` on product and proposal entries — sellers MUST treat missing `action` as `"include"`
 - Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
@@ -197,6 +198,7 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 
 Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` array and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
 
+- Sales agents MUST treat a missing `action` on product and proposal refine entries as `action: "include"`
 - Sales agents MUST omit products with `action: "omit"` from the response
 - Sales agents MUST omit proposals with `action: "omit"` from the response
 - Sales agents MUST return products with `action: "include"`, with updated pricing
@@ -205,6 +207,7 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents SHOULD consider request-level asks (`scope: "request"`) when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
 - Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
+- Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### list_creative_formats
