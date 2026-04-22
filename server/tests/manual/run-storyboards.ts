@@ -169,20 +169,36 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
-        const s = step as { step_id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
+        // Webhook-assertion pseudo-steps (expect_webhook*) return their id on
+        // `step_id`; every other step result uses `id`. Carry both so the
+        // failure summary never collapses to "(unknown step)".
+        //
+        // Surface both the validator's `description` (the narrative) AND its
+        // `error` / `actual` fields per failure — the former alone collapsed
+        // distinct codes into the same summary line (e.g. "Expected one of
+        // [false], got undefined" vs "Expected one of [false], got true"
+        // both rendered identically). Then prepend the step-level `error` so
+        // probe-class failures that surface as "Probe validations failed"
+        // still show which specific checks tripped (#2841).
+        const s = step as {
+          id?: string;
+          step_id?: string;
+          error?: string;
+          validations?: Array<{ passed: boolean; description?: string; error?: string; actual?: unknown }>;
+        };
         const validationFails = (s.validations ?? [])
           .filter(v => !v.passed)
-          .map(v => v.description ?? '(validation failed)')
+          .map(v => {
+            const desc = v.description ?? '(validation failed)';
+            const detail = v.error ?? (v.actual ? JSON.stringify(v.actual) : undefined);
+            return detail ? `${desc} — ${detail}` : desc;
+          })
           .join('; ');
-        // Prefer the step-level error; fall back to the concatenated failed-
-        // validation descriptions so runs don't collapse to the one-liner
-        // "Probe validations failed" without surfacing the actual checks that
-        // didn't pass (issue #2841).
         const errorDetail = validationFails
           ? (s.error ? `${s.error} — ${validationFails}` : validationFails)
           : (s.error ?? '(failed without message)');
         base.failures.push({
-          step: s.step_id ?? '(unknown step)',
+          step: s.id ?? s.step_id ?? '(unknown step)',
           error: errorDetail,
         });
       }
