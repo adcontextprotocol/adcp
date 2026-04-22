@@ -42,9 +42,10 @@ describe('error-notifier', () => {
       expect.objectContaining({
         text: expect.stringContaining('create_payment_link'),
       }),
-      // error_slack_channel is admin-configured — posts gate on
-      // verifyChannelStillPrivate (#2735).
-      { requirePrivate: true },
+      // error_slack_channel is admin-configured. 'strict-public-only'
+      // drops only on confirmed drift — transient Slack failures don't
+      // silence system-error alerting (#2735 follow-up).
+      { requirePrivate: 'strict-public-only' },
     );
 
     // Verify it includes the user mention and thread link
@@ -129,7 +130,7 @@ describe('error-notifier', () => {
       expect.objectContaining({
         text: expect.stringContaining('database-pool'),
       }),
-      { requirePrivate: true },
+      { requirePrivate: 'strict-public-only' },
     );
   });
 });

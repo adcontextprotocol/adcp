@@ -391,7 +391,17 @@ export async function sendDirectMessage(
 }
 
 /**
- * Check that a channel is still private before posting sensitive content.
+ * Privacy state of a configured Slack channel at send time. Distinguishes
+ * "confirmed no longer private" (sensitive content MUST NOT ship) from
+ * "could not verify" (Slack API error, transient network failure — no
+ * evidence of drift). The two cases deserve different caller behavior:
+ * leak prevention vs. observability preservation.
+ */
+export type ChannelPrivacyState = 'private' | 'public' | 'unknown';
+
+/**
+ * Check the current privacy state of a channel before posting sensitive
+ * content.
  *
  * Admin settings routes validate `is_private === true` at write time, but
  * Slack allows a channel owner to convert the channel public afterward —
@@ -399,29 +409,37 @@ export async function sendDirectMessage(
  * (billing events, escalations, editorial reviewer names, admin alerts,
  * prospect data, system errors) gate through this function so a toggled-
  * public channel stops receiving new posts within one `getChannelInfo`
- * cache TTL. Piggybacks on the existing 30-minute channel-info cache so
- * the happy path doesn't pay an extra Slack API call per send.
+ * cache TTL.
  *
  * Returns:
- * - `true`  when the channel is still private and safe to post to
- * - `false` when the channel is no longer private OR when we couldn't
- *   verify (info fetch failed, channel not found, etc.) — the gate
- *   fails closed for sensitive payloads.
+ * - `'private'` — still safe to post
+ * - `'public'` — confirmed drift; a post would leak sensitive content
+ * - `'unknown'` — the `getChannelInfo` call failed; no evidence of
+ *   drift, caller decides based on severity (leak-prevention vs.
+ *   preserving observability)
+ *
+ * When drift is confirmed, we ALSO invalidate this channel's cache
+ * entry so a subsequent re-privatize is picked up immediately rather
+ * than waiting out the remaining 30-minute TTL.
  *
  * #2735
  */
 export async function verifyChannelStillPrivate(
   channelId: string,
-): Promise<boolean> {
+): Promise<ChannelPrivacyState> {
   const info = await getChannelInfo(channelId);
   if (!info) {
     logger.warn(
       { channelId, event: 'channel_privacy_verify_unavailable' },
-      'Could not verify Slack channel privacy state — failing closed on sensitive send',
+      'Could not verify Slack channel privacy state — caller must decide whether to proceed',
     );
-    return false;
+    return 'unknown';
   }
   if (info.is_private !== true) {
+    // Drop the stale cache entry so a rapid re-privatize by an admin
+    // is picked up on the very next send rather than after the remaining
+    // TTL. `getChannelInfo`'s next call will re-fetch.
+    channelCache.delete(channelId);
     logger.warn(
       {
         channelId,
@@ -430,30 +448,55 @@ export async function verifyChannelStillPrivate(
       },
       'Configured Slack channel is no longer private — refusing to post sensitive content. Admin action required to re-privatize or unlink.',
     );
-    return false;
+    return 'public';
   }
-  return true;
+  return 'private';
 }
+
+/**
+ * Reasons a `sendChannelMessage` call may refuse to post. Left as a
+ * discriminated union so future skip reasons (archived, bot kicked,
+ * missing scope, etc.) don't widen the public return type in a
+ * breaking way.
+ */
+export type SendSkipReason = 'not_private' | 'privacy_unknown';
 
 /**
  * Send a message to a channel.
  *
- * `requirePrivate` gates on `verifyChannelStillPrivate`. Callers posting
- * sensitive content (the admin notification flows) set this so a
- * channel that was toggled private → public after configuration stops
- * receiving new posts (#2735). Channels that are intended for broad
- * workspace visibility leave the default `false`.
+ * `requirePrivate` gates on `verifyChannelStillPrivate`:
+ *
+ *   - `true` (default when set): refuse the send on either `'public'`
+ *     (confirmed drift) OR `'unknown'` (couldn't verify). This is the
+ *     leak-prevention-first mode — use for billing, prospect,
+ *     escalation, editorial, admin assessments.
+ *
+ *   - `'strict-public-only'`: refuse only on confirmed `'public'`.
+ *     `'unknown'` is treated like `'private'` so the send goes
+ *     through, with a warn log. Use when dropping the message
+ *     creates a bigger problem than a small leak risk — the
+ *     system-error notifier is the canonical case (don't silence
+ *     production errors just because Slack API is flaky).
+ *
+ * Channels that are intended for broad workspace visibility leave
+ * `requirePrivate` unset — behavior is unchanged.
  */
 export async function sendChannelMessage(
   channelId: string,
   message: SlackBlockMessage,
-  options: { requirePrivate?: boolean } = {},
-): Promise<{ ok: boolean; ts?: string; error?: string; skipped?: 'not_private' }> {
+  options: { requirePrivate?: boolean | 'strict-public-only' } = {},
+): Promise<{ ok: boolean; ts?: string; error?: string; skipped?: SendSkipReason }> {
   if (options.requirePrivate) {
-    const stillPrivate = await verifyChannelStillPrivate(channelId);
-    if (!stillPrivate) {
+    const state = await verifyChannelStillPrivate(channelId);
+    if (state === 'public') {
       return { ok: false, error: 'channel_no_longer_private', skipped: 'not_private' };
     }
+    if (state === 'unknown' && options.requirePrivate !== 'strict-public-only') {
+      return { ok: false, error: 'channel_privacy_unknown', skipped: 'privacy_unknown' };
+    }
+    // state === 'private' → fall through; state === 'unknown' with
+    // 'strict-public-only' → fall through with the warn log already
+    // emitted by verifyChannelStillPrivate.
   }
 
   try {
@@ -472,6 +515,16 @@ export async function sendChannelMessage(
     logger.error({ error, channelId }, 'Failed to send Slack channel message');
     return { ok: false, error: errorMessage };
   }
+}
+
+/**
+ * Test-only: clear the channel-info cache. Used by tests that reuse
+ * channel IDs across cases — the module-level cache otherwise carries
+ * a `is_private` value from case N into case N+1, which can silently
+ * mask a regression.
+ */
+export function __resetChannelCacheForTests(): void {
+  channelCache.clear();
 }
 
 /**

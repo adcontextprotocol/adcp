@@ -40,9 +40,10 @@ describe('error-notifier', () => {
       expect(mockSendChannelMessage).toHaveBeenCalledWith(
         'C123',
         { text: expect.stringContaining(name) },
-        // error_slack_channel is admin-configured — posts gate on
-        // verifyChannelStillPrivate (#2735).
-        { requirePrivate: true },
+        // error_slack_channel is admin-configured. 'strict-public-only'
+        // drops only on confirmed drift — transient Slack failures
+        // don't silence system-error alerting (#2735 follow-up).
+        { requirePrivate: 'strict-public-only' },
       );
     });
 
