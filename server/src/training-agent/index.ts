@@ -400,6 +400,10 @@ export function createTrainingAgentRouter(): Router {
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 
+        // Both legacy and framework dispatch wrap handler execution in
+        // runWithSessionContext internally (legacy: CallToolRequestSchema,
+        // framework: adapt + customToolFor in framework-server.ts), so the
+        // transport-level handler just delegates.
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
         logger.error({ error, strict }, 'Training agent: request error');
