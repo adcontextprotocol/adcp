@@ -400,10 +400,10 @@ phases:
               assets:
                 impression_pixel:
                   asset_type: "url"
-                  url: "https://track.acmeoutdoor.example/imp?sku={SKU}&gtin={GTIN}&mb={MEDIA_BUY_ID}"
+                  url: "https://track.acmeoutdoor.example/imp?sku=%7BSKU%7D&gtin=%7BGTIN%7D&mb=%7BMEDIA_BUY_ID%7D"
                 click_url:
                   asset_type: "url"
-                  url: "https://track.acmeoutdoor.example/click?sku={SKU}"
+                  url: "https://track.acmeoutdoor.example/click?sku=%7BSKU%7D"
 
           idempotency_key: "$generate:uuid_v4#sales_social_catalog_driven_dynamic_ads_sync_dpa_creative"
           context:
