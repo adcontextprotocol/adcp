@@ -15,6 +15,8 @@ import {
   type StoryboardStepResult,
 } from '@adcp/client/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
+// Install our stricter `context.no_secret_echo` over the SDK default (adcp-client#751).
+import '../../src/compliance/assertions/index.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;
 const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;

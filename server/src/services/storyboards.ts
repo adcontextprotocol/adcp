@@ -17,12 +17,11 @@ import {
 } from '@adcp/client/testing';
 import type { Storyboard } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
-// `@adcp/client` 5.9.0 ships the cross-step assertions (adcp#2639) as built-in
-// defaults via `@adcp/client/testing`'s `default-invariants` module, so no local
-// registration is needed here. Storyboards referencing
-// `context.no_secret_echo`, `idempotency.conflict_no_payload_leak`, or
-// `governance.denial_blocks_mutation` in their `invariants: [...]` list
-// resolve directly against the SDK defaults.
+// Install our stricter `context.no_secret_echo` over the SDK's default (which
+// is a no-op for structured `auth` objects per adcp-client#751). Remove this
+// import once the upstream fix lands and switch to
+// `registerAssertion(spec, { override: true })`.
+import '../compliance/assertions/index.js';
 
 const logger = createLogger('storyboards');
 
