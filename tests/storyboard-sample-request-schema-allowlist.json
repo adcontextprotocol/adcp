@@ -100,13 +100,6 @@
         "oneOf@/refine/0"
       ]
     },
-    "specialisms/sales-social/index.yaml#catalog_driven_dynamic_ads/sync_dpa_creative": {
-      "schema": "creative/sync-creatives-request.json",
-      "errors": [
-        "format@/creatives/0/assets/impression_pixel/url:uri",
-        "format@/creatives/0/assets/click_url/url:uri"
-      ]
-    },
     "universal/deterministic-testing.yaml#deterministic_session/initiate_session": {
       "schema": "sponsored-intelligence/si-initiate-session-request.json",
       "errors": [
