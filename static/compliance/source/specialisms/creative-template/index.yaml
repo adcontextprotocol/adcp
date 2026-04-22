@@ -364,6 +364,9 @@ phases:
 
         sample_request:
           creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "source_master"
             assets:
               image:
                 asset_type: "image"

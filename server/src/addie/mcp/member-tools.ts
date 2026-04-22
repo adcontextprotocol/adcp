@@ -17,6 +17,7 @@ import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-ag
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
+import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
@@ -2243,6 +2244,15 @@ export function createMemberToolHandlers(
   handlers.set('attach_content_asset', async (input) => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to attach assets. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    // Per-user rate limit — attach_content_asset fetches an external URL
+    // and buffers up to 50MB. A scripted loop could burn bandwidth and
+    // storage. See tool-rate-limiter.ts.
+    const rate = checkToolRateLimit('attach_content_asset', memberContext.workos_user.workos_user_id);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on attach_content_asset. Try again in ~${retrySeconds} seconds.`;
     }
 
     const perspectiveSlug = input.perspective_slug as string;
