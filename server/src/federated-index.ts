@@ -30,7 +30,7 @@ export class FederatedIndexService {
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
-        if (!agentConfig.is_public) continue;
+        if (agentConfig.visibility !== 'public') continue;
 
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
@@ -150,7 +150,7 @@ export class FederatedIndexService {
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
-        if (agentConfig.is_public) {
+        if (agentConfig.visibility === 'public') {
           registeredAgentUrls.set(agentConfig.url, {
             slug: profile.slug,
             display_name: profile.display_name,
@@ -487,7 +487,7 @@ export class FederatedIndexService {
     let registeredPublishers = 0;
 
     for (const profile of profiles) {
-      registeredAgents += (profile.agents || []).filter(a => a.is_public).length;
+      registeredAgents += (profile.agents || []).filter(a => a.visibility === 'public').length;
       registeredPublishers += (profile.publishers || []).filter(p => p.is_public).length;
     }
 

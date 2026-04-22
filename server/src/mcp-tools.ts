@@ -9,6 +9,7 @@ import { AgentService } from "./agent-service.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { AgentValidator } from "./validator.js";
 import { FederatedIndexService } from "./federated-index.js";
+import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "./db/organization-db.js";
 import { siDb } from "./db/si-db.js";
 import { readFile } from "fs/promises";
 import { join, dirname } from "path";
@@ -53,7 +54,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_members",
     description:
-      "List AdCP member organizations in the directory, optionally filtered by offerings or search term",
+      "List AdCP member organizations visible to the caller. Public-directory members are always returned. Callers whose organization has API-access tier (Professional or higher) also see organizations that opted out of the public directory but have agents marked 'members_only'. Each agent row includes a 'visibility' field only for API-access callers; unauth callers always see 'public' and the field is omitted for brevity.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -99,7 +100,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_agents",
     description:
-      "List all public agents from member organizations, optionally filtered by type (creative, signals, buying)",
+      "List agents visible to the calling organization. Public agents are always returned. API-access-tier callers (Professional or higher) also receive agents marked 'members_only' — this is the discovery pool for paid-member-only agents. Callers without API access never see 'members_only' or 'private' agents.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -581,6 +582,7 @@ export class MCPToolHandler {
   private federatedIndex: FederatedIndexService;
   private brandManager: BrandManager;
   private adagentsManager: AdAgentsManager;
+  private orgDb: OrganizationDatabase;
 
   constructor() {
     this.agentService = new AgentService();
@@ -589,6 +591,18 @@ export class MCPToolHandler {
     this.federatedIndex = new FederatedIndexService();
     this.brandManager = new BrandManager();
     this.adagentsManager = new AdAgentsManager();
+    this.orgDb = new OrganizationDatabase();
+  }
+
+  /**
+   * Resolve whether the caller's org has an API-access tier.
+   * Unauthenticated or M2M-without-org callers are treated as public-only.
+   * Result is memoized per-request via the cache map passed in.
+   */
+  private async callerHasApiAccess(authContext?: MCPAuthContext): Promise<boolean> {
+    if (!authContext?.orgId) return false;
+    const org = await this.orgDb.getOrganization(authContext.orgId);
+    return hasApiAccess(resolveMembershipTier(org));
   }
 
   /**
@@ -605,16 +619,23 @@ export class MCPToolHandler {
         const markets = args?.markets as string[] | undefined;
         const search = args?.search as string | undefined;
         const limit = args?.limit as number | undefined;
+        const viewerHasApiAccess = await this.callerHasApiAccess(authContext);
 
-        const members = await this.memberDb.getPublicProfiles({
-          offerings,
-          markets,
-          search,
-          limit,
-        });
+        // API-access viewers can see orgs that opted out of the public
+        // directory as long as those orgs have at least one members_only
+        // agent — the entire point of the tier.
+        const members = viewerHasApiAccess
+          ? await this.memberDb.listProfiles({ offerings, markets, search, limit })
+          : await this.memberDb.getPublicProfiles({ offerings, markets, search, limit });
 
-        // Return simplified member info
-        const simplified = members.map((m) => ({
+        const visible = viewerHasApiAccess
+          ? members.filter((m) =>
+              m.is_public ||
+              (m.agents || []).some((a) => a.visibility === 'public' || a.visibility === 'members_only')
+            )
+          : members;
+
+        const simplified = visible.map((m) => ({
           slug: m.slug,
           display_name: m.display_name,
           tagline: m.tagline,
@@ -622,11 +643,17 @@ export class MCPToolHandler {
           offerings: m.offerings,
           headquarters: m.headquarters,
           markets: m.markets,
-          agents: m.agents.filter((a) => a.is_public).map((a) => ({
-            url: a.url,
-            type: a.type,
-            name: a.name,
-          })),
+          profile_visibility: m.is_public ? 'public' : 'members_only',
+          agents: m.agents
+            .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
+            .map((a) => ({
+              url: a.url,
+              type: a.type,
+              name: a.name,
+              // Only surface `visibility` when the caller can actually see
+              // more than one state — otherwise it is always 'public'.
+              ...(viewerHasApiAccess ? { visibility: a.visibility } : {}),
+            })),
           contact_website: m.contact_website,
         }));
 
@@ -647,8 +674,16 @@ export class MCPToolHandler {
       case "get_member": {
         const slug = args?.slug as string;
         const member = await this.memberDb.getProfileBySlug(slug);
+        const viewerHasApiAccess = await this.callerHasApiAccess(authContext);
 
-        if (!member || !member.is_public) {
+        // API-access viewers may see a private profile if it has at least
+        // one members_only or public agent — that is the discovery pool.
+        const visibleToViewer = member && (
+          member.is_public ||
+          (viewerHasApiAccess &&
+            (member.agents || []).some((a) => a.visibility === 'public' || a.visibility === 'members_only'))
+        );
+        if (!member || !visibleToViewer) {
           return {
             content: [
               {
@@ -664,7 +699,7 @@ export class MCPToolHandler {
           };
         }
 
-        // Return full member info (but only public agents)
+        // Public agents to everyone; members_only when the caller has API access
         const result = {
           slug: member.slug,
           display_name: member.display_name,
@@ -676,11 +711,15 @@ export class MCPToolHandler {
           headquarters: member.headquarters,
           markets: member.markets,
           tags: member.tags,
-          agents: member.agents.filter((a) => a.is_public).map((a) => ({
-            url: a.url,
-            type: a.type,
-            name: a.name,
-          })),
+          profile_visibility: member.is_public ? 'public' : 'members_only',
+          agents: member.agents
+            .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
+            .map((a) => ({
+              url: a.url,
+              type: a.type,
+              name: a.name,
+              ...(viewerHasApiAccess ? { visibility: a.visibility } : {}),
+            })),
           contact: {
             email: member.contact_email,
             website: member.contact_website,
@@ -709,7 +748,8 @@ export class MCPToolHandler {
       // Agent tools
       case "list_agents": {
         const type = args?.type as AgentType | undefined;
-        const agents = await this.agentService.listAgents(type);
+        const viewerHasApiAccess = await this.callerHasApiAccess(authContext);
+        const agents = await this.agentService.listAgents({ type, viewerHasApiAccess });
         return {
           content: [
             {
@@ -726,7 +766,8 @@ export class MCPToolHandler {
 
       case "get_agent": {
         const agentUrl = args?.url as string;
-        const agent = await this.agentService.getAgentByUrl(agentUrl);
+        const viewerHasApiAccess = await this.callerHasApiAccess(authContext);
+        const agent = await this.agentService.getAgentByUrl(agentUrl, { viewerHasApiAccess });
         if (!agent) {
           return {
             content: [
@@ -1913,7 +1954,7 @@ export class MCPToolHandler {
         tagline: m.tagline,
         offerings: m.offerings,
         headquarters: m.headquarters,
-        agents_count: m.agents.filter((a) => a.is_public).length,
+        agents_count: m.agents.filter((a) => a.visibility === 'public').length,
         publishers_count: (m.publishers || []).filter((p) => p.is_public).length,
       }));
 

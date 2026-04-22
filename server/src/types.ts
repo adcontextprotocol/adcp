@@ -349,12 +349,31 @@ export function isValidMemberOffering(value: string | undefined | null): boolean
 }
 
 /**
+ * Agent visibility tiers.
+ *   - private: owner-only, not listed anywhere
+ *   - members_only: visible to members with API access (Professional+),
+ *     not on the public web
+ *   - public: listed in the public directory and reflected in brand.json
+ */
+export type AgentVisibility = 'private' | 'members_only' | 'public';
+
+export const VALID_AGENT_VISIBILITIES: readonly AgentVisibility[] = [
+  'private',
+  'members_only',
+  'public',
+] as const;
+
+export function isValidAgentVisibility(value: unknown): value is AgentVisibility {
+  return typeof value === 'string' && (VALID_AGENT_VISIBILITIES as readonly string[]).includes(value);
+}
+
+/**
  * Agent configuration stored in member profiles
- * Each agent has a URL and visibility settings
+ * Each agent has a URL and a visibility tier.
  */
 export interface AgentConfig {
   url: string;
-  is_public: boolean;
+  visibility: AgentVisibility;
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType | 'buyer';
