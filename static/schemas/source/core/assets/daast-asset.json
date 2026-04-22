@@ -3,9 +3,49 @@
   "$id": "/schemas/core/assets/daast-asset.json",
   "title": "DAAST Asset",
   "description": "DAAST (Digital Audio Ad Serving Template) tag for third-party audio ad serving",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "daast",
+      "description": "Discriminator identifying this as a DAAST asset. See /schemas/creative/asset-types for the registry."
+    },
+    "daast_version": {
+      "$ref": "/schemas/enums/daast-version.json",
+      "description": "DAAST specification version"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Expected audio duration in milliseconds (if known)",
+      "minimum": 0
+    },
+    "tracking_events": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/daast-tracking-event.json"
+      },
+      "description": "Tracking events supported by this DAAST tag"
+    },
+    "companion_ads": {
+      "type": "boolean",
+      "description": "Whether companion display ads are included"
+    },
+    "transcript_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to text transcript of the audio content",
+      "x-accessibility": true
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
   "oneOf": [
     {
-      "type": "object",
       "properties": {
         "delivery_type": {
           "type": "string",
@@ -16,46 +56,14 @@
           "type": "string",
           "format": "uri",
           "description": "URL endpoint that returns DAAST XML"
-        },
-        "daast_version": {
-          "$ref": "/schemas/enums/daast-version.json",
-          "description": "DAAST specification version"
-        },
-        "duration_ms": {
-          "type": "integer",
-          "description": "Expected audio duration in milliseconds (if known)",
-          "minimum": 0
-        },
-        "tracking_events": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/enums/daast-tracking-event.json"
-          },
-          "description": "Tracking events supported by this DAAST tag"
-        },
-        "companion_ads": {
-          "type": "boolean",
-          "description": "Whether companion display ads are included"
-        },
-        "transcript_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to text transcript of the audio content",
-          "x-accessibility": true
-        },
-        "provenance": {
-          "$ref": "/schemas/core/provenance.json",
-          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
         }
       },
       "required": [
         "delivery_type",
         "url"
-      ],
-      "additionalProperties": true
+      ]
     },
     {
-      "type": "object",
       "properties": {
         "delivery_type": {
           "type": "string",
@@ -65,43 +73,16 @@
         "content": {
           "type": "string",
           "description": "Inline DAAST XML content"
-        },
-        "daast_version": {
-          "$ref": "/schemas/enums/daast-version.json",
-          "description": "DAAST specification version"
-        },
-        "duration_ms": {
-          "type": "integer",
-          "description": "Expected audio duration in milliseconds (if known)",
-          "minimum": 0
-        },
-        "tracking_events": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/enums/daast-tracking-event.json"
-          },
-          "description": "Tracking events supported by this DAAST tag"
-        },
-        "companion_ads": {
-          "type": "boolean",
-          "description": "Whether companion display ads are included"
-        },
-        "transcript_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to text transcript of the audio content",
-          "x-accessibility": true
-        },
-        "provenance": {
-          "$ref": "/schemas/core/provenance.json",
-          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
         }
       },
       "required": [
         "delivery_type",
         "content"
-      ],
-      "additionalProperties": true
+      ]
     }
-  ]
+  ],
+  "discriminator": {
+    "propertyName": "delivery_type"
+  },
+  "additionalProperties": true
 }

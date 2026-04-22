@@ -8,10 +8,6 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
-  - media_buy_seller/governance_approved
-  - media_buy_seller/governance_denied
-  - media_buy_seller/governance_denied_recovery
-  - media_buy_seller/governance_conditions
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
@@ -19,6 +15,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/creative_fate_after_cancellation
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -137,8 +134,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
@@ -189,8 +186,8 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "https://governance.pinnacle-agency.example"
                   authentication:
@@ -262,12 +259,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -310,6 +305,55 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+      - id: list_formats_integrity
+        title: "Verify format_ids on products resolve to real formats"
+        narrative: |
+          The buyer asks the sales agent to filter `list_creative_formats` by
+          `products[0].format_ids[0]`. The sales agent MUST return the format
+          it advertised on its own product — whether it hosts that format
+          directly or proxies to the creative agent named in
+          `format_ids[0].agent_url`. An empty `formats[]` means the sales
+          agent's product catalog references a format that does not resolve —
+          a stale or typo'd entry that would have failed silently at
+          `sync_creatives` after the media buy was already committed.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          The sales agent resolves `products[0].format_ids[0]` and returns
+          the matching format entry:
+          - formats[] contains at least one entry
+          - formats[0].format_id matches the id captured from get_products
+
+          An empty formats[] means the sales agent's product catalog references
+          a format that does not resolve — a common production failure mode
+          when creative agents deprecate formats without sellers updating
+          their product catalog.
+        sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          context:
+            correlation_id: "media_buy_seller--list_formats_integrity"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats[0]"
+            description: "Sales agent resolves the format_id — products[0].format_ids[0] exists in the catalog"
+          - check: field_value
+            path: "formats[0].format_id"
+            value: "$context.product_format_id"
+            description: "Returned format_id round-trips verbatim — the agent cannot substitute a different format in response to the filter"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--list_formats_integrity"
+            description: "Context correlation_id returned unchanged"
   - id: create_buy
     title: "Create the media buy"
     narrative: |
@@ -377,12 +421,12 @@ phases:
           - Used only when the seller needs the buyer to respond (e.g., confirm a budget). If the blocker is account-level (credit application, funding), the resolution path is list_accounts / sync_accounts, where account.setup.url surfaces on the pending_approval account
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -397,7 +441,9 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
@@ -448,10 +494,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026"
+            - "$context.media_buy_id"
           context:
             correlation_id: "media_buy_seller--check_buy_status"
 
@@ -527,6 +573,26 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--list_formats"
             description: "Context correlation_id returned unchanged"
+          - check: refs_resolve
+            description: |
+              Every format_id returned on products resolves to a format in this
+              agent's list_creative_formats. Broken references here surface as a
+              grading failure instead of a silent mismatch that only breaks at
+              sync_creatives time, after the buy is committed. Third-party
+              format_ids (agent_url pointing at a different creative agent)
+              can't be verified without calling that agent and are reported as
+              observations rather than failures.
+            source:
+              from: context
+              path: "products[*].format_ids[*]"
+            target:
+              from: current_step
+              path: "formats[*].format_id"
+            match_keys: [agent_url, id]
+            scope:
+              key: agent_url
+              equals: $agent_url
+            on_out_of_scope: warn
 
       - id: sync_creatives
         title: "Push creative assets (format_id roundtrip)"
@@ -558,8 +624,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -568,6 +634,9 @@ phases:
                 video:
                   asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
                   mime_type: "video/mp4"
             - creative_id: "display_trail_pro_300x250"
               name: "Trail Pro 3000 - Display 300x250"
@@ -578,6 +647,8 @@ phases:
                 image:
                   asset_type: "image"
                   url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
                   mime_type: "image/png"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_sync_sync_creatives"
           context:
@@ -633,10 +704,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
           context:
             correlation_id: "media_buy_seller--get_delivery"

@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-capabilities.json",
   "title": "SI Capabilities",
   "description": "Capabilities that a brand agent declares or a host supports",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "modalities": {

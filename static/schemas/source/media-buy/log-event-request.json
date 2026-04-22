@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/log-event-request.json",
   "title": "Log Event Request",
   "description": "Request parameters for logging marketing events",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,7 +14,8 @@
     },
     "event_source_id": {
       "type": "string",
-      "description": "Event source configured on the account via sync_event_sources"
+      "description": "Event source configured on the account via sync_event_sources",
+      "x-entity": "event_source"
     },
     "test_event_code": {
       "type": "string",

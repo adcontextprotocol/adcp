@@ -238,7 +238,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 | Error | Description | Resolution |
 |-------|-------------|------------|
-| `CATALOG_NOT_FOUND` | Referenced `catalog_id` doesn't exist (when using `catalog_ids` filter) | Verify catalog IDs from a previous sync or discovery call |
+| `REFERENCE_NOT_FOUND` | Referenced `catalog_id` doesn't exist or is not accessible (when using `catalog_ids` filter; `error.field` = `catalog_ids`) | Verify catalog IDs from a previous sync or discovery call |
 | `FEED_FETCH_FAILED` | Platform couldn't fetch the feed URL | Check URL accessibility, authentication, and feed format |
 | `INVALID_FEED_FORMAT` | Feed doesn't match declared `feed_format` | Verify feed content matches the format (XML for google_merchant_center, etc.) |
 | `ITEM_VALIDATION_FAILED` | Items failed schema validation | Check `item_issues` for per-item rejection reasons |

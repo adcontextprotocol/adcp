@@ -108,6 +108,7 @@ phases:
           - Format specifications for sponsored content
 
         sample_request:
+          offering_id: "novamotors_conversational_v1"
           context:
             correlation_id: "si_session--si_get_offering"
 
@@ -154,9 +155,12 @@ phases:
           - Available interaction modes
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
-          campaign_context: "Nova EV launch — targeting environmentally conscious drivers interested in electric vehicles"
+          intent: "User is researching electric vehicles for long road trips and wants to talk to Nova Motors"
+          identity:
+            consent_granted: true
+            consent_timestamp: "2026-04-22T14:00:00Z"
+            user:
+              locale: "en-US"
 
           idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_initiate_session"
           context:
@@ -235,6 +239,7 @@ phases:
 
         sample_request:
           session_id: "$context.session_id"
+          reason: "handoff_complete"
 
           context:
             correlation_id: "si_session--si_terminate_session"

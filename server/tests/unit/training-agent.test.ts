@@ -950,6 +950,33 @@ describe('session state', () => {
       expect(key).toBe('open:default');
     });
 
+    it('falls back to plans[0].brand.domain for sync_plans-style requests', () => {
+      const key = sessionKeyFromArgs(
+        { plans: [{ plan_id: 'p1', brand: { domain: 'acme.example' } }] },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('prefers top-level brand over plans[0]', () => {
+      const key = sessionKeyFromArgs(
+        {
+          brand: { domain: 'acme.example' },
+          plans: [{ plan_id: 'p1', brand: { domain: 'other.example' } }],
+        },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('returns open:default when plans is empty or brand is malformed', () => {
+      expect(sessionKeyFromArgs({ plans: [] }, 'open')).toBe('open:default');
+      expect(sessionKeyFromArgs({ plans: [{}] }, 'open')).toBe('open:default');
+      expect(
+        sessionKeyFromArgs({ plans: [{ brand: { domain: 'bad domain!' } }] }, 'open'),
+      ).toBe('open:default');
+    });
+
     it('falls back to open mode when training mode has no userId', () => {
       const key = sessionKeyFromArgs(
         { account: { brand: { domain: 'test.example' }, operator: 'test.example' } },
@@ -3120,7 +3147,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'omit', id: firstProductId }],
+      refine: [{ scope: 'product', action: 'omit', product_id: firstProductId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3147,7 +3174,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'more_like_this', id: sourceId }],
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: sourceId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3165,6 +3192,62 @@ describe('get_products refine mode', () => {
 
     // Should have more than just the source product
     expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+
+  it('defaults missing action to include on product scope', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'default-action.example' }, operator: 'default-action.example' };
+
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const products = initial.products as Array<Record<string, unknown>>;
+    const firstProductId = products[0].product_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: firstProductId }],
+    });
+
+    const refinedProducts = refined.products as Array<Record<string, unknown>>;
+    const refinedIds = refinedProducts.map(p => p.product_id);
+    expect(refinedIds).toContain(firstProductId);
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('product');
+    expect(refinementApplied[0].product_id).toBe(firstProductId);
+  });
+
+  it('defaults missing action to include on proposal scope and echoes proposal_id', async () => {
+    const account = { brand: { domain: 'default-action-prop.example' }, operator: 'default-action-prop.example' };
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>>;
+    const targetProposalId = proposals?.[0]?.proposal_id as string;
+    expect(targetProposalId).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: targetProposalId }],
+    });
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('proposal');
+    expect(refinementApplied[0].proposal_id).toBe(targetProposalId);
   });
 });
 
@@ -5017,7 +5100,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>>;
@@ -5051,7 +5134,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5107,7 +5190,7 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     // Manually expire the proposal in session state (persist via store)
@@ -5153,7 +5236,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5192,7 +5275,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5235,7 +5318,7 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
@@ -5298,7 +5381,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: 'nonexistent_proposal_id' }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'nonexistent_proposal_id' }],
     });
 
     const applied = refined.refinement_applied as Array<Record<string, unknown>>;
@@ -5321,7 +5404,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'omit', id: firstId }],
+      refine: [{ scope: 'proposal', action: 'omit', proposal_id: firstId }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;
@@ -5749,6 +5832,94 @@ describe('governance creative_services purchase type', () => {
     expect(creativeAction).toBeDefined();
     expect(creativeAction!.committed).toBe(5000);
     expect(creativeAction!.seller_reference).toBe('creative_order_001');
+  });
+});
+
+describe('create_content_standards input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns INVALID_INPUT when scope is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is an empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: [] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope is an array (not an object)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: [],
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when no policy/policies/registry_policy_ids provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/policy|policies|registry_policy_ids/i);
+  });
+
+  it('creates standards when called with legacy policy string', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'], languages_any: ['en'] },
+      policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with spec-shape policies array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      policies: [
+        { policy_id: 'no_violence', policy_categories: ['brand_safety'], enforcement: 'must', policy: 'No violent imagery' },
+      ],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with registry_policy_ids only', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      registry_policy_ids: ['shared_brand_safety_v1'],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
   });
 });
 
@@ -6455,20 +6626,20 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
     expect(mediaBuyId).toBeDefined();
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account,
       media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(targeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('persists collection_list_exclude in package targeting', async () => {
@@ -6498,11 +6669,11 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('update_media_buy round-trips targeting changes', async () => {
@@ -6531,7 +6702,7 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting: initialTargeting,
+        targeting_overlay: initialTargeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
@@ -6544,14 +6715,14 @@ describe('AdCP protocol compliance', () => {
     await simulateCallTool(server, 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
-      packages: [{ package_id: packageId, targeting: newTargeting }],
+      packages: [{ package_id: packageId, targeting_overlay: newTargeting }],
     });
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account, media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(newTargeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(newTargeting);
   });
 
   it('rejects malformed targeting with VALIDATION_ERROR', async () => {
@@ -6742,6 +6913,50 @@ describe('get_brand_identity handler', () => {
     });
 
     expect(result.code).toBe('brand_not_found');
+  });
+});
+
+describe('property-list uniform not-found response (issue #2739)', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  // Paired-probe: two distinct unresolvable list_ids must produce byte-identical
+  // error bodies, otherwise the probed id is a cross-tenant enumeration oracle.
+  const PROBE_TOOLS = ['get_property_list', 'update_property_list', 'delete_property_list'] as const;
+  for (const toolName of PROBE_TOOLS) {
+    it(`${toolName} returns byte-identical errors for two distinct unresolvable list_ids`, async () => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+
+      const probeA = await simulateCallTool(server, toolName, { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec' });
+      const probeB = await simulateCallTool(server, toolName, { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b' });
+
+      expect(probeA.isError).toBe(probeB.isError);
+      expect(probeA.result).toEqual(probeB.result);
+      expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+      expect(probeA.result.message).toBe('Property list not found');
+      expect(probeA.result.field).toBe('list_id');
+    });
+  }
+
+  it('validate_property_delivery returns byte-identical errors for two distinct unresolvable list_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+    const records = [{ identifier: { type: 'domain', value: 'x.example' }, impressions: 1 }];
+
+    const probeA = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec', records });
+    const probeB = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b', records });
+
+    expect(probeA.isError).toBe(probeB.isError);
+    expect(probeA.result).toEqual(probeB.result);
+    expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+    expect(probeA.result.message).toBe('Property list not found');
+    expect(probeA.result.field).toBe('list_id');
   });
 });
 

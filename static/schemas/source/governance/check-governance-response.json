@@ -8,7 +8,8 @@
   "properties": {
     "check_id": {
       "type": "string",
-      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them."
+      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them.",
+      "x-entity": "governance_check"
     },
     "status": {
       "type": "string",
@@ -21,7 +22,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Echoed from request."
+      "description": "Echoed from request.",
+      "x-entity": "governance_plan"
     },
     "explanation": {
       "type": "string",
@@ -39,11 +41,13 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations)."
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations).",
+            "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
           },
           "source_plan_id": {
             "type": "string",
-            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance)."
+            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
+            "x-entity": "governance_plan"
           },
           "severity": {
             "$ref": "/schemas/enums/escalation-severity.json"
@@ -145,5 +149,71 @@
     "plan_id",
     "explanation"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "conditions"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "conditions"
+        ],
+        "properties": {
+          "conditions": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "denied"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "findings"
+        ],
+        "properties": {
+          "findings": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "conditions"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "expires_at"
+        ]
+      }
+    }
+  ]
 }

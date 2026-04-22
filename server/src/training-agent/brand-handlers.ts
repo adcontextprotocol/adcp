@@ -8,6 +8,7 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getSandboxBrands } from '@adcp/client/testing';
+import { getSession, sessionKeyFromArgs } from './state.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -176,7 +177,7 @@ const TALENT: TalentEntry[] = [
       restrictions: ['Never place text over the athlete', 'No competitor brand logos in frame'],
     },
     rights: {
-      available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+      available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['NL', 'BE', 'DE'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -185,7 +186,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'janssen_likeness_voice',
         right_type: 'talent',
-        available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+        available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE'],
         exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2026-12-31'] },
         pricing_options: [
@@ -244,7 +245,7 @@ const TALENT: TalentEntry[] = [
       donts: ['No weight/body references', 'No rival athlete comparisons'],
     },
     rights: {
-      available_uses: ['likeness', 'name', 'endorsement'],
+      available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['MX', 'US', 'CO', 'AR'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -253,7 +254,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'reyes_likeness',
         right_type: 'talent',
-        available_uses: ['likeness', 'name', 'endorsement'],
+        available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['MX', 'US', 'CO', 'AR'],
         exclusivity_status: { available: true, existing_exclusives: [] },
         pricing_options: [
@@ -307,7 +308,7 @@ const TALENT: TalentEntry[] = [
       donts: ['No meat/dairy promotion', 'No fast food'],
     },
     rights: {
-      available_uses: ['likeness', 'name', 'endorsement'],
+      available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['NL', 'BE', 'DE', 'FR'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required', 'vegan_lifestyle_compatible_only'],
@@ -316,7 +317,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'vandijk_likeness',
         right_type: 'talent',
-        available_uses: ['likeness', 'name', 'endorsement'],
+        available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE', 'FR'],
         exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2027-03-31'] },
         pricing_options: [
@@ -390,7 +391,7 @@ const TALENT: TalentEntry[] = [
       settings: { stability: 0.8, language: 'ja' },
     },
     rights: {
-      available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+      available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
       countries: ['JP', 'KR', 'US'],
       exclusivity_model: 'category',
       content_restrictions: ['approval_required'],
@@ -399,7 +400,7 @@ const TALENT: TalentEntry[] = [
       {
         rights_id: 'tanaka_likeness_voice',
         right_type: 'talent',
-        available_uses: ['likeness', 'voice', 'name', 'endorsement'],
+        available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['JP', 'KR', 'US'],
         exclusivity_status: {
           available: false,
@@ -565,6 +566,9 @@ export const BRAND_TOOLS = [
           required: ['description', 'uses'],
           description: 'Campaign details for rights clearance',
         },
+        account: { type: 'object', description: 'Account reference (seller + operator/brand + sandbox flag)' },
+        brand: { type: 'object', description: 'Brand identity the campaign is being produced for — session-keying and governance-plan lookup read this' },
+        revocation_webhook: { type: 'object', description: 'Webhook endpoint the brand agent calls when a previously-granted license is revoked.' },
       },
       required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
     },
@@ -886,9 +890,9 @@ interface AcquireRightsArgs {
   };
 }
 
-export function handleAcquireRights(
+export async function handleAcquireRights(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as AcquireRightsArgs;
   const rightsId = req.rights_id;
@@ -922,6 +926,69 @@ export function handleAcquireRights(
 
   if (!campaign?.description) {
     return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+  }
+
+  if (campaign.end_date) {
+    const endMs = new Date(campaign.end_date).getTime();
+    if (!Number.isNaN(endMs) && endMs < Date.now()) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: `Campaign end_date ${campaign.end_date} is in the past; cannot license rights for an expired period.`,
+          field: 'campaign.end_date',
+          recovery: 'correctable',
+        }],
+      };
+    }
+  }
+
+  // Governance enforcement: if plans are active in this session, the rights
+  // price must fit within remaining authorised budget. Rights acquisitions
+  // are spending events and MUST be governed under the same plan as media
+  // buys. Without this check, the brand_rights/governance_denied storyboard
+  // gets a success response instead of GOVERNANCE_DENIED.
+  const session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  if (session.governancePlans.size > 0) {
+    // Estimate total commitment: flat-rate pricing uses `price` as the fixed
+    // total; CPM-priced rights project to estimated_impressions (or a
+    // conservative 1M-impression floor when the buyer didn't specify
+    // campaign volume). The governance check compares this projection to
+    // the plan's remaining authorised spend. A buyer whose plan has $50
+    // remaining can't license a $3.50-CPM rights grant unless the campaign
+    // is explicitly tiny; the default projection says $3500 > $50 and the
+    // plan denies.
+    const priceModel = pricingOption.model;
+    const basePrice = pricingOption.price;
+    const estimatedImpressions = (campaign as unknown as { estimated_impressions?: number }).estimated_impressions ?? 1_000_000;
+    const estimatedCommitment = priceModel === 'cpm'
+      ? (basePrice / 1000) * estimatedImpressions
+      : basePrice;
+    for (const plan of session.governancePlans.values()) {
+      const remaining = plan.budget.total - plan.committedBudget;
+      const typeAlloc = plan.budget.allocations?.rights_license;
+      const typeRemaining = typeAlloc?.amount !== undefined
+        ? typeAlloc.amount - (plan.committedByType?.rights_license ?? 0)
+        : undefined;
+      if (estimatedCommitment > remaining || (typeRemaining !== undefined && estimatedCommitment > typeRemaining)) {
+        const msg = typeRemaining !== undefined && estimatedCommitment > typeRemaining
+          ? `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
+          : `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
+        return {
+          errors: [{
+            code: 'GOVERNANCE_DENIED',
+            message: msg,
+            details: {
+              findings: [{
+                category_id: 'budget_authority',
+                severity: 'critical',
+                explanation: msg,
+              }],
+              plan_id: plan.planId,
+            },
+          }],
+        };
+      }
+    }
   }
 
   const descLower = campaign.description.toLowerCase();

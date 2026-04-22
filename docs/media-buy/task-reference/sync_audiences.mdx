@@ -523,7 +523,9 @@ const hashPhone = (e164Phone) =>
 
 ## Privacy Considerations
 
-All PII is hashed by the buyer before transmission — the protocol never carries cleartext personal data. SHA-256 hashes are one-way and cannot be reversed to recover the original email or phone number. The seller matches by independently hashing its own user data with the same algorithm.
+The schema never carries cleartext email or phone — buyers MUST hash before transport. The seller matches by independently hashing its own user data with the same algorithm.
+
+**Hashed identifiers are pseudonymous PII, not anonymous.** Unsalted SHA-256 of an email or phone number is recoverable via precomputed dictionaries of the email and E.164 namespaces, so `hashed_email` and `hashed_phone` MUST be treated as PII for retention, consent, access control, and data-subject-request purposes. Do not describe them as "privacy-preserving" in operator documentation or DPAs. See [Privacy Considerations](/docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous).
 
 **Buyer obligations**: The buyer is responsible for having a lawful basis to process and share audience data, regardless of jurisdiction. Include `consent_basis` on each audience to communicate the GDPR lawful basis to sellers operating in regulated markets — some sellers require this field for EU audiences.
 
@@ -534,7 +536,7 @@ All PII is hashed by the buyer before transmission — the protocol never carrie
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` |
-| `AUDIENCE_NOT_FOUND` | Audience to remove from doesn't exist | Check `audience_id` or omit `remove` |
+| `REFERENCE_NOT_FOUND` | Audience to remove from doesn't exist or is not accessible (`error.field` = `audience_id`) | Check `audience_id` or omit `remove` |
 | `INVALID_HASH_FORMAT` | Identifier doesn't match expected hash format | Verify SHA-256 hex encoding (64 chars, lowercase) |
 | `RATE_LIMITED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
 | `CALL_TOO_LARGE` | Too many members in payload | Payloads are limited to 100,000 members across all audiences |

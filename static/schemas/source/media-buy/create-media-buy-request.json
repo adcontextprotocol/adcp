@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/create-media-buy-request.json",
   "title": "Create Media Buy Request",
   "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -20,7 +21,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan."
+      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.",
+      "x-entity": "governance_plan"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

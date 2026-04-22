@@ -40,6 +40,7 @@ export type AdcpSpecialism =
   | 'creative-ad-server'
   | 'creative-generative'
   | 'creative-template'
+  | 'governance-aware-seller'
   | 'governance-delivery-monitor'
   | 'governance-spend-authority'
   | 'measurement-verification'
@@ -65,6 +66,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'creative-ad-server',
   'creative-generative',
   'creative-template',
+  'governance-aware-seller',
   'governance-delivery-monitor',
   'governance-spend-authority',
   'measurement-verification',

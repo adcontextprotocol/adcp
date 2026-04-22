@@ -9,8 +9,8 @@ description: "get_signals is the AdCP task for discovering audience and contextu
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json)
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
@@ -598,8 +598,12 @@ Discover all available deployments across platforms:
 ## Error Codes
 
 ### Discovery Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
-- `AGENT_NOT_FOUND`: Private signal agent not visible to this account
+- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist,
+  OR a private signal agent is not visible to this account. The same code is
+  returned whether the resource exists but is unauthorized or truly does not
+  exist — sellers MUST NOT distinguish the two (see `error.field` to
+  identify which typed parameter failed to resolve). See the uniform-response
+  MUST in error-handling.mdx.
 - `AGENT_ACCESS_DENIED`: Authenticated agent's credentials did not authorize access to this signal agent
 
 ### Discovery Warnings

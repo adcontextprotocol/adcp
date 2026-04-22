@@ -12,8 +12,8 @@ Discover creative formats supported by a creative agent. Returns full format spe
 
 **Authentication**: None required (public endpoint for format discovery)
 
-**Request Schema**: [`/schemas/v3/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json)
-**Response Schema**: [`/schemas/v3/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json)
+**Request Schema**: [`/schemas/latest/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creative-formats-request.json)
+**Response Schema**: [`/schemas/latest/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creative-formats-response.json)
 
 ## Behavior by agent type
 
@@ -67,7 +67,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 | `formats` | Array of full format definitions (format_id, name, assets, renders). The `type` field is deprecated and may be omitted. |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
-See [Format schema](https://adcontextprotocol.org/schemas/v3/core/format.json) for complete format object structure.
+See [Format schema](https://adcontextprotocol.org/schemas/latest/core/format.json) for complete format object structure.
 
 ### Recursive Discovery
 
@@ -645,9 +645,8 @@ When implementing `list_creative_formats` for a creative agent:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `FORMAT_NOT_FOUND` | Requested format_id doesn't exist | Verify format_id from get_products response |
+| `REFERENCE_NOT_FOUND` | Requested `format_id` doesn't exist, or referenced creative agent is unavailable / not accessible. `error.field` MUST identify which typed parameter failed to resolve. | Verify `format_id` from `get_products` response; the format may be from a deprecated agent. |
 | `INVALID_REQUEST` | Invalid filter parameters | Check parameter types and values |
-| `AGENT_NOT_FOUND` | Referenced creative agent unavailable | Format may be from deprecated agent |
 
 ## Best Practices
 
@@ -677,6 +676,6 @@ After discovering formats:
 
 ## Learn More
 
-- [Format Schema](https://adcontextprotocol.org/schemas/v3/core/format.json) - Complete format structure
+- [Format Schema](https://adcontextprotocol.org/schemas/latest/core/format.json) - Complete format structure
 - [Asset Types](/docs/creative/asset-types) - Asset specification details
 - [Standard Formats](/docs/media-buy/capability-discovery/implementing-standard-formats) - IAB-compatible reference formats

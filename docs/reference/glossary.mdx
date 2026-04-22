@@ -17,7 +17,7 @@ Classification of MCP session credentials as either "platform" (aggregator) or "
 A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are third-party data discovered via `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
 
 **Audience Member**
-A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the protocol never carries cleartext personal data. Providing multiple identifiers for the same person improves match rates. See [Hashed Identifier](#hashed-identifier) and [UID](#uid-universal-id).
+A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the wire format never carries cleartext email or phone. Hashing is data minimization at the transport boundary, not anonymization: see [Hashed Identifier](#hashed-identifier) for the pseudonymous-PII caveat that governs retention and consent. Providing multiple identifiers for the same person improves match rates. See also [UID](#uid-universal-id).
 
 **Audience Constraints**
 Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
@@ -148,7 +148,7 @@ A unit of measurement for television and radio advertising representing 1% of th
 ## H
 
 **Hashed Identifier**
-Buyer-normalized personally identifiable information (PII) hashed with SHA-256 before transmission. Used in audience uploads (`sync_audiences`) and event attribution (`log_event`). Normalization: emails to lowercase+trim, phone numbers to E.164 format. The seller matches by independently hashing its own user data with the same algorithm — neither party shares raw PII. Distinct from [UIDs](#uid-universal-id), which are already-resolved privacy-preserving tokens from identity graphs.
+Buyer-normalized personally identifiable information (PII) hashed with SHA-256 before transmission. Used in audience uploads (`sync_audiences`) and event attribution (`log_event`). Normalization: emails to lowercase+trim, phone numbers to E.164 format. The seller matches by independently hashing its own user data with the same algorithm. Unsalted SHA-256 of email or phone is **pseudonymous PII, not anonymous**: the input namespace is small enough that precomputed dictionaries recover plaintext, so hashed identifiers MUST be treated as PII for retention, consent, and access-control purposes. See [Privacy Considerations](/docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous). Distinct from [UIDs](#uid-universal-id), which are tokenized identifiers resolved by identity graph operators (e.g. UID2, RampID) under their own privacy architectures.
 
 **Households**
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
@@ -428,7 +428,7 @@ Named collection of DOOH screens across specific venues (e.g., 'times_square_net
 
 Common error codes across all AdCP implementations:
 
-- `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
+- `REFERENCE_NOT_FOUND`: Invalid or expired segment ID (or any referenced resource that does not exist or is not accessible; `error.field` identifies the failing parameter). Replaces the removed-in-rc.5 codes: `SEGMENT_NOT_FOUND`, `SIGNAL_AGENT_SEGMENT_NOT_FOUND`, `AGENT_NOT_FOUND`, `AUDIENCE_NOT_FOUND`, `CATALOG_NOT_FOUND`, `EVENT_SOURCE_NOT_FOUND`, `FORMAT_NOT_FOUND`, `STANDARDS_NOT_FOUND`, `BRAND_NOT_FOUND`, `CHECK_NOT_FOUND`, `CAMPAIGN_NOT_FOUND`. See [release notes](/docs/reference/release-notes#version-3-0-0-rc-5) for the migration.
 - `ACTIVATION_FAILED`: Unable to complete activation process
 - `ALREADY_ACTIVATED`: Signal already active for platform/seat
 - `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat

@@ -3,6 +3,8 @@
   "$id": "/schemas/sponsored-intelligence/si-terminate-session-request.json",
   "title": "SI Terminate Session Request",
   "description": "Request to terminate an SI session. Naturally idempotent — `session_id` is the dedup boundary, and terminating an already-terminated session is a no-op that returns the same terminal state. No `idempotency_key` is needed on this request.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,7 +15,8 @@
     },
     "session_id": {
       "type": "string",
-      "description": "Session identifier to terminate"
+      "description": "Session identifier to terminate",
+      "x-entity": "si_session"
     },
     "reason": {
       "type": "string",

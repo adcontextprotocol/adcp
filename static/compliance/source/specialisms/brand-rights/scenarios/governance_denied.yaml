@@ -59,7 +59,7 @@ phases:
           plans:
             - plan_id: "comply-rights-gov-denied"
               brand:
-                domain: "acmeoutdoor.com"
+                domain: "acmeoutdoor.example"
               objectives: "Restricted plan — rights licensing test"
               budget:
                 total: 50
@@ -89,8 +89,8 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.com"
-              operator: "pinnacle-agency.com"
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_accounts"
@@ -114,10 +114,13 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.com"
-                operator: "pinnacle-agency.com"
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   categories: ["budget_authority"]
           idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_governance"
         validations:
@@ -139,6 +142,10 @@ phases:
         sample_request:
           buyer:
             domain: "pinnacle-agency.example"
+          query: "licensed commercial rights for a regional outdoor retail campaign"
+          uses:
+            - "commercial"
+            - "endorsement"
         context_outputs:
           - path: "rights[0].rights_id"
             key: "rights_id"
@@ -162,6 +169,10 @@ phases:
           - findings propagated from the governance agent
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:
@@ -173,6 +184,13 @@ phases:
               - "commercial"
             start_date: "2026-04-01"
             end_date: "2026-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes:
+                - "Bearer"
+              credentials: "pinnacle-revocation-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_acquire_rights_denied"
 
           context:
             correlation_id: "brand_rights--governance_denied--acquire"

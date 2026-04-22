@@ -5,6 +5,20 @@ category: core
 summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
 track: core
 
+# Cross-step assertions (adcontextprotocol/adcp#2639). These convert two
+# reviewer-only checks from `key_reuse_conflict` and `security` into
+# programmatic gates that fail the storyboard at runtime rather than
+# waiting on human review. `idempotency.conflict_no_payload_leak` catches
+# the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
+# catches credential echo on any step's response. Both ship as default
+# assertions in `@adcp/client` 5.9+ — `import '@adcp/client/testing'`
+# auto-registers them; no additional module loading required. Consumers
+# who need stricter per-repo checks can re-register with their own spec
+# via `registerAssertion(spec, { override: true })` (adcp-client#752).
+invariants:
+  - idempotency.conflict_no_payload_leak
+  - context.no_secret_echo
+
 # Security note for the test harness: sample_request values below use
 # $generate:uuid_v4 and $generate:uuid_v4#alias placeholders. The harness
 # MUST replace these with fresh UUID v4 values PER RUN (not per file, not
@@ -29,10 +43,36 @@ narrative: |
      IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
   4. A request with a different key is treated as a new request, even if the payload
      is identical — the key is what makes retries safe, not payload equivalence.
+  5. Error responses (returned envelopes, thrown envelopes, and uncaught exceptions)
+     do not cache. The next request carrying the same key re-executes the handler.
+     This applies to every recovery class, including terminal — terminal states in
+     AdCP are mostly state-dependent (e.g., ACCOUNT_SUSPENDED flips after buyer
+     remediation) and cached error replay would mask legitimate recovery. Handler
+     authors must mutate state last: a handler that writes state then returns or
+     throws an error envelope will double-write on retry. See
+     security.mdx#idempotency rule 3 ("Only successful responses are cached"),
+     which this storyboard validates structurally via the reviewer check on
+     key_reuse_conflict. An end-to-end phase that drives a deterministic terminal
+     error and replays the key is deferred pending a generic force-error controller
+     verb (see adcontextprotocol/adcp#2760).
 
   Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
-  Sellers SHOULD declare their replay window in adcp.idempotency.replay_ttl_seconds
-  on get_adcp_capabilities; when omitted, buyers assume a 24-hour minimum.
+  Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
+  { supported: true, replay_ttl_seconds: N } to opt into replay protection, or
+  { supported: false } to declare they do not deduplicate retries. This storyboard
+  validates the supported: true behavior; sellers declaring supported: false
+  MUST skip this storyboard (they have no replay window to test).
+
+  **Cache-growth defense (MUST, not yet runtime-graded).** Per
+  security.mdx bullet 8 on the idempotency section, sellers MUST apply per-agent
+  rate limits on idempotency-cache inserts and MUST return RATE_LIMITED when the
+  per-agent insert rate exceeds the configured ceiling. The recommended
+  first-deployment ceiling is 60 inserts/sec sustained per agent (3,600/min)
+  with burst allowance to 300/sec over rolling 10-second windows. This storyboard
+  does not yet drive the high-volume burst that would exercise the ceiling —
+  runtime grading is tracked as a follow-up once a burst-runner test-kit
+  contract is defined. Sellers SHOULD self-attest to this requirement until the
+  runtime phase lands.
 
 agent:
   interaction_model: media_buy_seller
@@ -63,9 +103,11 @@ phases:
       - id: get_capabilities
         title: "Check idempotency capability declaration"
         narrative: |
-          Call get_adcp_capabilities and verify adcp.idempotency.replay_ttl_seconds
-          is declared. This field is REQUIRED — clients MUST NOT fall back to an
-          assumed default, and a seller that omits it is non-compliant.
+          Call get_adcp_capabilities and verify adcp.idempotency is declared with
+          supported: true and a replay_ttl_seconds value. The block is REQUIRED —
+          clients MUST NOT fall back to an assumed default, and a seller that omits
+          it is non-compliant. Sellers running this storyboard must declare
+          supported: true; supported: false sellers skip this storyboard entirely.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -74,8 +116,8 @@ phases:
         stateful: false
         expected: |
           Return capabilities declaring media_buy in supported_protocols AND
-          adcp.idempotency.replay_ttl_seconds (minimum 3600s; recommended 86400s
-          or longer).
+          adcp.idempotency with supported: true and replay_ttl_seconds (minimum
+          3600s; recommended 86400s or longer).
         sample_request:
           context:
             correlation_id: "idempotency--get_capabilities"
@@ -85,9 +127,13 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_value
+            path: "adcp.idempotency.supported"
+            value: true
+            description: "Agent declares supported: true for this storyboard (supported: false sellers skip)"
           - check: field_present
             path: "adcp.idempotency.replay_ttl_seconds"
-            description: "Agent declares replay window TTL (required)"
+            description: "Agent declares replay window TTL (required when supported: true)"
 
           - check: field_present
             path: "context"
@@ -103,6 +149,16 @@ phases:
       A create_media_buy request without idempotency_key MUST be rejected. The schema
       marks the field as required, so this is typically caught at validation time.
 
+      The reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating
+      tasks via `applyIdempotencyInvariant` + client-side shaping. Without an
+      explicit opt-out this vector would never reach the agent with a missing key
+      — the runner would inject one before dispatch, and the vector would silently
+      pass for every SDK-speaking agent regardless of enforcement. The step below
+      sets `omit_idempotency_key: true` so the runner skips both its own
+      invariant application and the SDK's auto-inject. Do not remove the flag:
+      without it, "certified" agents all carry an unverified assertion on this
+      vector.
+
     steps:
       - id: create_media_buy_missing_key
         title: "Missing idempotency_key returns INVALID_REQUEST"
@@ -116,6 +172,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_handling
         expect_error: true
+        omit_idempotency_key: true
         stateful: false
         expected: |
           Reject with:
@@ -235,8 +292,13 @@ phases:
           - media_buy_id: same as $context.initial_media_buy_id
           - No new side effects (no duplicate webhooks, no new audit log entry)
 
-          The compliance reviewer SHOULD verify in the seller's audit log or webhook
-          delivery history that only ONE set of side effects fired across both calls.
+          Programmatic verification of "no duplicate webhooks" runs in the next step
+          (no_duplicate_webhooks_on_replay) when the storyboard is driven by a runner
+          that implements the webhook_receiver_runner contract. Runners without a
+          webhook receiver grade that step as not_applicable — agents MAY still claim
+          idempotency compliance, but the replay-side-effect invariant is only
+          programmatically graded when the webhook_callbacks specialism is also in
+          scope.
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#replay_key"
@@ -277,6 +339,45 @@ phases:
             path: "context.correlation_id"
             value: "idempotency--create_media_buy_replay"
             description: "Context correlation_id returned unchanged"
+
+      - id: no_duplicate_webhooks_on_replay
+        title: "No duplicate webhooks fired across initial + replay"
+        narrative: |
+          The central invariant of idempotency: replaying with the same key MUST
+          NOT produce duplicate side effects. Webhook emission is the observable
+          side effect most likely to leak if the seller re-executes on replay
+          instead of returning cached state.
+
+          This step requires the storyboard runner to implement the
+          `webhook_receiver_runner` contract at
+          `test-kits/webhook-receiver-runner.yaml`. Runners without a webhook
+          receiver skip this step with a stable not_applicable marker; the
+          replay-side-effect invariant then relies on the next phase's cached-
+          response assertions plus manual audit of the seller's webhook
+          delivery history.
+
+          When the receiver IS in scope, the runner counts webhooks arriving at
+          {{runner.webhook_url:create_media_buy_initial}} across the initial
+          call's window AND the replay call's window. A conformant seller emits
+          webhooks only on the first execution; a non-conformant seller that
+          re-executes on replay emits a second set, catchable only by live
+          observation.
+        task: expect_webhook
+        triggered_by: create_media_buy_replay
+        filter:
+          operation_id: "{{prior_step.create_media_buy_initial.operation_id}}"
+        timeout_seconds: 30
+        expect_max_deliveries_per_logical_event: 1
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          At most one logical webhook event delivered for the create_media_buy
+          operation across both the initial and replay windows. If the runner
+          observes a second webhook delivery tagged with a distinct
+          idempotency_key but the same media_buy_id/operation_id, the seller is
+          re-executing on replay and the step fails with
+          duplicate_webhook_on_replay. Not_applicable when the runner does not
+          host a webhook receiver.
 
   - id: key_reuse_conflict
     title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
@@ -341,6 +442,7 @@ phases:
         reviewer_checks:
           - "Error body MUST NOT include the cached payload, the original request, or any fingerprint (hash, digest, field diff). Leaking cached state turns key-reuse into a read oracle for attackers who stole a key."
           - "Error body MAY include code + message only. No `field` json-pointer — even a pointer like `/packages/0/budget` reveals schema shape."
+          - "Reviewer MUST confirm the seller's documentation states that errored requests release the idempotency claim, or manually probe the behavior (force a deterministic terminal error, then retry with the same key and a valid payload — the seller MUST return a fresh success, not IDEMPOTENCY_CONFLICT and not the cached error). See security.mdx#idempotency rule 3."
 
   - id: fresh_key_new_resource
     title: "Different key creates a new resource"

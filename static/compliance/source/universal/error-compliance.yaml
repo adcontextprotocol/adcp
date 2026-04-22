@@ -110,6 +110,12 @@ phases:
           - field: packages[0].budget (optional but recommended)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-negative-budget"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -151,6 +157,12 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-nonexistent-product"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -185,13 +197,19 @@ phases:
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: error_handling
         stateful: false
+        # The test value of this step is that buying_mode is missing — do not
+        # schema-validate the sample_request, or the lint would reject the
+        # very shape the step exists to exercise.
+        sample_request_skip_schema: true
         expected: |
           Either return products (treating empty request as browse) or return a
           structured error requesting the missing brief. Both are valid.
 
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--missing_fields"
@@ -225,6 +243,12 @@ phases:
           - recovery: correctable
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-test-reversed-dates"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -274,6 +298,12 @@ phases:
           - recovery: correctable, transient, or fatal (optional)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-structure-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -285,9 +315,8 @@ phases:
           context:
             correlation_id: "error_compliance--validate_error_shape"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains errors array"
+          - check: error_code
+            description: "Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"
@@ -329,8 +358,10 @@ phases:
           adcp_major_version: 99
           buying_mode: "brief"
           brief: "Version negotiation probe"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--unsupported_major_version"
@@ -365,8 +396,10 @@ phases:
           adcp_major_version: 3
           buying_mode: "brief"
           brief: "Display advertising for outdoor lifestyle campaign"
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "error_compliance--supported_major_version"
@@ -407,6 +440,12 @@ phases:
           - content containing adcp_error (L2: JSON text, L3: structuredContent)
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "error-transport-test"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
@@ -418,9 +457,8 @@ phases:
           context:
             correlation_id: "error_compliance--validate_transport_binding"
         validations:
-          - check: field_present
-            path: "errors"
-            description: "Response contains errors array"
+          - check: error_code
+            description: "Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"

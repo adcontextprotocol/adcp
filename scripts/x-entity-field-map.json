@@ -1,0 +1,28 @@
+{
+  "$comment": "Field-name → x-entity map for scripts/add-x-entity-annotations.mjs. Lists the unambiguous id-shaped fields and the registered entity type each one resolves to. Extend this file for the next domain sweep instead of hand-editing schemas. See docs/contributing/x-entity-annotation.md for placement rules (root-level on composite types, inline on leaves, shared types preferred over per-site).",
+  "fields": {
+    "media_buy_id": "media_buy",
+    "package_id": "package",
+    "product_id": "product",
+    "creative_id": "creative",
+    "audience_id": "audience",
+    "event_source_id": "event_source",
+    "catalog_id": "catalog",
+    "signal_agent_segment_id": "signal_activation_id",
+    "account_id": "account",
+    "standards_id": "content_standards",
+    "rights_id": "rights_grant",
+    "property_list_id": "property_list",
+    "list_id": "__ambiguous__",
+    "plan_id": "__scope_specific__",
+    "policy_id": "__ambiguous__",
+    "source_plan_id": "governance_plan",
+    "check_id": "governance_check",
+    "session_id": "si_session",
+    "offering_id": "offering",
+    "property_id": "property",
+    "task_id": "task",
+    "pricing_option_id": "__scope_specific__"
+  },
+  "$comment_ambiguous": "`list_id` is ambiguous (property_list vs collection_list); annotate via shared type refs (core/property-list-ref.json, core/collection-list-ref.json) or per-site. `plan_id` splits governance_plan vs media_plan and must be scope-specific. `pricing_option_id` splits product_pricing_option vs vendor_pricing_option. `policy_id` splits governance_registry_policy vs governance_inline_policy — policy-entry.json is tagged inline at the shared type; string-array use sites (policy_ids, shared_policy_ids, registry_policy_ids) are registry; findings and audit entries are deliberately un-annotated with $comment (see #2685). The patch script must be run with `--scope <dir>` and a per-scope overlay map for these."
+}

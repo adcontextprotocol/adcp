@@ -10,8 +10,8 @@ Send conversion or marketing events for attribution and optimization. Supports b
 
 **Response Time**: ~1s (events are queued for processing)
 
-**Request Schema**: [`/schemas/v3/media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-response.json)
+**Request Schema**: [`/schemas/latest/media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/log-event-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/log-event-response.json)
 
 ## Quick Start
 
@@ -501,7 +501,7 @@ Choose `event_id` values that are stable across retries:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `EVENT_SOURCE_NOT_FOUND` | Event source not configured | Run `sync_event_sources` first |
+| `REFERENCE_NOT_FOUND` | Event source not configured or not accessible (`error.field` = `event_source_id`) | Run `sync_event_sources` first |
 | `INVALID_EVENT_TYPE` | Unrecognized or disallowed event type | Check event source's `event_types` configuration |
 | `INVALID_EVENT_TIME` | Event time too far in the past/future | Use timestamps within the seller's attribution window |
 | `MISSING_USER_MATCH` | No user identifiers provided | Include at least one of: uids, hashed_email, hashed_phone, click_id, or client_ip + client_user_agent |

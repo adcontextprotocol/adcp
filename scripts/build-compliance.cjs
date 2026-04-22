@@ -175,9 +175,19 @@ function discoverProtocols(sourceDir, specialisms) {
 // arrival. The one documented exception (si-terminate-session: naturally
 // idempotent by session_id) carries a `$comment` on its request schema
 // and is correctly absent from the required-key set.
+//
+// Divergence with `x-mutates-state`: the contradiction lint's cousin at
+// `scripts/lint-storyboard-contradictions.cjs:loadMutatingTasksFromSchemas`
+// reads `x-mutates-state: true` instead — that's the mutation-semantics
+// declaration ("this task changes observable state"), which is a different
+// concern from the idempotency mechanism enforced here. The two sets
+// overlap on ~95% of tasks but legitimately diverge on naturally-idempotent
+// mutations (comply_test_controller, si_terminate_session). Do not
+// unify — they answer different questions.
 
 function loadMutatingSchemaRefs(schemasDir) {
   const refs = new Set();
+  const tools = new Set();
   function walk(d) {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, entry.name);
@@ -189,16 +199,19 @@ function loadMutatingSchemaRefs(schemasDir) {
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) {
         refs.add(path.relative(schemasDir, p));
+        // Task name ↔ filename: "create-media-buy-request.json" → "create_media_buy"
+        tools.add(entry.name.replace(/-request\.json$/, '').replace(/-/g, '_'));
       }
     }
   }
   walk(schemasDir);
-  return refs;
+  return { refs, tools };
 }
 
 function lintStoryboardIdempotency(sourceDir, schemasDir) {
-  const mutatingRefs = loadMutatingSchemaRefs(schemasDir);
+  const { refs: mutatingRefs, tools: mutatingTools } = loadMutatingSchemaRefs(schemasDir);
   const violations = [];
+  const missingSchemaRefs = [];
 
   function lintFile(p) {
     const rel = path.relative(sourceDir, p);
@@ -222,7 +235,17 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
         // synthetic invocations (e.g., comply_test_controller's
         // simulate_budget scenarios, universal/security.yaml's probe steps)
         // that don't send a task request schema. They're out of scope for
-        // this lint.
+        // this lint — UNLESS the task name itself is a known mutating tool,
+        // in which case the missing schema_ref is itself a storyboard bug
+        // (the step would bypass the idempotency_key lint above). Positive
+        // check per red-team I-9 / security.mdx storyboard hygiene.
+        if (step.task && mutatingTools.has(step.task) && !step.schema_ref) {
+          missingSchemaRefs.push({
+            file: rel,
+            step: step.id,
+            msg: `Step uses mutating tool "${step.task}" but has no schema_ref`,
+          });
+        }
         const schemaRef = step.schema_ref;
         if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
         const hasKey =
@@ -263,6 +286,15 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       `static/compliance/source/universal/idempotency.yaml for the convention, ` +
       `and note the deliberate alias-reuse pattern there when two steps must ` +
       `share a key (replay tests).`
+    );
+  }
+
+  if (missingSchemaRefs.length > 0) {
+    const lines = missingSchemaRefs.map(v => `  ${v.file} step=${v.step}: ${v.msg}`);
+    throw new Error(
+      `Storyboard schema_ref lint: ${missingSchemaRefs.length} step(s) call a mutating tool without a schema_ref, which would silently skip the idempotency_key check.\n\n` +
+      lines.join('\n') +
+      `\n\nAdd the matching \`schema_ref:\` (e.g. "media-buy/create-media-buy-request.json") to each step.`
     );
   }
 }
@@ -378,6 +410,78 @@ function main() {
 
   if (!fs.existsSync(SOURCE_DIR)) {
     console.error(`❌ Source directory not found: ${SOURCE_DIR}`);
+    process.exit(1);
+  }
+
+  // Scoping lint: every session-scoped step must carry brand/account identity.
+  // Fails fast before we build dist/ so broken storyboards don't ship.
+  try {
+    execSync('node scripts/lint-storyboard-scoping.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Branch-set lint: explicit `branch_set:` declarations must be well-formed
+  // and grade-connected to an assert_contribution step.
+  try {
+    execSync('node scripts/lint-storyboard-branch-sets.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Contradiction lint: no two storyboards may encode contradictory outcomes
+  // for the same (task, request, prior-state, env) — a conformant agent
+  // cannot satisfy both.
+  try {
+    execSync('node scripts/lint-storyboard-contradictions.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Context-entity lint: captured $context values must not flow from a field
+  // of one entity type into a consume site of a different entity type
+  // (issue #2660, rule 3; canonical case #2627).
+  try {
+    execSync('node scripts/lint-storyboard-context-entity.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Auth-shape lint: storyboard steps must use principal-handle shapes
+  // (from_test_kit, value_strategy, none) rather than literal credentials
+  // that bind the storyboard to a specific value and leak identity into
+  // source control. #2720.
+  try {
+    execSync('node scripts/lint-storyboard-auth-shape.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Test-kits lint: every file under test-kits/ must declare either
+  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
+  // Enforces the bimodal partition documented in storyboard-schema.yaml
+  // under "Test kit flavors". #2721.
+  try {
+    execSync('node scripts/lint-storyboard-test-kits.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
     process.exit(1);
   }
 

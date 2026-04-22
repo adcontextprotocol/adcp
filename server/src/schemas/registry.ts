@@ -560,10 +560,11 @@ export const AgentAuthStatusSchema = z
   .object({
     has_auth: z.boolean(),
     agent_context_id: z.string().nullable(),
-    auth_type: z.enum(["bearer", "basic", "oauth"]).nullable(),
+    auth_type: z.enum(["bearer", "basic", "oauth", "oauth_client_credentials"]).nullable(),
     has_oauth_token: z.boolean(),
     has_valid_oauth: z.boolean(),
     oauth_token_expires_at: z.string().nullable(),
+    has_oauth_client_credentials: z.boolean(),
   })
   .openapi("AgentAuthStatus");
 

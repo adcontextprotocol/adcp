@@ -803,5 +803,223 @@ describe('stripe-client', () => {
       const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
       expect(createCall.subscription_data).toBeUndefined();
     });
+
+    test('adds autopublish disclosure for membership-tier prices', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_membership',
+            recurring: { interval: 'year' },
+            lookup_key: 'aao_membership_professional_250',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_mem', url: 'https://checkout.stripe.com/mem' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_membership',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+        workosOrganizationId: 'org_test_123',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text?.submit?.message).toBeDefined();
+      expect(createCall.custom_text.submit.message).toMatch(/publishes your organization/i);
+      expect(createCall.custom_text.submit.message).toMatch(/member directory/i);
+    });
+
+    test('adds disclosure for invoice-based membership prices', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_invoice_mem',
+            recurring: null,
+            lookup_key: 'aao_invoice_corporate_5m',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_inv', url: 'https://checkout.stripe.com/inv' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_invoice_mem',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text?.submit?.message).toMatch(/directory/i);
+    });
+
+    test('omits disclosure for non-membership prices (e.g. event sponsorships)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_sponsorship',
+            recurring: null,
+            lookup_key: 'event_sponsorship_gold',
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_spons', url: 'https://checkout.stripe.com/spons' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_sponsorship',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text).toBeUndefined();
+    });
+
+    test('omits disclosure when price has no lookup_key', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_unlabeled',
+            recurring: { interval: 'year' },
+            lookup_key: null,
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: vi.fn<any>().mockResolvedValue({ id: 'cs_ul', url: 'https://checkout.stripe.com/ul' }),
+          },
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_unlabeled',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.custom_text).toBeUndefined();
+    });
+  });
+
+  describe('resolveLookupKeyAlias', () => {
+    const products = [
+      { lookup_key: 'aao_membership_explorer_50', price_id: 'price_explorer' },
+      { lookup_key: 'aao_membership_professional_250', price_id: 'price_professional' },
+      { lookup_key: 'aao_membership_builder_3000', price_id: 'price_builder' },
+      { lookup_key: 'aao_membership_individual', price_id: 'price_individual' },
+      { lookup_key: 'aao_membership_individual_discounted', price_id: 'price_individual_discounted' },
+    ] as any[];
+
+    test('resolves "<tier>_annual" to canonical key when unique', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('explorer_annual', products)?.lookup_key)
+        .toBe('aao_membership_explorer_50');
+      expect(resolveLookupKeyAlias('professional_annual', products)?.lookup_key)
+        .toBe('aao_membership_professional_250');
+    });
+
+    test('resolves bare tier name to canonical key', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('builder', products)?.lookup_key)
+        .toBe('aao_membership_builder_3000');
+    });
+
+    test('handles uppercase and whitespace in input', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('  EXPLORER_ANNUAL ', products)?.lookup_key)
+        .toBe('aao_membership_explorer_50');
+    });
+
+    test('returns undefined for unknown alias', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('nonexistent_tier', products)).toBeUndefined();
+    });
+
+    test('returns undefined for empty input', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      expect(resolveLookupKeyAlias('', products)).toBeUndefined();
+      expect(resolveLookupKeyAlias('   ', products)).toBeUndefined();
+    });
+
+    test('refuses ambiguous resolution: "individual" matches two products', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      // "individual" would match both aao_membership_individual and
+      // aao_membership_individual_discounted — must refuse rather than guess.
+      expect(resolveLookupKeyAlias('individual', products)).toBeUndefined();
+    });
+
+    test('refuses ambiguous resolution: annual/monthly collision', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const catalog = [
+        { lookup_key: 'aao_membership_professional_250', price_id: 'price_pro_annual' },
+        { lookup_key: 'aao_membership_professional_monthly', price_id: 'price_pro_monthly' },
+      ] as any[];
+      // Must NOT silently pick the annual SKU when the LLM asks for "monthly".
+      expect(resolveLookupKeyAlias('professional_annual', catalog)).toBeUndefined();
+      expect(resolveLookupKeyAlias('professional', catalog)).toBeUndefined();
+    });
+
+    test('refuses ambiguous resolution: multi-tier corporate catalog', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const catalog = [
+        { lookup_key: 'aao_membership_corporate_5m', price_id: 'price_5m' },
+        { lookup_key: 'aao_membership_corporate_50m', price_id: 'price_50m' },
+        { lookup_key: 'aao_membership_corporate_under5m', price_id: 'price_under5m' },
+      ] as any[];
+      expect(resolveLookupKeyAlias('corporate', catalog)).toBeUndefined();
+      expect(resolveLookupKeyAlias('corporate_annual', catalog)).toBeUndefined();
+    });
+
+    test('still resolves corporate variant when input is specific enough', async () => {
+      const { resolveLookupKeyAlias } = await import('../../server/src/billing/stripe-client.js');
+      const catalog = [
+        { lookup_key: 'aao_membership_corporate_5m', price_id: 'price_5m' },
+        { lookup_key: 'aao_membership_corporate_50m', price_id: 'price_50m' },
+        { lookup_key: 'aao_membership_corporate_under5m', price_id: 'price_under5m' },
+      ] as any[];
+      expect(resolveLookupKeyAlias('corporate_5m', catalog)?.lookup_key)
+        .toBe('aao_membership_corporate_5m');
+      expect(resolveLookupKeyAlias('corporate_under5m', catalog)?.lookup_key)
+        .toBe('aao_membership_corporate_under5m');
+    });
   });
 });

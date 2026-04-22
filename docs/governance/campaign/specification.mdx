@@ -262,6 +262,52 @@ When a portfolio plan references a `member_plan_id` that the governance agent do
 **Concurrency**: An orchestrator may send `create_media_buy` requests to multiple sellers simultaneously, each triggering a `committed` check. Budget checks are point-in-time and do not reserve budget, so concurrent approvals may together exceed the plan budget. The governance agent detects overspend at outcome reporting time. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 </Note>
 
+### Aggregated-spend evaluation (fragmentation defense)
+
+Governance thresholds (`reallocation_threshold`, `human_review_required` trigger points, registry-policy dollar floors) MUST be evaluated against **aggregated committed spend** over a trailing window, not per-plan or per-media-buy in isolation. A buyer that fragments a \$999,900 intended spend into 100 × \$9,999 buys — each individually below an operator's \$10,000 human-review threshold — would otherwise bypass review entirely. This is a fragmentation attack on governance, not a legitimate usage pattern, and the governance agent MUST close it.
+
+Governance agents MUST aggregate committed spend across all of the following when evaluating any threshold:
+
+- All plans attributable to the same `(buyer_agent, seller_agent, account_id)` tuple — fragmentation across plans on the same account does not reset the aggregate. Delegated sub-agents (see [Delegations](#delegations)) share the delegating buyer's aggregate: the `buyer_agent` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
+- Every [spend-commit task](#spend-commit-tasks) — fragmentation across task surfaces does not reset the aggregate. The spend-commit task inventory is the single authoritative list; new spend-commit tasks added there join the aggregate automatically, without a separate edit in this section.
+- The trailing window declared via the `governance.aggregation_window_days` capability (see [get_adcp_capabilities](#governance-aggregation-capability) below). The window slides with wall-clock time, not plan boundaries.
+
+**Evaluation-time semantics (testable).** At the moment of a spend-commit, the governance agent computes
+
+```
+aggregate = sum(c.amount for c in commit_history
+                where c.key == this.key
+                  and c.ts > now - aggregation_window_days × 86400s)
+            + this.amount
+```
+
+then evaluates `aggregate` against each applicable threshold. The current incoming commit is included in the sum. Commits that were denied outright do not contribute; commits approved or approved-with-conditions do. `now` is the governance agent's wall-clock time at evaluation; sliding-window boundaries are not snapped to plan or calendar boundaries.
+
+**Commitments are sticky within the window.** `c.amount` is the amount committed at approval time, not the delivered amount. Under-delivery, cancellation, makegoods, and post-approval budget reductions MUST NOT decrement a commit's contribution to the aggregate before the trailing window rolls it off. Otherwise a buyer could free fragmentation headroom by cancelling an approved commit and immediately re-committing sub-threshold — full spend moves across the round trip, each leg passes in isolation. An `update_media_buy` that *increases* committed budget enters as a delta (new committed budget − prior committed); a decrease does not decrement.
+
+When an individual commit would be below a threshold in isolation but pushes the trailing-window aggregate above the threshold, the governance agent MUST apply the threshold's consequence (human review escalation, denial, or conditions) to that commit. Governance agents MAY expose an `aggregate_committed` field on `get_plan_audit_logs` responses so auditors can reconstruct the fragmentation-defense decision without re-deriving it from the full outcome stream. The field's shape (units, currency, window-boundary reporting) is governance-agent-specific in 3.x and will be standardized in a later revision; implementers exposing it SHOULD document their shape alongside their `get_plan_audit_logs` response.
+
+Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `account_id` so two accounts share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
+
+#### Composition with `reallocation_threshold`
+
+A reallocation is itself a spend-commit: `update_media_buy` carries an incremental commit delta (new committed budget − previously committed), and that delta enters the aggregate and counts toward `reallocation_threshold` evaluation. A buyer cannot sidestep a \$25,000 reallocation threshold by fragmenting one \$30,000 reallocation into six \$4,999 updates — each update's delta accumulates into the trailing-window aggregate and trips the threshold once the cumulative delta crosses it.
+
+#### Conformance example
+
+Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(buyer_agent, seller_agent, account_id)`).
+
+| # | Prior 30-day aggregate | Incoming commit | Post-aggregate | Expected outcome |
+|---|-----------------------|-----------------|----------------|-------------------|
+| 1 | \$4,000 | \$2,500 `create_media_buy` | \$6,500 | Auto-approve — below threshold |
+| 2 | \$8,000 | \$2,500 `create_media_buy` | \$10,500 | Escalate to human review — aggregate crosses threshold even though the incoming commit is \$2,500 in isolation |
+
+A governance agent that approves row 2 without escalation is non-conformant: it has either failed to aggregate across the 30-day window, failed to key on the correct tuple, or failed to include the incoming commit in the sum.
+
+#### Governance aggregation capability
+
+Sellers and governance agents declare their aggregation window via `governance.aggregation_window_days` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Buyers that depend on a specific window for compliance (e.g., a brand-level weekly cadence review) MUST check this capability before relying on aggregation semantics — a governance agent declaring `aggregation_window_days: 7` does not defend against fragmentation spread across a 30-day quarter-end push. Absent declaration means the agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). There is no schema default: omission is not equivalent to a declared 30-day window.
+
 ## Brand compliance configuration
 
 Compliance policies live at the brand level, not in individual campaign plans. The brand's policy team configures the brand's compliance profile, and the governance agent resolves it when processing plans for that brand.
@@ -642,6 +688,89 @@ Callers MUST NOT interpret `governance_context`. They persist and forward it:
 On the first `check_governance` call (before any context exists), the governance agent extracts what it needs from `payload` and `plan_id`. On subsequent calls, `governance_context` provides the continuity so the governance agent does not need to re-derive state from the payload.
 
 Governance agents SHOULD treat `governance_context` as a lookup key into server-side state or a signed token, not as a plain-text encoding of governance state. If state is encoded directly, it MUST be signed (e.g., HMAC) so tampering by intermediaries is detectable.
+
+In AdCP 3.0 the encoded value is a compact JWS signed per the [AdCP JWS profile](/docs/building/implementation/security#adcp-jws-profile). The token carries a required `plan_hash` claim that binds the attestation to the exact plan state the governance agent evaluated (see [Plan binding and audit](#plan-binding-and-audit) below). Callers still treat the value as opaque for correlation; sellers that opt into verification follow the [seller verification checklist](/docs/building/implementation/security#seller-verification-checklist), which verifies the token's authenticity, authorization scope, and freshness — not the buyer's plan.
+
+### Plan binding and audit
+
+The `plan_hash` claim is the cryptographic receipt that forever binds a signed `governance_context` attestation to the exact plan state the governance agent evaluated. It is an **audit-layer** property — sellers do not verify it and are not expected to. The buyer's plan carries commercially sensitive data (cross-seller allocations, per-seller caps, objectives, `approved_sellers` lists, custom policies, `ext`) that buyers do not share with sellers; there is no plan-retrieval mechanism in 3.x and none is planned. `plan_hash` rides inside the JWS because the JWS is already the signed artifact the governance agent produces, but it is not part of the wire-verification contract.
+
+What the claim delivers:
+
+- **Post-hoc accountability.** Every governance attestation is forever-bindable to the plan state it attested to. Regulators and forensic audits can prove "this transaction was authorized under plan state X at time T" years after the fact, using only the retained JWS and the governance agent's revision records.
+- **Governance-agent self-integrity.** On every `check_governance` call, the governance agent re-evaluates current plan state and re-hashes. Tampering with the governance agent's persisted plan between calls surfaces as a mismatch against the retained revision record.
+- **Buyer-side compliance verification.** A buyer's own tooling can verify its governance agent is producing tokens that match the plan the buyer actually pushed — catching a compromised or misbehaving governance vendor.
+
+#### Canonicalization
+
+`plan_hash = base64url_no_pad(SHA-256(JCS(plan_payload)))` where:
+
+- `JCS` is [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) — the same scheme used for [idempotency payload equivalence](/docs/building/implementation/security#payload-equivalence). Governance agents and auditor verifiers SHOULD use the same library implementations listed there. JCS sorts object keys lexicographically by code point (caller key order in the `sync_plans` request does not affect the hash) and preserves the distinction between an omitted optional field and an explicit `null` (these produce different hashes). Governance agents MUST hash the plan as-supplied; they MUST NOT synthesize omitted optionals to default values and MUST NOT drop explicit nulls.
+- `plan_payload` is **one element of the `plans[]` array as supplied on `sync_plans`** — a single plan object, not the `sync_plans` request envelope and not the `plans` wrapper array. The preimage is the current plan-revision state at the time of attestation, i.e., the plan object the governance agent just evaluated. Implementations constructing the preimage start from the plan-revision object and remove the closed set of bookkeeping fields listed below.
+- `base64url_no_pad` follows RFC 4648 §5 with trailing `=` padding stripped — consistent with `jti` and other base64url values in the JWS profile. Governance agents MUST emit the unpadded form. Verifiers (governance agents re-verifying their own tokens, auditors, buyer-side compliance tooling) MUST compare by base64url-decoding both sides to the raw 32-byte SHA-256 digest and comparing bytes — NOT by string equality of the encoded form — so padding, case, or alphabet variation is rejected as a decode failure rather than producing a false non-match. A `plan_hash` that does not decode to exactly 32 bytes MUST be rejected.
+
+#### Excluded fields
+
+Closed list — governance agents MUST NOT extend or shrink it; any addition is a breaking change requiring a profile version bump, same rule as [Payload equivalence](/docs/building/implementation/security#payload-equivalence):
+
+- `version` — governance-agent revision counter, set by the agent on each re-sync
+- `status` — plan lifecycle status managed by the agent
+- `syncedAt` — timestamp written on each re-sync
+- `revisionHistory` — agent-internal append-only revision log (MUST be append-only archival; implementations MUST NOT read revisionHistory entries back into the active plan-object shape used for hashing)
+- `committedBudget` — derived from downstream `check_governance` / `report_plan_outcome` activity
+- `committedByType` — derived from the same activity
+
+None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields. Implementations that discover additional GA-internal fields on their persisted plan state beyond this list MUST treat those fields as **IN the preimage** until the profile version bumps — fail-safe toward inclusion, not exclusion. The "anything that looks like bookkeeping → strip" shortcut silently diverges every implementation that guesses differently; the safe default is "if it is not on the closed list, it is part of the hash."
+
+All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
+
+- **`ext` is part of the preimage.** Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext` on a plan; a value that changes between re-syncs invalidates every outstanding governance_context token for the plan even when the buyer's declared intent is unchanged (consistent with idempotency's treatment of `ext`).
+- **`delegations[].expires_at`** is declared intent and SHOULD be stable across re-syncs of the same plan; regenerating it from "now + N days" on every sync causes hash churn.
+- **Array order** in `policy_ids`, `policy_categories`, `custom_policies`, `approved_sellers`, `delegations`, `countries`, `regions`, `channels.required`, `channels.allowed` is not semantically meaningful, but JCS preserves it. Buyers SHOULD emit these in stable order across re-syncs.
+- **JCS does not Unicode-normalize.** Per RFC 8785 §3.2.5, JCS preserves strings as-supplied — visually-indistinguishable Unicode variants (Latin `a` vs Cyrillic `а`, NFC-vs-NFD compositions, confusable homoglyphs) produce distinct bytes and therefore distinct hashes. `plan_hash` detects this divergence correctly at the cryptographic layer, but the plan-semantics layer does not: two plans whose `policy_ids` or `policy_categories` differ only by a homoglyph substitution authorize different enforcement outcomes at the governance agent and at downstream consumers. Buyers and governance agents SHOULD validate `policy_ids` and `policy_categories` against a canonical allowlist server-side before emitting or evaluating them. This is a plan-content rule, not a hashing rule — `plan_hash` integrity is intact either way; the allowlist is what prevents a homograph substitution from producing a different authorization decision.
+
+#### Governance-agent obligations
+
+Governance agents MUST:
+
+- Compute `plan_hash` over the current plan state on every `check_governance` call and include it in the signed JWS payload. The hash MUST be over the plan the agent just evaluated; stale attestations over mutated plans MUST NOT be produced.
+- Refresh the signature on every `check_governance` invocation — fresh `jti`, `iat`, `exp`, and `plan_hash`. Governance agents MUST NOT cache and re-emit a previously-signed `governance_context` token across plan revisions. Envelope idempotency response caching is a separate regime — `governance_context` is on the closed exclusion list in [Payload equivalence](/docs/building/implementation/security#payload-equivalence) precisely so it can rotate on replay.
+- **Retain the per-revision `plan_hash`** alongside each internal plan-revision record — MUST, regardless of whether `audit_log_pointer` is exposed. Retention is what delivers the forever-binding property; without universal retention, every governance agent that doesn't use `audit_log_pointer` silently voids the audit layer for its entire token corpus. An audit log that cannot be joined back to the attested plan state is half an audit trail, and a governance agent that cannot verify its own historical tokens cannot detect tampering of its own store. Retained values are implementation-internal and are never exposed on the wire except through the normalized response on [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs), which echoes `plan_hash` per entry so auditors do not have to reconstruct from the governance agent's private records.
+
+#### Wire-verification contract
+
+`plan_hash` is not listed in `crit`. `crit` is wire-verifier semantics (RFC 7515 §4.1.11): it forces verifiers to reject tokens whose listed claims they cannot process. No wire verifier processes `plan_hash` — the only parties who can fetch the preimage (governance agent, auditor, buyer compliance) are off-wire. Listing in `crit` would force sellers to reject tokens they have no basis to verify, with no offsetting benefit. Governance agents MUST emit the claim and MUST NOT list it in `crit`.
+
+Sellers persist and forward `governance_context` verbatim and perform the [15-step JWS verification checklist](/docs/building/implementation/security#seller-verification-checklist) — authenticity, authorization scope, freshness. They treat `plan_hash` as opaque cargo inside the token and never inspect it.
+
+#### Verification recipes
+
+**Auditor recipe.** A regulator or third-party auditor with access to a plan's audit logs verifies historical attestations as follows:
+
+1. Call [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) with `include_entries: true` to retrieve the audit trail. Each `check` entry carries `plan_hash` (the claim asserted at issuance time) and `governance_context` (the signed JWS).
+2. For each governance_context, decode the compact JWS and verify the 15-step JWS contract (signature, `iss` in brand.json, `aud`, `exp`, etc.) against the governance agent's published JWKS.
+3. Extract the `plan_hash` claim from the decoded JWS payload and base64url-decode to 32 raw bytes.
+4. Decode the entry-level `plan_hash` to 32 raw bytes and byte-compare to the claim. A mismatch means the retained audit record disagrees with the signed token — either the token was tampered with or the record was, and the governance agent's integrity is in question.
+5. Optionally: recompute `plan_hash` from the governance agent's retained per-revision plan record (if the auditor has authenticated access to the governance agent's revision store) and byte-compare again. A mismatch here means the governance agent's own store was tampered with between signing and audit.
+
+**Buyer-side compliance recipe.** A buyer whose own tooling wants to verify its governance agent is producing honest tokens:
+
+1. Observe `governance_context` tokens flowing through the protocol envelope to sellers (the buyer already has these; no retrieval needed).
+2. For each token, decode the JWS, extract the `plan_hash` claim, and base64url-decode to 32 bytes.
+3. Recompute `plan_hash` over the buyer's own copy of the plan at the revision the token attests to. The buyer has authoritative plan state from their own `sync_plans` calls.
+4. Byte-compare. A mismatch means the governance agent is signing attestations that don't match the plan the buyer actually pushed — either vendor compromise or a bug. Either is a critical finding the buyer should escalate.
+
+This path catches a misbehaving governance vendor without involving the seller, the auditor, or the protocol. The data is already on the buyer's side.
+
+**Constant-time comparison.** All three verifier types — governance-agent self-integrity, auditor, and buyer-side compliance — SHOULD use constant-time byte comparison (e.g., `crypto.timingSafeEqual` in Node, `hmac.compare_digest` in Python, `crypto/subtle.ConstantTimeCompare` in Go) when comparing `plan_hash` digests. Timing side channels on a SHA-256-length comparison are not practically exploitable today; the rule is cheap insurance against future deployments that re-use the comparison code on shorter digests or against adversaries with co-tenancy on the verifier host.
+
+#### Privacy considerations
+
+`plan_hash` changes across re-syncs reveal that the plan mutated, even without revealing *what* mutated. Parties retaining tokens long-term (sellers forwarding `governance_context` verbatim, auditors, regulators) can infer plan-mutation cadence from the sequence of distinct hashes they observe for a given `plan_id`. For most deployments this is acceptable or desired — mutation-cadence is part of the audit signal. Sensitive governance deployments where mutation frequency itself is commercially or operationally sensitive (e.g., a buyer does not want a seller to infer re-planning cadence across its campaign portfolio) SHOULD factor this into token-retention policy: shorter seller-side retention windows for `governance_context`, or periodic rotation of the plan's `jti` namespace to break cross-token linkability.
+
+#### Reference test vectors
+
+Eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) pin the canonicalization bit-exactly: a minimal plan, a plan exercising every optional field, a bookkeeping-stripped case (GA-internal fields present on the stored plan but stripped before hashing, yielding the same hash as the bookkeeping-absent equivalent), paired vectors proving that omitted-vs-explicit-null, array order in `policy_categories`, and rotating `ext.trace_id` all produce distinct hashes, a Unicode case confirming JCS does not normalize per RFC 8785 §3.2.5, and a numeric-canonicalization case with fractional percentages that pins library choice over hand-rolled `JSON.stringify + key sort`. Each vector records the preimage, the canonical JCS bytes, the SHA-256 hex digest, and the final `plan_hash` claim value. Governance agents and auditor verifiers MUST reproduce these hashes bit-exactly.
 
 ### Governance phases
 

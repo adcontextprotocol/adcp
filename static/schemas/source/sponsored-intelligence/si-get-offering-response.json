@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-get-offering-response.json",
   "title": "SI Get Offering Response",
   "description": "Offering details, availability status, and optionally matching products. Use the offering_token in si_initiate_session for correlation.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "available": {
@@ -29,7 +30,8 @@
       "properties": {
         "offering_id": {
           "type": "string",
-          "description": "Offering identifier"
+          "description": "Offering identifier",
+          "x-entity": "offering"
         },
         "title": {
           "type": "string",
@@ -73,7 +75,8 @@
         "properties": {
           "product_id": {
             "type": "string",
-            "description": "Product identifier"
+            "description": "Product identifier",
+            "x-entity": "product"
           },
           "name": {
             "type": "string",
@@ -121,7 +124,8 @@
     "alternative_offering_ids": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "offering"
       },
       "description": "Alternative offerings to consider if this one is unavailable"
     },

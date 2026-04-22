@@ -8,6 +8,7 @@
 import {
   setAgentTesterLogger,
   comply,
+  loadComplianceIndex,
   type ComplyOptions,
   type ComplianceResult,
   type ComplianceTrack,
@@ -42,6 +43,166 @@ export type {
   AdvisoryObservation,
   SampleBrief,
 };
+
+// ── Capability-resolution error classification ───────────────────
+//
+// `@adcp/client`'s `resolveStoryboardsForCapabilities` fails closed with
+// plain `Error` instances for two distinct agent-config problems:
+//   1. Declared specialism whose parent protocol isn't in supported_protocols.
+//   2. Declared specialism whose bundle isn't in the local compliance cache.
+// Both surface through `comply()` and any caller that invokes the resolver
+// directly. They are *agent-config* faults (or, for #2, a stale local cache),
+// not platform errors — callers should log at warn and return actionable
+// coaching, not alarm on them as system failures.
+//
+// Until @adcp/client exports typed errors (tracked upstream at
+// adcontextprotocol/adcp-client#734), we classify by message regex. The
+// patterns match the exact strings thrown at
+// node_modules/@adcp/client/dist/lib/testing/storyboard/compliance.js:337
+// and :347. Swap to `instanceof` checks once the SDK emits coded errors.
+//
+// Security notes:
+//   - The captured groups echo agent-declared content. Regex is anchored at
+//     start and the captures forbid newlines, quotes, and parens so a
+//     hostile specialism id can't smuggle an injection payload through.
+//   - Captures are length-capped at the regex level (further sanitized
+//     through `sanitizeClassifiedValue`) so a multi-megabyte specialism
+//     id can't balloon logs / DB rows / LLM context.
+//   - For `parent_protocol_missing`, we additionally verify the extracted
+//     parent against the local compliance index — the resolver only throws
+//     this variant when the specialism IS in the index, so a mismatch means
+//     the message was synthesised by the attacker. In that case we fall
+//     through to `unknown_specialism` rather than trusting the field.
+
+export type CapabilityResolutionErrorKind =
+  | 'specialism_parent_protocol_missing'
+  | 'unknown_specialism';
+
+export interface CapabilityResolutionErrorInfo {
+  kind: CapabilityResolutionErrorKind;
+  specialism?: string;
+  parentProtocol?: string;
+}
+
+// Anchored at start of message. Specialism capture forbids `"\r\n` (ends the
+// quoted token in the upstream string). Parent capture forbids `)\r\n`
+// (ends the parenthesised aside). Hard length cap at 256 per capture.
+const PARENT_PROTOCOL_MISSING_RE =
+  /^Agent declared specialism "([^"\r\n]{1,256})" \(parent protocol: ([^)\r\n]{1,256})\) but did not include/;
+const UNKNOWN_SPECIALISM_RE =
+  /^Agent declared specialism "([^"\r\n]{1,256})" but no bundle exists/;
+
+// Strip control chars, backticks, and collapse whitespace on extracted
+// values. Backticks would break markdown fences in Addie-facing output;
+// control chars would break Slack notification rendering (via the DB
+// `headline` → Slack DM title path in notifications/compliance.ts).
+function sanitizeClassifiedValue(value: string, maxLen = 120): string {
+  return value
+    .replace(/[\r\n`\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function knownProtocolsFromIndex(): Set<string> {
+  try {
+    const index = loadComplianceIndex();
+    return new Set(index.specialisms.map(s => s.protocol).filter(Boolean));
+  } catch {
+    // Cache unavailable — accept the extracted value without cross-check.
+    // The anchored regex + sanitizer still bound what can reach downstream.
+    return new Set();
+  }
+}
+
+export function classifyCapabilityResolutionError(
+  err: unknown,
+): CapabilityResolutionErrorInfo | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (!msg) return undefined;
+
+  const parentMatch = msg.match(PARENT_PROTOCOL_MISSING_RE);
+  if (parentMatch) {
+    const specialism = sanitizeClassifiedValue(parentMatch[1]);
+    const parentProtocol = sanitizeClassifiedValue(parentMatch[2]);
+    // Defense in depth: the upstream resolver only throws this variant when
+    // the specialism exists in the local index, so its parent is a known
+    // protocol. If the extracted parent isn't known, the attacker smuggled
+    // the structure — fall through to `unknown_specialism`.
+    const known = knownProtocolsFromIndex();
+    if (known.size === 0 || known.has(parentProtocol)) {
+      return {
+        kind: 'specialism_parent_protocol_missing',
+        specialism,
+        parentProtocol,
+      };
+    }
+    return { kind: 'unknown_specialism', specialism };
+  }
+
+  const unknownMatch = msg.match(UNKNOWN_SPECIALISM_RE);
+  if (unknownMatch) {
+    return {
+      kind: 'unknown_specialism',
+      specialism: sanitizeClassifiedValue(unknownMatch[1]),
+    };
+  }
+
+  return undefined;
+}
+
+// ── Capability-resolution error presentation ────────────────────
+//
+// Central formatter so every caller (heartbeat, MCP tools, REST route) emits
+// consistent prose and the three sinks (DB headline, LLM markdown, JSON
+// response) get correctly-sanitized or correctly-fenced strings. Returning
+// structured shapes rather than naked strings keeps the callers honest about
+// which surface they're writing to.
+
+export interface CapabilityResolutionErrorPresentation {
+  /** Plain-text single-line headline. Safe for DB columns and Slack DM titles. */
+  headline: string;
+  /** Structured log fields for `logger.warn({...}, msg)`. */
+  logMsg: string;
+  logFields: Record<string, string>;
+  /** Structured fields for REST JSON response bodies. */
+  restBody: Record<string, string>;
+}
+
+export function presentCapabilityResolutionError(
+  info: CapabilityResolutionErrorInfo,
+): CapabilityResolutionErrorPresentation {
+  const specialism = info.specialism ?? '';
+  const parentProtocol = info.parentProtocol ?? '';
+
+  if (info.kind === 'specialism_parent_protocol_missing') {
+    return {
+      headline:
+        `Agent capabilities misconfigured: specialism "${specialism}" requires ` +
+        `"${parentProtocol}" in supported_protocols.`,
+      logMsg: 'Agent declared specialism without its parent protocol',
+      logFields: { specialism, parentProtocol },
+      restBody: {
+        error_kind: 'specialism_parent_protocol_missing',
+        specialism,
+        parent_protocol: parentProtocol,
+      },
+    };
+  }
+
+  // unknown_specialism
+  return {
+    headline:
+      `Agent declared specialism "${specialism}" that isn't in the local compliance ` +
+      `cache (cache may be stale or the id is unrecognized).`,
+    logMsg: 'Agent declared unknown specialism',
+    logFields: { specialism },
+    restBody: {
+      error_kind: 'unknown_specialism',
+      specialism,
+    },
+  };
+}
 
 // ── DB Adapter ────────────────────────────────────────────────────
 
@@ -171,6 +332,7 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'sales-social': { protocol: 'media-buy', storyboard_id: 'sales_social' },
   'sales-streaming-tv': { protocol: 'media-buy', storyboard_id: 'sales_streaming_tv' },
   'signed-requests': { protocol: 'media-buy', storyboard_id: 'signed_requests' },
+  'governance-aware-seller': { protocol: 'media-buy', storyboard_id: 'governance_aware_seller' },
   // creative
   'creative-ad-server': { protocol: 'creative', storyboard_id: 'creative_ad_server' },
   'creative-generative': { protocol: 'creative', storyboard_id: 'creative_generative' },

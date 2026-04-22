@@ -116,7 +116,7 @@ The agent resolves the brand identity and applies rules based on its domain expe
 - A brand safety agent infers content categories from the brand's industry
 - A sustainability agent applies requirements from the brand's profile
 
-The brand reference uses the standard [core/brand-ref](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) schema. The governance agent resolves the domain to discover the brand's identity via its `brand.json` file.
+The brand reference uses the standard [core/brand-ref](https://adcontextprotocol.org/schemas/latest/core/brand-ref.json) schema. The governance agent resolves the domain to discover the brand's identity via its `brand.json` file.
 
 ## Webhooks
 
@@ -281,7 +281,7 @@ Each entry must include `selection_type`:
 
 If `base_properties` is omitted, the agent queries its entire property database for properties matching the filters.
 
-See the [base-property-source schema](https://adcontextprotocol.org/schemas/v3/property/base-property-source.json) for the full specification.
+See the [base-property-source schema](https://adcontextprotocol.org/schemas/latest/property/base-property-source.json) for the full specification.
 
 ---
 
@@ -661,8 +661,7 @@ Pass property lists to media buy creation:
 
 | Code | Description |
 |------|-------------|
-| `LIST_NOT_FOUND` | Property list ID doesn't exist |
-| `LIST_ACCESS_DENIED` | The authenticated agent or account doesn't have access to this list |
+| `REFERENCE_NOT_FOUND` | Property list ID doesn't exist, or the caller lacks access. Returned uniformly for both cases — see [Uniform response for inaccessible references](/docs/building/implementation/error-handling#standard-error-codes). Sellers MUST NOT distinguish "exists but unauthorized" from "does not exist." |
 | `INVALID_FILTER` | Filter configuration is invalid |
 | `LIST_NAME_EXISTS` | A list with this name already exists |
 

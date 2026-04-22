@@ -279,7 +279,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       expect(response.body.status).toBe('draft');
     });
 
-    it('defaults leads to published when no status is requested (preserves prior behavior)', async () => {
+    it('defaults leads to pending_review when no status is requested (no silent auto-publish)', async () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
@@ -287,6 +287,28 @@ describe('My Content — body, admin scope, status, delete', () => {
           content: 'body',
           content_type: 'article',
           collection: { slug: WG_SLUG },
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe('pending_review');
+
+      const db = await pool.query(
+        `SELECT status, published_at FROM perspectives WHERE id = $1`,
+        [response.body.id]
+      );
+      expect(db.rows[0].status).toBe('pending_review');
+      expect(db.rows[0].published_at).toBeNull();
+    });
+
+    it('leads who pass status=published explicitly are honored', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-lead-publish',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+          status: 'published',
         })
         .expect(201);
 
@@ -308,6 +330,125 @@ describe('My Content — body, admin scope, status, delete', () => {
           status: 'published',
         })
         .expect(201);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+
+    it('rate-limits proposeContentForUser at the function level (Addie bypass) — #2733 follow-up', async () => {
+      // Simulate Addie's MCP handler which calls proposeContentForUser
+      // directly, bypassing HTTP middleware. Fresh user id so we start
+      // with an empty window.
+      const { proposeContentForUser } = await import('../../src/routes/content.js');
+      const testUser = { id: 'user_mc_ratelimit_test', email: 'ratelimit@test.local' };
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name)
+         VALUES ($1, $2, 'Rate', 'Limit')
+         ON CONFLICT (workos_user_id) DO NOTHING`,
+        [testUser.id, testUser.email]
+      );
+
+      const results: Array<{ success: boolean; error?: string }> = [];
+      for (let i = 0; i < 21; i++) {
+        const r = await proposeContentForUser(testUser, {
+          title: `mc-test-ratelimit-${i}`,
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        });
+        results.push({ success: r.success, error: r.error });
+      }
+
+      expect(results.filter(r => r.success).length).toBe(20);
+      expect(results.filter(r => !r.success && /rate limit/i.test(r.error ?? '')).length).toBe(1);
+
+      await pool.query(
+        `DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE proposer_user_id = $1)`,
+        [testUser.id]
+      );
+      await pool.query(`DELETE FROM perspectives WHERE proposer_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM community_points WHERE workos_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM user_badges WHERE workos_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [testUser.id]);
+    }, 30000);
+
+    it('exempts system: users from the function-level rate limit', async () => {
+      // Newsletter pipeline + digest publisher submit as `system:addie`
+      // / `system:sage`. Those automated paths must not be bounded.
+      const { proposeContentForUser } = await import('../../src/routes/content.js');
+      const systemUser = { id: 'system:addie', email: 'addie@agenticadvertising.org' };
+
+      const results: Array<{ success: boolean }> = [];
+      for (let i = 0; i < 25; i++) {
+        const r = await proposeContentForUser(systemUser, {
+          title: `mc-test-system-${i}-${Date.now()}`,
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        });
+        results.push({ success: r.success });
+      }
+      expect(results.every(r => r.success)).toBe(true);
+
+      await pool.query(
+        `DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE proposer_user_id = $1)`,
+        [systemUser.id]
+      );
+      await pool.query(`DELETE FROM perspectives WHERE proposer_user_id = $1`, [systemUser.id]);
+    }, 30000);
+  });
+
+  // ---------------------------------------------------------------------------
+  // #2713 — rejected/archived transitions require admin or committee lead
+  // ---------------------------------------------------------------------------
+
+  describe('PUT /api/me/content/:id status transitions', () => {
+    it('prevents non-admin co-author from resurrecting a rejected item', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-resurrect',
+        title: 'previously rejected',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // Switch to a non-lead, non-admin user. Make them a co-author so
+      // they pass the ownership check but NOT the lead/admin check.
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+      adminState.isAdmin = false;
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name)
+         VALUES ($1, $2, 'Co-author')
+         ON CONFLICT DO NOTHING`,
+        [id, OTHER_USER_ID]
+      );
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(403);
+
+      expect(response.body.message).toMatch(/move it out of rejected/i);
+    });
+
+    it('allows a committee lead to resurrect a rejected item in their committee', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-lead-resurrect',
+        title: 'lead resurrecting',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // USER_ID is the lead of WG_SLUG per the test setup at line 130
+      authState.userId = USER_ID;
+      authState.email = 'mc@example.com';
+      adminState.isAdmin = false;
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(200);
 
       expect(response.body.status).toBe('pending_review');
     });
@@ -371,6 +512,59 @@ describe('My Content — body, admin scope, status, delete', () => {
       });
 
       await request(app).delete(`/api/me/content/${id}`).expect(403);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // #2539 — review modal needs enough fields to actually review a submission
+  // ---------------------------------------------------------------------------
+
+  describe('GET /api/content/pending', () => {
+    async function insertLinkPerspective(opts: {
+      slug: string;
+      title: string;
+      subtitle?: string;
+      externalUrl: string;
+      externalSiteName?: string;
+      workingGroupId?: string | null;
+    }) {
+      const result = await pool.query(
+        `INSERT INTO perspectives
+           (slug, content_type, title, subtitle, content, excerpt, category,
+            status, external_url, external_site_name, working_group_id,
+            content_origin, proposer_user_id, author_name, proposed_at)
+         VALUES ($1, 'link', $2, $3, NULL, 'link excerpt', 'Perspective',
+                 'pending_review', $4, $5, $6, 'member', $7, 'Author', NOW())
+         RETURNING id`,
+        [
+          opts.slug,
+          opts.title,
+          opts.subtitle ?? null,
+          opts.externalUrl,
+          opts.externalSiteName ?? null,
+          opts.workingGroupId ?? wgId,
+          USER_ID,
+        ]
+      );
+      return result.rows[0].id as string;
+    }
+
+    it('surfaces external_url and subtitle so reviewers can evaluate link submissions', async () => {
+      await insertLinkPerspective({
+        slug: 'mc-test-pending-link',
+        title: 'An external read',
+        subtitle: 'Why agents matter',
+        externalUrl: 'https://example.com/article',
+        externalSiteName: 'Example Blog',
+      });
+
+      const response = await request(app).get('/api/content/pending').expect(200);
+      const item = response.body.items.find((i: any) => i.slug === 'mc-test-pending-link');
+      expect(item).toBeDefined();
+      expect(item.external_url).toBe('https://example.com/article');
+      expect(item.external_site_name).toBe('Example Blog');
+      expect(item.subtitle).toBe('Why agents matter');
+      expect(item.content_type).toBe('link');
     });
   });
 });

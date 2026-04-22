@@ -3,6 +3,8 @@
   "$id": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
   "title": "SI Initiate Session Request",
   "description": "Host initiates a session with a brand agent",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -11,16 +13,20 @@
       "minimum": 1,
       "maximum": 99
     },
-    "context": {
+    "intent": {
       "type": "string",
-      "description": "Conversation handoff from the host describing what the user needs"
+      "description": "Natural language description of user intent — the conversation handoff from the host describing what the user needs from the brand agent"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
     },
     "identity": {
       "$ref": "/schemas/sponsored-intelligence/si-identity.json"
     },
     "media_buy_id": {
       "type": "string",
-      "description": "AdCP media buy ID if session was triggered by advertising"
+      "description": "AdCP media buy ID if session was triggered by advertising",
+      "x-entity": "media_buy"
     },
     "placement": {
       "type": "string",
@@ -28,7 +34,8 @@
     },
     "offering_id": {
       "type": "string",
-      "description": "Brand-specific offering identifier to apply"
+      "description": "Brand-specific offering identifier to apply",
+      "x-entity": "offering"
     },
     "supported_capabilities": {
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
@@ -51,7 +58,7 @@
   },
   "required": [
     "idempotency_key",
-    "context",
+    "intent",
     "identity"
   ],
   "additionalProperties": true

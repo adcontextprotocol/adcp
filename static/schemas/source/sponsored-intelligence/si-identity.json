@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-identity.json",
   "title": "SI Identity",
   "description": "User identity shared with brand agent (with explicit consent)",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "consent_granted": {
@@ -76,7 +77,8 @@
     },
     "anonymous_session_id": {
       "type": "string",
-      "description": "Session ID for anonymous users (when consent_granted is false)"
+      "description": "Session ID for anonymous users (when consent_granted is false)",
+      "x-entity": "si_session"
     }
   },
   "required": ["consent_granted"],

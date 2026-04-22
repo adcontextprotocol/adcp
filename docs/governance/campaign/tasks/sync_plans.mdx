@@ -105,7 +105,7 @@ Push campaign plans to the governance agent. A plan defines the authorized param
 
 Plans originate in external systems -- an agency's planning tool, a brand's budget system, an insertion order. `sync_plans` pushes them to the governance agent so it knows what to validate against.
 
-Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions.
+Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards versions follow a separate pinned-at-buy rule — see [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
 
 Multiple campaigns (identified by `governance_context` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
@@ -117,6 +117,10 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
+
+## Plan-hash preimage
+
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/docs/building/implementation/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
 
 ## Fields
 
@@ -220,7 +224,7 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
-| `BRAND_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. |
+| `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
 | `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
 
 ## Related tasks

@@ -14,11 +14,13 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "The revoked rights grant identifier"
+      "description": "The revoked rights grant identifier",
+      "x-entity": "rights_grant"
     },
     "brand_id": {
       "type": "string",
-      "description": "Brand identifier of the rights subject"
+      "description": "Brand identifier of the rights subject",
+      "x-entity": "rights_holder_brand"
     },
     "reason": {
       "type": "string",

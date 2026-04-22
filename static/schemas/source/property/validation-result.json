@@ -39,7 +39,8 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "Registry policy ID that triggered this result. Enables programmatic routing by looking up the policy in the registry."
+            "description": "Registry policy ID that triggered this result. Enables programmatic routing by looking up the policy in the registry.",
+            "x-entity": "governance_registry_policy"
           },
           "explanation": {
             "type": "string",

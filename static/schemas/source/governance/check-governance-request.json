@@ -14,7 +14,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier."
+      "description": "Campaign governance plan identifier. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
+      "x-entity": "governance_plan"
     },
     "caller": {
       "type": "string",

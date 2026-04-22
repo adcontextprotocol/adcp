@@ -15,8 +15,8 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
-**Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
-**Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
+**Request Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
@@ -133,7 +133,7 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 }
 ```
 
-See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
+See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/latest/enums/specialism.json) for the authoritative list.
 
 ### account
 
@@ -437,7 +437,7 @@ Compliance testing capabilities. The presence of this block declares that the ag
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
@@ -446,6 +446,32 @@ Agents that implement `comply_test_controller` SHOULD include the `compliance_te
 :::note
 Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
 :::
+
+### webhook_signing
+
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
+| `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
+| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+
+**Example:**
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
 
 ### extensions_supported
 
@@ -470,7 +496,7 @@ Array of experimental AdCP surfaces this agent implements. A surface is experime
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 

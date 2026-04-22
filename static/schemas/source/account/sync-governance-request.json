@@ -3,6 +3,7 @@
   "$id": "/schemas/account/sync-governance-request.json",
   "title": "Sync Governance Request",
   "description": "Sync governance agent endpoints against specific accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously synced agents on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {

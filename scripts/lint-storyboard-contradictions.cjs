@@ -1,0 +1,664 @@
+#!/usr/bin/env node
+/**
+ * Cross-storyboard contradiction lint (adcp#2634, rule 1).
+ *
+ * The three bugs fixed in PR #2631 (#2627, #2628, #2629) all shared a shape:
+ * each storyboard was locally valid, but two storyboards encoded
+ * contradictory required responses for the same (task, request, prior-state)
+ * triple — something a conformant agent could not simultaneously satisfy.
+ * Per-storyboard lints can't catch this class because contradiction is a
+ * property of the *set* of storyboards, not any one of them.
+ *
+ * This lint groups every step-with-assertions across all storyboards by a
+ * (task, request_fp, state_path_fp, env_fp) key and flags groups whose
+ * outcomes disagree in a way no single agent could satisfy.
+ *
+ * Keying (what makes two steps "the same test vector"):
+ *   task             the AdCP task name (template `$test_kit.*` refs are
+ *                    skipped — unresolved at lint time)
+ *   request_fp       canonical JSON of sample_request with runtime-variable
+ *                    fields stripped or generalized (see fingerprintRequest)
+ *   state_path_fp    ordered list of (task, request_fp) tuples for prior
+ *                    mutating steps in the same phase + all earlier
+ *                    non-optional phases. Discriminates "fresh" vs
+ *                    "already-canceled" vs "pending-approval" state without
+ *                    needing authors to declare prior_state explicitly.
+ *   env_fp           comply_scenario + auth override + prerequisites —
+ *                    these select different runner fixtures, so two steps
+ *                    with same request but different env legitimately
+ *                    produce different outcomes.
+ *
+ * Outcome model:
+ *   success       — no expect_error, no error_code validation
+ *   error(codes)  — expect_error: true; `codes` is the set from
+ *                   `error_code: value:` or `error_code: allowed_values:`
+ *                   (empty set = unspecified error code)
+ *   unspecified   — we couldn't classify (e.g., only http_status_in checks)
+ *
+ * Contradiction rules (a group disagrees when…):
+ *   1. Any member is `success` and any other is `error` (non-empty codes)
+ *      — no agent can return a media_buy_id AND a NOT_CANCELLABLE error
+ *      on the same request in the same state.
+ *   2. Two `error(codes_a)` and `error(codes_b)` members with disjoint
+ *      `codes_a ∩ codes_b = ∅` — the agent would have to return both
+ *      INVALID_REQUEST and NOT_CANCELLABLE simultaneously.
+ *   3. `unspecified` outcomes don't trigger flags — they're the "soft"
+ *      class (step asserted shape but not outcome sign), and pairing them
+ *      with anything else is the author's choice.
+ *
+ * Conservative by design: prefers under-flagging to over-flagging. A
+ * false-positive noise floor kills adoption.
+ */
+
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const yaml = require('js-yaml');
+
+const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
+const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
+
+/**
+ * Read every `*-request.json` under `SCHEMAS_DIR` and return the set of
+ * task names whose schema declares `"x-mutates-state": true`. Task name
+ * is derived from the filename: `create-media-buy-request.json` →
+ * `create_media_buy`.
+ *
+ * `x-mutates-state` is the explicit schema-level declaration that this
+ * task changes observable server state a later step's assertion may
+ * depend on. It decouples "mutation semantics" (what the contradiction
+ * lint needs) from "idempotency mechanism" (what
+ * `build-compliance.cjs:loadMutatingSchemaRefs` enforces) — the two
+ * correlate ~95% of the time but legitimately diverge for naturally-
+ * idempotent mutations like `comply_test_controller` (scenario enum is
+ * the dedup boundary) and `si_terminate_session` (session_id is the
+ * dedup boundary).
+ */
+function loadMutatingTasksFromSchemas(schemasDir) {
+  // Map<task, srcPath> so same-task-name across subdirs surfaces as an
+  // explicit collision rather than silently deduping through Set.add.
+  const origins = new Map();
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      // Real directories only. Skip symlinks to avoid unbounded recursion
+      // if a schemas subtree symlinks back to itself.
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        walk(p);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('-request.json')) continue;
+      let schema;
+      try {
+        schema = JSON.parse(fs.readFileSync(p, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (schema['x-mutates-state'] !== true) continue;
+      const task = entry.name.replace(/-request\.json$/, '').replace(/-/g, '_');
+      const prior = origins.get(task);
+      if (prior && prior !== p) {
+        throw new Error(
+          `lint-storyboard-contradictions: task name "${task}" derives from two schema files: ` +
+            `${path.relative(schemasDir, prior)} and ${path.relative(schemasDir, p)}. ` +
+            'Rename one of the files (the hyphen-to-underscore conversion collides).',
+        );
+      }
+      origins.set(task, p);
+    }
+  }
+  walk(schemasDir);
+  return new Set(origins.keys());
+}
+
+/**
+ * AdCP task names that MUTATE server state. Derived at module load by
+ * reading every request schema's `x-mutates-state: true` declaration.
+ *
+ * Prior-state discrimination in the contradiction lint depends on this
+ * set — a step whose prior phase contains only read tasks is at the same
+ * "state" as a step with no prior phases.
+ */
+const MUTATING_TASKS = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
+
+/**
+ * Step tasks that we skip entirely — they're synthetic assertions or
+ * template refs that don't represent a real protocol call.
+ */
+const SKIP_TASKS = new Set([
+  'assert_contribution',
+  'expect_webhook',
+  'protected_resource_metadata',
+  'oauth_auth_server_metadata',
+]);
+
+function walkYaml(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkYaml(full));
+    else if (entry.isFile() && (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Replace values that vary per-run with stable type markers so two steps
+ * with the same semantic request hash to the same fingerprint.
+ *
+ * Stripped fields (by name at any depth):
+ *   - idempotency_key         per-run UUID
+ *   - context.correlation_id  per-storyboard debug string
+ *
+ * Normalized value patterns (by shape):
+ *   - "$generate:..."          → "<generated>"
+ *   - "$context.<name>"        → "<context:<name>>"
+ *   - "{{prior_step....}}"     → "<prior_step>"
+ *   - "{{runner....}}"         → "<runner>"
+ *
+ * `$context.<name>` keeps the name so two steps consuming different
+ * captured values don't collide — e.g. `$context.media_buy_id` vs
+ * `$context.plan_id` remain distinct even after normalization.
+ */
+function normalizeRequestValue(value) {
+  if (typeof value === 'string') {
+    if (value.startsWith('$generate:')) return '<generated>';
+    if (value.startsWith('$context.')) return `<context:${value.slice('$context.'.length)}>`;
+    if (value.startsWith('{{prior_step.')) return '<prior_step>';
+    if (value.startsWith('{{runner.')) return '<runner>';
+    return value;
+  }
+  // YAML 1.1 auto-parses unquoted ISO timestamps into Date objects.
+  // Without this branch, `stableStringify` would emit `{}` for them and two
+  // steps with different timestamps would fingerprint to the same group.
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(normalizeRequestValue);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (k === 'idempotency_key') continue;
+      out[k] = normalizeRequestValue(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Deterministic stringify with sorted keys at every depth. Do not use
+ * `JSON.stringify(value, arrayOfKeys)` — that filters by the array at every
+ * level and silently drops nested fields not in the top-level key list.
+ */
+function stableStringify(value) {
+  if (value === null || value === undefined) return JSON.stringify(value);
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return '[' + value.map(stableStringify).join(',') + ']';
+  }
+  const keys = Object.keys(value).sort();
+  return (
+    '{' +
+    keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',') +
+    '}'
+  );
+}
+
+function canonicalizeRequest(req) {
+  if (req === undefined || req === null) return '<empty>';
+  const normalized = normalizeRequestValue(req);
+  // `context.correlation_id` is stripped one level in: it's a request-level
+  // echo field, never semantically distinguishing.
+  if (normalized && typeof normalized === 'object' && normalized.context && typeof normalized.context === 'object') {
+    const { correlation_id: _drop, ...rest } = normalized.context;
+    normalized.context = rest;
+    if (Object.keys(normalized.context).length === 0) delete normalized.context;
+  }
+  return stableStringify(normalized);
+}
+
+function fingerprintRequest(req) {
+  const canonical = canonicalizeRequest(req);
+  return crypto.createHash('sha1').update(canonical).digest('hex').slice(0, 12);
+}
+
+/**
+ * Primary-id field per documented fixture category (see the `fixtures:`
+ * block documentation in storyboard-schema.yaml). Used to sort arrays
+ * within a category so two storyboards with semantically equivalent
+ * fixtures in different array order hash the same.
+ *
+ * The seeding DAG is keyed on foreign-key dependencies across categories,
+ * not on intra-array order within one — sorting by primary id is safe and
+ * eliminates a false-negative envelope in the env fingerprint.
+ */
+const FIXTURE_CATEGORY_PRIMARY_ID = {
+  products: 'product_id',
+  pricing_options: 'pricing_option_id',
+  creatives: 'creative_id',
+  plans: 'plan_id',
+  media_buys: 'media_buy_id',
+};
+
+function normalizeFixturesForHashing(fixtures) {
+  if (!fixtures || typeof fixtures !== 'object') return fixtures;
+  const out = {};
+  for (const [category, entries] of Object.entries(fixtures)) {
+    if (!Array.isArray(entries)) {
+      out[category] = entries;
+      continue;
+    }
+    const idField = FIXTURE_CATEGORY_PRIMARY_ID[category];
+    if (!idField) {
+      // Unknown category: fail loudly rather than preserve order silently.
+      // A new fixture category added to the schema without updating this
+      // table would otherwise create a false-negative bucket in the env
+      // fingerprint (two authors listing entries in different orders
+      // produce different hashes for the same seeded state). Force the
+      // schema update and the lint update to land together.
+      throw new Error(
+        `lint-storyboard-contradictions: unknown fixture category "${category}". ` +
+          `Add it to FIXTURE_CATEGORY_PRIMARY_ID in scripts/lint-storyboard-contradictions.cjs ` +
+          'alongside the schema documentation in static/compliance/source/universal/storyboard-schema.yaml.',
+      );
+    }
+    out[category] = [...entries].sort((a, b) => {
+      const aid = a && typeof a === 'object' ? a[idField] : undefined;
+      const bid = b && typeof b === 'object' ? b[idField] : undefined;
+      if (typeof aid !== 'string' || typeof bid !== 'string') return 0;
+      return aid < bid ? -1 : aid > bid ? 1 : 0;
+    });
+  }
+  return out;
+}
+
+/**
+ * Reduce a step's `auth` field to a stable fingerprint token. Always returns
+ * a string so the `auth=` component is ALWAYS present in the env fingerprint
+ * — required by #2711: steps that inherit the transport default used to emit
+ * no `auth=` component and could collide with explicit steps authored
+ * against divergent transport defaults once `sb=<doc.id>` was removed.
+ *
+ * Emission shape (what goes in `auth=...`):
+ *
+ *   kit_default              — step.auth absent. Step inherits whatever
+ *                              credential the transport is configured with
+ *                              (today: the test kit's `auth.api_key`, which
+ *                              is already covered by `test_kit=<path>` in
+ *                              the outer fingerprint; the explicit token
+ *                              keeps the shape legible and pins inheritance
+ *                              as a distinct semantic from a declared
+ *                              override).
+ *
+ *   none                     — step.auth === "none". Credentials stripped.
+ *
+ *   <type>:<strategy>        — step.auth is an object. Strategy encodes:
+ *     value_strategy          → the declared strategy verbatim
+ *                              (e.g., api_key:random_invalid). Per-run
+ *                              values are random; identity is the strategy.
+ *     from_test_kit: true     → `from_test_kit` — the kit's default
+ *                              principal handle. Equivalent in resolution
+ *                              to `kit_default` today, distinguished here
+ *                              because the explicit declaration carries
+ *                              type info the default case can't.
+ *     from_test_kit: "<path>" → `from_test_kit:<path>` — selects a named
+ *                              principal within a multi-principal kit
+ *                              (#2708). Today no kit declares multiple
+ *                              principals; emission shape is forward-
+ *                              compatible so the first multi-principal
+ *                              kit's storyboards are discriminated without
+ *                              further changes to the lint.
+ *     value: "<literal>"      → `literal:<sha1-8hex>` — hash the resolved
+ *                              identity (#2708) so two steps declaring
+ *                              different literal keys against the same
+ *                              kit don't collide. 32-bit truncation is
+ *                              deliberate: at storyboard-authoring scale
+ *                              (~thousands) the birthday bound is ~65K
+ *                              before even-odds collision, and a miss
+ *                              here degrades to a lint false-negative,
+ *                              not a correctness hazard. Literal keys in
+ *                              storyboards are already a code smell; the
+ *                              hash is defense-in-depth, not a load-
+ *                              bearing discriminator.
+ *
+ *   unknown                  — step.auth is some other shape. Defensive
+ *                              catch-all so the lint surfaces rather than
+ *                              silently drops.
+ *
+ * Precedence (first match wins): `value_strategy` > `from_test_kit` >
+ * `value`. Intentional: if a step declares both `value_strategy:
+ * random_invalid` and `from_test_kit: true`, the random value wins on the
+ * wire — the strategy is what the agent actually sees — so encoding the
+ * strategy is faithful to runtime behavior. Reordering would silently
+ * change which tests discriminate.
+ */
+function describeStepAuth(auth) {
+  if (auth === undefined) return 'kit_default';
+  if (auth === 'none') return 'none';
+  if (typeof auth !== 'object' || auth === null) return 'unknown';
+  const type = typeof auth.type === 'string' ? auth.type : '?';
+  if (typeof auth.value_strategy === 'string') return `${type}:${auth.value_strategy}`;
+  if (typeof auth.from_test_kit === 'string') return `${type}:from_test_kit:${auth.from_test_kit}`;
+  if (auth.from_test_kit === true) return `${type}:from_test_kit`;
+  if (typeof auth.value === 'string') {
+    const hash = crypto.createHash('sha1').update(auth.value).digest('hex').slice(0, 8);
+    return `${type}:literal:${hash}`;
+  }
+  return `${type}:?`;
+}
+
+/**
+ * Env fingerprint: the external knobs that select which fixture a conformant
+ * agent serves. Two steps with same request but different env can
+ * legitimately disagree on outcome (e.g., api-key vs oauth_bearer auth
+ * returning different error shapes, or two storyboards seeding different
+ * governance states).
+ *
+ * Components:
+ *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
+ *                scenario but loading different test kits target different
+ *                agent fixtures. Also the de-facto principal-identity
+ *                discriminator today: every test kit binds a principal
+ *                profile (spend authority, brand rights, category scoping),
+ *                and the current storyboard suite declares `caller.role:
+ *                buyer_agent` uniformly — so `test_kit` alone separates the
+ *                governance-denied-by-spend-authority path from the
+ *                governance-approved path. See #2684 for the audit.
+ *   role       — `doc.caller.role`. Forward-compatible guard for the
+ *                "shared test_kit, distinct principal role" case identified
+ *                in #2684. No-op on the current suite (all buyer_agent)
+ *                but automatically discriminates the first storyboard that
+ *                authors a different caller role against a shared kit.
+ *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
+ *                different prerequisite state via `comply_test_controller`
+ *                legitimately produce different outcomes for the same
+ *                request.
+ *   scenario   — step's `comply_scenario`.
+ *   auth       — step's effective credential shape, produced by
+ *                `describeStepAuth`. Always emitted (even for steps that
+ *                inherit the transport default) so inheritance itself
+ *                participates in the fingerprint rather than silently
+ *                collapsing with arbitrary other states — see #2711.
+ *                Forward-compatible with multi-principal kits via
+ *                `from_test_kit:<path>` selectors — see #2708.
+ *   seed       — phase's `prerequisites.controller_seeding` (distinct from
+ *                top-level fixtures; applies phase-scoped seeding).
+ *
+ * Note on `sb=<doc.id>`: the env fingerprint deliberately does NOT include
+ * the storyboard id. That was the conservative shape during the lint's
+ * initial rollout (#2661) but suppressed the exact class of bug the lint
+ * was built to catch — cross-storyboard contradictions (#2627, #2628,
+ * #2629). #2670 documented the planned removal; #2684 audited principal
+ * identity as the prerequisite discriminator (→ added `role=`); and
+ * #2708 tracks the deeper gap that `auth=` encodes strategy, not resolved
+ * principal identity. With those precisions in place, two steps that
+ * share (task, request, state, env) are now treated as the same test
+ * vector regardless of which storyboard file they live in — which is the
+ * whole point of this lint.
+ */
+function fingerprintEnv(step, phase, doc) {
+  const parts = [];
+  if (typeof doc?.prerequisites?.test_kit === 'string') {
+    parts.push(`test_kit=${doc.prerequisites.test_kit}`);
+  }
+  if (typeof doc?.caller?.role === 'string') {
+    parts.push(`role=${doc.caller.role}`);
+  }
+  if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
+    const fixturesHash = crypto
+      .createHash('sha1')
+      .update(stableStringify(normalizeFixturesForHashing(doc.fixtures)))
+      .digest('hex')
+      .slice(0, 8);
+    parts.push(`fixtures=${fixturesHash}`);
+  }
+  if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
+  parts.push(`auth=${describeStepAuth(step.auth)}`);
+  const seeding = phase?.prerequisites?.controller_seeding;
+  if (Array.isArray(seeding) && seeding.length > 0) {
+    parts.push(`seed=${seeding.map((s) => s?.scenario || s).sort().join(',')}`);
+  }
+  return parts.join('|') || '<default>';
+}
+
+/**
+ * Classify a step's expected outcome from its assertions.
+ */
+function classifyOutcome(step) {
+  const validations = Array.isArray(step.validations) ? step.validations : [];
+  const errorCodeChecks = validations.filter((v) => v?.check === 'error_code');
+  const expectError = step.expect_error === true;
+
+  if (expectError || errorCodeChecks.length > 0) {
+    const codes = new Set();
+    for (const v of errorCodeChecks) {
+      if (typeof v.value === 'string') codes.add(v.value);
+      if (Array.isArray(v.allowed_values)) {
+        for (const c of v.allowed_values) if (typeof c === 'string') codes.add(c);
+      }
+    }
+    return { kind: 'error', codes };
+  }
+
+  // Looks like a success assertion path (field_present, response_schema,
+  // field_value on happy-path fields). Distinguish from "unspecified" —
+  // we need at least one positive assertion to call it success.
+  const hasPositiveAssertion = validations.some((v) => {
+    if (!v || typeof v !== 'object') return false;
+    const check = v.check;
+    return (
+      check === 'response_schema' ||
+      check === 'field_present' ||
+      check === 'field_value' ||
+      check === 'http_status' ||
+      check === 'http_status_in'
+    );
+  });
+  if (hasPositiveAssertion) return { kind: 'success', codes: new Set() };
+
+  return { kind: 'unspecified', codes: new Set() };
+}
+
+/**
+ * Build a per-storyboard list of "events" — step records tagged with the
+ * state path up to that step. Optional phases accumulate into per-optional-
+ * branch sub-paths; for contradiction detection we flatten to the non-
+ * optional prefix since only the baseline state is guaranteed across
+ * branches.
+ */
+function extractEvents(doc, file) {
+  const events = [];
+  const phases = Array.isArray(doc?.phases) ? doc.phases : [];
+
+  // State path = ordered list of (task, request_fp) for prior mutating
+  // steps in non-optional phases only. Optional-phase mutations can't be
+  // assumed to have run.
+  const baselinePath = [];
+
+  for (const phase of phases) {
+    const phaseId = phase?.id || '<unnamed>';
+    const steps = Array.isArray(phase?.steps) ? phase.steps : [];
+    const branchSetId =
+      phase?.branch_set && typeof phase.branch_set === 'object' && typeof phase.branch_set.id === 'string'
+        ? phase.branch_set.id
+        : null;
+
+    // Within a single phase, earlier steps' mutations DO establish state
+    // for later steps in the same phase — even if the phase is optional.
+    // The inner path threads the baseline + in-phase prior mutations.
+    const innerPath = [...baselinePath];
+
+    for (const step of steps) {
+      const task = typeof step?.task === 'string' ? step.task : null;
+      if (!task || task.startsWith('$') || SKIP_TASKS.has(task)) continue;
+
+      const requestFp = fingerprintRequest(step.sample_request);
+      const envFp = fingerprintEnv(step, phase, doc);
+      const statePathFp = crypto
+        .createHash('sha1')
+        .update(innerPath.map(([t, f]) => `${t}:${f}`).join('|'))
+        .digest('hex')
+        .slice(0, 12);
+
+      const outcome = classifyOutcome(step);
+
+      events.push({
+        file,
+        phaseId,
+        stepId: step.id || '<unnamed>',
+        task,
+        requestFp,
+        statePathFp,
+        envFp,
+        outcome,
+        phaseOptional: phase?.optional === true,
+        branchSetId,
+      });
+
+      if (MUTATING_TASKS.has(task) && outcome.kind !== 'error') {
+        innerPath.push([task, requestFp]);
+      }
+    }
+
+    // Mutations from non-optional phases become part of the baseline for
+    // downstream phases. Optional-phase mutations don't — we can't be
+    // sure the runner took that branch.
+    if (phase?.optional !== true) {
+      for (const step of steps) {
+        const task = typeof step?.task === 'string' ? step.task : null;
+        if (!task || task.startsWith('$') || SKIP_TASKS.has(task)) continue;
+        if (!MUTATING_TASKS.has(task)) continue;
+        const outcome = classifyOutcome(step);
+        if (outcome.kind === 'error') continue;
+        baselinePath.push([task, fingerprintRequest(step.sample_request)]);
+      }
+    }
+  }
+
+  return events;
+}
+
+function outcomesAgree(a, b) {
+  if (a.kind === 'unspecified' || b.kind === 'unspecified') return true;
+  if (a.kind === 'success' && b.kind === 'success') return true;
+  if (a.kind === 'error' && b.kind === 'error') {
+    // Empty codes = unspecified error; pairs with any other error.
+    if (a.codes.size === 0 || b.codes.size === 0) return true;
+    for (const c of a.codes) if (b.codes.has(c)) return true;
+    return false;
+  }
+  return false;
+}
+
+function describeOutcome(outcome) {
+  if (outcome.kind === 'success') return 'success';
+  if (outcome.kind === 'unspecified') return 'unspecified';
+  if (outcome.codes.size === 0) return 'error (code unspecified)';
+  return `error (${[...outcome.codes].sort().join('|')})`;
+}
+
+function findContradictions(events) {
+  const groups = new Map();
+  for (const ev of events) {
+    const key = `${ev.task}\x00${ev.requestFp}\x00${ev.statePathFp}\x00${ev.envFp}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ev);
+  }
+
+  const contradictions = [];
+  for (const [key, members] of groups) {
+    if (members.length < 2) continue;
+
+    // Check every pair; record the first disagreement per group so a
+    // single mismatch surfaces one violation, not O(n²). Branch-set peers
+    // in the same storyboard are intentionally-different outcomes (any_of
+    // semantics); skip pairs that share a branch_set.id.
+    let mismatch = null;
+    for (let i = 0; i < members.length && !mismatch; i++) {
+      for (let j = i + 1; j < members.length && !mismatch; j++) {
+        const a = members[i];
+        const b = members[j];
+        const branchSetPeers =
+          a.file === b.file && a.branchSetId && b.branchSetId && a.branchSetId === b.branchSetId;
+        if (branchSetPeers) continue;
+        if (!outcomesAgree(a.outcome, b.outcome)) {
+          mismatch = [a, b];
+        }
+      }
+    }
+    if (mismatch) {
+      contradictions.push({ key, members, mismatch });
+    }
+  }
+  return contradictions;
+}
+
+function lint() {
+  const files = walkYaml(SOURCE_DIR);
+  const allEvents = [];
+  for (const file of files) {
+    let doc;
+    try {
+      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue;
+    }
+    const relFile = path.relative(SOURCE_DIR, file);
+    for (const ev of extractEvents(doc, relFile)) {
+      allEvents.push(ev);
+    }
+  }
+  return findContradictions(allEvents);
+}
+
+function main() {
+  const contradictions = lint();
+  if (contradictions.length === 0) {
+    console.log('✓ storyboard contradiction lint: no cross-storyboard contradictions');
+    return;
+  }
+
+  console.error(`✗ storyboard contradiction lint: ${contradictions.length} contradiction(s)\n`);
+  for (const c of contradictions) {
+    const [a, b] = c.mismatch;
+    console.error(`  task=${a.task} request_fp=${a.requestFp} state=${a.statePathFp} env=${a.envFp}`);
+    console.error(`    ${a.file}:${a.phaseId}/${a.stepId}  →  ${describeOutcome(a.outcome)}`);
+    console.error(`    ${b.file}:${b.phaseId}/${b.stepId}  →  ${describeOutcome(b.outcome)}`);
+    if (c.members.length > 2) {
+      console.error(`    (${c.members.length - 2} other member(s) agree with one side)`);
+    }
+    console.error('');
+  }
+  console.error(
+    'Two storyboards assert contradictory outcomes for the same (task, request,\n' +
+      'prior-state, env) — a conformant agent cannot satisfy both. Either reconcile\n' +
+      'the assertions, discriminate the requests so they are legitimately different\n' +
+      'test vectors, or route them through different comply_scenario values.',
+  );
+  process.exit(1);
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  MUTATING_TASKS,
+  SKIP_TASKS,
+  FIXTURE_CATEGORY_PRIMARY_ID,
+  loadMutatingTasksFromSchemas,
+  normalizeRequestValue,
+  canonicalizeRequest,
+  fingerprintRequest,
+  fingerprintEnv,
+  describeStepAuth,
+  normalizeFixturesForHashing,
+  classifyOutcome,
+  outcomesAgree,
+  describeOutcome,
+  extractEvents,
+  findContradictions,
+  lint,
+};

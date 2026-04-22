@@ -7,7 +7,8 @@
   "properties": {
     "offering_id": {
       "type": "string",
-      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls."
+      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls.",
+      "x-entity": "offering"
     },
     "name": {
       "type": "string",
@@ -192,23 +193,23 @@
             "asset_group_id": "headlines",
             "asset_type": "text",
             "items": [
-              {"content": "Shop the Summer Sale"},
-              {"content": "50% Off Everything"},
-              {"content": "Summer Savings Event"}
+              {"asset_type": "text", "content": "Shop the Summer Sale"},
+              {"asset_type": "text", "content": "50% Off Everything"},
+              {"asset_type": "text", "content": "Summer Savings Event"}
             ]
           },
           {
             "asset_group_id": "images_landscape",
             "asset_type": "image",
             "items": [
-              {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+              {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
             ]
           },
           {
             "asset_group_id": "images_square",
             "asset_type": "image",
             "items": [
-              {"url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+              {"asset_type": "image", "url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
             ]
           }
         ]

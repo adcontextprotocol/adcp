@@ -12,7 +12,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Request
 
-**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/v3/content-standards/update-content-standards-request.json)
+**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/latest/content-standards/update-content-standards-request.json)
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -70,7 +70,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Response
 
-**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/v3/content-standards/update-content-standards-response.json)
+**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/latest/content-standards/update-content-standards-response.json)
 
 ### Success Response
 
@@ -90,8 +90,9 @@ Update an existing content standards configuration. Creates a new version.
   "success": false,
   "errors": [
     {
-      "code": "STANDARDS_NOT_FOUND",
-      "message": "No standards found with ID 'invalid_id'"
+      "code": "REFERENCE_NOT_FOUND",
+      "field": "standards_id",
+      "message": "Referenced resource does not exist or is not accessible"
     }
   ]
 }

@@ -101,7 +101,8 @@
         },
         "pricing_option_id": {
           "type": "string",
-          "description": "Which rate card pricing option was applied for this build. Present when the creative agent charges for its services. Pass this in report_usage to identify which pricing option was applied."
+          "description": "Which rate card pricing option was applied for this build. Present when the creative agent charges for its services. Pass this in report_usage to identify which pricing option was applied.",
+          "x-entity": "vendor_pricing_option"
         },
         "vendor_cost": {
           "type": "number",
@@ -234,7 +235,8 @@
         },
         "pricing_option_id": {
           "type": "string",
-          "description": "Which rate card pricing option was applied for this build. Represents the total cost of the entire multi-format build call. Present when the creative agent charges for its services."
+          "description": "Which rate card pricing option was applied for this build. Represents the total cost of the entire multi-format build call. Present when the creative agent charges for its services.",
+          "x-entity": "vendor_pricing_option"
         },
         "vendor_cost": {
           "type": "number",

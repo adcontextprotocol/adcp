@@ -24,7 +24,7 @@
     "euid": "European Unified ID",
     "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
     "maid": "Mobile Advertising ID (IDFA/GAID)",
-    "hashed_email": "SHA-256 hashed email address",
+    "hashed_email": "SHA-256 hashed email address. Pseudonymous PII, not anonymous — unsalted SHA-256 of the email namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
     "publisher_first_party": "Publisher's own first-party identifier, opaque to buyers",
     "other": "Other universal ID type (specify in ext)"
   }

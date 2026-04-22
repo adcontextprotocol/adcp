@@ -43,7 +43,7 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [2],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -156,7 +156,7 @@ Sales agents MUST translate universal macros to their ad server's native syntax.
 
 ## Creative Status Lifecycle
 
-**Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)
+**Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)
 
 Creatives in a library progress through a defined set of states. `archived` is the only buyer-initiated state change; all others are seller-initiated (processing, review, approval/rejection).
 
@@ -352,7 +352,7 @@ Creative agents MUST return errors using the [standard AdCP error schema](/docs/
 
 Common error codes:
 
-- `FORMAT_NOT_FOUND`: Requested format does not exist
+- `REFERENCE_NOT_FOUND`: Requested format does not exist or is not accessible (`error.field` identifies the `format_id`)
 - `VALIDATION_ERROR`: Manifest failed format validation
 - `ASSET_MISSING`: Required asset not provided in manifest
 - `ASSET_INVALID`: Asset does not meet format constraints
@@ -466,11 +466,11 @@ Some creative protocol schemas (`build_creative`, `list_creative_formats`, `prev
 
 | Schema | Description |
 |--------|-------------|
-| [`core/format.json`](https://adcontextprotocol.org/schemas/v3/core/format.json) | Format definition |
-| [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json) | Creative manifest |
-| [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v3/core/creative-asset.json) | Asset definition |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`core/format.json`](https://adcontextprotocol.org/schemas/latest/core/format.json) | Format definition |
+| [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json) | Creative manifest |
+| [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/latest/core/creative-asset.json) | Asset definition |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-creative-formats-request.json) | list_creative_formats request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-creative-formats-response.json) | list_creative_formats response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response |
 | [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request |

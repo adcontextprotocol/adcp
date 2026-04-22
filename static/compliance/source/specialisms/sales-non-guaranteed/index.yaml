@@ -9,10 +9,6 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
-  - media_buy_seller/governance_approved
-  - media_buy_seller/governance_denied
-  - media_buy_seller/governance_denied_recovery
-  - media_buy_seller/governance_conditions
   - media_buy_seller/delivery_reporting
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
@@ -53,6 +49,31 @@ prerequisites:
     provides a sample brand (Acme Outdoor) with bid parameters suitable for testing
     the auction-based flow.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_display_auction"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_auction"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "sports_display_auction"
+      pricing_option_id: "cpm_auction"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5.0
+    - product_id: "outdoor_video_auction"
+      pricing_option_id: "cpm_auction"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 15.0
 
 phases:
   - id: capability_discovery
@@ -124,12 +145,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
-          brand:
-            domain: "acmeoutdoor.com"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_non_guaranteed--get_products_brief"
@@ -197,12 +216,12 @@ phases:
           Bids below floor_price should be rejected with a clear error.
 
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "acmeoutdoor.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -222,6 +241,13 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_create_media_buy"
           context:
             correlation_id: "sales_non_guaranteed--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: first_package_id
+            path: "packages[0].package_id"
+          - name: second_package_id
+            path: "packages[1].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -266,10 +292,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_auction"
+            - "$context.media_buy_id"
 
           context:
             correlation_id: "sales_non_guaranteed--get_media_buys_pacing"
@@ -317,14 +343,14 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
-          media_buy_id: "mb_acme_q2_2026_auction"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
           packages:
-            - product_id: "sports_display_auction"
+            - package_id: "$context.first_package_id"
               bid_price: 10.00
               budget: 12000
-            - product_id: "outdoor_video_auction"
+            - package_id: "$context.second_package_id"
               bid_price: 20.00
               budget: 13000
 
@@ -372,10 +398,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.com"
-            operator: "pinnacle-agency.com"
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026_auction"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:

@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-ui-element.json",
   "title": "SI UI Element",
   "description": "Standard visual component that brand returns and host renders",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "type": {

@@ -11,7 +11,8 @@
 
 import pino from 'pino';
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+const isDevelopment = !isTest && process.env.NODE_ENV !== 'production';
 
 /**
  * Error hook type - called when logger.error() or logger.fatal() is invoked.

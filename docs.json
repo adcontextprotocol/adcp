@@ -111,9 +111,11 @@
                   },
                   "docs/building/schemas-and-sdks",
                   "docs/building/build-an-agent",
+                  "docs/building/get-test-ready",
                   "docs/building/validate-your-agent",
                   "docs/building/operating-an-agent",
                   "docs/building/compliance-catalog",
+                  "docs/building/conformance",
                   "docs/building/aao-verified",
                   {
                     "group": "Foundations",
@@ -143,7 +145,10 @@
                       "docs/building/implementation/mcp-response-extraction",
                       "docs/building/implementation/a2a-response-extraction",
                       "docs/building/implementation/security",
-                      "docs/building/implementation/seller-integration"
+                      "docs/building/implementation/webhook-verifier-tuning",
+                      "docs/building/implementation/seller-integration",
+                      "docs/building/implementation/storyboard-troubleshooting",
+                      "docs/building/implementation/known-ambiguities"
                     ]
                   },
                   {
@@ -496,6 +501,7 @@
                   "docs/reference/media-channel-taxonomy",
                   "docs/reference/roadmap",
                   "docs/reference/versioning",
+                  "docs/reference/test-vectors/index",
                   "docs/reference/experimental-status",
                   "docs/reference/v2-sunset",
                   "docs/reference/known-limitations",
@@ -608,9 +614,11 @@
               },
               "docs/building/schemas-and-sdks",
               "docs/building/build-an-agent",
+              "docs/building/get-test-ready",
               "docs/building/validate-your-agent",
               "docs/building/operating-an-agent",
               "docs/building/compliance-catalog",
+              "docs/building/conformance",
               "docs/building/aao-verified",
               {
                 "group": "Foundations",
@@ -640,7 +648,10 @@
                   "docs/building/implementation/mcp-response-extraction",
                   "docs/building/implementation/a2a-response-extraction",
                   "docs/building/implementation/security",
-                  "docs/building/implementation/seller-integration"
+                  "docs/building/implementation/webhook-verifier-tuning",
+                  "docs/building/implementation/seller-integration",
+                  "docs/building/implementation/storyboard-troubleshooting",
+                  "docs/building/implementation/known-ambiguities"
                 ]
               },
               {

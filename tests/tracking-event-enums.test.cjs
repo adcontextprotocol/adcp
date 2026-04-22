@@ -72,6 +72,7 @@ async function compileSchema(schemaPath) {
     allErrors: true,
     verbose: true,
     strict: false,
+    discriminator: true,
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
@@ -178,6 +179,7 @@ async function runTests() {
 
   await test('VAST asset with all tracking events validates', () => {
     const valid = vastAssetValidate({
+      asset_type: 'vast',
       delivery_type: 'url',
       url: 'https://vast.example.com/video/123',
       tracking_events: ALL_VAST_EVENTS
@@ -187,6 +189,7 @@ async function runTests() {
 
   await test('VAST asset with single tracking event validates', () => {
     const valid = vastAssetValidate({
+      asset_type: 'vast',
       delivery_type: 'url',
       url: 'https://vast.example.com/video/123',
       tracking_events: ['impression']
@@ -196,6 +199,7 @@ async function runTests() {
 
   await test('VAST asset with invalid tracking event rejects', () => {
     const valid = vastAssetValidate({
+      asset_type: 'vast',
       delivery_type: 'url',
       url: 'https://vast.example.com/video/123',
       tracking_events: ['nonExistentEvent']
@@ -205,6 +209,7 @@ async function runTests() {
 
   await test('VAST asset rejects removed "click" event (use clickTracking)', () => {
     const valid = vastAssetValidate({
+      asset_type: 'vast',
       delivery_type: 'url',
       url: 'https://vast.example.com/video/123',
       tracking_events: ['click']
@@ -221,6 +226,7 @@ async function runTests() {
 
   await test('DAAST asset with all tracking events validates', () => {
     const valid = daastAssetValidate({
+      asset_type: 'daast',
       delivery_type: 'url',
       url: 'https://daast.example.com/audio/456',
       tracking_events: ALL_DAAST_EVENTS
@@ -230,6 +236,7 @@ async function runTests() {
 
   await test('DAAST asset with invalid tracking event rejects', () => {
     const valid = daastAssetValidate({
+      asset_type: 'daast',
       delivery_type: 'url',
       url: 'https://daast.example.com/audio/456',
       tracking_events: ['closeLinear']

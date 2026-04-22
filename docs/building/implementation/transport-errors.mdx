@@ -197,6 +197,17 @@ A2A agents MAY set `metadata.mimeType` on the error `DataPart`:
 
 Clients MUST NOT require the MIME type. The `adcp_error` key is the authoritative signal.
 
+## Envelope vs. payload errors
+
+AdCP exposes errors in two distinct places. This page covers the **transport envelope** (`adcp_error`); the **payload errors array** (`errors[]`) is covered in [Error Handling — Envelope vs. payload errors](/docs/building/implementation/error-handling#envelope-vs-payload-errors-the-two-layer-model).
+
+| Layer | Key | When to populate | Readers |
+|---|---|---|---|
+| **Transport envelope** (this page) | `adcp_error` (MCP `structuredContent`, A2A `DataPart`, JSON-RPC `error.data`) | The task failed; transport needs a typed, extractable error signal | MCP hosts, A2A clients, `@adcp/client` |
+| **Task payload** | `payload.errors[]` (or top-level `errors[]`) | The task ran; payload reports one or more issues (fatal or non-fatal warnings) | Business-logic consumers |
+
+A fatal task failure SHOULD populate **both** layers — see the canonical `protocol-envelope.json` examples and the `error-handling.mdx` reference for the normative SHOULD.
+
 ## Client Detection Order
 
 Clients MUST check for AdCP errors in this order:
@@ -206,9 +217,18 @@ Clients MUST check for AdCP errors in this order:
 3. **`status.message.parts[].data.adcp_error`** — A2A task-level error (status message)
 4. **`error.data.adcp_error`** — JSON-RPC transport-level error
 5. **JSON-parsed `content[].text` with `adcp_error` key** — Text fallback for older MCP servers (only for `isError` responses)
-6. **No structured error found** — fall back to generic error handling
+6. **`payload.errors[0]`** (or top-level `errors[0]`) — payload-layer fallback. Used when the transport envelope does not surface `adcp_error` but the payload carries an `errors[]` array. Reading from the payload is legitimate for non-fatal cases where only the payload layer is populated (e.g., `input-required` tasks reporting warnings), but a fatal task that surfaces errors only via the payload is a conformance gap on the agent side.
+7. **No structured error found** — fall back to generic error handling.
 
 Clients MUST validate that extracted errors have a `code` field of type `string`. If validation fails, treat as no structured error found.
+
+### Storyboard `check: error_code` contract
+
+Storyboard validators use `check: error_code` rather than path-specific assertions because the error may surface on either layer. The runner contract:
+
+- `check: error_code` resolves the error code by running the [client detection order](#client-detection-order) above — preference in order: `adcp_error.code` (transport) → `errors[0].code` (payload).
+- If neither layer carries a `code`, the validation fails with `error_code_not_resolvable`.
+- Storyboard authors SHOULD NOT pin assertions to a specific path (e.g., `check: field_present, path: "errors"`) — that couples the test to one layer and fails against agents that surface errors on the other. See [Storyboard authoring — Asserting on errors](/docs/contributing/storyboard-authoring#asserting-on-errors).
 
 **Extraction vs. action.** The detection order above is the *extraction* layer — it returns the raw `adcp_error` object with field values preserved as-is (including out-of-range `retry_after`). Clamping, retry logic, and other behavioral requirements apply at the *action* layer (see [Recovery Behavior](#recovery-behavior)).
 
@@ -316,6 +336,7 @@ const CODE_RECOVERY = {
   PRODUCT_NOT_FOUND: 'correctable',
   PRODUCT_UNAVAILABLE: 'correctable',
   PROPOSAL_EXPIRED: 'correctable',
+  REQUOTE_REQUIRED: 'correctable',
   BUDGET_TOO_LOW: 'correctable',
   CREATIVE_REJECTED: 'correctable',
   UNSUPPORTED_FEATURE: 'correctable',
@@ -324,6 +345,14 @@ const CODE_RECOVERY = {
   ACCOUNT_AMBIGUOUS: 'correctable',
   COMPLIANCE_UNSATISFIED: 'correctable',
   GOVERNANCE_DENIED: 'correctable',
+  MEDIA_BUY_NOT_FOUND: 'correctable',
+  PACKAGE_NOT_FOUND: 'correctable',
+  CREATIVE_NOT_FOUND: 'correctable',
+  SIGNAL_NOT_FOUND: 'correctable',
+  SESSION_NOT_FOUND: 'correctable',
+  SESSION_TERMINATED: 'correctable',
+  REFERENCE_NOT_FOUND: 'correctable',
+  VALIDATION_ERROR: 'correctable',
   ACCOUNT_NOT_FOUND: 'terminal',
   ACCOUNT_PAYMENT_REQUIRED: 'terminal',
   ACCOUNT_SUSPENDED: 'terminal',

@@ -4,6 +4,7 @@
   "title": "Sync Plans Request",
   "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -27,7 +28,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Unique identifier for this plan."
+            "description": "Unique identifier for this plan.",
+            "x-entity": "governance_plan"
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -182,7 +184,8 @@
           "policy_ids": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "x-entity": "governance_registry_policy"
             },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
@@ -301,7 +304,8 @@
               "member_plan_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "x-entity": "governance_plan"
                 },
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
               },
@@ -325,7 +329,8 @@
               "shared_policy_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "x-entity": "governance_registry_policy"
                 },
                 "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
               },

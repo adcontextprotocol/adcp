@@ -134,21 +134,28 @@ phases:
           - Validation errors for rejected creatives
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "acme_summer_native_001"
+              name: "Acme Summer Sale — native 2026"
               format_id:
                 agent_url: "https://your-platform.example.com"
                 id: "native_post"
               assets:
                 headline:
                   asset_type: "text"
-                  text: "Summer Sale — 40% Off All Gear"
+                  content: "Summer Sale — 40% Off All Gear"
                 image:
                   asset_type: "image"
                   url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                  width: 1200
+                  height: 628
                 click_url:
                   asset_type: "url"
-                  url: "https://acme-outdoor.example.com/summer-sale"
+                  url: "https://acmeoutdoor.example/summer-sale"
 
           idempotency_key: "$generate:uuid_v4#creative_sales_agent_push_creatives_sync_creatives"
           context:
@@ -194,12 +201,31 @@ phases:
           raw assets, but how they'll actually appear to users.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           request_type: "single"
           creative_manifest:
             creative_id: "acme_summer_native_001"
             format_id:
               agent_url: "https://your-platform.example.com"
               id: "native_post"
+            assets:
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off"
+              body:
+                asset_type: "text"
+                content: "Top-rated outdoor gear. This weekend only."
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                width: 1200
+                height: 628
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
           output_format: "url"
           quality: "draft"
 

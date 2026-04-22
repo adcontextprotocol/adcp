@@ -84,6 +84,7 @@ import {
   validateOutput,
   wrapUrlsForSlack,
   extractMarkdownImages,
+  guardBareJsonEnvelope,
   logInteraction,
 } from './security.js';
 import type { RequestTools } from './claude-client.js';
@@ -100,6 +101,7 @@ import {
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
+import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
@@ -860,6 +862,29 @@ async function createUserScopedTools(
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Re-register Google Docs tools with user context for per-user rate
+  // limiting (see tool-rate-limiter.ts). The boot-time registration
+  // remains as a fallback; this per-request copy shadows whenever
+  // we have a user id (requestTools beats this.toolHandlers in the
+  // claude-client merge at line 531).
+  const userIdForRateLimit = memberContext?.workos_user?.workos_user_id ?? null;
+  const scopedGoogleDocsHandlers = createGoogleDocsToolHandlers(userIdForRateLimit);
+  if (scopedGoogleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = scopedGoogleDocsHandlers[tool.name];
+      if (handler) allHandlers.set(tool.name, handler);
+    }
+  }
+
+  // Register illustration tools (#2783). Self-gated on author
+  // permission + monthly quota + the 10/10min tool-rate-limit
+  // added in #2755.
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Add billing tools for all users (membership signup assistance)
   // Skip in public channels — billing tools enable enrollment pitching
@@ -1623,7 +1648,8 @@ async function handleUserMessage({
         logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
         // Fallback: send via say() so the user isn't left without a response
         try {
-          const fallbackValidation = validateOutput(fullText);
+          const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-fallback' });
+          const fallbackValidation = validateOutput(guarded.text);
           const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
           await say({
@@ -1649,7 +1675,8 @@ async function handleUserMessage({
       fullText = response.text;
 
       // Send response via say() with feedback buttons and inline images
-      const outputValidation = validateOutput(response.text);
+      const guarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-non-streaming' });
+      const outputValidation = validateOutput(guarded.text);
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
@@ -2107,7 +2134,8 @@ async function handleAppMention({
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
+  const mentionGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'app-mention' });
+  const outputValidation = validateOutput(mentionGuarded.text);
 
   // Send response in thread (must explicitly pass thread_ts for app_mention events)
   try {
@@ -3064,7 +3092,8 @@ async function handleDirectMessage(
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
+  const dmGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-assistant' });
+  const outputValidation = validateOutput(dmGuarded.text);
 
   // Always thread the response to the user's message. This ensures:
   // 1. Slack Assistant "Chat" tab: response appears inline in the conversation
@@ -3441,7 +3470,8 @@ async function handleActiveThreadReply({
   }
 
   // Validate output
-  const outputValidation = validateOutput(response.text);
+  const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
+  const outputValidation = validateOutput(activeThreadGuarded.text);
 
   // Send response in the thread
   try {
@@ -4011,7 +4041,8 @@ async function handleChannelMessage({
     }
 
     // Validate the output
-    const outputValidation = validateOutput(response.text);
+    const proposedGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'proposed-channel-response' });
+    const outputValidation = validateOutput(proposedGuarded.text);
     if (outputValidation.flagged) {
       logger.warn({ channelId, reason: outputValidation.reason }, 'Addie Bolt: Proposed response flagged');
       return;
@@ -4803,10 +4834,11 @@ async function handleReactionAdded({
   }
 
   // Send response in thread
+  const reactionGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'reaction-response' });
   try {
     await client.chat.postMessage({
       channel: itemChannel,
-      text: wrapUrlsForSlack(response.text),
+      text: wrapUrlsForSlack(reactionGuarded.text),
       thread_ts: threadTs,
     });
   } catch (error) {

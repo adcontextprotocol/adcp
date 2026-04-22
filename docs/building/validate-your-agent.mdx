@@ -184,6 +184,43 @@ A typical failure looks like:
 
 Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. Any state you write that a later call can read back must live in a shared store — not a per-process `Map` or module-level variable.
 
+## Preparing to test uniform error responses
+
+The [uniform-response MUST](/docs/building/implementation/error-handling#standard-error-codes) requires byte-equivalent responses for "the id exists but the caller lacks access" and "the id does not exist" across every observable channel — error body, transport status, headers, side effects, and telemetry. Verifying this needs a paired-probe runner (`adcp fuzz`) that compares two responses per tool. The runner has two modes, and you need to plan tenant setup before you can exercise the strong one.
+
+**Baseline mode — single tenant.** One auth token, two fresh UUIDs probed per tool. Catches id-echo in error bodies, header divergence outside the allowlist, MCP `isError` / A2A `task.status.state` divergence, and gross latency deltas. Cannot catch cross-tenant existence leaks, because neither probe resolves to a real resource.
+
+**Cross-tenant mode — two tenants.** Tenant A seeds a resource (e.g., a property list, content standard, media buy, creative); tenant B probes against the seeded id plus a fresh UUID. Catches the full MUST, because it exercises the `(exists, unauthorized)` vs `(does not exist)` pair that baseline cannot construct.
+
+Both modes exercise spec MUSTs. Only the cross-tenant path verifies the whole invariant.
+
+### Minimum tenant setup
+
+Provision two isolated test accounts against your agent:
+
+- **Tenant A** — can create resources the invariant seeds (property lists, content standards, media buys, creatives). Sandbox-mode accounts are fine.
+- **Tenant B** — read-only against shared discovery surfaces. MUST NOT share any per-tenant state with A beyond what your platform makes globally visible (e.g., published product catalogs).
+
+Anything else the two tenants share — audit shards, rate-limit buckets keyed by resource type, cache tags — is a potential side channel the invariant is designed to catch. Share only what you'd share in production.
+
+### Runner invocation
+
+```bash
+# Cross-tenant (full MUST)
+npx @adcp/client fuzz my-agent \
+  --auth-token $TENANT_A_TOKEN \
+  --auth-token-cross-tenant $TENANT_B_TOKEN
+
+# Baseline (partial coverage)
+npx @adcp/client fuzz my-agent --auth-token $TOKEN
+```
+
+Tokens may also be supplied via `ADCP_AUTH_TOKEN` and `ADCP_AUTH_TOKEN_CROSS_TENANT`. See the [`@adcp/client` uniform-error-response invariant guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/VALIDATE-YOUR-AGENT.md#uniform-error-response-invariant-paired-probe) for the full flag list, the header allowlist, and the list of tools currently probed.
+
+### Testing with only one tenant
+
+If you haven't provisioned a second tenant yet, run baseline anyway — it still catches a meaningful class of leaks, and the CLI flags the run as baseline-only so operators can see coverage is partial. Treat single-tenant fuzz as a pre-check, not a conformance signal: a clean baseline run does not prove the MUST holds. Add the cross-tenant leg before you claim uniform-response conformance.
+
 ## The build-validate-fix loop
 
 The typical development workflow:
@@ -212,6 +249,11 @@ For [Practitioner certification](https://agenticadvertising.org/certification), 
 | `npx @adcp/client --list-agents` | List saved aliases |
 
 All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
+
+## When a storyboard fails
+
+- **[Storyboard troubleshooting](/docs/building/implementation/storyboard-troubleshooting)** — Error patterns mapped to root causes and fixes (missing fixtures, signature challenges, envelope drift, context echo, capability mismatches)
+- **[Known spec ambiguities](/docs/building/implementation/known-ambiguities)** — Open spec gaps that affect conformance, with workarounds and issue links
 
 ## What's next
 

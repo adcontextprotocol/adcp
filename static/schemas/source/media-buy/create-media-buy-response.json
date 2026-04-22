@@ -12,7 +12,8 @@
       "properties": {
         "media_buy_id": {
           "type": "string",
-          "description": "Seller's unique identifier for the created media buy"
+          "description": "Seller's unique identifier for the created media buy",
+          "x-entity": "media_buy"
         },
         "account": {
           "$ref": "/schemas/core/account.json",
@@ -148,7 +149,8 @@
         },
         "task_id": {
           "type": "string",
-          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id."
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+          "x-entity": "task"
         },
         "message": {
           "type": "string",

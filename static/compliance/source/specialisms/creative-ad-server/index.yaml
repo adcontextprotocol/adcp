@@ -44,6 +44,19 @@ prerequisites:
 
     For pricing steps, the buyer must have an established account with the ad server.
     The account's rate card determines creative pricing.
+  controller_seeding: true
+
+fixtures:
+  creatives:
+    - creative_id: "campaign_hero_video"
+      status: "approved"
+      format_id:
+        id: "vast_30s"
+      pricing_options:
+        - pricing_option_id: "po_vast_30s_cpm"
+          pricing_model: "cpm"
+          rate: 0.50
+          currency: "USD"
 
 phases:
   - id: capability_discovery
@@ -259,6 +272,10 @@ phases:
           - Media buy context (which buys each creative was active on)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
             - "mb_summer_campaign_001"
 
@@ -309,6 +326,10 @@ phases:
           - errors array (empty if all records pass validation)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
           reporting_period:
             start: "2026-03-01T00:00:00Z"

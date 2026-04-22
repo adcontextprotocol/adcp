@@ -20,3 +20,14 @@ matches-ignore:
     comment: |
       This is a placeholder API key used in documentation examples.
       It's not a real credential.
+  - name: Webhook HMAC-SHA256 Test Vector Secret
+    match: cc237f7fe354609bb41360c6530a2deb7926f3cc55e91df3ff90e37202950b6c
+    comment: |
+      High-entropy test secret for the HMAC-SHA256 webhook test vectors
+      at static/test-vectors/webhook-hmac-sha256.json. Derived
+      deterministically from a documented preimage (SHA-256 of
+      "adcp-webhook-hmac-test-vector-v1-DO-NOT-USE-IN-PRODUCTION") so
+      cross-language test runs are reproducible. The file carries an
+      explicit WARNING field and secret_provenance field documenting
+      non-production status; negative vectors verify the WARNING remains
+      present and that weak-secret configurations are rejected.

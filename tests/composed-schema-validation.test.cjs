@@ -46,6 +46,7 @@ async function testSchemaValidation(schemaId, testData, description) {
       allErrors: true,
       verbose: true,
       strict: false,
+      discriminator: true,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
@@ -76,6 +77,40 @@ async function testSchemaValidation(schemaId, testData, description) {
   }
 }
 
+async function testSchemaRejection(schemaId, testData, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(ajv);
+
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+    const validate = await ajv.compileAsync(schema);
+    const valid = validate(testData);
+
+    if (!valid) {
+      log(`  \u2713 ${description}`, 'success');
+      passedTests++;
+      return true;
+    } else {
+      log(`  \u2717 ${description} — expected rejection, got pass`, 'error');
+      failedTests++;
+      return false;
+    }
+  } catch (error) {
+    log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -86,6 +121,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080,
@@ -97,6 +133,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080,
@@ -110,6 +147,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080
@@ -124,6 +162,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.png',
       width: 300,
       height: 250,
@@ -135,6 +174,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.jpg',
       width: 728,
       height: 90,
@@ -147,6 +187,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.webp',
       width: 300,
       height: 250
@@ -270,6 +311,46 @@ async function runTests() {
 
   log('');
 
+  // Idempotency capability: discriminated oneOf on supported
+  log('Get AdCP Capabilities Response (adcp.idempotency oneOf discriminator):', 'info');
+
+  const capabilitiesBase = {
+    adcp: { major_versions: [3] },
+    supported_protocols: ['media_buy']
+  };
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } } },
+    'IdempotencySupported: {supported: true, replay_ttl_seconds: 86400}'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } } },
+    'IdempotencyUnsupported: {supported: false}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false, replay_ttl_seconds: 3600 } } },
+    'Rejects TTL on unsupported branch: {supported: false, replay_ttl_seconds: 3600}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true } } },
+    'Rejects missing TTL on supported branch: {supported: true}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: {} } },
+    'Rejects empty idempotency block (missing discriminator)'
+  );
+
+  log('');
+
   // Test 5: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.
@@ -302,6 +383,26 @@ async function runTests() {
         },
         'Bundled create-media-buy-request (no ref resolution)'
       );
+
+      // Regression for #2648: bundled schemas that carry local `#/$defs/...`
+      // pointers (format.json, policy-entry.json, artifact.json) must compile
+      // with a vanilla Ajv — i.e. the bundler must hoist nested `$defs` to
+      // the document root.
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'media-buy/list-creative-formats-response.json'),
+        'Bundled list-creative-formats-response (media-buy) compiles — #2648'
+      );
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'creative/list-creative-formats-response.json'),
+        'Bundled list-creative-formats-response (creative) compiles — #2648'
+      );
+      await testBundledSchemaCompile(
+        path.join(bundledPath, 'content-standards/list-content-standards-response.json'),
+        'Bundled list-content-standards-response compiles — #2648'
+      );
+
+      // Every bundled schema must be self-contained and compile standalone.
+      await testAllBundledSchemasCompile(bundledPath);
 
       // Test a response schema to verify nested refs are resolved
       await testBundledSchemaValidation(
@@ -385,7 +486,8 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
     const ajv = new Ajv({
       allErrors: true,
       verbose: true,
-      strict: false
+      strict: false,
+      discriminator: true
       // Note: NO loadSchema - bundled schemas must be self-contained
     });
     addFormats(ajv);
@@ -412,6 +514,63 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
     failedTests++;
     return false;
   }
+}
+
+/**
+ * Compile a bundled schema with a vanilla Ajv (no loadSchema). Does not
+ * validate data — just asserts the schema itself is resolvable.
+ */
+async function testBundledSchemaCompile(schemaPath, description) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
+    addFormats(ajv);
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    ajv.compile(schema);
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+    return true;
+  } catch (error) {
+    log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
+/**
+ * Walk the entire bundled/ tree and assert every schema compiles standalone.
+ * This is the real guarantee bundled/ is supposed to provide: a consumer can
+ * `new Ajv().compile(require('bundled/.../foo.json'))` without any loader.
+ */
+async function testAllBundledSchemasCompile(bundledPath) {
+  totalTests++;
+  const failures = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (entry.name.endsWith('.json')) {
+        try {
+          const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
+          addFormats(ajv);
+          ajv.compile(JSON.parse(fs.readFileSync(p, 'utf8')));
+        } catch (error) {
+          failures.push(`${path.relative(bundledPath, p)}: ${error.message}`);
+        }
+      }
+    }
+  };
+  walk(bundledPath);
+
+  if (failures.length === 0) {
+    log(`  \u2713 All bundled schemas compile standalone (no loadSchema)`, 'success');
+    passedTests++;
+    return true;
+  }
+  log(`  \u2717 ${failures.length} bundled schema(s) failed to compile:`, 'error');
+  for (const f of failures) log(`      ${f}`, 'error');
+  failedTests++;
+  return false;
 }
 
 runTests().catch(error => {

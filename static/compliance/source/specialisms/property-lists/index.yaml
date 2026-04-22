@@ -108,7 +108,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
@@ -170,7 +170,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           name_contains: "Acme Outdoor"
 
           context:
@@ -207,7 +207,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "property_lists--get_property_list"
@@ -249,7 +249,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           base_properties:
             - selection_type: "identifiers"
               identifiers:
@@ -297,23 +297,24 @@ phases:
         expected: |
           Return validation results:
           - compliant: boolean overall status
+          - summary aggregates compliant/non_compliant/not_covered/unidentified counts
           - Per-placement compliance status
-          - Violations with details (property, list, severity)
+          - features[] entries on each non_compliant record explaining the breach
 
         sample_request:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "outdoormagazine.example"
               impressions: 50000
             - record_id: "delivery_random_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "randomsite.example"
               impressions: 200
@@ -365,16 +366,16 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "outdoormagazine.example"
               impressions: 50000
             - record_id: "delivery_hiking_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "hikingtrails.example"
               impressions: 30000
@@ -409,11 +410,11 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
-              property:
+              identifier:
                 type: "domain"
                 value: "randomsite.example"
               impressions: 500
@@ -454,7 +455,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
 
           idempotency_key: "$generate:uuid_v4#property_lists_delete_list_delete_property_list"
           context:

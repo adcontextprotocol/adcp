@@ -7,8 +7,8 @@ description: "preview_creative generates visual previews of ad creative manifest
 
 Generate preview renderings of creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
 
-**Request Schema**: [`/schemas/v3/creative/preview-creative-request.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json)
-**Response Schema**: [`/schemas/v3/creative/preview-creative-response.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json)
+**Request Schema**: [`/schemas/latest/creative/preview-creative-request.json`](https://adcontextprotocol.org/schemas/latest/creative/preview-creative-request.json)
+**Response Schema**: [`/schemas/latest/creative/preview-creative-response.json`](https://adcontextprotocol.org/schemas/latest/creative/preview-creative-response.json)
 
 ## Quick Start
 
@@ -279,7 +279,12 @@ Before the campaign runs, use single or batch mode to preview what the agent *co
     },
     "assets": {
       "brief": {
-        "content": "Highlight our sustainability story. Match tone to editorial context."
+        "asset_type": "brief",
+        "name": "Sustainability story",
+        "objective": "awareness",
+        "messaging": {
+          "key_messages": ["Highlight our sustainability story. Match tone to editorial context."]
+        }
       }
     }
   },
@@ -347,8 +352,8 @@ Variant previews (post-flight) depend on the agent retaining variant data. Agent
   "creative_manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
     "assets": {
-      "hero_image": { "url": "https://cdn.example.com/hero.jpg", "width": 1200, "height": 627 },
-      "headline": { "content": "Veterinarian Recommended" }
+      "hero_image": { "asset_type": "image", "url": "https://cdn.example.com/hero.jpg", "width": 1200, "height": 627 },
+      "headline": { "asset_type": "text", "content": "Veterinarian Recommended" }
     }
   },
   "inputs": [

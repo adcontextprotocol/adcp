@@ -1,0 +1,94 @@
+id: governance_aware_seller
+version: "1.0.0"
+title: "Governance-aware seller"
+protocol: media-buy
+category: governance_aware_seller
+summary: "Seller agent that composes with a campaign-governance agent on the buyer side — accepts sync_governance, calls check_governance before confirming spend, and propagates governance approvals, conditions, and denials unchanged. Optional claim; pure sellers without governance composition do not claim this specialism and skip the governance scenarios as not_applicable."
+track: media_buy
+required_tools:
+  - sync_governance
+  - create_media_buy
+
+# Cross-step assertion (adcp#2639): governance-aware sellers are exactly
+# the surface this assertion protects. If a seller propagates a denial
+# response from its governance agent but then creates the media buy
+# anyway, no per-step validation notices — this assertion does.
+invariants:
+  - governance.denial_blocks_mutation
+requires_scenarios:
+  - media_buy_seller/governance_approved
+  - media_buy_seller/governance_conditions
+  - media_buy_seller/governance_denied
+  - media_buy_seller/governance_denied_recovery
+
+narrative: |
+  Governance composition is an optional seller capability. A seller agent can be
+  fully spec-compliant without integrating with a buyer-side governance agent —
+  it accepts `create_media_buy`, validates the request against its own rules
+  (budget, inventory, creative), and returns success or a seller-scoped error
+  (`VALIDATION_ERROR`, `INVENTORY_UNAVAILABLE`, `TERMS_REJECTED`, etc.). The
+  governance handshake — `sync_governance` registration, `check_governance`
+  consultation before confirming spend, and `GOVERNANCE_DENIED` / governance
+  condition propagation — is only exercisable by a seller that has opted into
+  composing with the buyer's governance agent.
+
+  Sellers that want to advertise "I honor the buyer's governance plan" claim
+  this specialism. The grading exercises the four scenarios that require the
+  governance handshake:
+  - `governance_approved` — seller accepts a buy that governance approved and
+    echoes the `governance_context` token back,
+  - `governance_conditions` — seller accepts a buy with conditions attached by
+    governance and propagates them through to the response,
+  - `governance_denied` — seller refuses a buy that governance denied and
+    returns `GOVERNANCE_DENIED` with the governance findings,
+  - `governance_denied_recovery` — seller accepts the corrected retry that
+    falls within the plan limits after the buyer reads the denial findings.
+
+  Sellers that do not claim this specialism are graded `not_applicable` on
+  these scenarios rather than failed. This mirrors the pattern used by the
+  other governance-* specialisms (`governance-spend-authority`,
+  `governance-delivery-monitor`) and by `measurement-verification` and
+  `signed-requests` — cross-cutting capabilities are gated behind explicit
+  specialism claims instead of being force-included under every sales-*
+  specialism.
+
+  Composition means the seller:
+  - accepts `sync_governance` to register the buyer's governance agent URL and
+    authority categories,
+  - calls `check_governance` on the registered agent before confirming a
+    spend-committing request,
+  - returns `GOVERNANCE_DENIED` with the governance findings propagated
+    unchanged when the check denies,
+  - echoes the `governance_context` token from approvals and surfaces
+    governance conditions to the buyer,
+  - does not silently downgrade the denial to a seller-scoped error
+    (`VALIDATION_ERROR` etc.) — the buyer needs to know the denial came from
+    its own governance agent to correct and retry.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher seller that integrates sync_governance and check_governance"
+    - "SSP that honors buyer-side governance plans before confirming bids"
+    - "Retail media network that refuses buys when the buyer's governance denies"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer) with a registered governance agent"
+
+prerequisites:
+  description: |
+    A governance agent that supports `sync_plans` and `check_governance`, and
+    a seller agent that supports `sync_governance` and propagates governance
+    approvals, conditions, and denials unchanged.
+
+    By default, the grading runner uses the training governance agent at
+    `test-agent.adcontextprotocol.org`. Override with `--governance-agent-url`
+    to use a custom governance agent that satisfies the campaign-governance
+    protocol.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases: []

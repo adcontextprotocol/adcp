@@ -241,7 +241,7 @@ skip_result:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
-                              # unsatisfied_contract
+                              # unsatisfied_contract | peer_branch_taken
     - detail                  # human-readable explanation citing the
                               # declared supported_protocols / specialisms
                               # and, if relevant, the missing tool,
@@ -251,6 +251,11 @@ skip_result:
       The agent did not declare the protocol or specialism this storyboard
       targets. detail MUST cite the agent's declared supported_protocols
       and specialisms.
+
+      Branch-set grading uses `peer_branch_taken` (see below), not this
+      reason — keeping the two distinct lets dashboards filter coverage
+      gaps (not_applicable) separately from runtime branch routing
+      (peer_branch_taken).
     no_phases: |
       The storyboard is a placeholder with no phases to run (e.g., a
       protocol baseline that has not been populated yet). detail MUST cite
@@ -271,19 +276,30 @@ skip_result:
       the signed-requests-runner contract, unsatisfied contracts grade as
       FAIL, not SKIP, for the specialisms that declare them — this reason
       applies only where the contract explicitly permits SKIP.
+    peer_branch_taken: |
+      The step is part of an `any_of` branch set (see storyboard-schema.yaml
+      > "Branch sets") whose `branch_set.id` was already contributed by a
+      peer optional phase, making this non-chosen branch moot. detail MUST
+      follow the shape
+      "<branch_set.id> contributed by <peer_phase_id>.<peer_step_id> —
+      <this_phase_id> is moot" so downstream tooling can parse which peer
+      carried the contribution. Kept distinct from not_applicable: coverage
+      gaps (agent doesn't support a protocol) and runtime branch routing
+      (agent took the other path) are different signals and must not be
+      conflated in dashboards or summaries.
 
   detailed_reason_mapping:
     description: |
       Runners MAY internally track narrower skip reasons (e.g., a grader
       distinguishing `rate_abuse_opt_out` from `live_side_effect_opt_in_required`).
-      Such runners MUST still populate `reason` with one of the six canonical
+      Such runners MUST still populate `reason` with one of the canonical
       values above and encode the narrower cause in `detail`. Machine-
       readable consumers can then switch on a stable enum; human-readable
       consumers still see the specific cause. See
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
 
-summary:
+run_summary:
   description: |
     Runners MUST expose a top-level summary for every run. UI surfaces
     (Addie, CLI, web) may present a condensed form, but the full summary

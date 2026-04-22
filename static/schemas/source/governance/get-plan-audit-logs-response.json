@@ -14,7 +14,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Plan identifier."
+            "description": "Plan identifier.",
+            "x-entity": "governance_plan"
           },
           "plan_version": {
             "type": "integer",
@@ -114,7 +115,8 @@
                   "properties": {
                     "check_id": {
                       "type": "string",
-                      "description": "The escalated governance check."
+                      "description": "The escalated governance check.",
+                      "x-entity": "governance_check"
                     },
                     "reason": {
                       "type": "string",
@@ -236,7 +238,8 @@
                 },
                 "plan_id": {
                   "type": "string",
-                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio."
+                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio.",
+                  "x-entity": "governance_plan"
                 },
                 "caller": {
                   "type": "string",
@@ -292,7 +295,8 @@
                         "type": "string"
                       },
                       "policy_id": {
-                        "type": "string"
+                        "type": "string",
+                        "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"
@@ -325,6 +329,11 @@
                 "governance_context": {
                   "type": "string",
                   "description": "Governance context for this entry (present for check and outcome entries)."
+                },
+                "plan_hash": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "description": "Audit-layer binding to the plan revision this attestation was evaluated over — base64url_no_pad(SHA-256(JCS(plan_payload))) per Plan binding and audit in the campaign-governance specification. Present on check entries. Auditors and buyer-side compliance verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests."
                 },
                 "purchase_type": {
                   "$ref": "/schemas/enums/purchase-type.json",

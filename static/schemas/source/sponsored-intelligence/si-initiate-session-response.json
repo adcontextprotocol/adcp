@@ -3,11 +3,13 @@
   "$id": "/schemas/sponsored-intelligence/si-initiate-session-response.json",
   "title": "SI Initiate Session Response",
   "description": "Brand agent's response to session initiation",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "session_id": {
       "type": "string",
-      "description": "Unique session identifier for subsequent messages"
+      "description": "Unique session identifier for subsequent messages",
+      "x-entity": "si_session"
     },
     "response": {
       "type": "object",

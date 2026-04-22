@@ -349,12 +349,31 @@ export function isValidMemberOffering(value: string | undefined | null): boolean
 }
 
 /**
+ * Agent visibility tiers.
+ *   - private: owner-only, not listed anywhere
+ *   - members_only: visible to members with API access (Professional+),
+ *     not on the public web
+ *   - public: listed in the public directory and reflected in brand.json
+ */
+export type AgentVisibility = 'private' | 'members_only' | 'public';
+
+export const VALID_AGENT_VISIBILITIES: readonly AgentVisibility[] = [
+  'private',
+  'members_only',
+  'public',
+] as const;
+
+export function isValidAgentVisibility(value: unknown): value is AgentVisibility {
+  return typeof value === 'string' && (VALID_AGENT_VISIBILITIES as readonly string[]).includes(value);
+}
+
+/**
  * Agent configuration stored in member profiles
- * Each agent has a URL and visibility settings
+ * Each agent has a URL and a visibility tier.
  */
 export interface AgentConfig {
   url: string;
-  is_public: boolean;
+  visibility: AgentVisibility;
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType | 'buyer';
@@ -1080,6 +1099,30 @@ export interface SponsorshipTier {
   currency?: string;
   benefits: string[];
   max_sponsors?: number;
+}
+
+export interface EventSpeaker {
+  id: string;
+  event_id: string;
+  name: string;
+  title?: string;
+  company?: string;
+  bio?: string;
+  headshot_url?: string;
+  link_url?: string;
+  display_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface EventSpeakerInput {
+  name: string;
+  title?: string;
+  company?: string;
+  bio?: string;
+  headshot_url?: string;
+  link_url?: string;
+  // display_order is derived from array position on write; not accepted as input.
 }
 
 export interface Event {

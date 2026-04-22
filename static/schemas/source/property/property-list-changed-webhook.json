@@ -19,7 +19,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the property list that changed"
+      "description": "ID of the property list that changed",
+      "x-entity": "property_list"
     },
     "list_name": {
       "type": "string",

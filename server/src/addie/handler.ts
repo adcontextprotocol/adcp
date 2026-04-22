@@ -76,6 +76,14 @@ import {
   createPropertyToolHandlers,
 } from './mcp/property-tools.js';
 import {
+  GOOGLE_DOCS_TOOLS,
+  createGoogleDocsToolHandlers,
+} from './mcp/google-docs.js';
+import {
+  ILLUSTRATION_TOOLS,
+  createIllustrationToolHandlers,
+} from './mcp/illustration-tools.js';
+import {
   COMMITTEE_LEADER_TOOLS,
   createCommitteeLeaderToolHandlers,
   isCommitteeLeader,
@@ -211,6 +219,21 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
+  // Register Google Docs tools — mirror bolt-app so web Addie can call
+  // read_google_doc too. `createGoogleDocsToolHandlers` returns null
+  // when GOOGLE_* env vars are missing, so dev environments without
+  // Google credentials simply skip registration (matches bolt-app).
+  const googleDocsHandlers = createGoogleDocsToolHandlers();
+  if (googleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = googleDocsHandlers[tool.name];
+      if (handler) {
+        claudeClient.registerTool(tool, handler);
+      }
+    }
+    logger.info('Addie (web): Google Docs tools registered');
+  }
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie: Ready');
 }
@@ -339,6 +362,30 @@ async function createUserScopedTools(
   const adcpHandlers = createAdcpToolHandlers(memberContext);
   allTools.push(...ADCP_TOOLS);
   for (const [name, handler] of adcpHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Re-register Google Docs tools with user context so per-user rate
+  // limits (see tool-rate-limiter.ts) apply to web chat / slack DM
+  // sessions. The boot-time registration in initializeAddie remains as
+  // a fallback for non-user-scoped callers, but this per-request copy
+  // shadows it whenever we have a real user (requestTools.handlers
+  // beats this.toolHandlers in claude-client allHandlers merge).
+  const userIdForRateLimit = memberContext?.workos_user?.workos_user_id ?? null;
+  const scopedGoogleDocsHandlers = createGoogleDocsToolHandlers(userIdForRateLimit);
+  if (scopedGoogleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = scopedGoogleDocsHandlers[tool.name];
+      if (handler) allHandlers.set(tool.name, handler);
+    }
+  }
+
+  // Register illustration tools. These check their own permissions
+  // (must be author of the perspective) and carry a monthly per-user
+  // quota in addition to the tool-level rate limit — see #2783.
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
     allHandlers.set(name, handler);
   }
 

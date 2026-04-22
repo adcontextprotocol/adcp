@@ -6,11 +6,18 @@
  * graphic novel aesthetic with palette-specific coloring.
  */
 
+import { createHash } from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import sharp from 'sharp';
 import { createLogger } from '../logger.js';
 import { withGeminiRetry } from '../utils/gemini-retry.js';
+import { signC2PA, isC2PASigningEnabled } from './c2pa.js';
+import { notifySystemError } from '../addie/error-notifier.js';
 
 const logger = createLogger('portrait-generator');
+
+const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+const GEMINI_IMAGE_VERSION = 'preview';
 
 const PALETTES: Record<string, string> = {
   amber: `Flat illustration, amber/gold-led color palette (#D4A017 primary, #F4C430 secondary, #FFE066 light accents). Graphic novel style with clean linework and subtle gradients. Circular composition centered on the subject, suitable for avatar/profile use. Warm, approachable tone.`,
@@ -36,6 +43,16 @@ export interface GeneratePortraitOptions {
 export interface GeneratePortraitResult {
   imageBuffer: Buffer;
   promptUsed: string;
+  /**
+   * C2PA provenance metadata, present when signing is enabled and succeeded.
+   * The imageBuffer already carries the embedded manifest; these fields are
+   * persisted alongside the row so admin tools can find unsigned portraits
+   * without parsing every PNG.
+   */
+  c2pa?: {
+    signedAt: Date;
+    manifestDigest: string;
+  };
 }
 
 let genAI: GoogleGenerativeAI | null = null;
@@ -117,14 +134,105 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
       if (!mimeType.startsWith('image/')) {
         throw new Error(`Gemini returned non-image content: ${mimeType}`);
       }
-      const imageBuffer = Buffer.from(part.inlineData.data, 'base64');
-      logger.info({ sizeKB: (imageBuffer.length / 1024).toFixed(0) }, 'Portrait generated');
-      return { imageBuffer, promptUsed: prompt };
+      const rawBuffer = Buffer.from(part.inlineData.data, 'base64');
+      logger.info({ sizeKB: (rawBuffer.length / 1024).toFixed(0) }, 'Portrait generated');
+      return await finalizePortrait(rawBuffer, { vibe, palette, promptUsed: prompt });
     }
   }
 
   const text = response.text?.() || 'No response';
   throw new Error(`Gemini did not return an image. Response: ${text.slice(0, 200)}`);
+}
+
+/**
+ * Composite an "AI" corner badge onto the portrait and embed an AAO C2PA
+ * manifest. The badge is CA SB 942's visible disclosure path; the manifest
+ * is Art 50's machine-readable path. Order matters: badge must go on
+ * before signing so the signature covers the disclosed pixels.
+ *
+ * Failure policy matches the illustration generator: C2PA_STRICT rethrows,
+ * default returns the unsigned-but-badged buffer so a transient signing
+ * failure never blocks a member from getting their portrait. Every failure
+ * fires a throttled notifySystemError alert.
+ */
+export async function finalizePortrait(
+  rawBuffer: Buffer,
+  meta: { vibe: string; palette: string; promptUsed: string },
+): Promise<GeneratePortraitResult> {
+  const badgedBuffer = await compositeAIBadge(rawBuffer);
+
+  if (!isC2PASigningEnabled()) {
+    return { imageBuffer: badgedBuffer, promptUsed: meta.promptUsed };
+  }
+  try {
+    const signed = signC2PA(badgedBuffer, {
+      claimGenerator: 'AAO Portrait Generator',
+      title: 'AAO Member Portrait',
+      softwareAgent: { name: GEMINI_IMAGE_MODEL, version: GEMINI_IMAGE_VERSION },
+      attributes: {
+        vibe: meta.vibe,
+        palette: meta.palette,
+        prompt_sha256: createHash('sha256').update(meta.promptUsed).digest('hex'),
+      },
+    });
+    return {
+      imageBuffer: signed.signedBuffer,
+      promptUsed: meta.promptUsed,
+      c2pa: { signedAt: new Date(), manifestDigest: signed.manifestDigest },
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error({ err, vibe: meta.vibe, palette: meta.palette }, 'C2PA signing failed for portrait');
+    notifySystemError({
+      source: 'c2pa-portrait-signing',
+      errorMessage: `Portrait signing failed (vibe=${meta.vibe}, palette=${meta.palette}): ${errorMessage}`,
+    });
+    if (process.env.C2PA_STRICT === 'true') {
+      throw err;
+    }
+    return { imageBuffer: badgedBuffer, promptUsed: meta.promptUsed };
+  }
+}
+
+/**
+ * Composite a small "AI" badge in the bottom-right corner of the portrait.
+ * Satisfies CA SB 942's visible-disclosure requirement without dominating
+ * the avatar. Uses an SVG overlay so the badge is crisp at any portrait size.
+ */
+export async function compositeAIBadge(imageBuffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(imageBuffer).metadata();
+  const shortEdge = Math.min(metadata.width ?? 512, metadata.height ?? 512);
+  const badgeSize = Math.max(32, Math.round(shortEdge * 0.1));
+  const fontSize = Math.round(badgeSize * 0.55);
+  const margin = Math.round(badgeSize * 0.25);
+
+  const badgeSvg = Buffer.from(`
+    <svg width="${badgeSize}" height="${badgeSize}" viewBox="0 0 ${badgeSize} ${badgeSize}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${badgeSize}" height="${badgeSize}" rx="${Math.round(badgeSize * 0.2)}"
+            fill="rgba(30,30,30,0.78)" stroke="rgba(255,255,255,0.9)" stroke-width="1.5"/>
+      <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle"
+            font-family="system-ui, -apple-system, sans-serif" font-weight="700"
+            font-size="${fontSize}" fill="#ffffff">AI</text>
+    </svg>`);
+
+  // Pad the badge into a transparent canvas so sharp's southeast gravity
+  // gives us the margin we want from the edge.
+  const padded = await sharp({
+    create: {
+      width: badgeSize + margin,
+      height: badgeSize + margin,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: badgeSvg, top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+
+  return sharp(imageBuffer)
+    .composite([{ input: padded, gravity: 'southeast' }])
+    .png()
+    .toBuffer();
 }
 
 /**

@@ -137,11 +137,22 @@ export interface NewsletterEditionDB {
 
   // ─── Cover Image (optional) ──────────────────────────────────────────
   /** Store a cover image for a draft edition. Returns false if not a draft. */
-  setCoverImage?(id: number, imageData: Buffer, promptUsed: string): Promise<boolean>;
+  setCoverImage?(
+    id: number,
+    imageData: Buffer,
+    promptUsed: string,
+    c2paSignedAt?: Date,
+    c2paManifestDigest?: string,
+  ): Promise<boolean>;
   /** Get the cover image binary by edition date. */
   getCoverImage?(editionDate: string): Promise<Buffer | null>;
-  /** Get cover image + prompt (for reuse when publishing as perspective). */
-  getCoverImageWithPrompt?(editionDate: string): Promise<{ imageData: Buffer; promptUsed: string } | null>;
+  /** Get cover image + prompt + C2PA provenance (for reuse when publishing as perspective). */
+  getCoverImageWithPrompt?(editionDate: string): Promise<{
+    imageData: Buffer;
+    promptUsed: string;
+    c2paSignedAt: Date | null;
+    c2paManifestDigest: string | null;
+  } | null>;
 }
 
 // ─── Newsletter Config ─────────────────────────────────────────────────

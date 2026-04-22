@@ -39,7 +39,8 @@
     },
     "brand_id": {
       "type": "string",
-      "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster."
+      "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster.",
+      "x-entity": "rights_holder_brand"
     },
     "right_type": {
       "$ref": "/schemas/enums/right-type.json",

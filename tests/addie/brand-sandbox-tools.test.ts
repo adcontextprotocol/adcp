@@ -8,7 +8,7 @@ import {
 
 const ctx = { mode: 'training' as const };
 
-type Handler = (args: Record<string, unknown>, ctx: { mode: string }) => Record<string, unknown>;
+type Handler = (args: Record<string, unknown>, ctx: { mode: string }) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
 const handlers: Record<string, Handler> = {
   get_brand_identity: handleGetBrandIdentity,
@@ -17,31 +17,31 @@ const handlers: Record<string, Handler> = {
   update_rights: handleUpdateRights,
 };
 
-function call(tool: string, args: Record<string, unknown>) {
-  return handlers[tool](args, ctx);
+async function call(tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return await handlers[tool](args, ctx);
 }
 
 describe('brand protocol tools (training agent)', () => {
 
   describe('get_brand_identity', () => {
 
-    it('returns core fields for a valid brand', () => {
-      const result = call('get_brand_identity', { brand_id: 'daan_janssen' });
+    it('returns core fields for a valid brand', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'daan_janssen' });
       expect(result.brand_id).toBe('daan_janssen');
       expect(result.house).toEqual({ domain: 'lotientertainment.com', name: 'Loti Entertainment' });
       expect(result.names).toEqual([{ en: 'Daan Janssen' }]);
     });
 
-    it('returns public fields without authorization', () => {
-      const result = call('get_brand_identity', { brand_id: 'daan_janssen' });
+    it('returns public fields without authorization', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'daan_janssen' });
       expect(result.description).toBe('Dutch Olympic speed skater, 2x gold medalist');
       expect(result.industries).toEqual(['sports']);
       expect(result.tagline).toBe('Speed is a choice');
       expect(result.logos).toBeDefined();
     });
 
-    it('withholds authorized fields and lists them in available_fields', () => {
-      const result = call('get_brand_identity', { brand_id: 'daan_janssen' });
+    it('withholds authorized fields and lists them in available_fields', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'daan_janssen' });
       expect(result.colors).toBeUndefined();
       expect(result.tone).toBeUndefined();
       expect(result.voice_synthesis).toBeUndefined();
@@ -51,8 +51,8 @@ describe('brand protocol tools (training agent)', () => {
       );
     });
 
-    it('returns authorized fields with authorized=true', () => {
-      const result = call('get_brand_identity', { brand_id: 'daan_janssen', authorized: true });
+    it('returns authorized fields with authorized=true', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'daan_janssen', authorized: true });
       expect(result.colors).toBeDefined();
       expect(result.tone).toBeDefined();
       expect(result.voice_synthesis).toBeDefined();
@@ -60,8 +60,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.available_fields).toBeUndefined();
     });
 
-    it('returns only requested fields', () => {
-      const result = call('get_brand_identity', {
+    it('returns only requested fields', async () => {
+      const result = await call('get_brand_identity', {
         brand_id: 'daan_janssen',
         fields: ['description', 'tagline'],
       });
@@ -71,14 +71,14 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.logos).toBeUndefined();
     });
 
-    it('returns error for unknown brand', () => {
-      const result = call('get_brand_identity', { brand_id: 'nonexistent' });
+    it('returns error for unknown brand', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'nonexistent' });
       expect(result.errors).toBeDefined();
       expect((result.errors as Array<{ code: string }>)[0].code).toBe('brand_not_found');
     });
 
-    it('omits available_fields when talent lacks the requested authorized field', () => {
-      const result = call('get_brand_identity', {
+    it('omits available_fields when talent lacks the requested authorized field', async () => {
+      const result = await call('get_brand_identity', {
         brand_id: 'sofia_reyes',
         fields: ['voice_synthesis'],
       });
@@ -86,18 +86,18 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.available_fields).toBeUndefined();
     });
 
-    it('loads all sandbox advertiser brands from @adcp/client', () => {
+    it('loads all sandbox advertiser brands from @adcp/client', async () => {
       const expectedIds = ['acme_outdoor', 'nova_motors', 'bistro_oranje', 'osei_natural', 'summit_foods'];
       for (const id of expectedIds) {
-        const result = call('get_brand_identity', { brand_id: id });
+        const result = await call('get_brand_identity', { brand_id: id });
         expect(result.brand_id).toBe(id);
         expect(result.description).toBeDefined();
         expect((result.industries as string[]).length).toBeGreaterThan(0);
       }
     });
 
-    it('returns authorized fields for sandbox advertiser brands', () => {
-      const result = call('get_brand_identity', { brand_id: 'nova_motors', authorized: true });
+    it('returns authorized fields for sandbox advertiser brands', async () => {
+      const result = await call('get_brand_identity', { brand_id: 'nova_motors', authorized: true });
       expect(result.colors).toBeDefined();
       expect(result.tone).toBeDefined();
       expect(result.fonts).toBeDefined();
@@ -106,8 +106,8 @@ describe('brand protocol tools (training agent)', () => {
 
   describe('get_rights', () => {
 
-    it('returns Daan Janssen as top match for Amsterdam steakhouse', () => {
-      const result = call('get_rights', {
+    it('returns Daan Janssen as top match for Amsterdam steakhouse', async () => {
+      const result = await call('get_rights', {
         query: 'Dutch athlete for restaurant brand in Amsterdam',
         uses: ['likeness'],
       });
@@ -115,8 +115,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.rights as Array<{ brand_id: string }>)[0].brand_id).toBe('daan_janssen');
     });
 
-    it('excludes van Dijk for steakhouse queries', () => {
-      const result = call('get_rights', {
+    it('excludes van Dijk for steakhouse queries', async () => {
+      const result = await call('get_rights', {
         query: 'Dutch athlete for steakhouse in Amsterdam',
         uses: ['likeness'],
       });
@@ -124,8 +124,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(brandIds).not.toContain('pieter_van_dijk');
     });
 
-    it('shows exclusion reasons with include_excluded=true and includes suggestions', () => {
-      const result = call('get_rights', {
+    it('shows exclusion reasons with include_excluded=true and includes suggestions', async () => {
+      const result = await call('get_rights', {
         query: 'Dutch athlete for steakhouse in Amsterdam',
         uses: ['likeness'],
         include_excluded: true,
@@ -138,8 +138,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(excluded[0].suggestions![0]).toContain('plant-based');
     });
 
-    it('filters by country', () => {
-      const result = call('get_rights', {
+    it('filters by country', async () => {
+      const result = await call('get_rights', {
         query: 'athlete for food brand',
         uses: ['likeness'],
         countries: ['JP'],
@@ -149,8 +149,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(brandIds).not.toContain('daan_janssen');
     });
 
-    it('filters by specific brand_id', () => {
-      const result = call('get_rights', {
+    it('filters by specific brand_id', async () => {
+      const result = await call('get_rights', {
         query: 'athlete',
         uses: ['likeness'],
         brand_id: 'sofia_reyes',
@@ -159,8 +159,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.rights as Array<{ brand_id: string }>)[0].brand_id).toBe('sofia_reyes');
     });
 
-    it('includes pricing options', () => {
-      const result = call('get_rights', {
+    it('includes pricing options', async () => {
+      const result = await call('get_rights', {
         query: 'Dutch athlete for food brand',
         uses: ['likeness'],
       });
@@ -172,8 +172,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(cpm!.currency).toBe('EUR');
     });
 
-    it('sorts by match score descending', () => {
-      const result = call('get_rights', {
+    it('sorts by match score descending', async () => {
+      const result = await call('get_rights', {
         query: 'Dutch athlete for food brand in Netherlands, budget 400 EUR',
         uses: ['likeness'],
       });
@@ -187,8 +187,8 @@ describe('brand protocol tools (training agent)', () => {
   describe('acquire_rights', () => {
     const baseBuyer = { domain: 'bistro-oranje.nl', brand_id: 'bistro_oranje' };
 
-    it('auto-approves food category for Daan Janssen', () => {
-      const result = call('acquire_rights', {
+    it('auto-approves food category for Daan Janssen', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -204,8 +204,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.rights_constraint).toBeDefined();
     });
 
-    it('returns pending_approval for alcohol campaigns', () => {
-      const result = call('acquire_rights', {
+    it('returns pending_approval for alcohol campaigns', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'cpm_endorsement',
         buyer: { domain: 'brouwerij-test.nl' },
@@ -218,8 +218,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.estimated_response_time).toBe('48h');
     });
 
-    it('rejects sportswear campaigns for Janssen with actionable suggestions', () => {
-      const result = call('acquire_rights', {
+    it('rejects sportswear campaigns for Janssen with actionable suggestions', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'cpm_endorsement',
         buyer: { domain: 'sportswear-test.com' },
@@ -234,8 +234,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.suggestions as string[]).length).toBeGreaterThan(0);
     });
 
-    it('rejects confidential rule violations without suggestions', () => {
-      const result = call('acquire_rights', {
+    it('rejects confidential rule violations without suggestions', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'vandijk_likeness',
         pricing_option_id: 'cpm_likeness',
         buyer: baseBuyer,
@@ -249,8 +249,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.suggestions).toBeUndefined();
     });
 
-    it('includes voice credentials when voice is requested and talent has voice_synthesis', () => {
-      const result = call('acquire_rights', {
+    it('includes voice credentials when voice is requested and talent has voice_synthesis', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -265,8 +265,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(providers).toContain('elevenlabs');
     });
 
-    it('generation credentials match schema (uses, not scope)', () => {
-      const result = call('acquire_rights', {
+    it('generation credentials match schema (uses, not scope)', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -283,8 +283,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(cred.expires_at).toMatch(/T\d{2}:\d{2}:\d{2}Z$/);
     });
 
-    it('approval_webhook uses push-notification-config with authentication', () => {
-      const result = call('acquire_rights', {
+    it('approval_webhook uses push-notification-config with authentication', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -301,8 +301,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(webhook.authentication.credentials.length).toBeGreaterThanOrEqual(32);
     });
 
-    it('rights_constraint includes verification_url', () => {
-      const result = call('acquire_rights', {
+    it('rights_constraint includes verification_url', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -316,8 +316,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(constraint.verification_url).toContain('/verify');
     });
 
-    it('rights_constraint uses date-time format', () => {
-      const result = call('acquire_rights', {
+    it('rights_constraint uses date-time format', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
         buyer: baseBuyer,
@@ -333,8 +333,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(constraint.valid_until).toBe('2026-06-30T23:59:59Z');
     });
 
-    it('returns error for unknown rights_id', () => {
-      const result = call('acquire_rights', {
+    it('returns error for unknown rights_id', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'nonexistent',
         pricing_option_id: 'cpm_endorsement',
         buyer: baseBuyer,
@@ -343,8 +343,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.errors as Array<{ code: string }>)[0].code).toBe('rights_not_found');
     });
 
-    it('returns error for invalid pricing option', () => {
-      const result = call('acquire_rights', {
+    it('returns error for invalid pricing option', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'nonexistent',
         buyer: baseBuyer,
@@ -353,8 +353,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_pricing_option');
     });
 
-    it('returns error when buyer is missing', () => {
-      const result = call('acquire_rights', {
+    it('returns error when buyer is missing', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'cpm_endorsement',
         campaign: { description: 'test', uses: ['likeness'] },
@@ -362,8 +362,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_request');
     });
 
-    it('rejects cosmetics for Yuki Tanaka', () => {
-      const result = call('acquire_rights', {
+    it('rejects cosmetics for Yuki Tanaka', async () => {
+      const result = await call('acquire_rights', {
         rights_id: 'tanaka_likeness_voice',
         pricing_option_id: 'cpm_voice',
         buyer: { domain: 'beauty-test.jp' },
@@ -379,8 +379,8 @@ describe('brand protocol tools (training agent)', () => {
 
   describe('update_rights', () => {
 
-    it('returns updated terms with extended end_date', () => {
-      const result = call('update_rights', {
+    it('returns updated terms with extended end_date', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         end_date: '2026-09-30',
       });
@@ -388,8 +388,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.terms as { end_date: string }).end_date).toBe('2026-09-30');
     });
 
-    it('returns updated impression cap', () => {
-      const result = call('update_rights', {
+    it('returns updated impression cap', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         impression_cap: 200000,
       });
@@ -397,8 +397,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.rights_constraint as { impression_cap: number }).impression_cap).toBe(200000);
     });
 
-    it('returns re-issued generation credentials', () => {
-      const result = call('update_rights', {
+    it('returns re-issued generation credentials', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         end_date: '2026-09-30',
       });
@@ -408,8 +408,8 @@ describe('brand protocol tools (training agent)', () => {
       expect(creds[0].rights_key).toMatch(/^rk_mj_sandbox_/);
     });
 
-    it('returns updated rights_constraint', () => {
-      const result = call('update_rights', {
+    it('returns updated rights_constraint', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         end_date: '2026-09-30',
         impression_cap: 200000,
@@ -420,23 +420,23 @@ describe('brand protocol tools (training agent)', () => {
       expect(constraint.rights_id).toBe('janssen_likeness_voice');
     });
 
-    it('returns paused state', () => {
-      const result = call('update_rights', {
+    it('returns paused state', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         paused: true,
       });
       expect(result.paused).toBe(true);
     });
 
-    it('omits paused when not provided', () => {
-      const result = call('update_rights', {
+    it('omits paused when not provided', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
       });
       expect(result.paused).toBeUndefined();
     });
 
-    it('returns error for unknown rights_id', () => {
-      const result = call('update_rights', {
+    it('returns error for unknown rights_id', async () => {
+      const result = await call('update_rights', {
         rights_id: 'nonexistent',
       });
       expect(result.errors).toBeDefined();
@@ -444,8 +444,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('nonexistent');
     });
 
-    it('returns error for impression_cap below delivered', () => {
-      const result = call('update_rights', {
+    it('returns error for impression_cap below delivered', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         impression_cap: 10000,
       });
@@ -455,8 +455,8 @@ describe('brand protocol tools (training agent)', () => {
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('50000');
     });
 
-    it('returns error for end_date before current', () => {
-      const result = call('update_rights', {
+    it('returns error for end_date before current', async () => {
+      const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
         end_date: '2025-01-01',
       });

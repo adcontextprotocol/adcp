@@ -1,0 +1,407 @@
+id: media_buy_seller/creative_fate_after_cancellation
+version: "1.0.0"
+title: "Creative lifecycle is decoupled from media buy lifecycle"
+category: media_buy_seller
+summary: "Validates that canceling a media buy releases package-creative assignments but leaves the underlying creatives in the library with their review state intact, and that buyers can reuse released creatives on a new buy."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - update_media_buy
+  - sync_creatives
+  - list_creatives
+
+narrative: |
+  Per the creative library model (docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate)
+  and the Media Buy State Transitions rule, canceling or rejecting a media buy
+  releases its package-creative assignments but leaves the creatives themselves
+  in the library. The creatives remain reusable by `creative_id` in a subsequent
+  `create_media_buy` or `sync_creatives` call, and a seller MUST NOT implicitly
+  reject a creative because its containing buy was canceled — a creative
+  rejection MUST be a deliberate review decision with its own `rejection_reason`.
+
+  This scenario walks the whole flow end-to-end:
+
+  1. Create a buy, sync a creative, assign it to a package (setup)
+  2. Confirm the creative is in the library with a non-terminal review state (pre-cancel)
+  3. Cancel the buy
+  4. Confirm the creative is STILL in the library with its review state intact —
+     not archived, not auto-rejected as a side effect of the cancel
+  5. Reuse the same `creative_id` on a new buy via `sync_creatives` assignment
+
+  A seller that evaporates library creatives on buy cancellation, or that flips
+  `status: rejected` on creatives whose only assignment was released by a cancel,
+  fails this scenario. A seller that correctly decouples the two lifecycles
+  passes.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any media buy seller with a creative library"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller supports create_media_buy, update_media_buy with cancellation, sync_creatives,
+    and list_creatives. Catalog-driven sellers and sellers without a creative library
+    grade this scenario not_applicable (creative lifecycle assumes a library surface).
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Create a buy and assign a creative"
+    narrative: |
+      Discover a product, create a media buy, sync one creative with an inline
+      assignment to the buy's first package. Capture the media_buy_id, package_id,
+      and creative_id for subsequent phases.
+
+    steps:
+      - id: get_products_brief
+        title: "Discover a product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product with a pricing option and at least one format_id.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content for creative-reuse testing."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "creative_fate--get_products"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+          - path: "products[0].format_ids[0].agent_url"
+            key: "format_agent_url"
+          - path: "products[0].format_ids[0].id"
+            key: "format_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Product exposes at least one format_id for creative sync"
+
+      - id: create_buy
+        title: "Create the initial media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Media buy created with media_buy_id and at least one package.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "creative-fate-setup-create-buy-v1"
+          start_time: "2026-09-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 5000
+              pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "creative_fate--create_buy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller returns package_id for the newly created package"
+
+      - id: sync_creative_with_assignment
+        title: "Sync a creative and assign to the package"
+        narrative: |
+          Sync one creative into the library and assign it to the package in a single
+          sync_creatives call. The creative enters the library with the library's
+          review flow; the assignment binds it to the media buy's package.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Creative accepted into the library (action: created), assignment acknowledged.
+          Creative status is one of: pending_review, approved, processing.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_reuse_banner_001"
+              name: "Acme Outdoor reuse banner"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-reuse-banner.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          assignments:
+            - creative_id: "acme_reuse_banner_001"
+              package_id: "$context.package_id"
+          idempotency_key: "creative-fate-setup-sync-v1"
+          context:
+            correlation_id: "creative_fate--sync_creative_with_assignment"
+        context_outputs:
+          - path: "creatives[0].creative_id"
+            key: "creative_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Response echoes back the buyer-supplied creative_id"
+
+  - id: verify_creative_in_library_pre_cancel
+    title: "Baseline: creative is in the library with a non-terminal review state"
+    narrative: |
+      Before canceling the buy, list the creative via list_creatives and record the
+      review state. The purpose of this phase is to establish the baseline the
+      post-cancel phase compares against: the creative exists and has a status
+      that is NOT `rejected` or `archived`.
+
+    steps:
+      - id: list_creatives_before_cancel
+        title: "Look up the creative in the library"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        expected: |
+          list_creatives returns the creative with a non-terminal review state
+          (processing, pending_review, or approved).
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            creative_ids:
+              - "$context.creative_id"
+          context:
+            correlation_id: "creative_fate--list_creatives_before_cancel"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Creative is present in the library"
+          - check: field_value
+            path: "creatives[0].status"
+            allowed_values: ["processing", "pending_review", "approved"]
+            description: "Creative status is non-terminal (not rejected or archived) before cancel"
+
+  - id: cancel_buy
+    title: "Cancel the media buy"
+    narrative: |
+      Cancel the media buy with `canceled: true`. The seller MUST transition the buy
+      to `canceled` and release the creative's package assignment per
+      docs/media-buy/specification#media-buy-state-transitions.
+
+    steps:
+      - id: update_media_buy_canceled
+        title: "update_media_buy with canceled: true"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Seller acknowledges the cancellation and transitions the buy to `canceled`.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          canceled: true
+          cancellation_reason: "Creative-fate scenario: releasing assignment to verify library persistence."
+          idempotency_key: "creative-fate-cancel-v1"
+          context:
+            correlation_id: "creative_fate--update_media_buy_canceled"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+  - id: verify_creative_persists_post_cancel
+    title: "Creative remains in the library with review state intact"
+    narrative: |
+      After the cancel, the creative's library entry MUST still exist and its review
+      state MUST NOT be `rejected` (which would indicate implicit-reject-on-cancel,
+      forbidden by the spec) and SHOULD NOT be `archived` (which would indicate the
+      seller evaporated library state on buy cancellation, inconsistent with the
+      decoupled-lifecycle contract). Allowed terminal-adjacent states are
+      `processing`, `pending_review`, `approved` — whatever the review flow produced.
+
+    steps:
+      - id: list_creatives_after_cancel
+        title: "Look up the creative again, post-cancel"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        expected: |
+          Creative still present with non-rejected, non-archived status. A seller
+          that returns an empty list, or that has flipped the creative to
+          `rejected` or `archived` as a side effect of the cancel, fails.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            creative_ids:
+              - "$context.creative_id"
+          context:
+            correlation_id: "creative_fate--list_creatives_after_cancel"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Creative still in the library after buy cancellation"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_reuse_banner_001"
+            description: "Creative ID is unchanged (not re-keyed on cancel)"
+          - check: field_value
+            path: "creatives[0].status"
+            allowed_values: ["processing", "pending_review", "approved"]
+            description: "Creative status is NOT rejected and NOT archived — no implicit review cascade from the buy cancel"
+
+  - id: reuse_creative_on_new_buy
+    title: "Reuse the released creative on a new media buy"
+    narrative: |
+      With the old buy canceled and the assignment released, the buyer creates a NEW
+      media buy and references the same creative_id in a fresh assignment. The seller
+      MUST accept the assignment — the creative_id resolves to the persisted library
+      entry, demonstrating end-to-end reusability.
+
+    steps:
+      - id: create_second_buy
+        title: "Create a second media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Second media buy created successfully with a new media_buy_id and package_id.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "creative-fate-second-buy-v1"
+          start_time: "2026-10-01T00:00:00Z"
+          end_time: "2026-10-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 5000
+              pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "creative_fate--create_second_buy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "second_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "second_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Second media_buy_id returned"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Second package_id returned"
+
+      - id: reassign_creative
+        title: "Assign the original creative_id to the new package"
+        narrative: |
+          Reference the original creative by creative_id only (no assets, no re-upload)
+          and assign it to the new package. The seller resolves the creative_id from
+          the library; if the creative was evaporated on cancel, this call fails.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Assignment accepted. No creative-not-found or similar error.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "$context.creative_id"
+              name: "Reassigned creative"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
+                  width: 300
+                  height: 250
+          assignments:
+            - creative_id: "$context.creative_id"
+              package_id: "$context.second_package_id"
+          idempotency_key: "creative-fate-reassign-v1"
+          context:
+            correlation_id: "creative_fate--reassign_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"

@@ -12,10 +12,11 @@ const addFormats = require('ajv-formats');
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Initialize AJV with formats and custom loader
-const ajv = new Ajv({ 
+const ajv = new Ajv({
   allErrors: true,
   verbose: true,
   strict: false, // Allow some flexibility for our schema structure
+  discriminator: true,
   loadSchema: loadExternalSchema
 });
 addFormats(ajv);
@@ -234,14 +235,15 @@ async function runTests() {
   await test('All schemas are syntactically valid JSON Schema', async () => {
     for (const [schemaPath, schema] of schemas) {
       // Create a new AJV instance for each schema to avoid duplicate ID issues
-      const testAjv = new Ajv({ 
+      const testAjv = new Ajv({
         allErrors: true,
         verbose: true,
         strict: false,
+        discriminator: true,
         loadSchema: loadExternalSchema
       });
       addFormats(testAjv);
-      
+
       try {
         await testAjv.compileAsync(schema);
       } catch (error) {
@@ -264,7 +266,7 @@ async function runTests() {
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
-    
+
     for (const [schemaPath, schema] of enumSchemas) {
       if (!schema.enum || !Array.isArray(schema.enum) || schema.enum.length === 0) {
         return `${path.basename(schemaPath)}: Missing or empty enum values`;
@@ -319,6 +321,7 @@ async function runTests() {
         allErrors: true,
         verbose: true,
         strict: false,
+        discriminator: true,
         loadSchema: loadExternalSchema
       });
       addFormats(testAjv);

@@ -85,7 +85,7 @@ export async function generateCoverForEdition(
 ): Promise<CoverResult | null> {
   if (!config.db.setCoverImage) return null;
 
-  const { imageBuffer, promptUsed } = await generateIllustration({
+  const { imageBuffer, promptUsed, c2pa } = await generateIllustration({
     title: subject,
     category: config.perspectiveCategory,
     excerpt,
@@ -93,7 +93,13 @@ export async function generateCoverForEdition(
     dateFlavor,
   });
 
-  const stored = await config.db.setCoverImage(editionId, imageBuffer, promptUsed);
+  const stored = await config.db.setCoverImage(
+    editionId,
+    imageBuffer,
+    promptUsed,
+    c2pa?.signedAt,
+    c2pa?.manifestDigest,
+  );
   if (!stored) {
     logger.warn({ editionId, newsletterId: config.id }, 'Could not store cover — edition may no longer be a draft');
     return null;

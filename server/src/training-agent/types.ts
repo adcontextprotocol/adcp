@@ -24,6 +24,11 @@ export interface TrainingContext {
    *  Derived from the bearer token in the MCP route; defaults to `anonymous`
    *  when no auth is configured (dev / test). */
   principal?: string;
+  /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
+   *  `required_for: ['create_media_buy']` in capabilities and enforces
+   *  presence-gated signing at the auth layer. Default `/mcp` leaves
+   *  `required_for` empty so unsigned bearer callers keep working. */
+  strict?: boolean;
 }
 
 export interface ShowSpecial {
@@ -181,6 +186,12 @@ export interface ComplyExtensions {
   siSessions: Map<string, { status: string; terminationReason?: string }>;
   deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
   budgetSimulations: Map<string, ComplyBudgetSimulation>;
+  /** Products seeded via comply_test_controller.seed_product. Session-scoped overlay
+   * on the static catalog so storyboards can reference fixture IDs without
+   * polluting the shared catalog. Merged into get_products output. */
+  seededProducts: Map<string, Record<string, unknown>>;
+  /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
+  seededPricingOptions: Map<string, Record<string, unknown>>;
 }
 
 export interface SessionState {

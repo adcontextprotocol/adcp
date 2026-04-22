@@ -76,6 +76,51 @@ Failed operations return status `failed` with error details. The error object fo
 }
 ```
 
+### Envelope vs. payload errors — the two-layer model
+
+AdCP exposes errors in two distinct places, and implementers need to populate the right layer for the right situation. This is the single most common source of error-shape drift between agents and storyboards.
+
+| Layer | Key | When to populate | Shape |
+|---|---|---|---|
+| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+
+**A fatal task failure SHOULD populate both layers.** The payload carries the structured `errors[]` array that any protocol can read verbatim, and the transport envelope carries `adcp_error` so MCP/A2A clients can extract a typed error without re-parsing the payload. Populating only one of the two is the source-of-truth for most interop bugs — a runner that reads the transport envelope sees no error, and a runner that reads the payload sees no error signal on the transport:
+
+```json
+// MCP — structuredContent AND payload both carry the error
+{
+  "content": [{"type": "text", "text": "{\"adcp_error\":{\"code\":\"BUDGET_TOO_LOW\", ...}}"}],
+  "isError": true,
+  "structuredContent": {
+    "adcp_error": { "code": "BUDGET_TOO_LOW", "message": "...", "recovery": "correctable" },
+    "payload": {
+      "errors": [
+        { "code": "BUDGET_TOO_LOW", "message": "...", "recovery": "correctable", "field": "budget.total" }
+      ]
+    }
+  }
+}
+```
+
+```json
+// A2A — artifact DataPart carries adcp_error; if the agent also surfaces payload via a sibling DataPart, errors[] lives there
+{
+  "status": { "state": "failed" },
+  "artifacts": [{
+    "artifactId": "error-result",
+    "parts": [
+      { "kind": "data", "data": { "adcp_error": { "code": "BUDGET_TOO_LOW", ... } } },
+      { "kind": "data", "data": { "errors": [{ "code": "BUDGET_TOO_LOW", "field": "budget.total", ... }] } }
+    ]
+  }]
+}
+```
+
+**Non-fatal errors populate only the payload.** A `status: "submitted"` or `status: "input-required"` task reporting a warning (e.g., "this media buy requires manual approval — [warning details]") populates `errors[]` in the payload with `severity: "warning"` but MUST NOT populate `adcp_error`. The transport envelope signals "the task failed" — it is not a warning channel.
+
+**Storyboard validators.** Prefer `check: error_code` over `check: field_present, path: "errors"` when asserting on a failed task's error code. `error_code` is shape-agnostic — the runner resolves it from either `adcp_error.code` (transport) or `errors[0].code` (payload). Direct `path: "errors"` checks pin the assertion to the payload shape and fail against agents that surface errors only via the transport envelope, even when the agent is conformant. See [Storyboard authoring — Asserting on errors](/docs/contributing/storyboard-authoring#asserting-on-errors).
+
 ### Error Object Fields
 
 These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
@@ -92,7 +137,31 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 
 ## Standard Error Codes
 
-AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+
+**Not-found precedence.** When a referenced identifier does not resolve, sellers SHOULD return the resource-specific code when the resolved type is known from the request: `PRODUCT_NOT_FOUND` for `product_id`, `PACKAGE_NOT_FOUND` for `package_id`, `MEDIA_BUY_NOT_FOUND` for `media_buy_id`, `CREATIVE_NOT_FOUND` for `creative_id`, `SIGNAL_NOT_FOUND` for `signal_id`, `SESSION_NOT_FOUND` for SI `session_id`, `ACCOUNT_NOT_FOUND` for `account_id`, `PLAN_NOT_FOUND` for governance `plan_id`. Fall back to `REFERENCE_NOT_FOUND` for resource types without a dedicated code (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST use `REFERENCE_NOT_FOUND` rather than minting a custom `*_NOT_FOUND` code — the vocabulary grows by upstream spec change, not by per-seller inflation. Clients SHOULD switch on `error.code` first; the resource-specific codes let clients dispatch without parsing `error.field`.
+
+**Polymorphic parameters.** When the unresolved identifier was supplied via a polymorphic or untyped parameter (a field that accepts multiple resource types), sellers MUST use `REFERENCE_NOT_FOUND` even if a resource-specific code exists for the resolved type. Using the type-specific code on a polymorphic parameter leaks the resolved type to an unauthorized caller. Polymorphism is evaluated against the parameter's declared shape in the tool schema — **before any lookup** — so a generic `reference_id` parameter dispatches to `REFERENCE_NOT_FOUND` regardless of what the id resolves to. Evaluating on the resolved type after dispatch reintroduces the leak.
+
+A tool's declared parameter shape MUST be identical across all callers for a given tool version; dispatch rules MUST NOT be conditioned on caller identity. A schema that exposes `property_list_id` to tenant B but only `reference_id` to tenant A turns capability discovery itself into an enumeration oracle (read the schema under two identities, diff).
+
+**Uniform response for inaccessible references.** The uniform-response requirement applies to **every** not-found code in this vocabulary (`REFERENCE_NOT_FOUND`, `SIGNAL_NOT_FOUND`, `CREATIVE_NOT_FOUND`, `MEDIA_BUY_NOT_FOUND`, `PACKAGE_NOT_FOUND`, `SESSION_NOT_FOUND`, `ACCOUNT_NOT_FOUND`, `PLAN_NOT_FOUND`): sellers MUST return the same response for "exists but the caller lacks access" as for "does not exist". Never distinguish the two — this is how cross-tenant enumeration lands.
+
+The MUST covers every observable channel, not just `error.code`:
+
+- **Error object.** `error.code`, `error.message`, `error.field`, `error.details` MUST be byte-equivalent between the two cases. On typed parameters that fall back to `REFERENCE_NOT_FOUND`, `error.field` MUST be identical across true-miss and resolve-then-deny — either omitted on both or replaced with a type-neutral name on both. `error.field` MAY name the input parameter when the parameter name is type-neutral (e.g., `reference_id`); when the original parameter name is type-revealing (e.g., `property_list_id`), `error.field` MUST be omitted or replaced with a neutral name. `error.message` MUST be generic (no resource-qualified text like `"Property list not found"`). For `REFERENCE_NOT_FOUND` specifically, sellers MUST NOT leak the resolved resource type via `error.field`, `error.details`, or a resource-qualified `error.message`. When the parameter is an array (e.g., `catalog_ids`, `format_ids`), `error.field` MUST name the array parameter itself. Sellers MAY enumerate specific unresolvable elements in `error.details` — but only when the elements were supplied verbatim by the caller. Sellers MUST NOT distinguish "supplied element resolved but caller unauthorized" from "supplied element does not exist" at the element level; that reintroduces the enumeration oracle at the array-entry granularity.
+- **Transport status.** HTTP status code, A2A `task.status.state`, and MCP `isError` MUST be identical between the two cases.
+- **Response headers.** `ETag`, `Cache-Control`, per-resource-type rate-limit buckets, CDN tags, and any header whose value or presence differs by resource type MUST be identical.
+- **Side effects.** Webhook dispatch and audit-log writes MUST be identical — a resolve-then-deny path MUST NOT write tenant audit rows, enqueue background work (search-indexer updates, cache warmers, access-log aggregators), increment per-resource-type quota/rate-limit counters, or fire webhooks to any subscriber (including the resource owner) in ways a true-miss would not. If the resolve-then-deny path touches a per-tenant DB shard or cache, the true-miss path MUST touch the same shape of storage (e.g., route both through a tenant-agnostic resolver) so that co-tenant observers cannot distinguish via storage-layer metrics.
+- **Observability.** Downstream logs, APM spans, and third-party error-reporting telemetry (Sentry, Datadog, Rollbar, and equivalents) MUST NOT be tagged with the resolved resource type when the caller lacks access; the trace a true-miss emits MUST be structurally indistinguishable from the trace a resolve-then-deny emits.
+
+To make latency parity a consequence rather than a separate requirement, sellers MUST perform the same resolution-and-authorization work on both paths — **resolve-then-authorize**, never short-circuit on "unknown id." On a true-miss, sellers MUST still execute an authorization decision of equivalent shape (e.g., against an empty principal set, or against the caller's own tenant as a decoy) so that authorizer latency — which varies with the size and shape of the ACL graph — is not a side channel. Pre-lookup input validation (UUID format, length, regex) is permitted iff it is deterministic in request content only (same input → same verdict, regardless of caller or existence).
+
+Non-normative implementation note: a single-query pattern like `SELECT ... WHERE id = ? AND tenant = ?` *looks* uniform but differs in execution plan, buffer-pool touches, and authorizer invocation depending on whether the row exists in another tenant. Prefer the two-step pattern — resolve by id, then authorize against the loaded row (or against an empty row on true-miss) — as the only pattern that naturally produces observational uniformity.
+
+**Cache warmth** is a distinct oracle: a warm cache on tenant B's id indicates someone accessed it recently. Sellers MUST NOT gate cache population on authorization — true-miss ids MUST be cached-as-miss with the same TTL as resolve-then-deny, or cache reads MUST be bypassed for not-found responses.
+
+**Verifying this yourself.** The paired-probe `adcp fuzz` invariant checks uniform-response compliance by comparing two responses per tool. See [Validate Your Agent — Preparing to test uniform error responses](/docs/building/validate-your-agent#preparing-to-test-uniform-error-responses) for tenant-setup requirements and CLI invocation. Full-strength testing requires two isolated tenants; single-tenant runs cover only the "does not exist" leg.
 
 ### Authentication and Access
 
@@ -122,6 +191,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 | `PRODUCT_NOT_FOUND` | correctable | Referenced product IDs are unknown or expired | Remove invalid IDs, or re-discover with `get_products` |
 | `PRODUCT_UNAVAILABLE` | correctable | Product is sold out or no longer available | Choose a different product |
 | `PROPOSAL_EXPIRED` | correctable | Referenced proposal has passed its `expires_at` | Run `get_products` to get a fresh proposal |
+| `REQUOTE_REQUIRED` | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id`, then resubmit against the new `proposal_id` |
 | `SIGNAL_NOT_FOUND` | correctable | Referenced signal does not exist in the catalog | Verify `signal_id` via `get_signals`, or confirm availability from this agent |
 | `AUDIENCE_TOO_SMALL` | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
 
@@ -141,6 +211,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 | `RATE_LIMITED` | transient | Request rate exceeded | Wait for `retry_after` seconds, then retry |
 | `SERVICE_UNAVAILABLE` | transient | Seller service temporarily unavailable | Retry with exponential backoff |
 | `CONFLICT` | transient | Concurrent modification detected | Re-read the resource and retry with current state |
+| `REFERENCE_NOT_FOUND` | correctable | Generic fallback for referenced resources without a dedicated not-found code. See [Not-found precedence](#standard-error-codes) | Verify the identifier via the appropriate discovery task; prefer a resource-specific code when one exists |
 
 ## Recovery Classification
 

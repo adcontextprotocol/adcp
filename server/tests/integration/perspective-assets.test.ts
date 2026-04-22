@@ -400,11 +400,12 @@ describe('Perspective Assets Integration Tests', () => {
           featured_image_url: 'https://example.com/image.jpg',
           content_origin: 'official',
           collection: { slug: 'editorial' },
+          status: 'published',
         })
         .expect(201);
 
       expect(response.body.slug).toBeDefined();
-      expect(response.body.status).toBe('published'); // admin auto-publishes
+      expect(response.body.status).toBe('published');
 
       const result = await pool.query(
         `SELECT subtitle, author_title, featured_image_url, content_origin FROM perspectives WHERE slug = $1`,

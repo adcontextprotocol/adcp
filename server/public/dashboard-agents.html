@@ -98,6 +98,7 @@
     .agent-status-dot--degraded { background: var(--color-warning-500); }
     .agent-status-dot--failing { background: var(--color-error-500); }
     .agent-status-dot--unknown { background: var(--color-gray-400); }
+    .agent-status-dot--error { background: var(--color-warning-500); }
 
     .agent-status-label {
       font-size: var(--text-xs);
@@ -256,7 +257,9 @@
     }
     .agent-connect-form input { min-width: 260px; }
     .agent-connect-save,
-    .agent-oauth-start {
+    .agent-oauth-start,
+    .agent-cc-save,
+    .agent-cc-test-now {
       background: var(--color-primary-600);
       color: white;
       border: none;
@@ -266,9 +269,13 @@
       cursor: pointer;
     }
     .agent-connect-save:hover,
-    .agent-oauth-start:hover { background: var(--color-primary-700); }
+    .agent-oauth-start:hover,
+    .agent-cc-save:hover,
+    .agent-cc-test-now:hover { background: var(--color-primary-700); }
     .agent-connect-save:disabled,
-    .agent-oauth-start:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-oauth-start:disabled,
+    .agent-cc-save:disabled,
+    .agent-cc-test-now:disabled { opacity: 0.6; cursor: not-allowed; }
     .agent-oauth-start { align-self: flex-end; }
     .agent-connect-msg {
       font-size: var(--text-xs);
@@ -560,6 +567,89 @@
 
     document.addEventListener('DOMContentLoaded', loadAgents);
 
+    // Shared across the page so event handlers (e.g. retry) can re-render
+    // a single card without a full reload.
+    const pageState = { agents: [], complianceMap: new Map(), orgId: null };
+
+    // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
+    // network failures, honoring Retry-After when present. Rate-limit hits
+    // are common when the dashboard fans out 3 requests per agent on reload
+    // — without retry, agents silently collapse to "not yet checked".
+    // Retry-After is capped: bulkResolveRateLimiter's 60s window can ask us
+    // to wait nearly a minute, which hangs the whole page behind one agent.
+    // If the server wants longer than MAX_RETRY_WAIT_MS, surface the 429 to
+    // the caller so the per-agent "Rate-limited — Retry" card renders.
+    const MAX_RETRY_WAIT_MS = 3000;
+    async function fetchWithRetry(url, opts, { retries = 1, baseDelayMs = 800 } = {}) {
+      let lastErr;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const res = await fetch(url, opts);
+          if (res.status === 429 && attempt < retries) {
+            const retryAfter = parseInt(res.headers.get('retry-after') || '', 10);
+            if (Number.isFinite(retryAfter) && retryAfter * 1000 > MAX_RETRY_WAIT_MS) {
+              return res;
+            }
+            const wait = Number.isFinite(retryAfter) ? retryAfter * 1000 : baseDelayMs;
+            await new Promise(r => setTimeout(r, wait));
+            continue;
+          }
+          return res;
+        } catch (err) {
+          lastErr = err;
+          if (attempt >= retries) break;
+          await new Promise(r => setTimeout(r, baseDelayMs));
+        }
+      }
+      throw lastErr ?? new Error('fetch failed');
+    }
+
+    // Fetches compliance + history + auth for a single agent. Always returns
+    // an object — on failure, loadError is populated so the renderer can
+    // distinguish "server says unknown" from "we couldn't load".
+    async function fetchAgentState(agent) {
+      const encoded = encodeURIComponent(agent.url);
+      const endpoints = [
+        `/api/registry/agents/${encoded}/compliance`,
+        `/api/registry/agents/${encoded}/compliance/history?limit=10`,
+        `/api/registry/agents/${encoded}/auth-status`,
+      ];
+      const settled = await Promise.allSettled(
+        endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
+      );
+
+      const parseOrError = async (s, source) => {
+        if (s.status === 'rejected') {
+          return { data: null, error: { source, code: 0, message: String(s.reason?.message || s.reason || 'network') } };
+        }
+        const res = s.value;
+        if (!res.ok) {
+          return { data: null, error: { source, code: res.status, message: res.statusText || `HTTP ${res.status}` } };
+        }
+        try {
+          return { data: await res.json(), error: null };
+        } catch (err) {
+          return { data: null, error: { source, code: res.status, message: String(err?.message || 'parse') } };
+        }
+      };
+
+      const [statusResult, historyResult, authResult] = await Promise.all([
+        parseOrError(settled[0], 'compliance'),
+        parseOrError(settled[1], 'history'),
+        parseOrError(settled[2], 'auth'),
+      ]);
+
+      // Only the compliance endpoint determines the primary card state.
+      // History and auth errors are logged but don't block rendering.
+      return {
+        url: agent.url,
+        status: statusResult.data,
+        history: historyResult.data,
+        authStatus: authResult.data,
+        loadError: statusResult.error,
+      };
+    }
+
     async function loadAgents() {
       try {
         const meRes = await fetch('/api/me', { credentials: 'include' });
@@ -616,32 +706,33 @@
           });
         }
 
-        // Fetch compliance data for org's agents
+        // Fetch compliance data for org's agents. A hard 15s ceiling guards
+        // against any single fetch hanging the entire page — unresolved agents
+        // fall through to the per-card "not yet checked" / error state, and
+        // the user can still interact with the page.
         const agentCompliance = new Map();
         const agents = profileData?.profile?.agents || [];
         if (agents.length > 0) {
-          const results = await Promise.allSettled(
-            agents.map(async (agent) => {
-              const encoded = encodeURIComponent(agent.url);
-              const [statusRes, historyRes, authRes] = await Promise.all([
-                fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
-                fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
-                fetch(`/api/registry/agents/${encoded}/auth-status`, { credentials: 'include' }),
-              ]);
-              const status = statusRes.ok ? await statusRes.json() : null;
-              const history = historyRes.ok ? await historyRes.json() : null;
-              const authStatus = authRes.ok ? await authRes.json() : null;
-              return { url: agent.url, status, history, authStatus };
-            }),
-          );
-          for (const r of results) {
-            if (r.status === 'fulfilled' && r.value.status) {
-              agentCompliance.set(r.value.url, r.value);
+          const allSettled = Promise.allSettled(agents.map(fetchAgentState));
+          const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
+          const results = await Promise.race([allSettled, timeout]);
+          if (Array.isArray(results)) {
+            for (const r of results) {
+              if (r.status === 'fulfilled') {
+                agentCompliance.set(r.value.url, r.value);
+              } else {
+                console.error('Agent compliance fetch rejected:', r.reason);
+              }
             }
+          } else {
+            console.warn('Agent compliance fetch timed out after 15s; rendering with partial data');
           }
         }
 
         const currentOrgId = currentOrg?.id || null;
+        pageState.agents = agents;
+        pageState.complianceMap = agentCompliance;
+        pageState.orgId = currentOrgId;
         renderPage(agents, agentCompliance, currentOrgId);
       } catch (err) {
         console.error('Agents page load error:', err);
@@ -675,6 +766,7 @@
       return '<div class="agent-connect-form" data-agent-url="' + escapedUrl + '"' + contextIdAttr + '>' +
         '<label>Auth type<select name="auth_type" class="auth-type-select">' +
           '<option value="oauth">OAuth (recommended)</option>' +
+          '<option value="oauth_client_credentials">OAuth client credentials (machine-to-machine)</option>' +
           '<option value="bearer">Bearer token</option>' +
           '<option value="basic">Basic auth</option>' +
         '</select></label>' +
@@ -687,6 +779,31 @@
           '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">Securely authorize via the agent\'s OAuth flow. No tokens to copy.</p>' +
           '<label>Platform type<select name="platform_type_oauth"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-oauth-start">Authorize</button>' +
+        '</div>' +
+        '<div class="auth-cc-fields" style="display:none;">' +
+          '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">' +
+            'Server-to-server OAuth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before each call and refreshes on 401. ' +
+            'For secrets wired through environment variables, use <code>$ENV:ADCP_OAUTH_&lt;NAME&gt;</code> references. ' +
+            'The <code>ADCP_OAUTH_</code> prefix is required — other env-var names are rejected server-side so a misconfigured agent can\'t read unrelated secrets.' +
+          '</p>' +
+          '<label>Token endpoint<input type="url" name="cc_token_endpoint" placeholder="https://auth.example.com/oauth/token" autocomplete="off" required></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">' +
+            'Auth0: <code>https://{tenant}.auth0.com/oauth/token</code> · Okta: <code>https://{org}.okta.com/oauth2/default/v1/token</code> · Azure AD: <code>https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code> · Keycloak: <code>https://{host}/realms/{realm}/protocol/openid-connect/token</code>' +
+          '</p>' +
+          '<label>Client ID<input type="text" name="cc_client_id" placeholder="client_abc or $ENV:ADCP_OAUTH_CLIENT_ID" autocomplete="off" required></label>' +
+          '<label>Client secret<input type="password" name="cc_client_secret" placeholder="literal secret or $ENV:ADCP_OAUTH_CLIENT_SECRET" autocomplete="off" required></label>' +
+          '<label>Scope <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_scope" placeholder="adcp" autocomplete="off"></label>' +
+          '<label>Resource <span style="color:var(--color-text-secondary);">(optional, RFC 8707)</span><input type="text" name="cc_resource" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">The agent URL the token is for. Okta and Keycloak typically use <code>resource</code>.</p>' +
+          '<label>Audience <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_audience" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">Auth0\'s name for the same thing (the <code>aud</code> claim). Use either <code>resource</code> OR <code>audience</code> — not both unless your IdP asks for it.</p>' +
+          '<label>Auth method<select name="cc_auth_method">' +
+            '<option value="">Basic (default — HTTP Basic header)</option>' +
+            '<option value="basic">Basic (HTTP Basic header)</option>' +
+            '<option value="body">Body (client_id/client_secret as form fields)</option>' +
+          '</select></label>' +
+          '<label>Platform type<select name="platform_type_cc"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+          '<button class="agent-cc-save">Save credentials</button>' +
         '</div>' +
       '</div>';
     }
@@ -728,12 +845,43 @@
         const data = complianceMap?.get(agent.url);
         const cs = data?.status;
         const history = data?.history;
-        const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+        const hostname = (() => {
+          try {
+            const u = new URL(agent.url);
+            return u.hostname + u.pathname + u.search + u.hash;
+          } catch {
+            return agent.url;
+          }
+        })();
         const authInfo = data?.authStatus;
+        const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
         const hasAuth = authInfo?.has_auth;
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+
+        if (loadError) {
+          const isRateLimited = loadError.code === 429;
+          const errMsg = isRateLimited
+            ? 'Rate-limited — too many requests. Retry in a moment.'
+            : 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
+          return `
+          <div class="agent-compliance-card" id="${cardId}">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--error"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label" style="color: var(--color-warning-700, var(--color-text-secondary));">couldn't load</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0;">
+                <button class="agent-reload-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Retry</button>
+              </div>
+            </div>
+            <div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+              ${escapeHtml(errMsg)}
+            </div>
+          </div>`;
+        }
 
         if (!hasData) {
           return `
@@ -746,7 +894,7 @@
               </div>
             </div>
             ${hasAuth
-              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
+              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
             <div class="agent-meta-row">
               <span></span>
@@ -826,15 +974,15 @@
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<button class="agent-connect-toggle agent-action-link" data-card-id="' + cardId + '" data-agent-url="' + escapeHtml(agent.url) + '">Connect agent</button>' : ''}
+                <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
                 <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
-            ${!hasAuth ? '<div id="' + cardId + '-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">' +
-              buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id) +
-              '</div>' : ''}
+            <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
+              ${buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+            </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
             <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
@@ -872,6 +1020,34 @@
         } catch {
           checkbox.checked = !checkbox.checked;
         }
+      }
+    });
+
+    // Retry a single agent's compliance fetch after a load error.
+    document.addEventListener('click', async function(e) {
+      const retryBtn = e.target.closest('.agent-reload-btn');
+      if (!retryBtn) return;
+      const agentUrl = retryBtn.dataset.agentUrl;
+      const cardId = retryBtn.dataset.cardId;
+      if (!agentUrl || !cardId) return;
+      const card = document.getElementById(cardId);
+      if (!card) return;
+
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying...';
+      try {
+        const state = await fetchAgentState({ url: agentUrl });
+        pageState.complianceMap.set(agentUrl, state);
+        const agent = pageState.agents.find(a => a.url === agentUrl) || { url: agentUrl };
+        const newHtml = renderAgentsSection([agent], pageState.complianceMap, pageState.orgId);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = newHtml.trim();
+        const newCard = wrapper.firstElementChild;
+        if (newCard) card.replaceWith(newCard);
+      } catch (err) {
+        console.error('Retry failed:', err);
+        retryBtn.disabled = false;
+        retryBtn.textContent = 'Retry';
       }
     });
 
@@ -939,7 +1115,7 @@
       }
     });
 
-    // Auth type toggle — show/hide token vs OAuth fields
+    // Auth type toggle — show exactly one of the three field groups.
     document.addEventListener('change', function(e) {
       const select = e.target.closest('.auth-type-select');
       if (!select) return;
@@ -947,13 +1123,189 @@
       if (!form) return;
       const tokenFields = form.querySelector('.auth-token-fields');
       const oauthFields = form.querySelector('.auth-oauth-fields');
-      if (select.value === 'oauth') {
-        tokenFields.style.display = 'none';
-        oauthFields.style.display = '';
-      } else {
-        tokenFields.style.display = '';
-        oauthFields.style.display = 'none';
+      const ccFields = form.querySelector('.auth-cc-fields');
+      tokenFields.style.display = select.value === 'bearer' || select.value === 'basic' ? '' : 'none';
+      oauthFields.style.display = select.value === 'oauth' ? '' : 'none';
+      ccFields.style.display = select.value === 'oauth_client_credentials' ? '' : 'none';
+    });
+
+    // OAuth client-credentials save handler (PUT /oauth-client-credentials).
+    // Parallel to the bearer/basic "Save" handler, different endpoint.
+    document.addEventListener('click', async function(e) {
+      const saveBtn = e.target.closest('.agent-cc-save');
+      if (!saveBtn) return;
+      const form = saveBtn.closest('.agent-connect-form');
+      if (!form) return;
+
+      const agentUrl = form.dataset.agentUrl;
+      const tokenEndpoint = form.querySelector('[name="cc_token_endpoint"]').value.trim();
+      const clientId = form.querySelector('[name="cc_client_id"]').value.trim();
+      const clientSecret = form.querySelector('[name="cc_client_secret"]').value;
+      const scope = form.querySelector('[name="cc_scope"]').value.trim();
+      const resource = form.querySelector('[name="cc_resource"]').value.trim();
+      const audience = form.querySelector('[name="cc_audience"]').value.trim();
+      const authMethod = form.querySelector('[name="cc_auth_method"]').value;
+
+      if (!tokenEndpoint) { form.querySelector('[name="cc_token_endpoint"]').focus(); return; }
+      if (!clientId) { form.querySelector('[name="cc_client_id"]').focus(); return; }
+      if (!clientSecret) { form.querySelector('[name="cc_client_secret"]').focus(); return; }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const body = { token_endpoint: tokenEndpoint, client_id: clientId, client_secret: clientSecret };
+        if (scope) body.scope = scope;
+        if (resource) body.resource = resource;
+        if (audience) body.audience = audience;
+        if (authMethod) body.auth_method = authMethod;
+
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/oauth-client-credentials', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to save credentials');
+        }
+
+        // Replace the form with a save-confirmation + a "Test now" button.
+        // The test endpoint exchanges at the AS and discards the token, so
+        // the operator gets same-second confirmation instead of waiting for
+        // the next compliance heartbeat. See #2809.
+        //
+        // Button has no data-agent-url of its own — the handler reads from
+        // the parent form's already-escaped dataset. Prevents any chance of
+        // attribute-breakout if a future caller passes an un-escaped URL.
+        form.innerHTML =
+          '<div class="agent-connect-msg" style="color:var(--color-success-600);">Credentials saved.</div>' +
+          '<div style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2);">' +
+            '<button class="agent-cc-test-now">Test now</button>' +
+            '<span style="font-size:var(--text-sm);color:var(--color-text-secondary);">Exchanges a token at the AS and discards it.</span>' +
+          '</div>' +
+          '<div class="agent-cc-test-result" style="margin-top:var(--space-2);"></div>';
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save credentials';
+        let msg = form.querySelector('.agent-connect-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.className = 'agent-connect-msg';
+          form.appendChild(msg);
+        }
+        msg.style.color = 'var(--color-error-600)';
+        msg.textContent = err.message;
       }
+    });
+
+    // One-line actionable hints keyed off the SDK's ClientCredentialsExchangeError
+    // kind / oauth_error. Aimed at a non-engineer ad-ops operator: "here's the
+    // first thing to check." The primary (technical) line stays intact so
+    // engineers can copy-paste into issues; the hint is a muted second line.
+    function ccTestHint(err) {
+      const byOAuth = {
+        invalid_client: 'Check client_id and client_secret for typos or trailing whitespace.',
+        invalid_scope: 'Remove the scope field or confirm the value with the AS operator.',
+        unauthorized_client: 'This client isn\'t allowed to use the client_credentials grant. Ask the AS operator.',
+        invalid_request: 'The AS rejected the request shape. Double-check token_endpoint and auth_method (Basic vs Body).',
+        invalid_grant: 'The grant was rejected. Common cause: credentials revoked or the audience/resource is wrong.',
+      };
+      if (err.oauth_error && byOAuth[err.oauth_error]) return byOAuth[err.oauth_error];
+      if (err.kind === 'network') return 'Check that token_endpoint is correct and the AS is reachable from this server.';
+      if (err.kind === 'malformed') return 'The AS response wasn\'t valid OAuth. Confirm token_endpoint points at the token URL, not the authorize URL.';
+      return '';
+    }
+
+    // "Test now" button: POST to /oauth-client-credentials/test and show the
+    // typed result inline (success latency, or SDK ClientCredentialsExchangeError
+    // kind + message + oauth_error if the AS returned one).
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-cc-test-now');
+      if (!btn) return;
+      const form = btn.closest('.agent-connect-form');
+      if (!form) return;
+      // Read from the parent form's already-escaped data attribute rather
+      // than re-embedding the URL in the button's own HTML.
+      const agentUrl = form.dataset.agentUrl;
+      const resultEl = form.querySelector('.agent-cc-test-result');
+      if (!resultEl) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+      resultEl.textContent = '';
+      resultEl.innerHTML = '';
+
+      const setResult = (primary, hint, color, extraHtml) => {
+        resultEl.style.color = color;
+        const primaryNode = document.createElement('div');
+        primaryNode.textContent = primary;
+        resultEl.appendChild(primaryNode);
+        if (hint) {
+          const hintNode = document.createElement('div');
+          hintNode.style.fontSize = 'var(--text-xs)';
+          hintNode.style.color = 'var(--color-text-secondary)';
+          hintNode.style.marginTop = '2px';
+          hintNode.textContent = hint;
+          resultEl.appendChild(hintNode);
+        }
+        if (extraHtml) {
+          const extra = document.createElement('div');
+          extra.style.marginTop = 'var(--space-1)';
+          extra.innerHTML = extraHtml;
+          resultEl.appendChild(extra);
+        }
+      };
+
+      try {
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/oauth-client-credentials/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.status === 429) {
+          setResult('Testing too fast — wait a moment and retry.', '', 'var(--color-error-600)', '');
+        } else if (!res.ok) {
+          setResult(data.error || ('Request failed: ' + res.status), '', 'var(--color-error-600)', '');
+        } else if (data.ok) {
+          // Subtle exit affordance on success so operators can return to the
+          // dashboard (which reloads the compliance card with fresh auth
+          // state). No auto-reload — the retest loop stays available.
+          setResult(
+            '✅ Token exchange succeeded in ' + data.latency_ms + 'ms.',
+            '',
+            'var(--color-success-600)',
+            '<a href="#" class="agent-cc-reload" style="font-size:var(--text-sm);">Reload to refresh the dashboard →</a>',
+          );
+        } else {
+          // Typed failure from the SDK.
+          const err = data.error || {};
+          let text = '❌ ' + (err.message || 'Exchange failed') + ' (' + (err.kind || 'unknown') + ')';
+          if (err.oauth_error) {
+            text += ' — AS returned ' + err.oauth_error;
+            if (err.oauth_error_description) text += ': ' + err.oauth_error_description;
+          }
+          if (err.http_status) text += ' [HTTP ' + err.http_status + ']';
+          setResult(text, ccTestHint(err), 'var(--color-error-600)', '');
+        }
+      } catch (err) {
+        setResult('Test request failed: ' + err.message, '', 'var(--color-error-600)', '');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test now';
+      }
+    });
+
+    // Reload handler for the success-state "Reload to refresh" link.
+    document.addEventListener('click', function(e) {
+      const link = e.target.closest('.agent-cc-reload');
+      if (!link) return;
+      e.preventDefault();
+      location.reload();
     });
 
     // OAuth authorize button
@@ -1000,8 +1352,11 @@
           });
         }
 
-        // Redirect to OAuth flow
-        window.location.href = '/api/oauth/agent/start?agent_context_id=' + encodeURIComponent(agentContextId);
+        // Redirect to OAuth flow, asking it to return us here after completion
+        const returnTo = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = '/api/oauth/agent/start'
+          + '?agent_context_id=' + encodeURIComponent(agentContextId)
+          + '&return_to=' + encodeURIComponent(returnTo);
       } catch (err) {
         btn.disabled = false;
         btn.textContent = 'Authorize';
@@ -1013,6 +1368,49 @@
         }
         msg.style.color = 'var(--color-error-600)';
         msg.textContent = err.message;
+      }
+    });
+
+    // OAuth "Authorize with agent" button surfaced inline in storyboard panels
+    // when the server returns needs_oauth. Mirrors the connect-form flow:
+    // ensure agent_context, then redirect to /api/oauth/agent/start.
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-oauth-challenge-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      let agentContextId = btn.dataset.agentContextId;
+
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = 'Starting OAuth...';
+
+      try {
+        if (!agentContextId) {
+          const connectRes = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({}),
+          });
+          if (!connectRes.ok) {
+            const data = await connectRes.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to create agent context');
+          }
+          const connectData = await connectRes.json();
+          agentContextId = connectData.agent_context_id;
+          if (!agentContextId) throw new Error('Failed to create agent context');
+        }
+
+        const returnTo = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = '/api/oauth/agent/start'
+          + '?agent_context_id=' + encodeURIComponent(agentContextId)
+          + '&return_to=' + encodeURIComponent(returnTo);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        console.error('OAuth challenge failed:', err);
+        alert(err.message || 'Failed to start OAuth flow');
       }
     });
 
@@ -1275,6 +1673,22 @@
         }
       }
 
+      // Shared: render a "Connect via OAuth" prompt when an agent 401s with
+      // a WWW-Authenticate: Bearer challenge and no refreshable token is stored.
+      function renderOAuthChallenge(agentUrl, agentContextId, reason) {
+        const safeReason = reason
+          ? '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(String(reason)) + '</div>'
+          : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
+        const ctxAttr = agentContextId ? ' data-agent-context-id="' + escapeHtml(agentContextId) + '"' : '';
+        return (
+          '<div style="padding:var(--space-3);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);">'
+          + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
+          + safeReason
+          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
+          + '</div>'
+        );
+      }
+
       // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
@@ -1282,49 +1696,61 @@
         if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
 
         try {
-          // Try the tool-based resolution endpoint first
           const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
 
           if (res.ok) {
             const data = await res.json();
+            const bundles = Array.isArray(data.bundles) ? data.bundles : [];
+            const supportedProtocols = Array.isArray(data.supported_protocols) ? data.supported_protocols : [];
+            const specialisms = Array.isArray(data.specialisms) ? data.specialisms : [];
             let html = '';
 
-            // Show detected tools
-            if (data.tools && data.tools.length > 0) {
-              html += '<div class="storyboard-map-tools">Tools detected: ';
-              html += data.tools.map(t => '<code>' + escapeHtml(t) + '</code>').join(' ');
+            if (data.capabilities_probe_error) {
+              html += '<div style="padding:var(--space-2) var(--space-3);margin-bottom:var(--space-2);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);font-size:var(--text-xs);color:var(--color-warning-800);">';
+              html += 'Capabilities probe warning: ' + escapeHtml(String(data.capabilities_probe_error));
               html += '</div>';
             }
 
-            if (data.total_applicable === 0) {
+            if (supportedProtocols.length > 0 || specialisms.length > 0) {
+              html += '<div class="storyboard-map-tools" style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">';
+              if (supportedProtocols.length > 0) {
+                html += 'Protocols: ' + supportedProtocols.map(p => '<code>' + escapeHtml(String(p)) + '</code>').join(' ');
+              }
+              if (specialisms.length > 0) {
+                html += (supportedProtocols.length > 0 ? ' &nbsp;·&nbsp; ' : '') + 'Specialisms: ';
+                html += specialisms.map(s => '<code>' + escapeHtml(String(s)) + '</code>').join(' ');
+              }
+              html += '</div>';
+            }
+
+            const totalStoryboards = typeof data.total_storyboards === 'number'
+              ? data.total_storyboards
+              : bundles.reduce((n, b) => n + (Array.isArray(b.storyboards) ? b.storyboards.length : 0), 0);
+
+            if (totalStoryboards === 0) {
               html += '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">';
-              html += 'No applicable storyboards found. Your agent may not expose AdCP tools yet.';
+              html += specialisms.length === 0
+                ? 'No applicable storyboards found. Your agent has not declared any AdCP specialisms yet.'
+                : 'Your agent declared specialisms, but no storyboards matched them.';
               html += '</div>';
               panel.innerHTML = html;
               return;
             }
 
-            // Render track groups
-            const trackLabels = { core: 'Core', products: 'Products', media_buy: 'Media Buy', creative: 'Creative', governance: 'Governance', campaign_governance: 'Campaign Governance', signals: 'Signals', si: 'Sponsored Intelligence', audiences: 'Audiences', error_handling: 'Error Handling', general: 'General' };
-            const trackOrder = ['core', 'media_buy', 'products', 'creative', 'governance', 'campaign_governance', 'signals', 'si', 'audiences', 'error_handling', 'general'];
-
-            const sortedTracks = Object.keys(data.storyboards).sort((a, b) => {
-              const ai = trackOrder.indexOf(a);
-              const bi = trackOrder.indexOf(b);
-              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-            });
-
-            for (const track of sortedTracks) {
-              const storyboards = data.storyboards[track];
-              const label = trackLabels[track] || track;
+            for (const bundle of bundles) {
+              const storyboards = Array.isArray(bundle.storyboards) ? bundle.storyboards : [];
+              if (storyboards.length === 0) continue;
+              const kindLabel = bundle.kind === 'specialism' ? 'Specialism' : bundle.kind === 'protocol' ? 'Protocol' : (bundle.kind || 'Bundle');
+              const label = kindLabel + (bundle.id ? ': ' + bundle.id : '');
               html += '<div class="storyboard-track-group">';
               html += '<div class="storyboard-track-header"><span>' + escapeHtml(label) + '</span><span class="storyboard-track-count">' + storyboards.length + ' storyboard' + (storyboards.length === 1 ? '' : 's') + '</span></div>';
 
               for (const sb of storyboards) {
                 html += '<div class="storyboard-map-item">';
                 html += '<div>';
-                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title) + '</div>';
-                html += '<div class="storyboard-map-item-meta">' + sb.step_count + ' steps</div>';
+                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title || sb.id) + '</div>';
+                if (sb.summary) html += '<div class="storyboard-map-item-meta">' + escapeHtml(sb.summary) + '</div>';
+                html += '<div class="storyboard-map-item-meta">' + (sb.step_count || 0) + ' steps</div>';
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
                 html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" style="border:none;background:none;padding:0;font-size:var(--text-xs);color:var(--color-primary-600);cursor:pointer;">Preview</button>';
@@ -1335,48 +1761,74 @@
               html += '</div>';
             }
 
-            // Show what's not applicable
-            const notApplicable = data.total_available - data.total_applicable;
-            if (notApplicable > 0) {
-              html += '<details style="margin-top:var(--space-2);">';
-              html += '<summary style="font-size:var(--text-xs);color:var(--color-text-tertiary);cursor:pointer;">Other capabilities (' + notApplicable + ' storyboards not matched)</summary>';
-              html += '<div style="font-size:var(--text-xs);color:var(--color-text-tertiary);padding:var(--space-2) 0;">These storyboards require tools your agent doesn\'t expose yet. Implement the required tools to unlock them.</div>';
-              html += '</details>';
-            }
-
             panel.innerHTML = html;
-          } else {
-            // Check if auth is needed
-            const errBody = await res.json().catch(() => ({}));
-            if (errBody.needs_auth) {
-              panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Save an auth token using the connect form above, then try again.</div>';
-              return;
-            }
+            return;
+          }
 
-            // Fallback to flat list if agent can't be reached
-            panel.innerHTML = '<em>Loading storyboards...</em>';
-            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
-            const data = await fallback.json();
-            if (!data.storyboards || data.storyboards.length === 0) {
-              panel.innerHTML = '<em>No storyboards available yet.</em>';
-              return;
-            }
-            let html = '<div style="font-size:var(--text-xs);color:var(--color-warning-600);margin-bottom:var(--space-2);">Could not discover agent tools. Showing all storyboards.</div>';
-            html += '<div class="storyboard-picker">';
-            for (const sb of data.storyboards) {
-              html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-              html += '<div>';
-              html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-              html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-              html += '</div>';
-              html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
-              html += '</div>';
+          // Non-2xx — surface specific reason before falling back
+          const errBody = await res.json().catch(() => ({}));
+
+          if (errBody.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
+            return;
+          }
+
+          if (errBody.needs_auth) {
+            panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Authorize or save an auth token using the connect form above, then try again.</div>';
+            return;
+          }
+
+          if (errBody.unknown_specialism && Array.isArray(errBody.declared_specialisms)) {
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            html += '<strong>Unknown specialism.</strong> Your agent declared specialisms that aren\'t in the compliance cache:';
+            html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">';
+            html += errBody.declared_specialisms.map(s => escapeHtml(String(s))).join(', ');
+            html += '</div>';
+            if (Array.isArray(errBody.known_specialisms) && errBody.known_specialisms.length > 0) {
+              html += '<details style="margin-top:var(--space-2);"><summary style="cursor:pointer;font-size:var(--text-xs);">Known specialisms (' + errBody.known_specialisms.length + ')</summary>';
+              html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">';
+              html += errBody.known_specialisms.map(s => escapeHtml(String(s))).join(', ');
+              html += '</div></details>';
             }
             html += '</div>';
             panel.innerHTML = html;
+            return;
           }
-        } catch {
-          panel.innerHTML = '<em>Failed to load storyboards.</em>';
+
+          const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
+          const msg = errBody.error || ('HTTP ' + res.status);
+          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);margin-bottom:var(--space-3);">';
+          html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
+          html += '</div>';
+
+          try {
+            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
+            if (fallback.ok) {
+              const fdata = await fallback.json();
+              if (fdata.storyboards && fdata.storyboards.length > 0) {
+                html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">Showing all available storyboards:</div>';
+                html += '<div class="storyboard-picker">';
+                for (const sb of fdata.storyboards) {
+                  html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
+                  html += '<div>';
+                  html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
+                  html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
+                  html += '</div>';
+                  html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
+                  html += '</div>';
+                }
+                html += '</div>';
+              }
+            }
+          } catch (fallbackErr) {
+            console.error('Storyboard fallback failed:', fallbackErr);
+          }
+
+          panel.innerHTML = html;
+        } catch (err) {
+          console.error('Failed to load storyboards:', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          panel.innerHTML = '<div style="padding:var(--space-3);color:var(--color-error-700);font-size:var(--text-sm);">Failed to load storyboards: ' + escapeHtml(msg) + '</div>';
         }
       }
 
@@ -1529,6 +1981,11 @@
             return;
           }
 
+          if (result.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error);
+            return;
+          }
+
           // Render result and next step
           const resultEl = panel.querySelector('.step-runner-result');
           const cls = result.skipped ? 'skip' : result.passed ? 'pass' : 'fail';
@@ -1618,6 +2075,11 @@
 
           const data = await res.json();
           progressEl.remove();
+
+          if (res.status === 422 && data.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error);
+            return;
+          }
 
           let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
           html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
@@ -1793,9 +2255,15 @@
 
     function escapeHtml(str) {
       if (!str) return '';
-      const d = document.createElement('div');
-      d.textContent = str;
-      return d.innerHTML;
+      // textContent → innerHTML escapes &, <, > but leaves " and ' intact,
+      // which is unsafe in double-quoted attribute contexts — this file uses
+      // escapeHtml both for text and for data-* attributes.
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
   </script>
 </body>

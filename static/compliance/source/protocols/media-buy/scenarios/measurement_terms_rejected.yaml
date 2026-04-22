@@ -58,8 +58,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory with measurement guarantees. Q2 flight, $50K."
-          brand:
-            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -98,6 +100,10 @@ phases:
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "measurement-terms-probe-aggressive-v1"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -112,7 +118,7 @@ phases:
                   measurement_window: "c30"
                   max_variance_percent: 0
                 makegood_policy:
-                  remedy_types: ["cash_refund_only"]
+                  available_remedies: ["credit"]
 
           context:
             correlation_id: "measurement_terms_rejected--aggressive"
@@ -151,6 +157,10 @@ phases:
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           idempotency_key: "measurement-terms-probe-relaxed-v1"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
@@ -165,7 +175,7 @@ phases:
                   measurement_window: "c7"
                   max_variance_percent: 10
                 makegood_policy:
-                  remedy_types: ["makegood_inventory", "cash_refund"]
+                  available_remedies: ["additional_delivery", "credit"]
 
           context:
             correlation_id: "measurement_terms_rejected--relaxed"

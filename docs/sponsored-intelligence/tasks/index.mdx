@@ -5,6 +5,10 @@ description: "AdCP Sponsored Intelligence task reference. Four tasks covering th
 "og:title": "AdCP — Sponsored Intelligence Tasks"
 ---
 
+<Note>
+**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 The Sponsored Intelligence Protocol defines four tasks for managing conversational brand experiences:
 
 ## Session Lifecycle
@@ -47,7 +51,7 @@ SI tasks work over both MCP and A2A protocols:
   "params": {
     "name": "si_initiate_session",
     "arguments": {
-      "context": "User wants to fly to Boston next Tuesday morning",
+      "intent": "User wants to fly to Boston next Tuesday morning",
       "identity": { /* ... */ }
     }
   }
@@ -60,7 +64,7 @@ SI tasks work over both MCP and A2A protocols:
 {
   "task": "si_initiate_session",
   "payload": {
-    "context": "User wants to fly to Boston next Tuesday morning",
+    "intent": "User wants to fly to Boston next Tuesday morning",
     "identity": { /* ... */ }
   }
 }
@@ -74,7 +78,7 @@ For anonymous browsing without personalization:
 
 ```json
 {
-  "context": "User interested in product information",
+  "intent": "User interested in product information",
   "identity": {
     "consent_granted": false,
     "anonymous_session_id": "anon_xyz789"
@@ -88,7 +92,7 @@ For personalized experiences with consented PII:
 
 ```json
 {
-  "context": "User wants to book a flight",
+  "intent": "User wants to book a flight",
   "identity": {
     "consent_granted": true,
     "consent_timestamp": "2026-01-18T10:30:00Z",
@@ -107,7 +111,7 @@ When SI is invoked as part of a media buy:
 
 ```json
 {
-  "context": "User searching for flights to Boston",
+  "intent": "User searching for flights to Boston",
   "media_buy_id": "media_buy_q1_promo",
   "placement": "chatgpt_search",
   "offering_id": "premium_upgrade_offer",

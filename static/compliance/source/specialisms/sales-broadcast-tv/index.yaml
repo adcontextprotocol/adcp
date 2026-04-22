@@ -9,10 +9,6 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
-  - media_buy_seller/governance_approved
-  - media_buy_seller/governance_denied
-  - media_buy_seller/governance_denied_recovery
-  - media_buy_seller/governance_conditions
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
@@ -148,12 +144,10 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
-          brand:
-            domain: "novamotors.com"
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
 
           context:
             correlation_id: "sales_broadcast_tv--get_products_brief"
@@ -234,12 +228,12 @@ phases:
           MediaBuy.status enum. IO / traffic-manager review is modelled at the task layer.
 
         sample_request:
+          brand:
+            domain: "novamotors.example"
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
-          brand:
-            domain: "novamotors.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "2026-10-01T00:00:00Z"
           end_time: "2026-12-31T23:59:59Z"
@@ -252,7 +246,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.com"
+                    domain: "videoamp.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
             - product_id: "late_fringe_15s_mf"
@@ -263,17 +257,22 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.com"
+                    domain: "videoamp.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
           push_notification_config:
-            url: "https://buyer.pinnacle-agency.example/webhooks/adcp"
+            url: "{{runner.webhook_url:create_media_buy}}"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "pinnacle-broadcast-tv-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_create_buy_create_media_buy"
           context:
             correlation_id: "sales_broadcast_tv--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -311,10 +310,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_nova_q4_2026"
+            - "$context.media_buy_id"
 
           context:
             correlation_id: "sales_broadcast_tv--check_buy_status"
@@ -414,8 +413,8 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           creatives:
             - creative_id: "volta_ev_launch_30s"
               name: "Nova Volta EV Launch - :30"
@@ -427,6 +426,7 @@ phases:
                   value: "NOVA0042000H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
                   width: 1920
                   height: 1080
@@ -443,6 +443,7 @@ phases:
                   value: "NOVA0042001H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
                   width: 1920
                   height: 1080
@@ -482,7 +483,48 @@ phases:
       which prior data is being replaced. The buyer should not make pacing decisions
       based on live-only data for a C7-guaranteed buy.
 
+      Window maturation is graded by observing the webhooks the seller emits to the
+      push_notification_config registered on create_media_buy. An agent that emits
+      no webhooks at all scores identically to one that emits the correct C3 and C7
+      progression — closing that gap requires the webhook_receiver_runner test-kit
+      contract (so the runner has somewhere to observe deliveries); without it, the
+      grading step below grades as not_applicable rather than failing.
+
     steps:
+      - id: expect_window_update_webhook
+        title: "Seller emits at least one window_update delivery webhook"
+        narrative: |
+          After create_media_buy, the seller emits delivery-notification webhooks
+          as each measurement window matures (C3 superseding live with is_final:
+          false, then C7 superseding C3 with is_final: true). The envelope payload
+          MUST carry a valid idempotency_key and validate against the canonical
+          MCP webhook payload schema; the nested delivery result SHOULD carry
+          notification_type: window_update with the supersedes_window progression
+          appropriate to the window that has matured.
+
+          The filter currently matches on operation_id only — runner extensions
+          for nested payload matching (e.g. result.notification_type) will allow
+          separating the C3 and C7 deliveries into distinct assertions in a
+          follow-up. Runs only when the webhook_receiver_runner contract is in
+          scope.
+        task: expect_webhook
+        triggered_by: create_media_buy
+        filter:
+          operation_id: "{{prior_step.create_media_buy.operation_id}}"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A webhook arrives within 30 seconds whose envelope validates against
+          mcp-webhook-payload.json and carries an idempotency_key matching
+          ^[A-Za-z0-9_.:-]{16,255}$. The nested delivery result (per
+          get-media-buy-delivery-response.json) SHOULD carry notification_type:
+          window_update with supersedes_window reflecting window progression
+          (e.g. "live" for C3, "c3" for C7). Sellers that emit no delivery
+          webhooks at all fail with no_webhook_received.
+
       - id: get_delivery
         title: "Check delivery metrics"
         narrative: |
@@ -524,10 +566,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_nova_q4_2026"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:
@@ -592,10 +634,10 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "novamotors.com"
-            operator: "pinnacle-agency.com"
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_nova_q4_2026"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:
