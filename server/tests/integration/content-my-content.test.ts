@@ -334,6 +334,50 @@ describe('My Content — body, admin scope, status, delete', () => {
       expect(response.body.status).toBe('pending_review');
     });
 
+    it('returns 400 with field-specific message when title is too long (#2734)', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'A'.repeat(501),
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/title is too long/i);
+      expect(response.body.message).toContain('500');
+    });
+
+    it('accepts titles exactly at the 500-char limit', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'B'.repeat(500),
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        })
+        .expect(201);
+
+      expect(response.body.id).toBeDefined();
+    });
+
+    it('returns 400 when subtitle exceeds the 1000-char limit', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'short title',
+          subtitle: 'C'.repeat(1001),
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/subtitle is too long/i);
+    });
+
     it('rate-limits proposeContentForUser at the function level (Addie bypass) — #2733 follow-up', async () => {
       // Simulate Addie's MCP handler which calls proposeContentForUser
       // directly, bypassing HTTP middleware. Fresh user id so we start
