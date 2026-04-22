@@ -19,28 +19,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
-
-// `mcp/routes.ts` captures MCP_SERVER_URL at module-load time from
-// `process.env.BASE_URL || 'http://localhost:...'`, then `.replace(/\/$/, '')`.
-// In conductor workspaces `BASE_URL="/"` is set in the shell, which passes
-// the `||` fallback, strips to `''`, and then throws on `new URL('')` at
-// HTTPServer construction. `vi.hoisted()` runs before any imports, so this
-// block guards us per-file without leaking a global default via setupFiles.
-// Tracked as a server-side tolerance fix on the routes.ts fallback.
-vi.hoisted(() => {
-  const raw = process.env.BASE_URL;
-  const trimmed = typeof raw === 'string' ? raw.replace(/\/$/, '').trim() : '';
-  if (!trimmed) {
-    process.env.BASE_URL = 'http://localhost:3000';
-    return;
-  }
-  try {
-    new URL(trimmed);
-  } catch {
-    process.env.BASE_URL = 'http://localhost:3000';
-  }
-});
-
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';

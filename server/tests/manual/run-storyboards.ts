@@ -66,22 +66,14 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
       (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
     },
   }));
-  // RFC 9728 protected-resource metadata — the graders probe
-  // `${origin}/.well-known/oauth-protected-resource${pathname}`, which is the
-  // origin root regardless of where the training-agent router is mounted.
-  // Mount the endpoint on the top-level app so `/.well-known/oauth-protected-
-  // resource/api/training-agent/mcp` is reachable.
-  app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
-    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-    const suffix = req.path.replace(/^\/\.well-known\/oauth-protected-resource/, '') || '/';
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json({
-      resource: `${proto}://${host}${suffix}`,
-      authorization_servers: [`${proto}://${host}/auth`],
-      bearer_methods_supported: ['header'],
-    });
-  });
+  // The training agent is API-key-only — no OAuth issuer. Per
+  // static/compliance/source/universal/security.yaml (lines 37–47), such
+  // agents MUST NOT serve RFC 9728 protected-resource metadata; doing so
+  // advertises an issuer the agent cannot back with an RFC 8414 auth-server
+  // metadata document and triggers the exact failure security_baseline was
+  // written to catch (presenceDetected flips and the `optional` OAuth phase
+  // becomes a hard fail). api_key_path carries `auth_mechanism_verified`
+  // on its own.
   app.use('/api/training-agent', createTrainingAgentRouter());
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
@@ -118,17 +110,43 @@ function isApplicable(sb: Storyboard): boolean {
  * brand into options.brand forces every outgoing request onto the same
  * session key.
  */
-function brandForStoryboard(sb: Storyboard): StoryboardRunOptions['brand'] | undefined {
+interface LoadedTestKit {
+  brand?: { house?: { domain?: string }; brand_id?: string };
+  auth?: { api_key?: string; probe_task?: string };
+}
+
+function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
   const kitRef = sb.prerequisites?.test_kit;
   if (!kitRef) return undefined;
   const path = join(getComplianceCacheDir(), kitRef);
   if (!existsSync(path)) return undefined;
-  const kit = YAML.parse(readFileSync(path, 'utf-8')) as {
-    brand?: { house?: { domain?: string }; brand_id?: string };
+  return YAML.parse(readFileSync(path, 'utf-8')) as LoadedTestKit;
+}
+
+function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
+  const domain = kit?.brand?.house?.domain;
+  return domain ? { domain } : undefined;
+}
+
+/**
+ * Thread the test-kit's `auth.api_key` / `auth.probe_task` through to the
+ * runner so `api_key_path` in security_baseline (and any future kit-gated
+ * phase) executes instead of being skipped by `skip_if: "!test_kit.auth.api_key"`.
+ * `probe_task` is required by the runner whenever `auth` is declared — surface
+ * missing values as a hard failure rather than silently defaulting.
+ */
+function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['test_kit'] | undefined {
+  const auth = kit?.auth;
+  if (!auth?.api_key && !auth?.probe_task) return undefined;
+  if (!auth.probe_task) {
+    throw new Error('test kit declares auth.api_key without auth.probe_task — required by runner');
+  }
+  return {
+    auth: {
+      ...(auth.api_key !== undefined && { api_key: auth.api_key }),
+      probe_task: auth.probe_task,
+    },
   };
-  const domain = kit.brand?.house?.domain;
-  if (!domain) return undefined;
-  return { domain };
 }
 
 function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
@@ -151,11 +169,21 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
-        const s = step as { id?: string; step_id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
-        const validationFails = (s.validations ?? []).filter(v => !v.passed).map(v => v.description ?? '(validation failed)').join('; ');
+        const s = step as { step_id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
+        const validationFails = (s.validations ?? [])
+          .filter(v => !v.passed)
+          .map(v => v.description ?? '(validation failed)')
+          .join('; ');
+        // Prefer the step-level error; fall back to the concatenated failed-
+        // validation descriptions so runs don't collapse to the one-liner
+        // "Probe validations failed" without surfacing the actual checks that
+        // didn't pass (issue #2841).
+        const errorDetail = validationFails
+          ? (s.error ? `${s.error} — ${validationFails}` : validationFails)
+          : (s.error ?? '(failed without message)');
         base.failures.push({
-          step: s.step_id ?? s.id ?? '(unknown step)',
-          error: s.error ?? validationFails ?? '(failed without message)',
+          step: s.step_id ?? '(unknown step)',
+          error: errorDetail,
         });
       }
     }
@@ -185,7 +213,9 @@ async function main() {
     await clearSessions();
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
-      const brand = brandForStoryboard(sb);
+      const kit = loadTestKit(sb);
+      const brand = brandFromKit(kit);
+      const testKit = testKitOptionsFromKit(kit);
       // The default `/mcp` route is the public sandbox (bearer OR signed,
       // no `required_for` enforcement). The `/mcp-strict` route is the
       // grader target with presence-gated signing + required_for. Point
@@ -225,6 +255,7 @@ async function main() {
           skipRateAbuse: true,
         },
         ...(brand && { brand }),
+        ...(testKit && { test_kit: testKit }),
       });
       const summary = summarize(sb, result);
       results.push(summary);
