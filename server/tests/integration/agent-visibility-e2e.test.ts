@@ -306,7 +306,6 @@ describe('Agent visibility E2E', () => {
       orgId,
       'individual_professional',
       'individual_academic',
-      memberDb,
       brandDb,
     );
 
@@ -335,7 +334,6 @@ describe('Agent visibility E2E', () => {
       orgId,
       'company_leader',
       null,
-      memberDb,
       brandDb,
     );
 
@@ -451,5 +449,116 @@ describe('Agent visibility E2E', () => {
     expect(byUrl['https://old-priv.example']).toBe('private');
     // is_public key should be gone after migration transform
     expect((profile!.agents[0] as any).is_public).toBeUndefined();
+  });
+
+  it('POST /publish on a community brand: profile JSONB commits even when brand.json manifest write fails (#2825)', async () => {
+    // The invariant this pins: `applyAgentVisibility` writes to two
+    // different surfaces — `member_profiles.agents` (inside the tx)
+    // and `brand_revisions` via `updateManifestAgents` (separate
+    // connection). If the manifest write is inside the tx and
+    // succeeds while the commit fails, we orphan a manifest entry.
+    // The rewrite in #2825 moved the manifest write to AFTER the
+    // profile commit, so a manifest failure leaves the committed
+    // JSONB authoritative and `/check`'s drift detection picks up
+    // the divergence.
+    const orgId = `${TEST_PREFIX}_manifest_fail`;
+    const userId = `${TEST_PREFIX}_manifest_fail_user`;
+    const domain = 'manifestfail.example';
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Manifest Fail Org',
+      slug: 'manifestfail',
+      primary_brand_domain: domain,
+      is_public: true,
+      agents: [
+        { url: `https://agent.${domain}`, visibility: 'private' },
+      ],
+    });
+    // Seed a community-hosted brand row so the publish hits the
+    // intended code path (`target==='public' && !isSelfHosted`). Without
+    // this, `discovered` is null and the test passes via the missing-
+    // discovery fallthrough — a future refactor that short-circuits
+    // null discovery would silently collapse the test.
+    await brandDb.upsertDiscoveredBrand({
+      domain,
+      source_type: 'community',
+      brand_manifest: { agents: [] },
+    });
+
+    // Spy on the real brandDb instance. `applyAgentVisibility` calls
+    // `brandDb.updateManifestAgents` — forcing it to throw simulates a
+    // failed community-manifest write.
+    const updateSpy = vi
+      .spyOn(brandDb, 'updateManifestAgents')
+      .mockRejectedValueOnce(new Error('simulated manifest-write failure'));
+
+    try {
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+
+      // Response should still be 200 — the profile update is
+      // authoritative; manifest drift logs but doesn't fail the request.
+      expect(res.status).toBe(200);
+      expect(res.body.visibility).toBe('public');
+
+      // The manifest write was attempted (so this is a real drift
+      // scenario, not a skipped one).
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+
+      // Profile JSONB is authoritative and reflects the publish.
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      expect(profile!.agents[0].visibility).toBe('public');
+    } finally {
+      updateSpy.mockRestore();
+    }
+  });
+
+  it('POST /publish on a self-hosted brand: does NOT call updateManifestAgents (proves the spy in the sibling test is real)', async () => {
+    // The manifest-write drift scenario applies only to community-
+    // hosted brands. Self-hosted brands (`source_type==='brand_json'`)
+    // skip the manifest write entirely and instead return a `snippet`
+    // for the owner to paste into their own brand.json. This test is
+    // the specificity check for the failing-manifest test above: if
+    // someone refactors `applyAgentVisibility` to always call
+    // `updateManifestAgents` (including on self-hosted), this test
+    // flips red.
+    const orgId = `${TEST_PREFIX}_self_hosted`;
+    const userId = `${TEST_PREFIX}_self_hosted_user`;
+    const domain = 'selfhosted.example';
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Self Hosted Org',
+      slug: 'selfhosted',
+      primary_brand_domain: domain,
+      is_public: true,
+      agents: [
+        { url: `https://agent.${domain}`, visibility: 'private' },
+      ],
+    });
+    await brandDb.upsertDiscoveredBrand({
+      domain,
+      source_type: 'brand_json',
+      brand_manifest: { agents: [] },
+    });
+
+    const updateSpy = vi.spyOn(brandDb, 'updateManifestAgents');
+    try {
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+
+      expect(res.status).toBe(200);
+      expect(res.body.visibility).toBe('public');
+      // Self-hosted → snippet returned for the owner to paste; no
+      // manifest write from our side.
+      expect(res.body.action).toBe('snippet');
+      expect(res.body.snippet).toMatchObject({ url: `https://agent.${domain}` });
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      updateSpy.mockRestore();
+    }
   });
 });

@@ -55,6 +55,7 @@ import {
   ComplianceRunSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
+  CredentialSaveValidationErrorSchema,
   StoryboardSummarySchema,
   StoryboardDetailSchema,
 } from "../schemas/registry.js";
@@ -1703,7 +1704,10 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
+    400: {
+      description: "Invalid parameters — response carries `code` and `field` pointing to the rejection cause.",
+      content: { "application/json": { schema: CredentialSaveValidationErrorSchema } },
+    },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
@@ -4027,7 +4031,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           validateTokenEndpoint: validateExternalUrl,
         });
         if (!parsed.ok) {
-          return res.status(400).json({ error: parsed.error });
+          return res.status(400).json({ error: parsed.error, code: parsed.code, field: parsed.field });
         }
 
         const orgResult = await query<{ workos_organization_id: string }>(

@@ -124,7 +124,7 @@ export function createIllustrationToolHandlers(
     // Per-session tool rate limit (10/10min) — complements the existing
     // monthly per-user quota below. Bounds an automated loop that
     // stays under the monthly ceiling but still burns Gemini credits.
-    const toolRate = checkToolRateLimit('generate_perspective_illustration', userId);
+    const toolRate = await checkToolRateLimit('generate_perspective_illustration', userId);
     if (!toolRate.ok) {
       const retrySeconds = Math.max(1, Math.ceil((toolRate.retryAfterMs ?? 60000) / 1000));
       return JSON.stringify({

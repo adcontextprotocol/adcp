@@ -13,8 +13,12 @@ required_tools:
 # failure mode where a seller surfaces the denial response but still
 # creates the media buy / activates the signal / syncs the property list
 # anyway. Plan-scoped — unrelated plans proceed normally.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives.
 invariants:
   - governance.denial_blocks_mutation
+  - status.monotonic
 
 narrative: |
   The buyer's governance agent registers a plan with strict spending authority. The buyer

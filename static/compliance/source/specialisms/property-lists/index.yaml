@@ -8,6 +8,15 @@ track: governance
 required_tools:
   - create_property_list
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph. Silent on property-list-only runs (no tracked
+# lifecycle resource), but wired so phases that touch media_buy /
+# account status (e.g. via a validation run against delivery) are
+# automatically gated.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a governance agent that manages property lists for brand safety. Buyers create
   inclusion and exclusion lists that define where their ads can and cannot appear. Your

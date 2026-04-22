@@ -14,6 +14,13 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy or
+# approved → processing on a creative asset.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a generative sell-side platform — an AI ad network, generative DSP, or any system that
   both sells inventory and generates creatives from a brief. The buyer doesn't upload finished

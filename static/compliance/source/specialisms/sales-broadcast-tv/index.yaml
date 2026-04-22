@@ -17,6 +17,12 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a broadcast television platform — a local TV station group, network affiliate,
   or television rep firm that sells linear advertising inventory. A buyer agent connects

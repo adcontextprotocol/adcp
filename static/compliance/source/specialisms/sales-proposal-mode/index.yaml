@@ -17,6 +17,13 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. committed → draft on a proposal or active →
+# pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+
 narrative: |
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
   returns products alongside proposals — curated bundles with budget allocations and rationale

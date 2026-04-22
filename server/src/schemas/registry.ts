@@ -22,6 +22,41 @@ export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
 
+/**
+ * Extended error shape for endpoints whose parser can tag rejections with
+ * a stable `code` + `field` pointer (see `parseOAuthClientCredentialsInput`).
+ * Consumers map codes to localized prose and highlight the offending field.
+ * Generic 500s / non-parser 400s still use `ErrorSchema`.
+ */
+export const CredentialSaveValidationErrorSchema = z
+  .object({
+    error: z.string(),
+    code: z
+      .enum([
+        "invalid_blob_shape",
+        "missing_field",
+        "invalid_field_type",
+        "field_too_long",
+        "invalid_url",
+        "invalid_env_reference",
+        "invalid_auth_method_value",
+      ])
+      .openapi({ description: "Stable rejection tag. UI maps this to operator-friendly prose." }),
+    field: z
+      .enum([
+        "oauth_client_credentials",
+        "token_endpoint",
+        "client_id",
+        "client_secret",
+        "scope",
+        "resource",
+        "audience",
+        "auth_method",
+      ])
+      .openapi({ description: "Field the UI should scroll to + highlight." }),
+  })
+  .openapi("CredentialSaveValidationError");
+
 export const LocalizedNameSchema = z
   .record(z.string(), z.string())
   .openapi("LocalizedName");

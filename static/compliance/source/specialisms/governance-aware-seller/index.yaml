@@ -13,8 +13,13 @@ required_tools:
 # the surface this assertion protects. If a seller propagates a denial
 # response from its governance agent but then creates the media buy
 # anyway, no per-step validation notices — this assertion does.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — catches an approved-with-conditions buy jumping
+# from pending_creatives back to pending_start, or active → pending_creatives.
 invariants:
   - governance.denial_blocks_mutation
+  - status.monotonic
 requires_scenarios:
   - media_buy_seller/governance_approved
   - media_buy_seller/governance_conditions

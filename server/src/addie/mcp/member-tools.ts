@@ -2266,7 +2266,7 @@ export function createMemberToolHandlers(
     // Per-user rate limit — attach_content_asset fetches an external URL
     // and buffers up to 50MB. A scripted loop could burn bandwidth and
     // storage. See tool-rate-limiter.ts.
-    const rate = checkToolRateLimit('attach_content_asset', memberContext.workos_user.workos_user_id);
+    const rate = await checkToolRateLimit('attach_content_asset', memberContext.workos_user.workos_user_id);
     if (!rate.ok) {
       const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
       return `Rate limit exceeded on attach_content_asset. Try again in ~${retrySeconds} seconds.`;

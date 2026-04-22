@@ -281,6 +281,10 @@
       font-size: var(--text-xs);
       margin-top: var(--space-1);
     }
+    .agent-cc-field-error {
+      outline: 2px solid var(--color-error-500, #ef4444);
+      outline-offset: 1px;
+    }
 
     .agent-lifecycle-select {
       font-size: var(--text-xs);
@@ -761,7 +765,7 @@
       `;
     }
 
-    function buildConnectForm(escapedUrl, platformTypeOptions, agentContextId) {
+    function buildConnectForm(escapedUrl, agentContextId) {
       const contextIdAttr = agentContextId ? ' data-agent-context-id="' + agentContextId + '"' : '';
       return '<div class="agent-connect-form" data-agent-url="' + escapedUrl + '"' + contextIdAttr + '>' +
         '<label>Auth type<select name="auth_type" class="auth-type-select">' +
@@ -772,12 +776,10 @@
         '</select></label>' +
         '<div class="auth-token-fields" style="display:none;">' +
           '<label>Auth token<input type="password" name="auth_token" placeholder="Bearer token or API key" autocomplete="off"></label>' +
-          '<label>Platform type<select name="platform_type"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-connect-save">Save</button>' +
         '</div>' +
         '<div class="auth-oauth-fields">' +
           '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">Securely authorize via the agent\'s OAuth flow. No tokens to copy.</p>' +
-          '<label>Platform type<select name="platform_type_oauth"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-oauth-start">Authorize</button>' +
         '</div>' +
         '<div class="auth-cc-fields" style="display:none;">' +
@@ -802,7 +804,6 @@
             '<option value="basic">Basic (HTTP Basic header)</option>' +
             '<option value="body">Body (client_id/client_secret as form fields)</option>' +
           '</select></label>' +
-          '<label>Platform type<select name="platform_type_cc"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-cc-save">Save credentials</button>' +
         '</div>' +
       '</div>';
@@ -819,27 +820,6 @@
           </div>
         `;
       }
-
-      const platformTypes = [
-        ['display_ad_server', 'Display ad server'],
-        ['video_ad_server', 'Video ad server'],
-        ['social_platform', 'Social platform'],
-        ['pmax_platform', 'Performance max'],
-        ['dsp', 'DSP'],
-        ['retail_media', 'Retail media'],
-        ['search_platform', 'Search platform'],
-        ['audio_platform', 'Audio platform'],
-        ['creative_transformer', 'Creative transformer'],
-        ['creative_library', 'Creative library'],
-        ['creative_ad_server', 'Creative ad server'],
-        ['si_platform', 'SI platform'],
-        ['ai_ad_network', 'AI ad network'],
-        ['ai_platform', 'AI platform'],
-        ['generative_dsp', 'Generative DSP'],
-      ];
-      const platformTypeOptions = platformTypes.map(([val, label]) =>
-        '<option value="' + val + '">' + label + '</option>'
-      ).join('');
 
       return agents.map(agent => {
         const data = complianceMap?.get(agent.url);
@@ -895,7 +875,7 @@
             </div>
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
-              : buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+              : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -981,7 +961,7 @@
               </div>
             </div>
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
-              ${buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+              ${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
@@ -1072,7 +1052,6 @@
       const agentUrl = form.dataset.agentUrl;
       const authToken = form.querySelector('[name="auth_token"]').value.trim();
       const authType = form.querySelector('[name="auth_type"]').value;
-      const platformType = form.querySelector('[name="platform_type"]').value;
 
       if (!authToken) {
         form.querySelector('[name="auth_token"]').focus();
@@ -1084,7 +1063,6 @@
 
       try {
         const body = { auth_token: authToken, auth_type: authType };
-        if (platformType) body.platform_type = platformType;
 
         const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
           method: 'PUT',
@@ -1169,8 +1147,30 @@
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
+          // Structured 400 from parseOAuthClientCredentialsInput: code + field
+          // drive a friendly message and an outlined-and-scrolled input.
+          // Other failure statuses (401/403/500) fall back to data.error.
+          if (res.status === 400 && data.code) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save credentials';
+            ccSaveHighlightField(form, data.field);
+            let msg = form.querySelector('.agent-connect-msg');
+            if (!msg) {
+              msg = document.createElement('div');
+              msg.className = 'agent-connect-msg';
+              form.appendChild(msg);
+            }
+            msg.style.color = 'var(--color-error-600)';
+            msg.textContent = ccSaveFriendlyMessage(data.code, data.field, data.error);
+            return;
+          }
           throw new Error(data.error || 'Failed to save credentials');
         }
+
+        // Clear any lingering field highlights on success — the form is
+        // about to be replaced, but this keeps the DOM state clean for any
+        // mid-flight handler that inspects it before the innerHTML swap.
+        ccSaveHighlightField(form, null);
 
         // Replace the form with a save-confirmation + a "Test now" button.
         // The test endpoint exchanges at the AS and discards the token, so
@@ -1200,6 +1200,45 @@
         msg.textContent = err.message;
       }
     });
+
+    // Map save-endpoint rejection codes to operator-friendly prose + the form
+    // field the user should fix. Server returns { error, code, field } on
+    // 400; UI renders the friendly message and red-outlines the field. Fall
+    // back to the raw error string when we don't recognize the code.
+    const CC_SAVE_FIELD_TO_INPUT = {
+      token_endpoint: 'cc_token_endpoint',
+      client_id: 'cc_client_id',
+      client_secret: 'cc_client_secret',
+      scope: 'cc_scope',
+      resource: 'cc_resource',
+      audience: 'cc_audience',
+      auth_method: 'cc_auth_method',
+    };
+    function ccSaveFriendlyMessage(code, field, rawError) {
+      if (code === 'invalid_blob_shape') return 'Credentials payload had an unexpected shape. Refresh and try again.';
+      if (code === 'missing_field') return 'Required field is missing: ' + (field || 'unknown') + '.';
+      if (code === 'invalid_field_type') return 'Field has the wrong type: ' + (field || 'unknown') + '. Must be text.';
+      if (code === 'field_too_long') return 'Value is too long for ' + (field || 'this field') + '. Shorten it and retry.';
+      if (code === 'invalid_url') return 'Token endpoint must be https:// (http://localhost is allowed in development). Cloud-metadata and private-network hosts are blocked.';
+      if (code === 'invalid_env_reference') return 'Environment-variable references must use the ADCP_OAUTH_ prefix (e.g. $ENV:ADCP_OAUTH_CLIENT_SECRET). Other names are rejected so a misconfigured agent can\'t read unrelated secrets.';
+      if (code === 'invalid_auth_method_value') return 'Auth method must be "basic" or "body".';
+      return rawError || 'Failed to save credentials.';
+    }
+    function ccSaveHighlightField(form, field) {
+      // Clear any prior highlights before setting the new one — otherwise
+      // repeated save attempts accumulate outlines on fields the user has
+      // since fixed.
+      form.querySelectorAll('.agent-cc-field-error').forEach(el => el.classList.remove('agent-cc-field-error'));
+      if (!field) return;
+      const name = CC_SAVE_FIELD_TO_INPUT[field];
+      if (!name) return;
+      const el = form.querySelector('[name="' + name + '"]');
+      if (el) {
+        el.classList.add('agent-cc-field-error');
+        el.focus();
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
 
     // One-line actionable hints keyed off the SDK's ClientCredentialsExchangeError
     // kind / oauth_error. Aimed at a non-engineer ad-ops operator: "here's the
@@ -1317,21 +1356,19 @@
 
       const agentUrl = form.dataset.agentUrl;
       let agentContextId = form.dataset.agentContextId;
-      const platformType = form.querySelector('[name="platform_type_oauth"]')?.value;
 
       btn.disabled = true;
       btn.textContent = 'Starting OAuth...';
 
       try {
-        // Ensure agent context exists (connect without token)
+        // Ensure agent context exists (connect without token) so the OAuth
+        // flow below has a persistent `agent_context_id` to bind tokens to.
         if (!agentContextId) {
-          const body = {};
-          if (platformType) body.platform_type = platformType;
           const connectRes = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify(body),
+            body: JSON.stringify({}),
           });
           if (!connectRes.ok) {
             const data = await connectRes.json().catch(() => ({}));
@@ -1342,14 +1379,6 @@
           if (!agentContextId) {
             throw new Error('Failed to create agent context');
           }
-        } else if (platformType) {
-          // Save platform type even if context already exists
-          await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ platform_type: platformType }),
-          });
         }
 
         // Redirect to OAuth flow, asking it to return us here after completion

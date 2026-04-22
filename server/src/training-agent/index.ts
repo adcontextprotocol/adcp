@@ -329,8 +329,45 @@ export function createTrainingAgentRouter(): Router {
         server = useFrameworkServer()
           ? createFrameworkTrainingAgentServer(ctx)
           : createTrainingAgentServer(ctx);
+
+        // MCP Streamable HTTP transport requires the client Accept header to
+        // list BOTH `application/json` and `text/event-stream` per the 2025-03-26
+        // spec — or it returns 406 Not Acceptable. Storyboard conformance
+        // probes (SDK `rawMcpProbe`) and other strict JSON consumers only
+        // send `application/json`. We satisfy both by (a) adding the missing
+        // SSE content type so the transport's check passes and (b) enabling
+        // JSON response mode so the body is single-shot JSON rather than an
+        // SSE stream the probe can't parse.
+        //
+        // Bearer-authed buyer agents using @adcp/client already send both
+        // content types, so this is additive — no regression on the hot
+        // path. `enableJsonResponse` changes the response format for every
+        // request, not just JSON-only probes; the @adcp/client unwrapper
+        // handles both equivalently (`isMCPResponse` check looks for
+        // structuredContent/content keys, not Content-Type).
+        const acceptHeader = req.headers.accept;
+        const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
+        const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
+        if (hasJson && !hasSse) {
+          const rewritten = `${acceptHeader}, text/event-stream`;
+          req.headers.accept = rewritten;
+          // @hono/node-server (used internally by StreamableHTTPServerTransport)
+          // reads headers from `rawHeaders` — the alternating [name, value] array
+          // Node's HTTP parser fills in. Mutating `req.headers.accept` alone
+          // doesn't propagate to the transport's Fetch Request wrapper.
+          const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
+          if (Array.isArray(raw)) {
+            for (let i = 0; i < raw.length; i += 2) {
+              if (raw[i].toLowerCase() === 'accept') {
+                raw[i + 1] = rewritten;
+              }
+            }
+          }
+        }
+
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // Stateless
+          enableJsonResponse: true,
         });
 
         await server.connect(transport);

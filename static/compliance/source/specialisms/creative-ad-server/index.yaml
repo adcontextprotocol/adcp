@@ -8,6 +8,12 @@ track: creative
 required_tools:
   - build_creative
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. approved → processing on a creative asset.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a creative ad server — think Innovid, Flashtalking, or CM360. Your clients
   have already uploaded their creatives through your UI. Buyers connect to browse your
