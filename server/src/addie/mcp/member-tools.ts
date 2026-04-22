@@ -4903,7 +4903,14 @@ export function createMemberToolHandlers(
         if (profile) {
           const agents = profile.agents || [];
           if (!agents.some((a: any) => a.url === agentUrl)) {
-            agents.push({ url: agentUrl, name: displayName, visibility: 'public' });
+            // Default to members_only, not public. The public directory
+            // requires an API-access tier (Professional+); defaulting to
+            // 'public' here lets Addie implicitly publish an agent for an
+            // Explorer-tier caller who hasn't been tier-gated. Members_only
+            // keeps the agent discoverable to peer members with API access
+            // and lets the owner promote to public through the explicit,
+            // tier-checked /publish route when eligible.
+            agents.push({ url: agentUrl, name: displayName, visibility: 'members_only' });
             await memberDb.updateProfile(profile.id, { agents });
           }
         }
