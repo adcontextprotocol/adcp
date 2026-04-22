@@ -2038,20 +2038,31 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
-  it('returns zero counts when no creatives synced', async () => {
+  it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'list_creatives', { account });
 
-    expect(result.creatives).toEqual([]);
+    // Empty sessions fall back to compliance creative fixtures (e.g.
+    // campaign_hero_video) so conformance storyboards can resolve stable IDs
+    // without controller_seeding auto-fire. Sessions with synced creatives
+    // return only those.
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+  });
 
+  it('skips the compliance fallback when creative_ids filter is explicit', async () => {
+    const account = { brand: { domain: 'filter-empty.example' }, operator: 'filter-empty.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      creative_ids: ['nonexistent_id'],
+    });
+
+    expect(result.creatives).toEqual([]);
     const qs = result.query_summary as Record<string, unknown>;
     expect(qs.total_matching).toBe(0);
     expect(qs.returned).toBe(0);
-
-    const pg = result.pagination as Record<string, unknown>;
-    expect(pg.has_more).toBe(false);
-    expect(pg.total_count).toBe(0);
   });
 
   it('query_summary reflects filtered count', async () => {
@@ -2143,6 +2154,25 @@ describe('list_creatives pricing', () => {
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives[0].pricing_options).toBeUndefined();
+  });
+
+  it('includes pricing_options on an ad-server-capable seller when include_pricing is omitted', async () => {
+    // creative.has_creative_library: true sellers quote per-creative pricing
+    // against the account rate card automatically — the SDK's list_creatives
+    // request builder does not forward include_pricing, so storyboards rely
+    // on capability-based emission for creative_ad_server conformance.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options).toBeDefined();
+    expect(options[0].pricing_option_id).toBe('po_display_300x250_cpm');
   });
 
   it('includes pricing_options when both include_pricing and account are provided', async () => {
