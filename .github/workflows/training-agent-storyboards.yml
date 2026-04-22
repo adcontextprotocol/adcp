@@ -36,21 +36,23 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 42→46 after fixing the gov_acme_q2_2027 seed divergence
-            # and adding outdoor_video_q2/display_q2 fixtures to the
-            # governance-delivery-monitor storyboard.
-            min_clean_storyboards: 46
-            min_passing_steps: 370
+            # 46→50 after tightening calibrate_content verdicts, list_creatives
+            # response shape, force_creative_rejected transition map, and
+            # brand_baseline validation checks; plus pricing_option_id context
+            # capture on brand_rights acquire_rights.
+            min_clean_storyboards: 50
+            min_passing_steps: 378
           - mode: framework
             flag_value: '1'
-            # 37→39 after the gov_acme_q2_2027 + governance-delivery-monitor
-            # fixture fixes. Framework-only delta vs. legacy remains ~9 step
-            # failures (acquire_rights_denied error code, calibrate_content
-            # verdict, log_event/provide_feedback session lookups,
-            # report_usage `accepted` field type, replayed/conditions/outcome
-            # shape) — tracked as the residual zod-parity follow-up.
-            min_clean_storyboards: 39
-            min_passing_steps: 370
+            # 39→44 after the same handler tightening lifted framework too
+            # (calibrate verdict, provide_feedback cross-session lookup).
+            # Residual framework-only failures (7): acquire_rights_denied
+            # error code, check_governance conditions, report_plan_outcome
+            # outcome_id, create_media_buy_initial replayed field,
+            # log_event/log_events session lookup — tracked as the residual
+            # zod-parity follow-up.
+            min_clean_storyboards: 44
+            min_passing_steps: 378
     steps:
       - uses: actions/checkout@v6
 
