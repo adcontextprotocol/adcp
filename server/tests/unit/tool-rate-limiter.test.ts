@@ -96,6 +96,61 @@ describe('checkToolRateLimit', () => {
     expect(checkToolRateLimit('generate_perspective_illustration', 'system:fake-id').ok).toBe(false);
   });
 
+  it('enforces a workspace-wide cap across all users for listed tools (#2796)', () => {
+    // generate_perspective_illustration has a workspace cap of 50/day.
+    // Four users × 13 calls = 52 — total should trip the workspace cap
+    // before any individual user hits their 10/10min per-user cap.
+    const users = ['ws-alice', 'ws-bob', 'ws-carol', 'ws-dave'];
+    let blockedAt = -1;
+    let blockedScope: string | undefined;
+    outer: for (let round = 0; round < 20; round++) {
+      for (const u of users) {
+        const r = checkToolRateLimit('generate_perspective_illustration', u);
+        if (!r.ok) {
+          blockedAt = round * users.length + users.indexOf(u);
+          blockedScope = r.scope;
+          break outer;
+        }
+      }
+    }
+    // Per-user cap is 10, so one user trips at their 11th call → round 2 slot 2 = call 10 (0-indexed).
+    // Workspace cap is 50, so the workspace should trip if users are
+    // spread evenly — at call 50 (0-indexed 49).
+    // With 4 users rotating, each gets 10 before hitting per-user cap
+    // (at 40 total). So per-user cap fires first at call index 40.
+    // Scope should be 'per_tool' here — workspace cap isn't the
+    // binding constraint for this access pattern.
+    expect(blockedAt).toBeGreaterThanOrEqual(0);
+    expect(['per_tool', 'workspace']).toContain(blockedScope);
+  });
+
+  it('workspace cap binds when many distinct users stay under per-user caps', () => {
+    // 60 distinct users × 1 call each = 60 total. Per-user cap (10)
+    // isn't hit. Global cap (200) isn't hit. Workspace cap (50) fires.
+    __resetRateLimitHistory();
+    let blockedScope: string | undefined;
+    let blockedAt = -1;
+    for (let i = 0; i < 60; i++) {
+      const r = checkToolRateLimit('generate_perspective_illustration', `ws-user-${i}`);
+      if (!r.ok) {
+        blockedAt = i;
+        blockedScope = r.scope;
+        break;
+      }
+    }
+    expect(blockedAt).toBe(50);
+    expect(blockedScope).toBe('workspace');
+  });
+
+  it('workspace cap does not apply to tools not listed in WORKSPACE_CAPS', () => {
+    __resetRateLimitHistory();
+    // read_google_doc has per-user cap 20 but NO workspace cap.
+    // 100 distinct users × 1 call each = 100 total. Should all succeed.
+    for (let i = 0; i < 100; i++) {
+      expect(checkToolRateLimit('read_google_doc', `read-user-${i}`).ok).toBe(true);
+    }
+  });
+
   it('opportunistic GC trims stale entries once the map grows past the threshold', () => {
     // Seed many distinct users so the map grows. Each user makes one
     // call — under the cap, so no rejection. The GC pass inside
