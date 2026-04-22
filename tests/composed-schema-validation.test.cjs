@@ -46,6 +46,7 @@ async function testSchemaValidation(schemaId, testData, description) {
       allErrors: true,
       verbose: true,
       strict: false,
+      discriminator: true,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
@@ -83,6 +84,7 @@ async function testSchemaRejection(schemaId, testData, description) {
       allErrors: true,
       verbose: true,
       strict: false,
+      discriminator: true,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
@@ -484,7 +486,8 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
     const ajv = new Ajv({
       allErrors: true,
       verbose: true,
-      strict: false
+      strict: false,
+      discriminator: true
       // Note: NO loadSchema - bundled schemas must be self-contained
     });
     addFormats(ajv);
@@ -520,7 +523,7 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
 async function testBundledSchemaCompile(schemaPath, description) {
   totalTests++;
   try {
-    const ajv = new Ajv({ allErrors: true, strict: false });
+    const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
     addFormats(ajv);
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     ajv.compile(schema);
@@ -548,7 +551,7 @@ async function testAllBundledSchemasCompile(bundledPath) {
       if (entry.isDirectory()) walk(p);
       else if (entry.name.endsWith('.json')) {
         try {
-          const ajv = new Ajv({ allErrors: true, strict: false });
+          const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
           addFormats(ajv);
           ajv.compile(JSON.parse(fs.readFileSync(p, 'utf8')));
         } catch (error) {

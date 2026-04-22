@@ -47,6 +47,7 @@ async function validateExample(data, schemaId, description) {
       allErrors: true,
       verbose: false,
       strict: false,
+      discriminator: true,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
@@ -78,7 +79,7 @@ async function validateExample(data, schemaId, description) {
 async function expectInvalid(data, schemaId, description) {
   totalTests++;
   try {
-    const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, loadSchema: loadExternalSchema });
+    const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));

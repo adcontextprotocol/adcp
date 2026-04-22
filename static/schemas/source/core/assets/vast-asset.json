@@ -87,5 +87,8 @@
       ]
     }
   ],
+  "discriminator": {
+    "propertyName": "delivery_type"
+  },
   "additionalProperties": true
 }

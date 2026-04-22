@@ -12,10 +12,11 @@ const addFormats = require('ajv-formats');
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Initialize AJV with formats
-const ajv = new Ajv({ 
+const ajv = new Ajv({
   allErrors: true,
   verbose: true,
-  strict: false
+  strict: false,
+  discriminator: true
 });
 addFormats(ajv);
 
@@ -52,6 +53,7 @@ async function loadSchemas(dir) {
             allErrors: true,
             verbose: true,
             strict: false,
+            discriminator: true,
             loadSchema: loadExternalSchema
           });
           addFormats(schemaAjv);

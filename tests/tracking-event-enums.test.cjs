@@ -72,6 +72,7 @@ async function compileSchema(schemaPath) {
     allErrors: true,
     verbose: true,
     strict: false,
+    discriminator: true,
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
