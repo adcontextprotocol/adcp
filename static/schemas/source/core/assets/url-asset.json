@@ -7,8 +7,8 @@
   "properties": {
     "url": {
       "type": "string",
-      "format": "uri",
-      "description": "URL reference"
+      "format": "uri-template",
+      "description": "URL reference. May be a plain URI or an RFC 6570 URI template carrying AdCP universal macros (e.g., `{SKU}`, `{MEDIA_BUY_ID}`). Buyers MUST NOT pre-encode macro braces at sync time; the ad server URL-encodes substituted values at impression time. See docs/creative/universal-macros.mdx."
     },
     "url_type": {
       "$ref": "/schemas/enums/url-asset-type.json",
