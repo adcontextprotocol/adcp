@@ -34,7 +34,7 @@ export type WebhookTaskType =
   | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
   | 'get_rights' | 'acquire_rights';
 
-export const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
+export const TOOL_TO_TASK_TYPE = {
   create_media_buy: 'create_media_buy',
   update_media_buy: 'update_media_buy',
   sync_creatives: 'sync_creatives',
@@ -55,6 +55,40 @@ export const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
   get_brand_identity: 'get_brand_identity',
   get_rights: 'get_rights',
   acquire_rights: 'acquire_rights',
+} as const satisfies Record<string, WebhookTaskType>;
+
+type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
+
+/** AdCP protocol domain for each webhook-emitting tool. Values are the kebab-case
+ *  enum from `enums/adcp-protocol.json`. Matches the spec's operational grouping:
+ *  creative operations bundled into a media-buy seller stamp as `media-buy`
+ *  (see `core/mcp-webhook-payload.json` example where `sync_creatives` → `media-buy`);
+ *  dedicated brand / signals / governance tools stamp their own domain. The
+ *  `Record<WebhookEmittingTool, ...>` type forces this map to stay in sync with
+ *  `TOOL_TO_TASK_TYPE` — adding a tool there without a protocol here fails tsc. */
+type WebhookProtocol = 'media-buy' | 'signals' | 'governance' | 'creative' | 'brand' | 'sponsored-intelligence';
+
+const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+  create_media_buy: 'media-buy',
+  update_media_buy: 'media-buy',
+  sync_creatives: 'media-buy',
+  get_creative_delivery: 'media-buy',
+  sync_event_sources: 'media-buy',
+  sync_audiences: 'media-buy',
+  sync_catalogs: 'media-buy',
+  log_event: 'media-buy',
+  sync_accounts: 'governance',
+  get_account_financials: 'governance',
+  activate_signal: 'signals',
+  get_signals: 'signals',
+  create_property_list: 'governance',
+  update_property_list: 'governance',
+  get_property_list: 'governance',
+  list_property_lists: 'governance',
+  delete_property_list: 'governance',
+  get_brand_identity: 'brand',
+  get_rights: 'brand',
+  acquire_rights: 'brand',
 };
 
 function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
@@ -99,8 +133,8 @@ export function maybeEmitCompletionWebhook(opts: {
   requestIdempotencyKey?: string;
 }): void {
   const webhookUrl = extractWebhookUrl(opts.args);
-  const taskType = TOOL_TO_TASK_TYPE[opts.toolName];
-  if (!webhookUrl || !taskType) return;
+  if (!webhookUrl || !(opts.toolName in TOOL_TO_TASK_TYPE)) return;
+  const tool = opts.toolName as WebhookEmittingTool;
 
   const emitter = getWebhookEmitter();
   const operationId = deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey);
@@ -108,8 +142,8 @@ export function maybeEmitCompletionWebhook(opts: {
     ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
   const payload: Record<string, unknown> = {
     task_id: webhookTaskId,
-    task_type: taskType,
-    protocol: 'mcp',
+    task_type: TOOL_TO_TASK_TYPE[tool],
+    protocol: TOOL_TO_PROTOCOL[tool],
     status: 'completed',
     timestamp: new Date().toISOString(),
     result: opts.response,
