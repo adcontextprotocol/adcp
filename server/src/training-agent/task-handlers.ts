@@ -3362,12 +3362,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
       if (outcome.kind === 'conflict') {
         // Error body carries code + message only — no `field` json-pointer,
-        // no cached payload, no hash. Any shape hint turns key-reuse into
-        // a read oracle (security.mdx §IDEMPOTENCY_CONFLICT response shape).
+        // no cached payload, no hash, no `recovery` hint. Any shape hint
+        // turns key-reuse into a read oracle (security.mdx §IDEMPOTENCY_CONFLICT
+        // response shape). The universal idempotency storyboard's
+        // `idempotency.conflict_no_payload_leak` cross-step assertion
+        // enforces the allowlist on this specific error's envelope.
         return {
           result: adcpError('IDEMPOTENCY_CONFLICT', {
             message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
-            recovery: 'correctable',
           }, callerContext),
           flushable: true,
         };
@@ -3441,13 +3443,18 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       } else {
         // Inner response (what gets cached for replay). Per security.mdx:
         // "replayed: false" MAY be omitted on fresh executions and buyers
-        // MUST treat omission as false. Omitting keeps strict per-task
-        // response schemas (additionalProperties: false) passing.
+        // MUST treat omission as false. We emit it explicitly only on
+        // create_media_buy because the universal idempotency storyboard's
+        // `field_value allowed_values:[false]` check fails on omitted
+        // fields — scoping to this tool keeps the signal without tripping
+        // strict per-task response schemas on other tools (several SDK
+        // schemas are not passthrough and reject the extra key).
         const inner = result as Record<string, unknown>;
         cachableResponse = inner;
-        const response = callerContext !== undefined
-          ? { ...inner, context: callerContext }
-          : inner;
+        const envelope: Record<string, unknown> = {};
+        if (name === 'create_media_buy') envelope.replayed = false;
+        if (callerContext !== undefined) envelope.context = callerContext;
+        const response = { ...inner, ...envelope };
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(response) }],
         };
