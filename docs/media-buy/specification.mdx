@@ -188,7 +188,7 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
 - Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
 - Orchestrators MUST provide `scope` and `product_id` for each product entry in `refine`, and `scope` and `proposal_id` for each proposal entry
-- Orchestrators MAY omit `action` on product and proposal entries — sellers MUST treat missing `action` as `"include"`
+- Orchestrators MAY omit `action` on product and proposal entries (defaults to `"include"`)
 - Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product

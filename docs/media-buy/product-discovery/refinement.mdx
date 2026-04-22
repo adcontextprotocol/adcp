@@ -146,6 +146,8 @@ When a buyer sends a `refine` array, the seller responds with `refinement_applie
 
 The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Each entry MUST echo `scope` and the matching id (`product_id` on product scope, `proposal_id` on proposal scope) so orchestrators can cross-validate alignment. The entire field is optional — sellers that don't track per-ask outcomes can omit it — but sellers that return it MUST return valid, position-matched entries.
 
+Orchestrators SHOULD cross-check entries by the echoed id rather than trusting positional order alone — a seller bug that reorders entries would otherwise silently mis-attribute each outcome.
+
 ## Common refinement patterns
 
 ### Find similar products

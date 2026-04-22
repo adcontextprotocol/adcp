@@ -12,7 +12,6 @@ The response `refinement_applied[]` changed to echo the matching id fields (`pro
 
 An OpenAPI-style `discriminator: { propertyName: "scope" }` annotation is now present on both request `refine[]` and response `refinement_applied[]`, so typed clients (TypeScript, Python/Pydantic) generate narrowed discriminated unions rather than anonymous flat unions.
 
-Alongside the issue-named storyboard fixes, this sweep also removed one stale entry from `tests/storyboard-sample-request-schema-allowlist.json` (`specialisms/sales-proposal-mode/index.yaml#review_refine/get_products_refine`) that the lint surfaced once the schema was fixed.
 
 **Migration from earlier 3.0 pre-releases:**
 
@@ -23,3 +22,5 @@ Alongside the issue-named storyboard fixes, this sweep also removed one stale en
 | `{ "scope": "product", "id": "p1", "action": "omit" }` | `{ "scope": "product", "product_id": "p1", "action": "omit" }` |
 | `{ "scope": "proposal", "id": "pr1", "action": "finalize" }` | `{ "scope": "proposal", "proposal_id": "pr1", "action": "finalize" }` |
 | `refinement_applied: [{ "scope": "product", "id": "p1", "status": "applied" }]` | `refinement_applied: [{ "scope": "product", "product_id": "p1", "status": "applied" }]` |
+
+Each scope branch in both `refine[]` and `refinement_applied[]` is `additionalProperties: false`, so leftover `id` fields from the pre-rename shape are now rejected with a `"must NOT have additional properties"` validation error rather than being silently ignored. If you see that error after upgrading, search your orchestrator code for `id` inside refine entries and rename to `product_id` / `proposal_id`.

@@ -538,7 +538,7 @@ The nested `deliver_to` object in `get_signals` request is replaced with two top
 
 `refine` is redesigned from a nested object with `overall`/`products`/`proposals` to a flat typed array. Each entry is discriminated by `scope`:
 
-| v2/beta field | v3 field |
+| v2/beta field | v3 rc.1 field |
 |---------------|---------------|
 | `refine.overall` (string) | `{ "scope": "request", "ask": "..." }` array entry |
 | `refine.products[].product_id` | `{ "scope": "product", "product_id": "..." }` |
