@@ -10,10 +10,9 @@ track: core
 # programmatic gates that fail the storyboard at runtime rather than
 # waiting on human review. `idempotency.conflict_no_payload_leak` catches
 # the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
-# catches credential echo on any step's response. Runners must
-# `import '@adcp/adcp/compliance/assertions'` (or the equivalent module
-# path in their consumer) before calling `runStoryboard` so these ids
-# resolve.
+# catches credential echo on any step's response. Both ship as default
+# assertions in `@adcp/client` 5.9+ — `import '@adcp/client/testing'`
+# auto-registers them; no additional module loading required.
 invariants:
   - idempotency.conflict_no_payload_leak
   - context.no_secret_echo
