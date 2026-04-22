@@ -211,6 +211,21 @@ phases:
             format_id:
               agent_url: "https://your-platform.example.com"
               id: "native_post"
+            assets:
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off"
+              body:
+                asset_type: "text"
+                content: "Top-rated outdoor gear. This weekend only."
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                width: 1200
+                height: 628
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
           output_format: "url"
           quality: "draft"
 

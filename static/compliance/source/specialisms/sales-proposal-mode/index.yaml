@@ -320,7 +320,9 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           proposal_id: "balanced_reach_q2"
-          total_budget: 50000
+          total_budget:
+            amount: 50000
+            currency: "USD"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
 

@@ -142,6 +142,10 @@ phases:
         sample_request:
           buyer:
             domain: "pinnacle-agency.example"
+          query: "licensed commercial rights for a regional outdoor retail campaign"
+          uses:
+            - "commercial"
+            - "endorsement"
         context_outputs:
           - path: "rights[0].rights_id"
             key: "rights_id"

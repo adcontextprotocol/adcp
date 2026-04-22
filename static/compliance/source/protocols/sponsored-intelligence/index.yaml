@@ -235,6 +235,7 @@ phases:
 
         sample_request:
           session_id: "$context.session_id"
+          reason: "handoff_complete"
 
           context:
             correlation_id: "si_session--si_terminate_session"

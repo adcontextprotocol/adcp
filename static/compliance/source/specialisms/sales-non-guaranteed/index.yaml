@@ -244,6 +244,10 @@ phases:
         context_outputs:
           - name: media_buy_id
             path: "media_buy_id"
+          - name: first_package_id
+            path: "packages[0].package_id"
+          - name: second_package_id
+            path: "packages[1].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -343,10 +347,10 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           packages:
-            - product_id: "sports_display_auction"
+            - package_id: "$context.first_package_id"
               bid_price: 10.00
               budget: 12000
-            - product_id: "outdoor_video_auction"
+            - package_id: "$context.second_package_id"
               bid_price: 20.00
               budget: 13000
 
