@@ -6,6 +6,14 @@ status: preview
 summary: "Programmatic exchange or SSP — auction-based inventory access with real-time bidding semantics and multi-seller inventory pooling."
 track: media-buy
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+# Wired eagerly so the assertion applies automatically once the 3.1
+# exchange-specific phases are populated.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a programmatic exchange or supply-side platform. Buyers reach inventory
   via auction — you aggregate inventory from many publishers and expose it through

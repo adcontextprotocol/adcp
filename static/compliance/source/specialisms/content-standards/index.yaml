@@ -8,6 +8,14 @@ track: governance
 required_tools:
   - list_content_standards
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph. Silent on content-standards-only runs (no tracked
+# lifecycle resource), but wired so phases that touch creative /
+# account status are automatically gated.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a governance agent that manages content standards — rules that define what
   creative content is acceptable for a brand or campaign. Buyers create standards that
