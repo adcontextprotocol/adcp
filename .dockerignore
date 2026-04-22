@@ -9,6 +9,10 @@ dist
 dist/schemas/latest
 dist/schemas/v*
 dist/schemas/registry.*
+# Include cosign-signed versioned tarballs from git — the builder only
+# regenerates latest.tgz, and re-signing requires OIDC creds we don't
+# have inside the Fly.io image build.
+!dist/protocol
 .docusaurus
 
 # Development files
